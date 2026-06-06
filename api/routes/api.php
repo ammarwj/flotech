@@ -6,8 +6,13 @@ use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
+use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
+use App\Http\Controllers\Api\Public\PublicEventController;
+use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
 use App\Http\Resources\PlanResource;
 use App\Models\Plan;
@@ -56,16 +61,34 @@ Route::prefix('v1')->group(function () {
         });
     });
 
+    // ---- Public event landing & registration ----
+    Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
+        Route::get('/', [PublicEventController::class, 'show']);
+        Route::post('register', [PublicEventController::class, 'register']);
+    });
+
+    // Presigned upload URL (used by the public registration form too).
+    Route::post('uploads/sign', [UploadController::class, 'sign']);
+
     // ---- Authenticated app ----
     Route::middleware('auth:api')->group(function () {
         Route::get('organizations', [OrganizationController::class, 'index']);
         Route::post('organizations', [OrganizationController::class, 'store']);
+
+        // Participant: teams I manage.
+        Route::get('my-teams', [MyTeamController::class, 'index']);
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);
             Route::patch('plan', [OrganizationController::class, 'assignPlan']);
             Route::get('subscriptions', [SubscriptionController::class, 'index']);
             Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
+
+            // Event CRUD + registrations management.
+            Route::apiResource('events', EventController::class);
+            Route::post('events/{event}/publish', [EventController::class, 'publish']);
+            Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
+            Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
         });
 
         // ---- SaaS Super Admin ----

@@ -3,7 +3,7 @@ import Link from "next/link";
 const NAV = [
   { href: "/dashboard", label: "Ringkasan" },
   { href: "/dashboard/events", label: "Event" },
-  { href: "/dashboard/teams", label: "Tim" },
+  { href: "/dashboard/my-teams", label: "Tim Saya" },
   { href: "/dashboard/schedule", label: "Jadwal" },
   { href: "/dashboard/standings", label: "Klasemen" },
   { href: "/dashboard/tickets", label: "Tiket" },

@@ -104,4 +104,9 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(OrganizationMember::class);
     }
+
+    public function managedTeams(): HasMany
+    {
+        return $this->hasMany(Team::class, 'manager_user_id');
+    }
 }

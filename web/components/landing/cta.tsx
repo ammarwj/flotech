@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function Cta() {
   return (
     <section className="section cta-band">
@@ -12,9 +14,9 @@ export function Cta() {
             <a href="#harga" className="btn btn-primary btn-lg">
               Mulai Gratis Sekarang
             </a>
-            <a href="/event" className="btn btn-secondary btn-lg">
+            <Link href="/event" className="btn btn-secondary btn-lg">
               Lihat Contoh Event
-            </a>
+            </Link>
           </div>
         </div>
       </div>

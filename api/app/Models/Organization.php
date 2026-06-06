@@ -52,4 +52,9 @@ class Organization extends Model
     {
         return $this->hasMany(Subscription::class);
     }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(Event::class);
+    }
 }

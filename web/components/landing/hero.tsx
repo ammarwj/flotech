@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowRight, CheckIcon, StarIcon } from "./icons";
 
 export function Hero() {
@@ -23,9 +24,9 @@ export function Hero() {
               Mulai Gratis
               <ArrowRight />
             </a>
-            <a href="/event" className="btn btn-secondary btn-lg">
+            <Link href="/event" className="btn btn-secondary btn-lg">
               Lihat Contoh Event
-            </a>
+            </Link>
           </div>
           <div className="hero-meta">
             <span>

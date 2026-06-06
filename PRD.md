@@ -1575,7 +1575,7 @@ web/:
   → Panel SaaS Super Admin: kelola paket & fitur
 ```
 
-#### Phase 2 — Core Tournament (Minggu 5–8)
+#### Phase 2 — Core Tournament
 
 ```
 Sprint 2A (Minggu 5–6) — Event & Registrasi:
