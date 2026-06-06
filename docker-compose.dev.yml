@@ -1,0 +1,61 @@
+# ============================================================
+# flo-event — development override (hot reload + bind mounts)
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up web api db redis
+# Hits services directly on localhost:3000 (web) and :8000 (api).
+# ============================================================
+
+services:
+  web:
+    image: oven/bun:1-alpine
+    build: !reset null
+    working_dir: /app
+    command: sh -c "bun install && bun run dev"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NEXT_TELEMETRY_DISABLED=1
+    env_file: !reset []
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+
+  api:
+    build:
+      context: ./api
+    command: sh -c "composer install && php artisan serve --host=0.0.0.0 --port=8000"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    volumes:
+      - ./api:/var/www/html
+      - api_vendor:/var/www/html/vendor
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ./api
+    command: php artisan horizon
+    environment:
+      - APP_ENV=local
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    volumes:
+      - ./api:/var/www/html
+      - api_vendor:/var/www/html/vendor
+
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+volumes:
+  web_node_modules:
+  api_vendor:

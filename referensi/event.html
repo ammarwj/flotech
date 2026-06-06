@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jakarta Cup 2026 — flo-event</title>
+<meta name="description" content="Jakarta Cup 2026 — Turnamen Sepak Bola. Daftarkan timmu atau beli tiket. Jadwal, klasemen, dan bracket live." />
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('flo-theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="assets/flo.css" />
+<style>
+  /* ===================== EVENT HERO ===================== */
+  .ehero {
+    position: relative;
+    overflow: hidden;
+    color: #fff;
+    background:
+      linear-gradient(180deg, rgba(7,11,22,0.30), rgba(7,11,22,0.86) 70%, var(--bg)),
+      linear-gradient(125deg, #0B2C6B, #1E6FFF 48%, #7C3AED);
+  }
+  .ehero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
+    background-size: 54px 54px;
+    -webkit-mask-image: radial-gradient(800px 500px at 80% 10%, #000, transparent 75%);
+            mask-image: radial-gradient(800px 500px at 80% 10%, #000, transparent 75%);
+  }
+  .ehero-inner { position: relative; padding-block: 40px 64px; }
+  .ehero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .ehero-back { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.85); }
+  .ehero-back:hover { color: #fff; }
+  .ehero-back svg { width: 16px; height: 16px; }
+  .ehero .theme-toggle { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); color: #fff; }
+  .ehero .theme-toggle:hover { background: rgba(255,255,255,0.2); border-color: #fff; }
+
+  .ehero-grid {
+    margin-top: 48px;
+    display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: end;
+  }
+  @media (max-width: 900px) { .ehero-grid { grid-template-columns: 1fr; gap: 36px; } }
+
+  .ehero-badges { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ehero-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 30px; padding-inline: 13px; border-radius: var(--r-full);
+    font-size: 13px; font-weight: 600;
+    background: rgba(255,255,255,0.14); color: #fff;
+    border: 1px solid rgba(255,255,255,0.22);
+    backdrop-filter: blur(4px);
+    white-space: nowrap;
+  }
+  .ehero-badge.sport { background: rgba(255,255,255,0.96); color: var(--sport-football); }
+  .ehero h1 {
+    color: #fff; margin-top: 22px;
+    font-size: clamp(38px, 6vw, 66px); font-weight: 800; letter-spacing: -0.035em;
+  }
+  .ehero-info { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 12px 26px; }
+  .ehero-info span { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; color: rgba(255,255,255,0.92); }
+  .ehero-info svg { width: 18px; height: 18px; opacity: 0.9; }
+  .ehero-cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
+  .ehero-cta .btn-primary { background: #fff; color: var(--brand-700); box-shadow: 0 10px 30px rgba(0,0,0,0.28); }
+  .ehero-cta .btn-primary:hover { background: #fff; transform: translateY(-2px); }
+  .ehero-cta .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.4); }
+  .ehero-cta .btn-secondary:hover { border-color: #fff; color: #fff; background: rgba(255,255,255,0.18); }
+
+  /* countdown */
+  .countdown {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: var(--r-lg);
+    backdrop-filter: blur(8px);
+    padding: 24px;
+  }
+  .countdown-label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.78); font-weight: 600; }
+  .cd-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .cd-cell { text-align: center; background: rgba(255,255,255,0.1); border-radius: var(--r-md); padding: 14px 6px; }
+  .cd-num { font-family: var(--font-display); font-weight: 800; font-size: clamp(26px, 4vw, 38px); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .cd-unit { font-size: 11px; color: rgba(255,255,255,0.78); margin-top: 7px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .countdown-foot { margin-top: 16px; display: flex; align-items: center; gap: 9px; font-size: 13px; color: rgba(255,255,255,0.88); }
+  .countdown-foot .badge-live { background: rgba(255,255,255,0.18); color: #fff; }
+
+  /* ===================== STAT BAR ===================== */
+  .ebar { border-bottom: 1px solid var(--border); background: var(--surface); }
+  .ebar-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 640px) { .ebar-grid { grid-template-columns: 1fr 1fr; } }
+  .ebar-cell { padding: 22px 24px; text-align: center; border-right: 1px solid var(--border); }
+  .ebar-cell:last-child { border-right: none; }
+  @media (max-width: 640px) { .ebar-cell:nth-child(2) { border-right: none; } .ebar-cell:nth-child(1), .ebar-cell:nth-child(2) { border-bottom: 1px solid var(--border); } }
+  .ebar-cell b { display: block; font-family: var(--font-display); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; }
+  .ebar-cell span { font-size: 13px; color: var(--text-muted); }
+
+  /* ===================== TABS / SECTIONS ===================== */
+  .esection-title { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .esection-title h2 { font-size: clamp(24px, 3vw, 32px); }
+  .esection-title .pill { margin-left: auto; }
+
+  .elayout { display: grid; grid-template-columns: 1fr 340px; gap: 32px; align-items: start; }
+  @media (max-width: 980px) { .elayout { grid-template-columns: 1fr; } }
+
+  /* schedule */
+  .match-day { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text-muted); margin: 24px 0 12px; }
+  .match-day:first-child { margin-top: 0; }
+  .match-card {
+    display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 16px;
+    padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface); margin-bottom: 10px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .match-card:hover { border-color: var(--brand-500); box-shadow: var(--shadow-sm); }
+  .match-time { text-align: center; }
+  .match-time b { display: block; font-family: var(--font-mono); font-size: 15px; }
+  .match-time small { font-size: 11px; color: var(--text-muted); }
+  .match-teams { display: grid; gap: 8px; }
+  .match-team { display: flex; align-items: center; gap: 11px; font-weight: 600; font-size: 15px; }
+  .match-team .crest { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; }
+  .match-team .sc { margin-left: auto; font-family: var(--font-display); font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .match-team.lose { color: var(--text-muted); }
+  .match-team.lose .sc { color: var(--text-muted); }
+  .match-meta { text-align: right; display: grid; gap: 6px; justify-items: end; }
+  .match-meta small { font-size: 12px; color: var(--text-muted); }
+
+  /* standings */
+  .stable { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+  .stable th { text-align: center; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; padding: 12px 8px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .stable th.l, .stable td.l { text-align: left; }
+  .stable td { padding: 13px 8px; text-align: center; border-bottom: 1px solid var(--border); color: var(--text-2); }
+  .stable tr:last-child td { border-bottom: none; }
+  .stable tbody tr:hover { background: var(--surface-2); }
+  .stable .pos { width: 40px; font-family: var(--font-mono); color: var(--text-muted); position: relative; }
+  .stable .tname { display: flex; align-items: center; gap: 11px; font-weight: 600; color: var(--text); }
+  .stable .tname .crest { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; }
+  .stable .pts { font-family: var(--font-display); font-weight: 800; color: var(--text); }
+  .stable tr.qual td.pos { box-shadow: inset 3px 0 0 var(--success); color: var(--success); font-weight: 700; }
+  .stable tr.playoff td.pos { box-shadow: inset 3px 0 0 var(--warning); color: var(--warning); font-weight: 700; }
+  .stable-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12.5px; color: var(--text-muted); }
+  .stable-legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .stable-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* sidebar cards */
+  .scard { padding: 22px; margin-bottom: 20px; }
+  .scard h3 { font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 9px; }
+  .scard h3 svg { width: 18px; height: 18px; color: var(--brand-600); }
+  [data-theme="dark"] .scard h3 svg { color: var(--brand-500); }
+
+  .scorer { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .scorer:last-child { border-bottom: none; }
+  .scorer .rk { width: 22px; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+  .scorer .av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .scorer .nm { font-size: 14px; font-weight: 600; }
+  .scorer .nm small { display: block; font-weight: 400; font-size: 11.5px; color: var(--text-muted); }
+  .scorer .goals { margin-left: auto; font-family: var(--font-display); font-weight: 800; font-size: 18px; }
+  .scorer .goals small { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+
+  .price-tier { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .price-tier:last-of-type { border-bottom: none; }
+  .price-tier b { font-size: 14.5px; font-family: var(--font-display); }
+  .price-tier small { display: block; font-size: 11.5px; color: var(--text-muted); font-weight: 400; }
+  .price-tier .amt { font-family: var(--font-display); font-weight: 800; font-size: 16px; }
+
+  /* bracket */
+  .ebracket { display: flex; gap: 32px; overflow-x: auto; padding-bottom: 8px; }
+  .ebracket-col { display: flex; flex-direction: column; justify-content: space-around; gap: 18px; min-width: 200px; }
+  .ebracket-col .rnd { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 700; text-align: center; margin-bottom: 4px; }
+  .ematch { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+  .ematch .row { display: flex; align-items: center; gap: 10px; padding: 11px 13px; font-size: 13.5px; }
+  .ematch .row + .row { border-top: 1px solid var(--border); }
+  .ematch .row .crest { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }
+  .ematch .row .nm { font-weight: 600; }
+  .ematch .row .sc { margin-left: auto; font-family: var(--font-mono); font-weight: 600; color: var(--text-muted); }
+  .ematch .row.win .nm { color: var(--text); }
+  .ematch .row.win .sc { color: var(--success); }
+  .ematch .row.out { color: var(--text-muted); }
+  .ematch .row.out .nm { color: var(--text-muted); }
+
+  /* sponsors */
+  .sponsors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-top: 8px; }
+  @media (max-width: 700px) { .sponsors { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 440px) { .sponsors { grid-template-columns: repeat(2, 1fr); } }
+  .sponsor {
+    height: 72px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface); display: grid; place-items: center;
+    color: var(--text-muted); font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: -0.01em;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .sponsor:hover { color: var(--text); border-color: var(--border-strong); }
+  .sponsor svg { width: 22px; height: 22px; margin-right: 7px; opacity: 0.7; }
+
+  /* register CTA */
+  .ereg {
+    border-radius: var(--r-xl);
+    background: linear-gradient(125deg, var(--brand-700), var(--brand-600) 60%, var(--sport-futsal));
+    color: #fff; padding: clamp(32px, 5vw, 56px); text-align: center; position: relative; overflow: hidden;
+  }
+  .ereg::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(500px 260px at 50% 0%, #000, transparent 70%); mask-image: radial-gradient(500px 260px at 50% 0%, #000, transparent 70%);
+  }
+  .ereg h2 { color: #fff; font-size: clamp(26px, 3.6vw, 40px); position: relative; }
+  .ereg p { position: relative; margin: 14px auto 0; max-width: 460px; color: rgba(255,255,255,0.9); font-size: 17px; }
+  .ereg .ehero-cta { position: relative; justify-content: center; margin-top: 26px; }
+  .ereg .deadline { position: relative; margin-top: 18px; font-size: 13.5px; color: rgba(255,255,255,0.85); display: inline-flex; align-items: center; gap: 8px; }
+  .ereg .deadline svg { width: 16px; height: 16px; }
+</style>
+</head>
+<body>
+
+<!-- ===================== EVENT HERO ===================== -->
+<header class="ehero">
+  <div class="container ehero-inner">
+    <div class="ehero-top">
+      <a href="index.html" class="ehero-back">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M19 12H5m6-6-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Didukung flo-event
+      </a>
+      <button class="theme-toggle" data-theme-toggle aria-label="Ganti tema">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="ehero-grid">
+      <div>
+        <div class="ehero-badges">
+          <span class="ehero-badge sport">⚽ Sepak Bola</span>
+          <span class="ehero-badge">Format Liga + Playoff</span>
+          <span class="ehero-badge"><span style="width:7px;height:7px;border-radius:50%;background:#22D3A7;display:inline-block"></span> Pendaftaran Dibuka</span>
+        </div>
+        <h1>Jakarta Cup 2026</h1>
+        <div class="ehero-info">
+          <span><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> 14–22 Juni 2026</span>
+          <span><svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="2"/></svg> GBK Soccer Field, Jakarta</span>
+          <span><svg viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg> 16 Tim</span>
+        </div>
+        <div class="ehero-cta">
+          <a href="#daftar" class="btn btn-primary btn-lg">Daftar Tim Sekarang</a>
+          <a href="#tiket" class="btn btn-secondary btn-lg">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 9V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 6v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            Beli Tiket
+          </a>
+        </div>
+      </div>
+
+      <div class="countdown">
+        <div class="countdown-label">Kick-off dalam</div>
+        <div class="cd-grid" id="countdown">
+          <div class="cd-cell"><div class="cd-num" data-d>00</div><div class="cd-unit">Hari</div></div>
+          <div class="cd-cell"><div class="cd-num" data-h>00</div><div class="cd-unit">Jam</div></div>
+          <div class="cd-cell"><div class="cd-num" data-m>00</div><div class="cd-unit">Menit</div></div>
+          <div class="cd-cell"><div class="cd-num" data-s>00</div><div class="cd-unit">Detik</div></div>
+        </div>
+        <div class="countdown-foot">
+          <span class="badge badge-live"><span class="dot"></span> Pendaftaran tutup 8 Juni</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== STAT BAR ===================== -->
+<section class="ebar">
+  <div class="container ebar-grid">
+    <div class="ebar-cell"><b>16</b><span>Tim Peserta</span></div>
+    <div class="ebar-cell"><b>32</b><span>Pertandingan</span></div>
+    <div class="ebar-cell"><b>4</b><span>Grup</span></div>
+    <div class="ebar-cell"><b>Rp 50jt</b><span>Total Hadiah</span></div>
+  </div>
+</section>
+
+<!-- ===================== MAIN ===================== -->
+<main class="section">
+  <div class="container elayout">
+    <!-- LEFT COLUMN -->
+    <div>
+      <!-- SCHEDULE -->
+      <div class="esection-title">
+        <h2>Jadwal Pertandingan</h2>
+        <span class="pill"><span class="dot" style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span> Hari ini</span>
+      </div>
+
+      <div class="match-day">Sabtu, 14 Juni 2026</div>
+
+      <div class="match-card reveal">
+        <div class="match-time"><span class="badge badge-live"><span class="dot"></span> LIVE</span><small style="display:block;margin-top:4px">67'</small></div>
+        <div class="match-teams">
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)"></span> Garuda FC <span class="sc">2</span></div>
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#DC2626,#991B1B)"></span> Elang United <span class="sc">1</span></div>
+        </div>
+        <div class="match-meta"><small>Grup A</small><small>Lapangan A</small></div>
+      </div>
+
+      <div class="match-card reveal" data-delay="60">
+        <div class="match-time"><b>17:30</b><small>WIB</small></div>
+        <div class="match-teams">
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#059669,#047857)"></span> Rajawali</div>
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#D97706,#B45309)"></span> Macan Kemayoran</div>
+        </div>
+        <div class="match-meta"><span class="badge badge-warning">Berikutnya</span><small>Grup A · Lap. A</small></div>
+      </div>
+
+      <div class="match-card reveal" data-delay="120">
+        <div class="match-time"><b>19:00</b><small>WIB</small></div>
+        <div class="match-teams">
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#7C3AED,#5B21B6)"></span> Naga Biru</div>
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#DB2777,#9D174D)"></span> Banteng FC</div>
+        </div>
+        <div class="match-meta"><span class="badge" style="background:var(--bg-soft);color:var(--text-muted)">Terjadwal</span><small>Grup B · Lap. B</small></div>
+      </div>
+
+      <div class="match-day">Minggu, 15 Juni 2026</div>
+
+      <div class="match-card reveal">
+        <div class="match-time"><b>15:00</b><small>WIB</small></div>
+        <div class="match-teams">
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#0EA5E9,#0369A1)"></span> Hiu Laut</div>
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#65A30D,#3F6212)"></span> Komodo FC</div>
+        </div>
+        <div class="match-meta"><span class="badge" style="background:var(--bg-soft);color:var(--text-muted)">Terjadwal</span><small>Grup C · Lap. A</small></div>
+      </div>
+
+      <div class="match-card reveal" data-delay="60">
+        <div class="match-time"><b>17:30</b><small>WIB</small></div>
+        <div class="match-teams">
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#E11D48,#9F1239)"></span> Singa Api</div>
+          <div class="match-team"><span class="crest" style="background:linear-gradient(135deg,#475569,#1E293B)"></span> Badak Hitam</div>
+        </div>
+        <div class="match-meta"><span class="badge" style="background:var(--bg-soft);color:var(--text-muted)">Terjadwal</span><small>Grup C · Lap. B</small></div>
+      </div>
+
+      <!-- STANDINGS -->
+      <div class="esection-title" style="margin-top:56px"><h2>Klasemen Grup A</h2></div>
+      <table class="stable">
+        <thead>
+          <tr><th class="pos">#</th><th class="l">Tim</th><th>M</th><th>M</th><th>S</th><th>K</th><th>SG</th><th>Poin</th></tr>
+        </thead>
+        <tbody>
+          <tr class="qual"><td class="pos">1</td><td class="l"><div class="tname"><span class="crest" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)"></span> Garuda FC</div></td><td>5</td><td>4</td><td>1</td><td>0</td><td>+9</td><td class="pts">13</td></tr>
+          <tr class="qual"><td class="pos">2</td><td class="l"><div class="tname"><span class="crest" style="background:linear-gradient(135deg,#059669,#047857)"></span> Rajawali</div></td><td>5</td><td>3</td><td>2</td><td>0</td><td>+5</td><td class="pts">11</td></tr>
+          <tr class="playoff"><td class="pos">3</td><td class="l"><div class="tname"><span class="crest" style="background:linear-gradient(135deg,#DC2626,#991B1B)"></span> Elang United</div></td><td>5</td><td>2</td><td>2</td><td>1</td><td>+2</td><td class="pts">8</td></tr>
+          <tr><td class="pos">4</td><td class="l"><div class="tname"><span class="crest" style="background:linear-gradient(135deg,#D97706,#B45309)"></span> Macan Kemayoran</div></td><td>5</td><td>1</td><td>1</td><td>3</td><td>-3</td><td class="pts">4</td></tr>
+          <tr><td class="pos">5</td><td class="l"><div class="tname"><span class="crest" style="background:linear-gradient(135deg,#475569,#1E293B)"></span> Badak Hitam</div></td><td>5</td><td>0</td><td>0</td><td>5</td><td>-13</td><td class="pts">0</td></tr>
+        </tbody>
+      </table>
+      <div class="stable-legend">
+        <span><i style="background:var(--success)"></i> Lolos perempat final</span>
+        <span><i style="background:var(--warning)"></i> Babak playoff</span>
+        <span><i style="background:var(--border-strong)"></i> Tersingkir</span>
+      </div>
+
+      <!-- BRACKET -->
+      <div class="esection-title" style="margin-top:56px"><h2>Bracket Babak Gugur</h2></div>
+      <div class="ebracket">
+        <div class="ebracket-col">
+          <div class="rnd">Perempat Final</div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)"></span><span class="nm">Garuda FC</span><span class="sc">3</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#DB2777,#9D174D)"></span><span class="nm">Banteng FC</span><span class="sc">1</span></div></div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#059669,#047857)"></span><span class="nm">Rajawali</span><span class="sc">2</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#0EA5E9,#0369A1)"></span><span class="nm">Hiu Laut</span><span class="sc">0</span></div></div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#7C3AED,#5B21B6)"></span><span class="nm">Naga Biru</span><span class="sc">2</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#65A30D,#3F6212)"></span><span class="nm">Komodo FC</span><span class="sc">1</span></div></div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#E11D48,#9F1239)"></span><span class="nm">Singa Api</span><span class="sc">4</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#D97706,#B45309)"></span><span class="nm">Macan</span><span class="sc">2</span></div></div>
+        </div>
+        <div class="ebracket-col">
+          <div class="rnd">Semifinal</div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)"></span><span class="nm">Garuda FC</span><span class="sc">2</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#059669,#047857)"></span><span class="nm">Rajawali</span><span class="sc">1</span></div></div>
+          <div class="ematch"><div class="row win"><span class="crest" style="background:linear-gradient(135deg,#7C3AED,#5B21B6)"></span><span class="nm">Naga Biru</span><span class="sc">3</span></div><div class="row out"><span class="crest" style="background:linear-gradient(135deg,#E11D48,#9F1239)"></span><span class="nm">Singa Api</span><span class="sc">2</span></div></div>
+        </div>
+        <div class="ebracket-col">
+          <div class="rnd">Final</div>
+          <div class="ematch"><div class="row"><span class="crest" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)"></span><span class="nm">Garuda FC</span><span class="sc">—</span></div><div class="row"><span class="crest" style="background:linear-gradient(135deg,#7C3AED,#5B21B6)"></span><span class="nm">Naga Biru</span><span class="sc">—</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside>
+      <!-- top scorer -->
+      <div class="card scard reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none"><path d="m12 2 2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg> Top Scorer</h3>
+        <div class="scorer"><span class="rk">1</span><span class="av" style="background:linear-gradient(135deg,#1E6FFF,#1558CC)">BS</span><span class="nm">Bagus Saputra<small>Garuda FC</small></span><span class="goals">8<small> gol</small></span></div>
+        <div class="scorer"><span class="rk">2</span><span class="av" style="background:linear-gradient(135deg,#E11D48,#9F1239)">RF</span><span class="nm">Rian Firmansyah<small>Singa Api</small></span><span class="goals">6<small> gol</small></span></div>
+        <div class="scorer"><span class="rk">3</span><span class="av" style="background:linear-gradient(135deg,#7C3AED,#5B21B6)">AP</span><span class="nm">Andi Pratama<small>Naga Biru</small></span><span class="goals">5<small> gol</small></span></div>
+      </div>
+
+      <!-- tickets -->
+      <div class="card scard reveal" id="tiket" data-delay="60">
+        <h3><svg viewBox="0 0 24 24" fill="none"><path d="M4 9V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 6v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg> Tiket Penonton</h3>
+        <div class="price-tier"><div><b>Tribun Umum</b><small>Akses tribun samping</small></div><span class="amt">Rp 25rb</span></div>
+        <div class="price-tier"><div><b>Tribun Utama</b><small>Tribun tengah + merchandise</small></div><span class="amt">Rp 75rb</span></div>
+        <div class="price-tier"><div><b>VIP Final</b><small>Kursi VIP semua laga</small></div><span class="amt">Rp 250rb</span></div>
+        <a href="#" class="btn btn-primary btn-block" style="margin-top:18px">Beli Tiket Sekarang</a>
+      </div>
+
+      <!-- organizer -->
+      <div class="card scard reveal" data-delay="120">
+        <h3><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M8 12h8M8 8h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Penyelenggara</h3>
+        <div style="display:flex;align-items:center;gap:13px">
+          <span style="width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#1E6FFF,#1558CC);display:grid;place-items:center;color:#fff;flex-shrink:0">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 4h14l-2 6H7l1 10" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <div><b style="font-family:var(--font-display);font-size:15px">Jakarta Sports EO</b><small style="display:block;color:var(--text-muted);font-size:13px">12 turnamen terselenggara</small></div>
+        </div>
+        <a href="#" class="btn btn-secondary btn-block btn-sm" style="margin-top:16px">Hubungi Penyelenggara</a>
+      </div>
+    </aside>
+  </div>
+
+  <!-- SPONSORS -->
+  <div class="container" style="margin-top:24px">
+    <div class="esection-title"><h2>Sponsor & Partner</h2></div>
+    <div class="sponsors">
+      <div class="sponsor reveal">NusantaraBank</div>
+      <div class="sponsor reveal" data-delay="40">SportaWear</div>
+      <div class="sponsor reveal" data-delay="80">EnerGo</div>
+      <div class="sponsor reveal" data-delay="120">PrimaTel</div>
+      <div class="sponsor reveal" data-delay="160">Juara<span style="color:var(--brand-600)">Air</span></div>
+    </div>
+  </div>
+
+  <!-- REGISTER CTA -->
+  <div class="container" style="margin-top:56px" id="daftar">
+    <div class="ereg reveal">
+      <h2>Daftarkan timmu di Jakarta Cup 2026</h2>
+      <p>Kuota 16 tim — tersisa 3 slot. Lengkapi data tim, roster pemain, dan bayar biaya registrasi langsung online.</p>
+      <div class="ehero-cta">
+        <a href="#" class="btn btn-primary btn-lg">Daftar Tim — Rp 1,5jt</a>
+        <a href="#" class="btn btn-secondary btn-lg">Unduh Peraturan</a>
+      </div>
+      <div class="deadline">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Pendaftaran ditutup 8 Juni 2026, 23:59 WIB
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-bottom" style="margin-top:0;padding-top:0;border-top:none">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14l-2 6H7l1 10" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="12" r="1.4" fill="#fff"/></svg></span>
+        flo<span>-event</span>
+      </a>
+      <span>Halaman event ini dibuat dengan flo-event · © 2026</span>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/flo.js"></script>
+<script>
+  (function () {
+    var target = new Date('2026-06-14T15:00:00+07:00').getTime();
+    var el = document.getElementById('countdown');
+    if (!el) return;
+    var d = el.querySelector('[data-d]'), h = el.querySelector('[data-h]'),
+        m = el.querySelector('[data-m]'), s = el.querySelector('[data-s]');
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function tick() {
+      var diff = target - Date.now();
+      if (diff < 0) diff = 0;
+      var dd = Math.floor(diff / 86400000);
+      var hh = Math.floor(diff % 86400000 / 3600000);
+      var mm = Math.floor(diff % 3600000 / 60000);
+      var ss = Math.floor(diff % 60000 / 1000);
+      d.textContent = pad(dd); h.textContent = pad(hh); m.textContent = pad(mm); s.textContent = pad(ss);
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>
+</body>
+</html>

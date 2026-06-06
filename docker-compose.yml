@@ -1,0 +1,131 @@
+# ============================================================
+# flo-event — production stack
+# Usage: docker compose up -d --build
+# Reads variables from the root .env (copy from .env.example).
+# ============================================================
+
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - web
+      - api
+    networks:
+      - flonet
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Renew every 12h; nginx must reload to pick up new certs.
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+
+  web:
+    build:
+      context: ./web
+      args:
+        - NEXT_PUBLIC_API_URL=https://${API_DOMAIN}/api/v1
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=https://${API_DOMAIN}/api/v1
+    depends_on:
+      - api
+    networks:
+      - flonet
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    env_file:
+      - ./api/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - APP_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - flonet
+
+  worker:
+    build:
+      context: ./api
+    restart: unless-stopped
+    command: php artisan horizon
+    env_file:
+      - ./api/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - APP_ENV=production
+    depends_on:
+      - api
+      - redis
+    networks:
+      - flonet
+
+  scheduler:
+    build:
+      context: ./api
+    restart: unless-stopped
+    command: php artisan schedule:work
+    env_file:
+      - ./api/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - APP_ENV=production
+    depends_on:
+      - api
+      - redis
+    networks:
+      - flonet
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flonet
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    networks:
+      - flonet
+
+volumes:
+  pgdata:
+  redisdata:
+  certbot_certs:
+  certbot_www:
+
+networks:
+  flonet:
+    driver: bridge
