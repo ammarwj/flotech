@@ -1,0 +1,49 @@
+import { apiClient } from "./client";
+import type { ApiEnvelope, AuthTokenResponse, AuthUser } from "@/types/api";
+
+export interface RegisterPayload {
+  full_name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  password_confirmation: string;
+}
+
+export async function register(payload: RegisterPayload): Promise<AuthTokenResponse> {
+  const { data } = await apiClient.post<ApiEnvelope<AuthTokenResponse>>("/auth/register", payload);
+  return data.data;
+}
+
+export async function login(email: string, password: string): Promise<AuthTokenResponse> {
+  const { data } = await apiClient.post<ApiEnvelope<AuthTokenResponse>>("/auth/login", {
+    email,
+    password,
+  });
+  return data.data;
+}
+
+export async function logout(): Promise<void> {
+  await apiClient.post("/auth/logout");
+}
+
+export async function me(): Promise<AuthUser> {
+  const { data } = await apiClient.get<ApiEnvelope<AuthUser>>("/auth/me");
+  return data.data;
+}
+
+export async function forgotPassword(email: string): Promise<string> {
+  const { data } = await apiClient.post<ApiEnvelope<null>>("/auth/forgot-password", { email });
+  return data.message;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<string> {
+  const { data } = await apiClient.post<ApiEnvelope<null>>("/auth/reset-password", payload);
+  return data.message;
+}

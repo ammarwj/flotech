@@ -20,7 +20,12 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+            'tenant' => \App\Http\Middleware\TenantScope::class,
+            'plan.feature' => \App\Http\Middleware\CheckPlanFeature::class,
+            'plan.limit' => \App\Http\Middleware\CheckPlanLimit::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

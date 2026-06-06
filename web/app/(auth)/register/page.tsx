@@ -1,0 +1,106 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { AxiosError } from "axios";
+
+import { register as registerUser } from "@/lib/api/auth";
+import { useAuthStore } from "@/stores/auth-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const schema = z
+  .object({
+    full_name: z.string().min(2, "Nama minimal 2 karakter"),
+    email: z.string().email("Email tidak valid"),
+    password: z.string().min(8, "Minimal 8 karakter"),
+    password_confirmation: z.string(),
+  })
+  .refine((d) => d.password === d.password_confirmation, {
+    message: "Konfirmasi password tidak cocok",
+    path: ["password_confirmation"],
+  });
+
+type FormValues = z.infer<typeof schema>;
+
+export default function RegisterPage() {
+  const router = useRouter();
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  const onSubmit = async (values: FormValues) => {
+    setServerError(null);
+    try {
+      const res = await registerUser(values);
+      setAuth(res.access_token, res.user);
+      router.push("/onboarding");
+    } catch (err) {
+      setServerError(
+        err instanceof AxiosError
+          ? (err.response?.data?.message ?? "Registrasi gagal")
+          : "Registrasi gagal"
+      );
+    }
+  };
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+        Buat akun gratis
+      </h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Sudah punya akun?{" "}
+        <Link href="/login" className="text-primary font-medium hover:underline">
+          Masuk
+        </Link>
+      </p>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="mt-6 grid gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="full_name">Nama lengkap</Label>
+          <Input id="full_name" {...register("full_name")} />
+          {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" type="email" autoComplete="email" {...register("email")} />
+          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="password_confirmation">Konfirmasi password</Label>
+          <Input
+            id="password_confirmation"
+            type="password"
+            autoComplete="new-password"
+            {...register("password_confirmation")}
+          />
+          {errors.password_confirmation && (
+            <p className="text-xs text-destructive">{errors.password_confirmation.message}</p>
+          )}
+        </div>
+
+        {serverError && <p className="text-sm text-destructive">{serverError}</p>}
+
+        <Button type="submit" size="lg" disabled={isSubmitting}>
+          {isSubmitting ? "Memproses…" : "Daftar gratis"}
+        </Button>
+      </form>
+    </div>
+  );
+}

@@ -1557,7 +1557,7 @@ Frontend (web/):
   ✅ Setup Sentry
 ```
 
-#### Phase 1 — Auth & Subscription (Minggu 3–4)
+#### Phase 1 — Auth & Subscription 
 
 ```
 api/:

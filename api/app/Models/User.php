@@ -68,6 +68,26 @@ class User extends Authenticatable implements JWTSubject
         ];
     }
 
+    // ---- Email verification ----
+
+    public function getEmailForVerification(): string
+    {
+        return $this->email;
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    public function markEmailVerified(): void
+    {
+        $this->forceFill([
+            'email_verified_at' => now(),
+            'is_verified' => true,
+        ])->save();
+    }
+
     // ---- Relationships ----
 
     public function refreshTokens(): HasMany
