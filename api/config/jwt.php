@@ -9,6 +9,20 @@
  * file that was distributed with this source code.
  */
 
+/*
+ * Resolve a `file://` key path to an absolute path (relative to the app base)
+ * so RS256 keys load regardless of the process working directory.
+ */
+$jwtKey = static function (?string $path): ?string {
+    if (! $path || ! str_starts_with($path, 'file://')) {
+        return $path;
+    }
+
+    $file = substr($path, 7);
+
+    return str_starts_with($file, '/') ? $path : 'file://'.base_path($file);
+};
+
 return [
 
     /*
@@ -57,7 +71,7 @@ return [
         |
         */
 
-        'public' => env('JWT_PUBLIC_KEY'),
+        'public' => $jwtKey(env('JWT_PUBLIC_KEY')),
 
         /*
         |--------------------------------------------------------------------------
@@ -70,7 +84,7 @@ return [
         |
         */
 
-        'private' => env('JWT_PRIVATE_KEY'),
+        'private' => $jwtKey(env('JWT_PRIVATE_KEY')),
 
         /*
         |--------------------------------------------------------------------------
