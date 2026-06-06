@@ -10,7 +10,11 @@ services:
     image: oven/bun:1-alpine
     build: !reset null
     working_dir: /app
-    command: sh -c "bun install && bun run dev"
+    # Use the webpack dev engine, not Turbopack: node_modules lives in a separate
+    # named volume mounted over the bind-mounted /app, and Turbopack canonicalizes
+    # paths so its upward node_modules resolution misses it ("Next.js package not
+    # found"). Webpack's resolver follows the mount and works.
+    command: sh -c "bun install && bunx next dev --webpack -H 0.0.0.0"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
       - NEXT_TELEMETRY_DISABLED=1
@@ -18,6 +22,7 @@ services:
     volumes:
       - ./web:/app
       - web_node_modules:/app/node_modules
+      - web_next:/app/.next
     ports:
       - "3000:3000"
 
@@ -58,4 +63,5 @@ services:
 
 volumes:
   web_node_modules:
+  web_next:
   api_vendor:
