@@ -28,14 +28,14 @@ export type NavItem = {
 
 /** Organizer (regular user) navigation. */
 export const ORGANIZER_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
-  { href: "/dashboard/events", label: "Event", icon: Trophy, mobile: true },
-  { href: "/dashboard/my-teams", label: "Tim Saya", icon: Users, mobile: true },
-  { href: "/dashboard/schedule", label: "Jadwal", icon: CalendarDays, mobile: true },
-  { href: "/dashboard/standings", label: "Klasemen", icon: ListOrdered },
-  { href: "/dashboard/tickets", label: "Tiket", icon: Ticket },
-  { href: "/dashboard/certificates", label: "Sertifikat", icon: Award },
-  { href: "/dashboard/settings", label: "Pengaturan", icon: Settings, mobile: true },
+  { href: "/organizer", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
+  { href: "/organizer/events", label: "Event", icon: Trophy, mobile: true },
+  { href: "/participant", label: "Tim Saya", icon: Users, mobile: true },
+  { href: "/organizer/schedule", label: "Jadwal", icon: CalendarDays, mobile: true },
+  { href: "/organizer/standings", label: "Klasemen", icon: ListOrdered },
+  { href: "/organizer/tickets", label: "Tiket", icon: Ticket },
+  { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
+  { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
 ];
 
 /** SaaS super-admin navigation. */
@@ -51,7 +51,7 @@ function useNav(): NavItem[] {
 }
 
 function isActive(pathname: string, href: string) {
-  if (href === "/dashboard" || href === "/admin") return pathname === href;
+  if (href === "/organizer" || href === "/admin") return pathname === href;
   return pathname === href || pathname.startsWith(href + "/");
 }
 

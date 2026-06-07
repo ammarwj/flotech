@@ -37,7 +37,7 @@ export default function NewEventPage() {
       toast.success("Event berhasil dibuat", {
         description: "Lanjutkan mengatur detail, lalu publikasikan.",
       });
-      router.push(`/dashboard/events/${ev.id}/edit`);
+      router.push(`/organizer/events/${ev.id}/edit`);
     },
     onError: (err) => {
       // Reactive safety net: server enforced the plan cap (race / stale count).
@@ -61,7 +61,7 @@ export default function NewEventPage() {
       <PageHeader
         title="Buat Event"
         description="Atur detail turnamen, lalu publikasikan untuk membuka pendaftaran."
-        backHref="/dashboard/events"
+        backHref="/organizer/events"
         backLabel="Daftar event"
       />
 

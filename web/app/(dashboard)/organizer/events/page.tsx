@@ -72,14 +72,14 @@ export default function EventsPage() {
         actions={
           limitReached ? (
             <Button asChild variant="outline">
-              <Link href="/dashboard/upgrade">
+              <Link href="/organizer/upgrade">
                 <ArrowUpRight className="h-4 w-4" />
                 Upgrade paket
               </Link>
             </Button>
           ) : (
             <Button asChild>
-              <Link href="/dashboard/events/new">
+              <Link href="/organizer/events/new">
                 <Plus className="h-4 w-4" />
                 Buat Event
               </Link>
@@ -103,7 +103,7 @@ export default function EventsPage() {
           description="Buat event pertamamu dan mulai terima pendaftaran tim."
           action={
             <Button asChild>
-              <Link href="/dashboard/events/new">
+              <Link href="/organizer/events/new">
                 <Plus className="h-4 w-4" />
                 Buat Event
               </Link>
@@ -148,13 +148,13 @@ export default function EventsPage() {
               </div>
               <div className="flex gap-2">
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/dashboard/events/${ev.id}/registrations`}>
+                  <Link href={`/organizer/events/${ev.id}/registrations`}>
                     <ClipboardList className="h-4 w-4" />
                     Pendaftaran
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/dashboard/events/${ev.id}/edit`}>
+                  <Link href={`/organizer/events/${ev.id}/edit`}>
                     <Pencil className="h-4 w-4" />
                     Edit
                   </Link>

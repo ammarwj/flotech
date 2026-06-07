@@ -91,7 +91,7 @@ export default function OnboardingPage() {
         window.location.assign(res.redirect_url);
       } else {
         toast.success("Langganan aktif. Selamat datang!");
-        router.push("/dashboard");
+        router.push("/organizer");
       }
     },
     onError: (err) => {

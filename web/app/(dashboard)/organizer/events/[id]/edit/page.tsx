@@ -60,7 +60,7 @@ export default function EditEventPage() {
         description: "Pendaftaran tim kini terbuka.",
         action: {
           label: "Lihat daftar",
-          onClick: () => router.push("/dashboard/events"),
+          onClick: () => router.push("/organizer/events"),
         },
       });
       refresh();
@@ -72,7 +72,7 @@ export default function EditEventPage() {
     mutationFn: () => deleteEvent(orgId!, eventId),
     onSuccess: () => {
       toast.success("Event dihapus");
-      router.push("/dashboard/events");
+      router.push("/organizer/events");
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menghapus event.").message),
   });
@@ -80,7 +80,7 @@ export default function EditEventPage() {
   if (eventQuery.isLoading) {
     return (
       <div>
-        <PageHeader title="Memuat…" backHref="/dashboard/events" backLabel="Daftar event" />
+        <PageHeader title="Memuat…" backHref="/organizer/events" backLabel="Daftar event" />
         <div className="grid max-w-2xl gap-5">
           <Skeleton className="h-48 w-full rounded-xl" />
           <Skeleton className="h-40 w-full rounded-xl" />
@@ -92,7 +92,7 @@ export default function EditEventPage() {
   if (eventQuery.isError || !eventQuery.data)
     return (
       <div>
-        <PageHeader title="Event tidak ditemukan" backHref="/dashboard/events" backLabel="Daftar event" />
+        <PageHeader title="Event tidak ditemukan" backHref="/organizer/events" backLabel="Daftar event" />
         <p className="text-sm text-[var(--danger)]">Event yang kamu cari tidak tersedia.</p>
       </div>
     );
@@ -104,7 +104,7 @@ export default function EditEventPage() {
       <PageHeader
         title={ev.name}
         description={<span className="inline-flex items-center gap-2">Status <EventStatusBadge status={ev.status} /></span>}
-        backHref="/dashboard/events"
+        backHref="/organizer/events"
         backLabel="Daftar event"
         actions={
           <>

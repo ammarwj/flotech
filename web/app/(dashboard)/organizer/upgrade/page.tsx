@@ -49,9 +49,9 @@ export default function UpgradePage() {
       qc.invalidateQueries({ queryKey: ["organizations"] });
       toast.success("Paket berhasil diperbarui", {
         description: "Kapasitas event aktifmu kini bertambah.",
-        action: { label: "Buat event", onClick: () => router.push("/dashboard/events/new") },
+        action: { label: "Buat event", onClick: () => router.push("/organizer/events/new") },
       });
-      router.push("/dashboard/events");
+      router.push("/organizer/events");
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses upgrade.").message),
     onSettled: () => setPendingPlanId(null),
@@ -60,7 +60,7 @@ export default function UpgradePage() {
   if (orgLoading) {
     return (
       <div>
-        <PageHeader title="Upgrade paket" backHref="/dashboard/events" backLabel="Daftar event" />
+        <PageHeader title="Upgrade paket" backHref="/organizer/events" backLabel="Daftar event" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full rounded-xl" />
@@ -73,7 +73,7 @@ export default function UpgradePage() {
   if (hasNoOrg) {
     return (
       <div>
-        <PageHeader title="Upgrade paket" backHref="/dashboard/events" backLabel="Daftar event" />
+        <PageHeader title="Upgrade paket" backHref="/organizer/events" backLabel="Daftar event" />
         <EmptyState
           icon={Building2}
           title="Belum punya organisasi"
@@ -102,7 +102,7 @@ export default function UpgradePage() {
               }.`
             : "Pilih paket yang sesuai dengan skala turnamenmu."
         }
-        backHref="/dashboard/events"
+        backHref="/organizer/events"
         backLabel="Daftar event"
       />
 

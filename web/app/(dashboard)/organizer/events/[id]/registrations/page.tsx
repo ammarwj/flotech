@@ -61,7 +61,7 @@ export default function RegistrationsPage() {
             ? `${teams.length} tim terdaftar · ${pendingCount} menunggu persetujuan`
             : "Setujui atau tolak tim yang mendaftar ke event ini."
         }
-        backHref="/dashboard/events"
+        backHref="/organizer/events"
         backLabel="Daftar event"
       />
 

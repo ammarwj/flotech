@@ -37,7 +37,7 @@ export default function LoginPage() {
     try {
       const { data } = await apiClient.post("/auth/login", values);
       setAuth(data.data.access_token, data.data.user as AuthUser);
-      router.push("/dashboard");
+      router.push("/organizer");
     } catch (err) {
       const message =
         err instanceof AxiosError

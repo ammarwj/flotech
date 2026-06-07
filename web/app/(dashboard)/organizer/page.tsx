@@ -37,7 +37,7 @@ export default function DashboardPage() {
         description="Ringkasan aktivitas turnamenmu. Buat event, kelola pendaftaran, dan pantau semuanya dari sini."
         actions={
           <Button asChild>
-            <Link href="/dashboard/events/new">
+            <Link href="/organizer/events/new">
               <Plus className="h-4 w-4" />
               Buat Event
             </Link>
@@ -84,7 +84,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <Button asChild variant="outline" className="shrink-0">
-          <Link href="/dashboard/events">
+          <Link href="/organizer/events">
             Kelola Event
             <ArrowRight className="h-4 w-4" />
           </Link>

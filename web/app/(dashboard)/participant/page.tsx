@@ -22,19 +22,43 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export default function MyTeamsPage() {
+export default function ParticipantPage() {
   const query = useQuery({ queryKey: ["my-teams"], queryFn: getMyTeams });
   const teams = query.data;
+  const approvedCount = teams?.filter((t) => t.status === "approved").length ?? 0;
 
   return (
     <div>
-      <PageHeader title="Tim Saya" description="Tim yang kamu daftarkan ke berbagai event." />
+      <PageHeader
+        title="Tim Saya"
+        description="Pusat peserta — pantau tim yang kamu daftarkan dan statusnya di tiap event."
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/event">
+              <Trophy className="h-4 w-4" />
+              Jelajahi event
+            </Link>
+          </Button>
+        }
+      />
 
       {query.isLoading && (
         <div className="grid gap-3">
           {[0, 1].map((i) => (
             <Skeleton key={i} className="h-[80px] w-full rounded-xl" />
           ))}
+        </div>
+      )}
+
+      {teams && teams.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-3 text-sm text-muted-foreground">
+          <span>
+            <span className="font-semibold text-foreground">{teams.length}</span> tim terdaftar
+          </span>
+          <span>·</span>
+          <span>
+            <span className="font-semibold text-foreground">{approvedCount}</span> disetujui
+          </span>
         </div>
       )}
 
@@ -45,7 +69,7 @@ export default function MyTeamsPage() {
           description="Kamu belum mendaftarkan tim ke event mana pun. Temukan event dan daftarkan timmu."
           action={
             <Button asChild variant="outline">
-              <Link href="/">Jelajahi event</Link>
+              <Link href="/event">Jelajahi event</Link>
             </Button>
           }
         />

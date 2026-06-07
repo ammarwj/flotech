@@ -49,13 +49,13 @@ export function EventLimitNotice({
 
       <div className="mt-5 flex flex-col gap-2 sm:flex-row">
         <Button asChild>
-          <Link href="/dashboard/upgrade">
+          <Link href="/organizer/upgrade">
             <ArrowUpRight className="h-4 w-4" />
             Upgrade paket
           </Link>
         </Button>
         <Button asChild variant="outline">
-          <Link href="/dashboard/events">
+          <Link href="/organizer/events">
             <ListChecks className="h-4 w-4" />
             Kelola event
           </Link>
