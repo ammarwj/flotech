@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -15,12 +14,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call(PlanSeeder::class);
-
-        User::factory()->create([
-            'full_name' => 'Super Admin',
-            'email' => 'admin@flo-event.id',
-            'role' => 'super_admin',
+        $this->call([
+            PlanSeeder::class,
+            UserSeeder::class,
         ]);
     }
 }

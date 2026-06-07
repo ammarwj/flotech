@@ -40,3 +40,6 @@ certbot/
 .idea/
 .vscode/
 *.swp
+
+
+CLAUDE.md
