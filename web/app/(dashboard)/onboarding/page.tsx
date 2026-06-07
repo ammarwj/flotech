@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { AlertCircle, Check, Building2, CreditCard } from "lucide-react";
+import { toast } from "sonner";
+import { Check, Building2, CreditCard } from "lucide-react";
 
 import { getPublicPlans } from "@/lib/api/plans";
 import { createOrganization, checkoutSubscription } from "@/lib/api/organizations";
@@ -63,7 +64,6 @@ export default function OnboardingPage() {
   const [orgName, setOrgName] = useState("");
   const [orgId, setOrgId] = useState<string | null>(null);
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly");
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/login");
@@ -74,11 +74,14 @@ export default function OnboardingPage() {
   const createOrg = useMutation({
     mutationFn: () => createOrganization({ name: orgName }),
     onSuccess: (org) => {
+      toast.success("Organisasi berhasil dibuat!");
       setOrgId(org.id);
       setStep(2);
     },
-    onError: (err) =>
-      setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal") : "Gagal"),
+    onError: (err) => {
+      const msg = err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal membuat organisasi.") : "Gagal membuat organisasi.";
+      toast.error(msg);
+    },
   });
 
   const checkout = useMutation({
@@ -87,11 +90,14 @@ export default function OnboardingPage() {
       if (res.redirect_url) {
         window.location.assign(res.redirect_url);
       } else {
+        toast.success("Langganan aktif. Selamat datang!");
         router.push("/dashboard");
       }
     },
-    onError: (err) =>
-      setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal") : "Gagal"),
+    onError: (err) => {
+      const msg = err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal memproses pembayaran.") : "Gagal memproses pembayaran.";
+      toast.error(msg);
+    },
   });
 
   return (
@@ -106,19 +112,11 @@ export default function OnboardingPage() {
         }
       />
 
-      {error && (
-        <div className="mb-5 flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-4 py-3 text-sm text-[var(--danger)]">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
       {step === 1 && (
         <Card className="max-w-md p-6">
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              setError(null);
               createOrg.mutate();
             }}
             className="grid gap-4"
@@ -207,10 +205,7 @@ export default function OnboardingPage() {
                     className="mt-4"
                     variant={featured ? "default" : "outline"}
                     disabled={checkout.isPending}
-                    onClick={() => {
-                      setError(null);
-                      checkout.mutate(plan);
-                    }}
+                    onClick={() => checkout.mutate(plan)}
                   >
                     {checkout.isPending ? "Memproses…" : "Pilih paket"}
                   </Button>

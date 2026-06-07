@@ -27,14 +27,20 @@ export default function AdminPlansPage() {
   const create = useMutation({
     mutationFn: () => createPlan(form),
     onSuccess: () => {
+      toast.success("Paket berhasil ditambahkan.");
       setForm({ name: "", slug: "", price_monthly: 0, price_yearly: 0 });
       invalidate();
     },
+    onError: () => toast.error("Gagal menambahkan paket."),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => deletePlan(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success("Paket berhasil dihapus.");
+      invalidate();
+    },
+    onError: () => toast.error("Gagal menghapus paket."),
   });
 
   return (
@@ -143,7 +149,11 @@ function FeatureEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
       });
       return syncPlanFeatures(plan.id, features);
     },
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success("Fitur berhasil disimpan.");
+      onSaved();
+    },
+    onError: () => toast.error("Gagal menyimpan fitur."),
   });
 
   return (

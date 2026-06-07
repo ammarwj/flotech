@@ -40,7 +40,13 @@ export default function RegistrationsPage() {
   const mutate = useMutation({
     mutationFn: ({ teamId, status }: { teamId: string; status: TeamStatus }) =>
       updateRegistrationStatus(orgId!, eventId, teamId, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] }),
+    onSuccess: (_, { status }) => {
+      toast.success(status === "approved" ? "Tim berhasil disetujui." : "Tim berhasil ditolak.");
+      qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
+    },
+    onError: (_, { status }) => {
+      toast.error(status === "approved" ? "Gagal menyetujui tim." : "Gagal menolak tim.");
+    },
   });
 
   const teams = query.data;
