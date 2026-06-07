@@ -16,6 +16,7 @@ import {
 import { getEvent } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
+import { isSetBased } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import { StandingsTable } from "@/components/event/standings-table";
 import { BracketView } from "@/components/event/bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
+import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -61,6 +63,7 @@ export default function SchedulePage() {
   const qc = useQueryClient();
   const matches = matchesQuery.data ?? [];
   const isKnockout = eventQuery.data?.tournament_format === "knockout_single";
+  const setBased = eventQuery.data ? isSetBased(eventQuery.data.sport_type) : false;
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   const generate = useMutation({
@@ -159,7 +162,7 @@ export default function SchedulePage() {
               </h3>
               <div className="grid gap-2">
                 {list.map((m) => (
-                  <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} />
+                  <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} setBased={setBased} />
                 ))}
               </div>
             </div>
@@ -183,7 +186,17 @@ export default function SchedulePage() {
   );
 }
 
-function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eventId: string }) {
+function MatchCard({
+  match,
+  orgId,
+  eventId,
+  setBased,
+}: {
+  match: Match;
+  orgId: string;
+  eventId: string;
+  setBased: boolean;
+}) {
   const qc = useQueryClient();
   const [home, setHome] = useState(match.home_score?.toString() ?? "");
   const [away, setAway] = useState(match.away_score?.toString() ?? "");
@@ -221,6 +234,22 @@ function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eve
         <span className="flex-1 text-right">{match.home_team?.name ?? "TBD"}</span>
         <span className="text-xs">menunggu hasil sebelumnya</span>
         <span className="flex-1">{match.away_team?.name ?? "TBD"}</span>
+      </Card>
+    );
+  }
+
+  // Set-based sports (volleyball/badminton/padel): score per set.
+  if (setBased) {
+    return (
+      <Card className="p-3">
+        <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
+        <div className="mt-2 border-t border-border pt-2">
+          <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
+            <Goal className="h-4 w-4" />
+            Statistik pemain
+          </Button>
+          {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
+        </div>
       </Card>
     );
   }

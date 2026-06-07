@@ -112,6 +112,8 @@ export interface Match {
   away_team_id: string | null;
   home_score: number | null;
   away_score: number | null;
+  /** Per-set scores for set-based sports; null for goal-based sports. */
+  sets: { home: number; away: number }[] | null;
   status: MatchStatus;
   scheduled_at: string | null;
   venue: string | null;

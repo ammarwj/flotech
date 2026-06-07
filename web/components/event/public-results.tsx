@@ -6,6 +6,7 @@ import { CalendarClock, ListOrdered, Network, Goal } from "lucide-react";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
 import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
+import { matchScoreText } from "@/lib/scoring";
 import { StandingsTable } from "./standings-table";
 import { BracketView } from "./bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
@@ -101,6 +102,7 @@ export function PublicResults({
                 {list.map((m) => {
                   const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
                   const bye = !!m.home_team && !m.away_team;
+                  const score = matchScoreText(m);
                   return (
                     <div key={m.id} className="match-card" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
                       <span style={{ textAlign: "right", fontWeight: 600 }}>{m.home_team?.name ?? "TBD"}</span>
@@ -109,10 +111,16 @@ export function PublicResults({
                           fontFamily: "var(--font-display)",
                           fontWeight: 800,
                           fontVariantNumeric: "tabular-nums",
+                          textAlign: "center",
                           color: done ? "var(--text)" : "var(--text-muted)",
                         }}
                       >
-                        {done ? `${m.home_score} – ${m.away_score}` : bye ? "bye" : "vs"}
+                        {done ? score.main : bye ? "bye" : "vs"}
+                        {done && score.detail && (
+                          <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                            {score.detail}
+                          </span>
+                        )}
                       </span>
                       <span style={{ fontWeight: 600 }}>{bye ? "—" : m.away_team?.name ?? "TBD"}</span>
                     </div>

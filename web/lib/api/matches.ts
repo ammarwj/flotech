@@ -32,8 +32,10 @@ export async function getStandings(orgId: string, eventId: string): Promise<Stan
 }
 
 export interface MatchResultPayload {
-  home_score: number | null;
-  away_score: number | null;
+  home_score?: number | null;
+  away_score?: number | null;
+  /** For set-based sports; backend derives home/away score from this. */
+  sets?: { home: number; away: number }[] | null;
   status: MatchStatus;
   scheduled_at?: string | null;
   venue?: string | null;

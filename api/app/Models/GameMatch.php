@@ -26,6 +26,7 @@ class GameMatch extends Model
         'away_team_id',
         'home_score',
         'away_score',
+        'sets',
         'scheduled_at',
         'venue',
         'status',
@@ -36,6 +37,7 @@ class GameMatch extends Model
         return [
             'round' => 'integer',
             'order' => 'integer',
+            'sets' => 'array',
             'home_score' => 'integer',
             'away_score' => 'integer',
             'scheduled_at' => 'datetime',

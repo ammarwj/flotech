@@ -11,6 +11,7 @@ use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
+use App\Support\MatchScoring;
 use App\Support\SportStats;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,29 +155,54 @@ class MatchController extends Controller
         $matchModel = $this->match($request, $match);
         $eventModel = $matchModel->event;
 
-        $validated = $request->validate([
-            'home_score' => ['nullable', 'integer', 'min:0', 'max:999'],
-            'away_score' => ['nullable', 'integer', 'min:0', 'max:999'],
+        $base = $request->validate([
             'status' => ['required', Rule::in(['scheduled', 'ongoing', 'finished', 'cancelled'])],
             'scheduled_at' => ['nullable', 'date'],
             'venue' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $finished = $validated['status'] === 'finished';
+        $finished = $base['status'] === 'finished';
+        $setBased = MatchScoring::isSetBased($eventModel->sport_type);
 
-        if ($finished && ($validated['home_score'] === null || $validated['away_score'] === null)) {
-            return ApiResponse::error('Skor kedua tim wajib diisi untuk menyelesaikan pertandingan.', [
-                'home_score' => ['Skor wajib diisi.'],
-            ], 422);
+        if ($setBased) {
+            $data = $request->validate([
+                'sets' => [$finished ? 'required' : 'nullable', 'array', 'max:7'],
+                'sets.*.home' => ['required', 'integer', 'min:0', 'max:99'],
+                'sets.*.away' => ['required', 'integer', 'min:0', 'max:99'],
+            ]);
+
+            $sets = $data['sets'] ?? null;
+            $won = $sets ? MatchScoring::setsWon($sets) : ['home' => null, 'away' => null];
+
+            if ($finished && empty($sets)) {
+                return ApiResponse::error('Isi skor minimal satu set untuk menyelesaikan pertandingan.', [
+                    'sets' => ['Skor set wajib diisi.'],
+                ], 422);
+            }
+
+            $payload = [...$base, 'sets' => $sets, 'home_score' => $won['home'], 'away_score' => $won['away']];
+        } else {
+            $data = $request->validate([
+                'home_score' => ['nullable', 'integer', 'min:0', 'max:999'],
+                'away_score' => ['nullable', 'integer', 'min:0', 'max:999'],
+            ]);
+
+            if ($finished && ($data['home_score'] === null || $data['away_score'] === null)) {
+                return ApiResponse::error('Skor kedua tim wajib diisi untuk menyelesaikan pertandingan.', [
+                    'home_score' => ['Skor wajib diisi.'],
+                ], 422);
+            }
+
+            $payload = [...$base, 'home_score' => $data['home_score'], 'away_score' => $data['away_score'], 'sets' => null];
         }
 
         $isKnockout = $eventModel->tournament_format === 'knockout_single';
 
-        if ($finished && $isKnockout && $validated['home_score'] === $validated['away_score']) {
+        if ($finished && $isKnockout && $payload['home_score'] === $payload['away_score']) {
             return ApiResponse::error('Pertandingan knockout tidak boleh berakhir seri — tentukan pemenangnya.', null, 422);
         }
 
-        $matchModel->update($validated);
+        $matchModel->update($payload);
 
         // Knockout: push the winner into the next round.
         if ($finished && $isKnockout) {

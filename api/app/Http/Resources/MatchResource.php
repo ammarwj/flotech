@@ -27,6 +27,7 @@ class MatchResource extends JsonResource
             'away_team_id' => $this->away_team_id,
             'home_score' => $this->home_score,
             'away_score' => $this->away_score,
+            'sets' => $this->sets,
             'status' => $this->status,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),
             'venue' => $this->venue,
