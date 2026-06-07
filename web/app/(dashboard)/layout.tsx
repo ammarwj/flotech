@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AuthGate } from "@/components/auth/auth-gate";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 
@@ -25,7 +26,8 @@ function Logo() {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
+    <AuthGate>
+      <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
       {/* Sidebar (desktop) */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-[var(--bg-alt)] p-4 md:flex">
         <div className="px-2 py-2">
@@ -53,8 +55,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">{children}</main>
       </div>
 
-      {/* Bottom tab bar (mobile) */}
-      <MobileTabBar />
-    </div>
+        {/* Bottom tab bar (mobile) */}
+        <MobileTabBar />
+      </div>
+    </AuthGate>
   );
 }

@@ -28,7 +28,7 @@ type RetryConfig = AxiosRequestConfig & { _retry?: boolean };
 
 let refreshPromise: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
+async function requestRefresh(): Promise<string | null> {
   try {
     // Calls the Next.js route which forwards the HttpOnly cookie to Laravel.
     const res = await fetch("/api/auth/refresh", { method: "POST" });
@@ -40,6 +40,18 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Single-flight refresh: exchanges the HttpOnly refresh cookie for a new access
+ * token. Concurrent callers (the 401 interceptor and the auth bootstrap) share
+ * one in-flight request. Returns null when the session can't be refreshed.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  refreshPromise ??= requestRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -48,10 +60,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
 
-      refreshPromise ??= refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
-      const newToken = await refreshPromise;
+      const newToken = await refreshAccessToken();
 
       if (newToken) {
         useAuthStore.getState().setAccessToken(newToken);
