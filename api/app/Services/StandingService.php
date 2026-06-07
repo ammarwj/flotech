@@ -38,6 +38,7 @@ class StandingService
 
         $matches = $event->matches()
             ->where('status', 'finished')
+            ->whereNotNull('confirmed_at')
             ->whereNotNull('home_score')
             ->whereNotNull('away_score')
             ->get();

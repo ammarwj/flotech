@@ -30,6 +30,7 @@ class MatchResource extends JsonResource
             'away_score' => $this->away_score,
             'sets' => $this->sets,
             'status' => $this->status,
+            'confirmed' => $this->confirmed_at !== null,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),
             'venue' => $this->venue,
         ];

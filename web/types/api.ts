@@ -118,6 +118,8 @@ export interface Match {
   /** Per-set scores for set-based sports; null for goal-based sports. */
   sets: { home: number; away: number }[] | null;
   status: MatchStatus;
+  /** True once the result is confirmed (counts toward standings/bracket). */
+  confirmed: boolean;
   scheduled_at: string | null;
   venue: string | null;
 }

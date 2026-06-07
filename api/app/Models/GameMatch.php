@@ -31,6 +31,7 @@ class GameMatch extends Model
         'scheduled_at',
         'venue',
         'status',
+        'confirmed_at',
     ];
 
     protected function casts(): array
@@ -39,6 +40,7 @@ class GameMatch extends Model
             'round' => 'integer',
             'order' => 'integer',
             'sets' => 'array',
+            'confirmed_at' => 'datetime',
             'home_score' => 'integer',
             'away_score' => 'integer',
             'scheduled_at' => 'datetime',
@@ -70,5 +72,10 @@ class GameMatch extends Model
         return $this->status === 'finished'
             && $this->home_score !== null
             && $this->away_score !== null;
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->confirmed_at !== null;
     }
 }

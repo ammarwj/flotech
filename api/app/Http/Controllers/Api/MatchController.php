@@ -208,20 +208,53 @@ class MatchController extends Controller
             return ApiResponse::error('Pertandingan knockout tidak boleh berakhir seri — tentukan pemenangnya.', null, 422);
         }
 
+        // Entering or editing a result makes it provisional again; it only
+        // counts (standings / bracket) once confirmed.
+        $payload['confirmed_at'] = null;
         $matchModel->update($payload);
-
-        // Knockout: push the winner (and, for double-elim, the loser) onward.
-        if ($finished) {
-            if ($format === 'knockout_single') {
-                $this->schedule->advanceWinner($matchModel->fresh());
-            } elseif ($format === 'knockout_double') {
-                $this->schedule->advanceDouble($matchModel->fresh());
-            }
-        }
 
         return ApiResponse::success(
             new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
-            'Hasil pertandingan disimpan',
+            $finished ? 'Hasil disimpan — menunggu konfirmasi' : 'Pertandingan diperbarui',
+        );
+    }
+
+    /**
+     * Confirm (finalize) or unconfirm a result. Confirming a knockout match
+     * pushes the winner/loser onward.
+     */
+    public function confirmResult(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+        $eventModel = $matchModel->event;
+
+        $validated = $request->validate(['confirmed' => ['required', 'boolean']]);
+
+        if (! $validated['confirmed']) {
+            $matchModel->update(['confirmed_at' => null]);
+
+            return ApiResponse::success(
+                new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+                'Konfirmasi dibatalkan',
+            );
+        }
+
+        if (! $matchModel->isFinished()) {
+            return ApiResponse::error('Lengkapi skor pertandingan sebelum dikonfirmasi.', null, 422);
+        }
+
+        $matchModel->update(['confirmed_at' => now()]);
+
+        $format = $eventModel->tournament_format;
+        if ($format === 'knockout_single') {
+            $this->schedule->advanceWinner($matchModel->fresh());
+        } elseif ($format === 'knockout_double') {
+            $this->schedule->advanceDouble($matchModel->fresh());
+        }
+
+        return ApiResponse::success(
+            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            'Hasil dikonfirmasi',
         );
     }
 

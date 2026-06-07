@@ -128,6 +128,7 @@ class ScheduleService
                 'away_team_id' => $away,
                 'scheduled_at' => $start,
                 'status' => $away === null ? 'finished' : 'scheduled', // bye = walkover
+                'confirmed_at' => $away === null ? now() : null, // byes are auto-final
             ]);
         }
 

@@ -24,6 +24,18 @@ export async function generateSchedule(orgId: string, eventId: string): Promise<
   return data.data;
 }
 
+export async function confirmResult(
+  orgId: string,
+  matchId: string,
+  confirmed: boolean
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/confirm`,
+    { confirmed }
+  );
+  return data.data;
+}
+
 export async function getStandings(orgId: string, eventId: string): Promise<Standing[]> {
   const { data } = await apiClient.get<ApiEnvelope<Standing[]>>(
     `/organizations/${orgId}/events/${eventId}/standings`

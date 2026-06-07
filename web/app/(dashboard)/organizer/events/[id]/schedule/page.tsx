@@ -35,6 +35,7 @@ import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
+import { MatchConfirmBar } from "@/components/event/match-confirm-bar";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -274,10 +275,13 @@ function MatchCard({
       <Card className="p-3">
         <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
         <div className="mt-2 border-t border-border pt-2">
-          <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
-            <Goal className="h-4 w-4" />
-            Statistik pemain
-          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
+            <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
+              <Goal className="h-4 w-4" />
+              Statistik pemain
+            </Button>
+          </div>
           {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
         </div>
       </Card>
@@ -322,6 +326,11 @@ function MatchCard({
           {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
         </Button>
       </div>
+      {match.status === "finished" && (
+        <div className="mt-2 border-t border-border pt-2">
+          <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
+        </div>
+      )}
       {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
     </Card>
   );
