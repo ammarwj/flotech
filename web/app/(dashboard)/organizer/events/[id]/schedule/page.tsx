@@ -15,7 +15,11 @@ import {
 } from "@/lib/api/matches";
 import { getEvent } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
-import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
+import {
+  buildMatchSections,
+  isKnockout as isKnockoutFormat,
+  isDoubleElim,
+} from "@/lib/bracket";
 import { isSetBased } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
@@ -26,6 +30,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
 import { BracketView } from "@/components/event/bracket-view";
+import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
@@ -64,7 +69,9 @@ export default function SchedulePage() {
 
   const qc = useQueryClient();
   const matches = matchesQuery.data ?? [];
-  const isKnockout = eventQuery.data?.tournament_format === "knockout_single";
+  const format = eventQuery.data?.tournament_format;
+  const isKnockout = format ? isKnockoutFormat(format) : false;
+  const isDouble = format ? isDoubleElim(format) : false;
   const setBased = eventQuery.data ? isSetBased(eventQuery.data.sport_type) : false;
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
@@ -85,7 +92,7 @@ export default function SchedulePage() {
     generate.mutate();
   };
 
-  const rounds = groupByRound(matches);
+  const sections = buildMatchSections(matches, isKnockout, isDouble);
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
     ? [
         ["bracket", "Bracket", Network],
@@ -153,7 +160,7 @@ export default function SchedulePage() {
         />
       ) : activeTab === "bracket" ? (
         <div className="overflow-x-auto pb-2">
-          <BracketView matches={matches} />
+          {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
         </div>
       ) : activeTab === "schedule" ? (
         <div className="max-w-3xl">
@@ -179,11 +186,9 @@ export default function SchedulePage() {
           {scheduleView === "calendar" ? (
             <MatchCalendar matches={matches} />
           ) : (
-            rounds.map(([round, list]) => (
-              <div key={round}>
-                <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">
-                  {isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}
-                </h3>
+            sections.map(([label, list]) => (
+              <div key={label}>
+                <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">{label}</h3>
                 <div className="grid gap-2">
                   {list.map((m) => (
                     <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} setBased={setBased} />
@@ -242,8 +247,8 @@ function MatchCard({
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
   });
 
-  // Walkover (bye): one team present, no opponent.
-  if (match.home_team && !match.away_team) {
+  // Walkover (bye): one team present, no opponent, already settled.
+  if (match.home_team && !match.away_team && match.status === "finished") {
     return (
       <Card className="flex items-center gap-3 p-3 text-sm">
         <span className="flex-1 font-semibold">{match.home_team.name}</span>

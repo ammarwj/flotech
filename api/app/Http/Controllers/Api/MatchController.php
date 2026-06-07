@@ -42,6 +42,11 @@ class MatchController extends Controller
             $count = $this->schedule->generateRoundRobin($eventModel);
         } elseif ($format === 'knockout_single') {
             $count = $this->schedule->generateKnockout($eventModel);
+        } elseif ($format === 'knockout_double') {
+            $count = $this->schedule->generateDoubleElim($eventModel);
+            if ($count === -1) {
+                return ApiResponse::error('Double elimination butuh jumlah tim kelipatan dua (4, 8, 16, …).', ['feature' => 'schedule_format'], 422);
+            }
         } else {
             return ApiResponse::error('Pembuatan jadwal otomatis mendukung format Liga dan Knockout.', ['feature' => 'schedule_format'], 422);
         }
@@ -196,7 +201,8 @@ class MatchController extends Controller
             $payload = [...$base, 'home_score' => $data['home_score'], 'away_score' => $data['away_score'], 'sets' => null];
         }
 
-        $isKnockout = $eventModel->tournament_format === 'knockout_single';
+        $format = $eventModel->tournament_format;
+        $isKnockout = in_array($format, ['knockout_single', 'knockout_double'], true);
 
         if ($finished && $isKnockout && $payload['home_score'] === $payload['away_score']) {
             return ApiResponse::error('Pertandingan knockout tidak boleh berakhir seri — tentukan pemenangnya.', null, 422);
@@ -204,9 +210,13 @@ class MatchController extends Controller
 
         $matchModel->update($payload);
 
-        // Knockout: push the winner into the next round.
-        if ($finished && $isKnockout) {
-            $this->schedule->advanceWinner($matchModel->fresh());
+        // Knockout: push the winner (and, for double-elim, the loser) onward.
+        if ($finished) {
+            if ($format === 'knockout_single') {
+                $this->schedule->advanceWinner($matchModel->fresh());
+            } elseif ($format === 'knockout_double') {
+                $this->schedule->advanceDouble($matchModel->fresh());
+            }
         }
 
         return ApiResponse::success(

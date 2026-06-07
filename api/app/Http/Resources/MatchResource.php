@@ -20,6 +20,7 @@ class MatchResource extends JsonResource
             'id' => $this->id,
             'round' => $this->round,
             'group_name' => $this->group_name,
+            'bracket' => $this->bracket,
             'order' => $this->order,
             'home_team' => $this->teamSummary($this->whenLoaded('homeTeam')),
             'away_team' => $this->teamSummary($this->whenLoaded('awayTeam')),

@@ -22,8 +22,15 @@ function Side({
   );
 }
 
-/** Single-elimination bracket visualization (uses .ebracket styles). */
-export function BracketView({ matches }: { matches: Match[] }) {
+/** Bracket visualization (uses .ebracket styles). */
+export function BracketView({
+  matches,
+  roundLabel,
+}: {
+  matches: Match[];
+  /** Override the per-column heading. Defaults to single-elim round names. */
+  roundLabel?: (matchesInRound: number, round: number) => string;
+}) {
   const rounds = groupByRound(matches);
   if (rounds.length === 0) return null;
 
@@ -31,10 +38,12 @@ export function BracketView({ matches }: { matches: Match[] }) {
     <div className="ebracket">
       {rounds.map(([round, list]) => (
         <div key={round} className="ebracket-col">
-          <div className="rnd">{knockoutRoundLabel(list.length)}</div>
+          <div className="rnd">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
           {list.map((m) => {
             const winner = matchWinnerId(m);
             const decided = winner !== null;
+            // A lone team is a real "Bye" only once the match is settled.
+            const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
             return (
               <div key={m.id} className="ematch">
                 <Side
@@ -44,7 +53,7 @@ export function BracketView({ matches }: { matches: Match[] }) {
                   decided={decided}
                 />
                 <Side
-                  name={m.away_team?.name ?? (m.home_team_id && !m.away_team_id ? "Bye" : null)}
+                  name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
                   score={m.away_score}
                   isWinner={winner === m.away_team_id}
                   decided={decided}

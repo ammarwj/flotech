@@ -101,10 +101,13 @@ export interface MatchTeamRef {
   logo_url: string | null;
 }
 
+export type BracketSide = "winners" | "losers" | "grand_final";
+
 export interface Match {
   id: string;
   round: number;
   group_name: string | null;
+  bracket: BracketSide | null;
   order: number;
   home_team: MatchTeamRef | null;
   away_team: MatchTeamRef | null;

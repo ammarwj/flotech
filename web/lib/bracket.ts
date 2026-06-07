@@ -1,4 +1,12 @@
-import type { Match } from "@/types/api";
+import type { Match, TournamentFormat } from "@/types/api";
+
+export function isKnockout(format: TournamentFormat): boolean {
+  return format === "knockout_single" || format === "knockout_double";
+}
+
+export function isDoubleElim(format: TournamentFormat): boolean {
+  return format === "knockout_double";
+}
 
 /** Human label for a knockout round based on how many matches it holds. */
 export function knockoutRoundLabel(matchesInRound: number): string {
@@ -52,4 +60,41 @@ export function groupByRound(matches: Match[]): [number, Match[]][] {
     map.set(m.round, list);
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * Build labelled match sections for the schedule list. Double elimination is
+ * split by bracket (Winners / Losers / Grand Final); other formats group by
+ * round.
+ */
+export function buildMatchSections(
+  matches: Match[],
+  knockout: boolean,
+  doubleElim: boolean
+): [string, Match[]][] {
+  if (doubleElim) {
+    const groups: [Match["bracket"], string][] = [
+      ["winners", "Winners"],
+      ["losers", "Losers"],
+      ["grand_final", "Grand Final"],
+    ];
+    const out: [string, Match[]][] = [];
+    for (const [bracket, label] of groups) {
+      const ms = matches.filter((m) => m.bracket === bracket && m.status !== "cancelled");
+      for (const [round, list] of groupByRound(ms)) {
+        const heading =
+          bracket === "grand_final"
+            ? round === 2
+              ? "Grand Final (Reset)"
+              : "Grand Final"
+            : `${label} · Babak ${round}`;
+        out.push([heading, list]);
+      }
+    }
+    return out;
+  }
+
+  return groupByRound(matches).map(
+    ([round, list]) => [knockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`, list] as [string, Match[]]
+  );
 }

@@ -5,10 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, ListOrdered, Network, Goal, LayoutList, CalendarRange } from "lucide-react";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
-import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
+import { buildMatchSections, isKnockout as isKnockoutFormat, isDoubleElim } from "@/lib/bracket";
 import { matchScoreText } from "@/lib/scoring";
 import { StandingsTable } from "./standings-table";
 import { BracketView } from "./bracket-view";
+import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
 import { MatchCalendar } from "./match-calendar";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,8 @@ export function PublicResults({
   eventSlug: string;
   format: TournamentFormat;
 }) {
-  const isKnockout = format === "knockout_single";
+  const isKnockout = isKnockoutFormat(format);
+  const isDouble = isDoubleElim(format);
   const [tab, setTab] = useState<Tab | null>(null);
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
@@ -54,7 +56,7 @@ export function PublicResults({
   const matches = matchesQuery.data ?? [];
   if (matchesQuery.isLoading || matches.length === 0) return null;
 
-  const rounds = groupByRound(matches);
+  const sections = buildMatchSections(matches, isKnockout, isDouble);
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
     ? [
         ["bracket", "Bracket", Network],
@@ -94,7 +96,7 @@ export function PublicResults({
 
         {activeTab === "bracket" ? (
           <div className="overflow-x-auto pb-2">
-            <BracketView matches={matches} />
+            {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
           </div>
         ) : activeTab === "schedule" ? (
           <div style={{ maxWidth: 760 }}>
@@ -120,12 +122,12 @@ export function PublicResults({
             {scheduleView === "calendar" ? (
               <MatchCalendar matches={matches} />
             ) : (
-              rounds.map(([round, list]) => (
-              <div key={round}>
-                <div className="match-day">{isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}</div>
+              sections.map(([label, list]) => (
+              <div key={label}>
+                <div className="match-day">{label}</div>
                 {list.map((m) => {
                   const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
-                  const bye = !!m.home_team && !m.away_team;
+                  const bye = !!m.home_team && !m.away_team && m.status === "finished";
                   const score = matchScoreText(m);
                   return (
                     <div key={m.id} className="match-card" style={{ gridTemplateColumns: "1fr auto 1fr" }}>

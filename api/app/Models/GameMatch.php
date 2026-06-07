@@ -21,6 +21,7 @@ class GameMatch extends Model
         'event_id',
         'round',
         'group_name',
+        'bracket',
         'order',
         'home_team_id',
         'away_team_id',
