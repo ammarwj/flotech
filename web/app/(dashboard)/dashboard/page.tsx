@@ -4,6 +4,7 @@ import { Trophy, Users, Ticket, Award, Plus, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
 
 const STATS = [
   { label: "Event Aktif", value: "0", icon: Trophy, color: "var(--brand-600)" },
@@ -30,6 +31,7 @@ const STATS = [
 export default function DashboardPage() {
   return (
     <div>
+      <RedirectIfAdmin />
       <PageHeader
         title="Selamat datang 👋"
         description="Ringkasan aktivitas turnamenmu. Buat event, kelola pendaftaran, dan pantau semuanya dari sini."

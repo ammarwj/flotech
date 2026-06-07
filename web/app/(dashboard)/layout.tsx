@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AuthGate } from "@/components/auth/auth-gate";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { HeaderLabel } from "@/components/dashboard/header-label";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 
 function Logo() {
@@ -48,9 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="md:hidden">
             <Logo />
           </div>
-          <span className="hidden text-sm font-medium text-muted-foreground md:inline">
-            Dashboard Organizer
-          </span>
+          <HeaderLabel />
           <div className="ml-auto flex items-center gap-3">
             <ThemeToggleButton />
             <UserMenu />

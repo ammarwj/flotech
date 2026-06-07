@@ -11,10 +11,12 @@ import {
   Ticket,
   Award,
   Settings,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 
 export type NavItem = {
   href: string;
@@ -24,7 +26,8 @@ export type NavItem = {
   mobile?: boolean;
 };
 
-export const NAV: NavItem[] = [
+/** Organizer (regular user) navigation. */
+export const ORGANIZER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
   { href: "/dashboard/events", label: "Event", icon: Trophy, mobile: true },
   { href: "/dashboard/my-teams", label: "Tim Saya", icon: Users, mobile: true },
@@ -35,16 +38,29 @@ export const NAV: NavItem[] = [
   { href: "/dashboard/settings", label: "Pengaturan", icon: Settings, mobile: true },
 ];
 
+/** SaaS super-admin navigation. */
+export const ADMIN_NAV: NavItem[] = [
+  { href: "/admin", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
+  { href: "/admin/plans", label: "Paket & Fitur", icon: CreditCard, mobile: true },
+];
+
+/** Pick the navigation set for the signed-in user's role. */
+function useNav(): NavItem[] {
+  const role = useAuthStore((s) => s.user?.role);
+  return role === "super_admin" ? ADMIN_NAV : ORGANIZER_NAV;
+}
+
 function isActive(pathname: string, href: string) {
-  if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/dashboard" || href === "/admin") return pathname === href;
   return pathname === href || pathname.startsWith(href + "/");
 }
 
 export function SidebarNav() {
   const pathname = usePathname();
+  const nav = useNav();
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {nav.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
           <Link
@@ -74,9 +90,13 @@ export function SidebarNav() {
 
 export function MobileTabBar() {
   const pathname = usePathname();
-  const items = NAV.filter((i) => i.mobile).slice(0, 5);
+  const nav = useNav();
+  const items = nav.filter((i) => i.mobile).slice(0, 5);
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] backdrop-blur-md md:hidden">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 grid border-t border-border bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] backdrop-blur-md md:hidden"
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
       {items.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
