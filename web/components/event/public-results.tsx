@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network, Goal } from "lucide-react";
+import { CalendarClock, ListOrdered, Network, Goal, LayoutList, CalendarRange } from "lucide-react";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
 import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
@@ -10,6 +10,7 @@ import { matchScoreText } from "@/lib/scoring";
 import { StandingsTable } from "./standings-table";
 import { BracketView } from "./bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
+import { MatchCalendar } from "./match-calendar";
 import { cn } from "@/lib/utils";
 import type { TournamentFormat } from "@/types/api";
 
@@ -30,6 +31,7 @@ export function PublicResults({
 }) {
   const isKnockout = format === "knockout_single";
   const [tab, setTab] = useState<Tab | null>(null);
+  const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   const matchesQuery = useQuery({
@@ -96,7 +98,29 @@ export function PublicResults({
           </div>
         ) : activeTab === "schedule" ? (
           <div style={{ maxWidth: 760 }}>
-            {rounds.map(([round, list]) => (
+            <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
+              {([
+                ["list", "List", LayoutList],
+                ["calendar", "Kalender", CalendarRange],
+              ] as const).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => setScheduleView(key)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
+                    scheduleView === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {scheduleView === "calendar" ? (
+              <MatchCalendar matches={matches} />
+            ) : (
+              rounds.map(([round, list]) => (
               <div key={round}>
                 <div className="match-day">{isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}</div>
                 {list.map((m) => {
@@ -127,7 +151,8 @@ export function PublicResults({
                   );
                 })}
               </div>
-            ))}
+              ))
+            )}
           </div>
         ) : activeTab === "stats" ? (
           <div style={{ maxWidth: 640 }}>

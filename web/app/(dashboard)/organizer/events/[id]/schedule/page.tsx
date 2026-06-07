@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network, Sparkles, Goal } from "lucide-react";
+import { CalendarClock, ListOrdered, Network, Sparkles, Goal, LayoutList, CalendarRange } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -29,6 +29,7 @@ import { BracketView } from "@/components/event/bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
+import { MatchCalendar } from "@/components/event/match-calendar";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -38,6 +39,7 @@ export default function SchedulePage() {
   const { orgId } = useActiveOrg();
   const { id: eventId } = useParams<{ id: string }>();
   const [tab, setTab] = useState<Tab | null>(null);
+  const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -155,18 +157,41 @@ export default function SchedulePage() {
         </div>
       ) : activeTab === "schedule" ? (
         <div className="max-w-3xl">
-          {rounds.map(([round, list]) => (
-            <div key={round}>
-              <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">
-                {isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}
-              </h3>
-              <div className="grid gap-2">
-                {list.map((m) => (
-                  <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} setBased={setBased} />
-                ))}
+          <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
+            {([
+              ["list", "List", LayoutList],
+              ["calendar", "Kalender", CalendarRange],
+            ] as const).map(([key, label, Icon]) => (
+              <button
+                key={key}
+                onClick={() => setScheduleView(key)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
+                  scheduleView === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {scheduleView === "calendar" ? (
+            <MatchCalendar matches={matches} />
+          ) : (
+            rounds.map(([round, list]) => (
+              <div key={round}>
+                <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">
+                  {isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}
+                </h3>
+                <div className="grid gap-2">
+                  {list.map((m) => (
+                    <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} setBased={setBased} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       ) : activeTab === "stats" ? (
         <div className="max-w-2xl">
