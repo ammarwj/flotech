@@ -42,13 +42,14 @@ export default function RootLayout({
     <html
       lang="id"
       data-theme="light"
+      data-scroll-behavior="smooth"
       className={`${display.variable} ${body.variable} ${mono.variable}`}
       suppressHydrationWarning
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body data-billing="monthly">
+      <body data-billing="monthly" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

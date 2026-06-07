@@ -1,31 +1,12 @@
 # ============================================================
 # flo-event — development override (hot reload + bind mounts)
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up web api db redis
-# Hits services directly on localhost:3000 (web) and :8000 (api).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up api db redis
+# Backend runs in Docker (api on :8000, db, redis); the Next.js web app runs
+# on the host for speed: `cd web && bun run dev` (Turbopack, http://localhost:3000).
 # ============================================================
 
 services:
-  web:
-    image: oven/bun:1-alpine
-    build: !reset null
-    working_dir: /app
-    # Use the webpack dev engine, not Turbopack: node_modules lives in a separate
-    # named volume mounted over the bind-mounted /app, and Turbopack canonicalizes
-    # paths so its upward node_modules resolution misses it ("Next.js package not
-    # found"). Webpack's resolver follows the mount and works.
-    command: sh -c "bun install && bunx next dev --webpack -H 0.0.0.0"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-      - NEXT_TELEMETRY_DISABLED=1
-    env_file: !reset []
-    volumes:
-      - ./web:/app
-      - web_node_modules:/app/node_modules
-      - web_next:/app/.next
-    ports:
-      - "3000:3000"
-
   api:
     build:
       context: ./api
@@ -62,6 +43,4 @@ services:
       - "6379:6379"
 
 volumes:
-  web_node_modules:
-  web_next:
   api_vendor:
