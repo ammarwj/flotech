@@ -7,9 +7,11 @@ use App\Http\Resources\MatchResource;
 use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\Organization;
+use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
+use App\Support\SportStats;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,6 +26,7 @@ class MatchController extends Controller
     public function __construct(
         protected ScheduleService $schedule,
         protected StandingService $standings,
+        protected PlayerStatService $stats,
     ) {}
 
     /**
@@ -71,6 +74,76 @@ class MatchController extends Controller
         $eventModel = $this->event($request, $event);
 
         return ApiResponse::success($this->standings->compute($eventModel));
+    }
+
+    /**
+     * Sport-aware player leaderboard for an event.
+     */
+    public function leaderboard(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        return ApiResponse::success($this->stats->leaderboard($eventModel));
+    }
+
+    /**
+     * Rosters of both teams, the stat columns for the sport, and the current
+     * per-player tally — everything the match stat editor needs.
+     */
+    public function matchStats(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match)->load(['homeTeam.players', 'awayTeam.players', 'stats']);
+
+        // player_id => { stat_key => value }
+        $current = $matchModel->stats
+            ->groupBy('player_id')
+            ->map(fn ($rows) => $rows->mapWithKeys(fn ($s) => [$s->stat_key => $s->value]));
+
+        return ApiResponse::success([
+            'columns' => SportStats::columns($matchModel->event->sport_type),
+            'home_team' => $this->teamRoster($matchModel->homeTeam),
+            'away_team' => $this->teamRoster($matchModel->awayTeam),
+            'stats' => $current,
+        ]);
+    }
+
+    /**
+     * Replace the player stats for a match.
+     */
+    public function saveMatchStats(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match)->load(['homeTeam.players', 'awayTeam.players']);
+        $allowedKeys = SportStats::keys($matchModel->event->sport_type);
+
+        $validated = $request->validate([
+            'stats' => ['present', 'array'],
+            'stats.*.player_id' => ['required', 'uuid'],
+            'stats.*.stat_key' => ['required', 'string', Rule::in($allowedKeys)],
+            'stats.*.value' => ['required', 'integer', 'min:0', 'max:999'],
+        ]);
+
+        // player_id => team_id, restricted to the two teams on the pitch.
+        $roster = collect([$matchModel->homeTeam, $matchModel->awayTeam])
+            ->filter()
+            ->flatMap(fn ($team) => $team->players->map(fn ($p) => ['player_id' => $p->id, 'team_id' => $team->id]))
+            ->keyBy('player_id');
+
+        $matchModel->stats()->delete();
+
+        foreach ($validated['stats'] as $entry) {
+            if ($entry['value'] < 1 || ! $roster->has($entry['player_id'])) {
+                continue;
+            }
+
+            $matchModel->stats()->create([
+                'team_id' => $roster[$entry['player_id']]['team_id'],
+                'player_id' => $entry['player_id'],
+                'stat_key' => $entry['stat_key'],
+                'value' => $entry['value'],
+            ]);
+        }
+
+        return ApiResponse::success(null, 'Statistik pemain disimpan');
     }
 
     /**
@@ -126,6 +199,27 @@ class MatchController extends Controller
             ->orderBy('round')
             ->orderBy('order')
             ->get();
+    }
+
+    /**
+     * @param  \App\Models\Team|null  $team
+     * @return array<string, mixed>|null
+     */
+    protected function teamRoster($team): ?array
+    {
+        if (! $team) {
+            return null;
+        }
+
+        return [
+            'id' => $team->id,
+            'name' => $team->name,
+            'players' => $team->players->map(fn ($p) => [
+                'id' => $p->id,
+                'full_name' => $p->full_name,
+                'jersey_number' => $p->jersey_number,
+            ])->values(),
+        ];
     }
 
     protected function org(Request $request): Organization

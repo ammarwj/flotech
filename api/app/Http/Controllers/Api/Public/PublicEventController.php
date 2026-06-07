@@ -10,6 +10,7 @@ use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Services\PlanGate;
+use App\Services\PlayerStatService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -58,6 +59,16 @@ class PublicEventController extends Controller
         $event = $this->resolve($orgSlug, $eventSlug);
 
         return ApiResponse::success($standings->compute($event));
+    }
+
+    /**
+     * Public player leaderboard for an event.
+     */
+    public function leaderboard(PlayerStatService $stats, string $orgSlug, string $eventSlug): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        return ApiResponse::success($stats->leaderboard($event));
     }
 
     /**

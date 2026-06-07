@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A single fixture between two teams. Named GameMatch because `Match` is a
@@ -54,6 +55,11 @@ class GameMatch extends Model
     public function awayTeam(): BelongsTo
     {
         return $this->belongsTo(Team::class, 'away_team_id');
+    }
+
+    public function stats(): HasMany
+    {
+        return $this->hasMany(PlayerMatchStat::class, 'match_id');
     }
 
     public function isFinished(): bool

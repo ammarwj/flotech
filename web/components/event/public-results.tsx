@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network } from "lucide-react";
+import { CalendarClock, ListOrdered, Network, Goal } from "lucide-react";
 
-import { getPublicMatches, getPublicStandings } from "@/lib/api/matches";
+import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
 import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
 import { StandingsTable } from "./standings-table";
 import { BracketView } from "./bracket-view";
+import { LeaderboardTable } from "./leaderboard-table";
 import { cn } from "@/lib/utils";
 import type { TournamentFormat } from "@/types/api";
 
-type Tab = "schedule" | "standings" | "bracket";
+type Tab = "schedule" | "standings" | "bracket" | "stats";
 
 /**
  * Public schedule + standings/bracket for an event. Renders nothing until the
@@ -41,6 +42,11 @@ export function PublicResults({
     retry: false,
     enabled: !isKnockout,
   });
+  const leaderboardQuery = useQuery({
+    queryKey: ["public-leaderboard", orgSlug, eventSlug],
+    queryFn: () => getPublicLeaderboard(orgSlug, eventSlug),
+    retry: false,
+  });
 
   const matches = matchesQuery.data ?? [];
   if (matchesQuery.isLoading || matches.length === 0) return null;
@@ -50,10 +56,12 @@ export function PublicResults({
     ? [
         ["bracket", "Bracket", Network],
         ["schedule", "Jadwal", CalendarClock],
+        ["stats", "Statistik", Goal],
       ]
     : [
         ["schedule", "Jadwal", CalendarClock],
         ["standings", "Klasemen", ListOrdered],
+        ["stats", "Statistik", Goal],
       ];
 
   return (
@@ -112,6 +120,10 @@ export function PublicResults({
                 })}
               </div>
             ))}
+          </div>
+        ) : activeTab === "stats" ? (
+          <div style={{ maxWidth: 640 }}>
+            {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
           </div>
         ) : (
           <div style={{ maxWidth: 760 }}>

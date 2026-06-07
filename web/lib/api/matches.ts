@@ -1,5 +1,12 @@
 import { apiClient } from "./client";
-import type { ApiEnvelope, Match, MatchStatus, Standing } from "@/types/api";
+import type {
+  ApiEnvelope,
+  Leaderboard,
+  Match,
+  MatchStatsData,
+  MatchStatus,
+  Standing,
+} from "@/types/api";
 
 // ---- Organizer (tenant-scoped) ----
 
@@ -44,6 +51,38 @@ export async function updateMatchResult(
   return data.data;
 }
 
+export async function getLeaderboard(orgId: string, eventId: string): Promise<Leaderboard> {
+  const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
+    `/organizations/${orgId}/events/${eventId}/leaderboard`
+  );
+  return data.data;
+}
+
+export async function getMatchStats(orgId: string, matchId: string): Promise<MatchStatsData> {
+  const { data } = await apiClient.get<ApiEnvelope<MatchStatsData>>(
+    `/organizations/${orgId}/matches/${matchId}/stats`
+  );
+  return data.data;
+}
+
+export interface MatchStatEntry {
+  player_id: string;
+  stat_key: string;
+  value: number;
+}
+
+export async function saveMatchStats(
+  orgId: string,
+  matchId: string,
+  stats: MatchStatEntry[]
+): Promise<null> {
+  const { data } = await apiClient.put<ApiEnvelope<null>>(
+    `/organizations/${orgId}/matches/${matchId}/stats`,
+    { stats }
+  );
+  return data.data;
+}
+
 // ---- Public ----
 
 export async function getPublicMatches(orgSlug: string, eventSlug: string): Promise<Match[]> {
@@ -56,6 +95,13 @@ export async function getPublicMatches(orgSlug: string, eventSlug: string): Prom
 export async function getPublicStandings(orgSlug: string, eventSlug: string): Promise<Standing[]> {
   const { data } = await apiClient.get<ApiEnvelope<Standing[]>>(
     `/public/events/${orgSlug}/${eventSlug}/standings`
+  );
+  return data.data;
+}
+
+export async function getPublicLeaderboard(orgSlug: string, eventSlug: string): Promise<Leaderboard> {
+  const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
+    `/public/events/${orgSlug}/${eventSlug}/leaderboard`
   );
   return data.data;
 }

@@ -130,6 +130,47 @@ export interface Standing {
   points: number;
 }
 
+export interface StatColumn {
+  key: string;
+  label: string;
+  short: string;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  player_id: string;
+  player_name: string;
+  team_id: string;
+  team_name: string;
+  stats: Record<string, number>;
+}
+
+export interface Leaderboard {
+  columns: StatColumn[];
+  primary: string;
+  rows: LeaderboardRow[];
+}
+
+export interface RosterPlayer {
+  id: string;
+  full_name: string;
+  jersey_number: string | null;
+}
+
+export interface MatchRoster {
+  id: string;
+  name: string;
+  players: RosterPlayer[];
+}
+
+export interface MatchStatsData {
+  columns: StatColumn[];
+  home_team: MatchRoster | null;
+  away_team: MatchRoster | null;
+  /** player_id => { stat_key => value } */
+  stats: Record<string, Record<string, number>>;
+}
+
 export interface SportEvent {
   id: string;
   organization_id: string;

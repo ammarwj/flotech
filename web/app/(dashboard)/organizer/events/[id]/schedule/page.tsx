@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network, Sparkles } from "lucide-react";
+import { CalendarClock, ListOrdered, Network, Sparkles, Goal } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   getMatches,
   getStandings,
+  getLeaderboard,
   generateSchedule,
   updateMatchResult,
 } from "@/lib/api/matches";
@@ -24,10 +25,12 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
 import { BracketView } from "@/components/event/bracket-view";
+import { LeaderboardTable } from "@/components/event/leaderboard-table";
+import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
-type Tab = "schedule" | "standings" | "bracket";
+type Tab = "schedule" | "standings" | "bracket" | "stats";
 
 export default function SchedulePage() {
   const { orgId } = useActiveOrg();
@@ -47,6 +50,11 @@ export default function SchedulePage() {
   const standingsQuery = useQuery({
     queryKey: ["standings", orgId, eventId],
     queryFn: () => getStandings(orgId!, eventId),
+    enabled: !!orgId,
+  });
+  const leaderboardQuery = useQuery({
+    queryKey: ["leaderboard", orgId, eventId],
+    queryFn: () => getLeaderboard(orgId!, eventId),
     enabled: !!orgId,
   });
 
@@ -77,10 +85,12 @@ export default function SchedulePage() {
     ? [
         ["bracket", "Bracket", Network],
         ["schedule", "Jadwal & Hasil", CalendarClock],
+        ["stats", "Statistik", Goal],
       ]
     : [
         ["schedule", "Jadwal", CalendarClock],
         ["standings", "Klasemen", ListOrdered],
+        ["stats", "Statistik", Goal],
       ];
 
   return (
@@ -155,6 +165,10 @@ export default function SchedulePage() {
             </div>
           ))}
         </div>
+      ) : activeTab === "stats" ? (
+        <div className="max-w-2xl">
+          {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
+        </div>
       ) : (
         <div className="max-w-3xl">
           <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
@@ -173,6 +187,7 @@ function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eve
   const qc = useQueryClient();
   const [home, setHome] = useState(match.home_score?.toString() ?? "");
   const [away, setAway] = useState(match.away_score?.toString() ?? "");
+  const [showGoals, setShowGoals] = useState(false);
 
   const save = useMutation({
     mutationFn: () =>
@@ -214,29 +229,41 @@ function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eve
   const canSave = home !== "" && away !== "" && dirty;
 
   return (
-    <Card className="flex items-center gap-3 p-3">
-      <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
-      <Input
-        type="number"
-        min={0}
-        value={home}
-        onChange={(e) => setHome(e.target.value)}
-        className="h-9 w-14 text-center"
-        aria-label={`Skor ${match.home_team.name}`}
-      />
-      <span className="text-xs text-muted-foreground">vs</span>
-      <Input
-        type="number"
-        min={0}
-        value={away}
-        onChange={(e) => setAway(e.target.value)}
-        className="h-9 w-14 text-center"
-        aria-label={`Skor ${match.away_team.name}`}
-      />
-      <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
-      <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
-        {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
-      </Button>
+    <Card className="p-3">
+      <div className="flex items-center gap-3">
+        <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
+        <Input
+          type="number"
+          min={0}
+          value={home}
+          onChange={(e) => setHome(e.target.value)}
+          className="h-9 w-14 text-center"
+          aria-label={`Skor ${match.home_team.name}`}
+        />
+        <span className="text-xs text-muted-foreground">vs</span>
+        <Input
+          type="number"
+          min={0}
+          value={away}
+          onChange={(e) => setAway(e.target.value)}
+          className="h-9 w-14 text-center"
+          aria-label={`Skor ${match.away_team.name}`}
+        />
+        <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setShowGoals((v) => !v)}
+          aria-label="Statistik pemain"
+          title="Statistik pemain"
+        >
+          <Goal className="h-4 w-4" />
+        </Button>
+        <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
+        </Button>
+      </div>
+      {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
     </Card>
   );
 }

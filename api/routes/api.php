@@ -68,6 +68,7 @@ Route::prefix('v1')->group(function () {
         Route::post('register', [PublicEventController::class, 'register']);
         Route::get('matches', [PublicEventController::class, 'matches']);
         Route::get('standings', [PublicEventController::class, 'standings']);
+        Route::get('leaderboard', [PublicEventController::class, 'leaderboard']);
     });
 
     // Presigned upload URL (used by the public registration form too).
@@ -97,7 +98,10 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/schedule', [MatchController::class, 'generate']);
             Route::get('events/{event}/matches', [MatchController::class, 'index']);
             Route::get('events/{event}/standings', [MatchController::class, 'standings']);
+            Route::get('events/{event}/leaderboard', [MatchController::class, 'leaderboard']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
+            Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
+            Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
         });
 
         // ---- SaaS Super Admin ----
