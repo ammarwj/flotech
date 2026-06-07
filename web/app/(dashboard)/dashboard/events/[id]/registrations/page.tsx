@@ -1,22 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, X, Users, Phone, FileText, Inbox, MapPin } from "lucide-react";
 
 import { getRegistrations, updateRegistrationStatus } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
-import { TEAM_STATUS_LABELS } from "@/lib/labels";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TeamStatusBadge } from "@/components/shared/status-badge";
 import type { TeamStatus } from "@/types/api";
 
-const STATUS_COLORS: Record<TeamStatus, string> = {
-  pending: "var(--warning)",
-  approved: "var(--success)",
-  rejected: "var(--danger)",
-  disqualified: "var(--danger)",
-  withdrawn: "var(--text-muted)",
-};
+function initials(name: string) {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
 
 export default function RegistrationsPage() {
   const qc = useQueryClient();
@@ -36,38 +41,75 @@ export default function RegistrationsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] }),
   });
 
+  const teams = query.data;
+  const pendingCount = teams?.filter((t) => t.status === "pending").length ?? 0;
+
   return (
     <div>
-      <Link href="/dashboard/events" className="text-sm text-muted-foreground hover:text-foreground">
-        ← Kembali ke daftar event
-      </Link>
-      <h1 className="mt-2 mb-6 text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-        Kelola Pendaftaran
-      </h1>
+      <PageHeader
+        title="Kelola Pendaftaran"
+        description={
+          teams && teams.length > 0
+            ? `${teams.length} tim terdaftar · ${pendingCount} menunggu persetujuan`
+            : "Setujui atau tolak tim yang mendaftar ke event ini."
+        }
+        backHref="/dashboard/events"
+        backLabel="Daftar event"
+      />
 
-      {query.isLoading && <p className="text-muted-foreground">Memuat…</p>}
-      {query.data?.length === 0 && <p className="text-muted-foreground">Belum ada pendaftaran tim.</p>}
+      {query.isLoading && (
+        <div className="grid gap-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-[96px] w-full rounded-xl" />
+          ))}
+        </div>
+      )}
+
+      {teams?.length === 0 && (
+        <EmptyState
+          icon={Inbox}
+          title="Belum ada pendaftaran"
+          description="Bagikan tautan event agar tim bisa mulai mendaftar."
+        />
+      )}
 
       <div className="grid gap-3">
-        {query.data?.map((team) => (
-          <div key={team.id} className="rounded-lg border border-border bg-card p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                    {team.name}
-                  </span>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                    style={{ color: STATUS_COLORS[team.status], background: "var(--bg-soft)" }}
-                  >
-                    {TEAM_STATUS_LABELS[team.status]}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {team.city ? `${team.city} · ` : ""}
-                  {team.contact_name} ({team.contact_phone}) · {team.players?.length ?? 0} pemain
-                  {team.documents?.length ? ` · ${team.documents.length} dokumen` : ""}
+        {teams?.map((team) => (
+          <Card key={team.id} className="p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]" style={{ fontFamily: "var(--font-display)" }}>
+                  {initials(team.name)}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                      {team.name}
+                    </span>
+                    <TeamStatusBadge status={team.status} />
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    {team.city && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {team.city}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5" />
+                      {team.contact_name} · {team.contact_phone}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      {team.players?.length ?? 0} pemain
+                    </span>
+                    {team.documents?.length ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5" />
+                        {team.documents.length} dokumen
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -76,6 +118,7 @@ export default function RegistrationsPage() {
                   onClick={() => mutate.mutate({ teamId: team.id, status: "approved" })}
                   disabled={mutate.isPending || team.status === "approved"}
                 >
+                  <Check className="h-4 w-4" />
                   Setujui
                 </Button>
                 <Button
@@ -84,11 +127,12 @@ export default function RegistrationsPage() {
                   onClick={() => mutate.mutate({ teamId: team.id, status: "rejected" })}
                   disabled={mutate.isPending || team.status === "rejected"}
                 >
+                  <X className="h-4 w-4" />
                   Tolak
                 </Button>
               </div>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

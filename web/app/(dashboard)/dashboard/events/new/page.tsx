@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { AxiosError } from "axios";
+import { AlertCircle } from "lucide-react";
 
 import { createEvent, type EventInput } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { EventForm } from "@/components/event/event-form";
+import { PageHeader } from "@/components/shared/page-header";
 
 export default function NewEventPage() {
   const router = useRouter();
@@ -24,14 +25,19 @@ export default function NewEventPage() {
 
   return (
     <div>
-      <Link href="/dashboard/events" className="text-sm text-muted-foreground hover:text-foreground">
-        ← Kembali ke daftar event
-      </Link>
-      <h1 className="mt-2 mb-6 text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-        Buat Event
-      </h1>
+      <PageHeader
+        title="Buat Event"
+        description="Atur detail turnamen, lalu publikasikan untuk membuka pendaftaran."
+        backHref="/dashboard/events"
+        backLabel="Daftar event"
+      />
 
-      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="mb-5 flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-4 py-3 text-sm text-[var(--danger)]">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       <EventForm
         submitLabel="Buat Event"

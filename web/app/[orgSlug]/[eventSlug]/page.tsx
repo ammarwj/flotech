@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
+import { CalendarDays, MapPin, Users, Wallet, Trophy, Building2 } from "lucide-react";
+
 import { getPublicEvent } from "@/lib/api/events";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { SPORT_LABELS, FORMAT_LABELS, EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 
 export default function PublicEventPage() {
@@ -63,10 +66,19 @@ export default function PublicEventPage() {
               <h1>{ev.name}</h1>
               <div className="ehero-info">
                 <span>
+                  <CalendarDays />
                   {ev.start_date} – {ev.end_date}
                 </span>
-                {ev.location_name && <span>{ev.location_name}</span>}
-                <span>{ev.approved_teams_count} tim disetujui</span>
+                {ev.location_name && (
+                  <span>
+                    <MapPin />
+                    {ev.location_name}
+                  </span>
+                )}
+                <span>
+                  <Users />
+                  {ev.approved_teams_count} tim disetujui
+                </span>
               </div>
               <div className="ehero-cta">
                 {ev.registration_is_open ? (
@@ -90,9 +102,13 @@ export default function PublicEventPage() {
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <Info label="Biaya Registrasi" value={ev.registration_fee > 0 ? rupiah(ev.registration_fee) : "Gratis"} />
-            <Info label="Kuota Tim" value={ev.max_teams ? `${ev.max_teams} tim` : "Tidak dibatasi"} />
-            <Info label="Penyelenggara" value={ev.organization.name ?? "-"} />
+            <Info
+              icon={Wallet}
+              label="Biaya Registrasi"
+              value={ev.registration_fee > 0 ? rupiah(ev.registration_fee) : "Gratis"}
+            />
+            <Info icon={Trophy} label="Kuota Tim" value={ev.max_teams ? `${ev.max_teams} tim` : "Tidak dibatasi"} />
+            <Info icon={Building2} label="Penyelenggara" value={ev.organization.name ?? "-"} />
           </div>
         </div>
       </section>
@@ -111,13 +127,24 @@ export default function PublicEventPage() {
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Info({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Wallet;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="mt-1 font-bold" style={{ fontFamily: "var(--font-display)" }}>
+    <Card className="p-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Icon className="h-4 w-4" />
+        {label}
+      </div>
+      <div className="mt-1.5 font-bold" style={{ fontFamily: "var(--font-display)" }}>
         {value}
       </div>
-    </div>
+    </Card>
   );
 }

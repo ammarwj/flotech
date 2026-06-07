@@ -1,56 +1,60 @@
 import Link from "next/link";
 
-const NAV = [
-  { href: "/dashboard", label: "Ringkasan" },
-  { href: "/dashboard/events", label: "Event" },
-  { href: "/dashboard/my-teams", label: "Tim Saya" },
-  { href: "/dashboard/schedule", label: "Jadwal" },
-  { href: "/dashboard/standings", label: "Klasemen" },
-  { href: "/dashboard/tickets", label: "Tiket" },
-  { href: "/dashboard/certificates", label: "Sertifikat" },
-  { href: "/dashboard/settings", label: "Pengaturan" },
-];
+import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
+import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
+
+function Logo() {
+  return (
+    <Link href="/" className="logo">
+      <span className="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path
+            d="M5 4h14l-2 6H7l1 10"
+            stroke="#fff"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="9" cy="12" r="1.4" fill="#fff" />
+        </svg>
+      </span>
+      flo<span>-event</span>
+    </Link>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen grid grid-cols-1 md:grid-cols-[240px_1fr]">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col border-r border-border bg-[var(--bg-alt)] p-4">
-        <Link href="/" className="logo mb-6">
-          <span className="logo-mark">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path
-                d="M5 4h14l-2 6H7l1 10"
-                stroke="#fff"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="9" cy="12" r="1.4" fill="#fff" />
-            </svg>
-          </span>
-          flo<span>-event</span>
-        </Link>
-        <nav className="flex flex-col gap-1">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-[var(--text-2)] hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+    <div className="min-h-screen md:grid md:grid-cols-[260px_1fr]">
+      {/* Sidebar (desktop) */}
+      <aside className="sticky top-0 hidden h-screen flex-col border-r border-border bg-[var(--bg-alt)] p-4 md:flex">
+        <div className="px-2 py-2">
+          <Logo />
+        </div>
+        <div className="mt-6 flex-1 overflow-y-auto">
+          <SidebarNav />
+        </div>
+        <div className="mt-4 border-t border-border px-3 pt-4 text-xs text-muted-foreground">
+          flo-event · v1.0
+        </div>
       </aside>
 
       {/* Content */}
-      <div className="flex flex-col">
-        <header className="h-16 border-b border-border flex items-center px-6 bg-[var(--surface)]">
-          <span className="text-sm text-muted-foreground">Dashboard Organizer</span>
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] px-5 backdrop-blur-md md:px-6">
+          <div className="md:hidden">
+            <Logo />
+          </div>
+          <span className="hidden text-sm font-medium text-muted-foreground md:inline">
+            Dashboard Organizer
+          </span>
+          <ThemeToggleButton />
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">{children}</main>
       </div>
+
+      {/* Bottom tab bar (mobile) */}
+      <MobileTabBar />
     </div>
   );
 }

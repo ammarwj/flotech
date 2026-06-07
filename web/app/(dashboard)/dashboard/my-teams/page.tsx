@@ -1,55 +1,82 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { Users, Trophy } from "lucide-react";
 
 import { getMyTeams } from "@/lib/api/events";
-import { TEAM_STATUS_LABELS, SPORT_LABELS } from "@/lib/labels";
-import type { TeamStatus } from "@/types/api";
+import { SPORT_LABELS } from "@/lib/labels";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TeamStatusBadge } from "@/components/shared/status-badge";
 
-const STATUS_COLORS: Record<TeamStatus, string> = {
-  pending: "var(--warning)",
-  approved: "var(--success)",
-  rejected: "var(--danger)",
-  disqualified: "var(--danger)",
-  withdrawn: "var(--text-muted)",
-};
+function initials(name: string) {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
 
 export default function MyTeamsPage() {
   const query = useQuery({ queryKey: ["my-teams"], queryFn: getMyTeams });
+  const teams = query.data;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-        Tim Saya
-      </h1>
-      <p className="mt-2 text-muted-foreground">Tim yang kamu daftarkan ke berbagai event.</p>
+      <PageHeader title="Tim Saya" description="Tim yang kamu daftarkan ke berbagai event." />
 
-      {query.isLoading && <p className="mt-6 text-muted-foreground">Memuat…</p>}
-      {query.data?.length === 0 && (
-        <p className="mt-6 text-muted-foreground">Kamu belum mendaftarkan tim ke event mana pun.</p>
+      {query.isLoading && (
+        <div className="grid gap-3">
+          {[0, 1].map((i) => (
+            <Skeleton key={i} className="h-[80px] w-full rounded-xl" />
+          ))}
+        </div>
       )}
 
-      <div className="mt-6 grid gap-3">
-        {query.data?.map((team) => (
-          <div key={team.id} className="rounded-lg border border-border bg-card p-4">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                {team.name}
-              </span>
-              <span
-                className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                style={{ color: STATUS_COLORS[team.status], background: "var(--bg-soft)" }}
-              >
-                {TEAM_STATUS_LABELS[team.status]}
-              </span>
+      {teams?.length === 0 && (
+        <EmptyState
+          icon={Users}
+          title="Belum ada tim"
+          description="Kamu belum mendaftarkan tim ke event mana pun. Temukan event dan daftarkan timmu."
+          action={
+            <Button asChild variant="outline">
+              <Link href="/">Jelajahi event</Link>
+            </Button>
+          }
+        />
+      )}
+
+      <div className="grid gap-3">
+        {teams?.map((team) => (
+          <Card key={team.id} className="flex items-center gap-4 p-4">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]" style={{ fontFamily: "var(--font-display)" }}>
+              {initials(team.name)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                  {team.name}
+                </span>
+                <TeamStatusBadge status={team.status} />
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Trophy className="h-3.5 w-3.5" />
+                  {team.event?.name ?? "Event"}
+                </span>
+                {team.event?.sport_type && <span>{SPORT_LABELS[team.event.sport_type]}</span>}
+                <span className="inline-flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  {team.players?.length ?? 0} pemain
+                </span>
+              </div>
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {team.event?.name ?? "Event"}
-              {team.event?.sport_type ? ` · ${SPORT_LABELS[team.event.sport_type]}` : ""}
-              {" · "}
-              {team.players?.length ?? 0} pemain
-            </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

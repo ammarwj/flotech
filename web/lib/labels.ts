@@ -32,4 +32,12 @@ export const TEAM_STATUS_LABELS: Record<TeamStatus, string> = {
   withdrawn: "Mengundurkan diri",
 };
 
+export const SPORT_COLORS: Record<SportType, string> = {
+  football: "var(--sport-football)",
+  futsal: "var(--sport-futsal)",
+  badminton: "var(--sport-badminton)",
+  padel: "var(--sport-padel)",
+  volleyball: "var(--sport-volleyball)",
+};
+
 export const rupiah = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(n);

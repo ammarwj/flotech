@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Rocket, Trash2 } from "lucide-react";
 
 import {
   getEvent,
@@ -15,7 +16,9 @@ import {
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { EventForm } from "@/components/event/event-form";
 import { Button } from "@/components/ui/button";
-import { EVENT_STATUS_LABELS } from "@/lib/labels";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/page-header";
+import { EventStatusBadge } from "@/components/shared/status-badge";
 
 export default function EditEventPage() {
   const router = useRouter();
@@ -36,7 +39,7 @@ export default function EditEventPage() {
   const update = useMutation({
     mutationFn: (values: EventInput) => updateEvent(orgId!, eventId, values),
     onSuccess: () => {
-      setMsg("Tersimpan ✓");
+      setMsg("Perubahan tersimpan");
       refresh();
     },
   });
@@ -44,7 +47,7 @@ export default function EditEventPage() {
   const publish = useMutation({
     mutationFn: () => publishEvent(orgId!, eventId),
     onSuccess: () => {
-      setMsg("Event dipublikasikan ✓");
+      setMsg("Event berhasil dipublikasikan");
       refresh();
     },
   });
@@ -54,51 +57,61 @@ export default function EditEventPage() {
     onSuccess: () => router.push("/dashboard/events"),
   });
 
-  if (eventQuery.isLoading) return <p className="text-muted-foreground">Memuat…</p>;
+  if (eventQuery.isLoading) {
+    return (
+      <div>
+        <PageHeader title="Memuat…" backHref="/dashboard/events" backLabel="Daftar event" />
+        <div className="grid max-w-2xl gap-5">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   if (eventQuery.isError || !eventQuery.data)
-    return <p className="text-destructive">Event tidak ditemukan.</p>;
+    return (
+      <div>
+        <PageHeader title="Event tidak ditemukan" backHref="/dashboard/events" backLabel="Daftar event" />
+        <p className="text-sm text-[var(--danger)]">Event yang kamu cari tidak tersedia.</p>
+      </div>
+    );
 
   const ev = eventQuery.data;
 
   return (
     <div>
-      <Link href="/dashboard/events" className="text-sm text-muted-foreground hover:text-foreground">
-        ← Kembali ke daftar event
-      </Link>
-
-      <div className="mt-2 mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-            {ev.name}
-          </h1>
-          <span className="text-sm text-muted-foreground">
-            Status: {EVENT_STATUS_LABELS[ev.status]}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          {ev.status === "draft" && (
-            <Button onClick={() => publish.mutate()} disabled={publish.isPending}>
-              Publikasikan
+      <PageHeader
+        title={ev.name}
+        description={<span className="inline-flex items-center gap-2">Status <EventStatusBadge status={ev.status} /></span>}
+        backHref="/dashboard/events"
+        backLabel="Daftar event"
+        actions={
+          <>
+            {ev.status === "draft" && (
+              <Button onClick={() => publish.mutate()} disabled={publish.isPending}>
+                <Rocket className="h-4 w-4" />
+                {publish.isPending ? "Mempublikasikan…" : "Publikasikan"}
+              </Button>
+            )}
+            <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
+              <Trash2 className="h-4 w-4" />
+              Hapus
             </Button>
-          )}
-          <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
-            Hapus
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {msg && (
-        <p className="mb-4 rounded-md bg-accent p-3 text-sm text-accent-foreground">
+        <div className="mb-5 flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--success)_40%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] px-4 py-3 text-sm text-[var(--success)]">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
           {msg}
           {ev.status !== "draft" && (
-            <>
-              {" · "}
-              <Link href="/dashboard/events" className="underline">
-                lihat daftar
-              </Link>
-            </>
+            <Link href="/dashboard/events" className="ml-1 font-semibold underline">
+              lihat daftar
+            </Link>
           )}
-        </p>
+        </div>
       )}
 
       <EventForm
