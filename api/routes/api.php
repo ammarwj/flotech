@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\Public\PublicEventController;
@@ -65,6 +66,8 @@ Route::prefix('v1')->group(function () {
     Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
         Route::get('/', [PublicEventController::class, 'show']);
         Route::post('register', [PublicEventController::class, 'register']);
+        Route::get('matches', [PublicEventController::class, 'matches']);
+        Route::get('standings', [PublicEventController::class, 'standings']);
     });
 
     // Presigned upload URL (used by the public registration form too).
@@ -89,6 +92,12 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
             Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
+
+            // Schedule, results & standings (Sprint 2B).
+            Route::post('events/{event}/schedule', [MatchController::class, 'generate']);
+            Route::get('events/{event}/matches', [MatchController::class, 'index']);
+            Route::get('events/{event}/standings', [MatchController::class, 'standings']);
+            Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
         });
 
         // ---- SaaS Super Admin ----

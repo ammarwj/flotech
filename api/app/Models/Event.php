@@ -56,6 +56,11 @@ class Event extends Model
         return $this->hasMany(Team::class);
     }
 
+    public function matches(): HasMany
+    {
+        return $this->hasMany(GameMatch::class);
+    }
+
     public function isRegistrationOpen(): bool
     {
         if ($this->status !== 'open') {

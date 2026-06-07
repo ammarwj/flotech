@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight } from "lucide-react";
+import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
@@ -147,10 +147,24 @@ export default function EventsPage() {
                 </div>
               </div>
               <div className="flex gap-2">
+                {ev.status !== "draft" && org?.slug && (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`/${org.slug}/${ev.slug}`} target="_blank" rel="noopener noreferrer">
+                      <Eye className="h-4 w-4" />
+                      Lihat
+                    </a>
+                  </Button>
+                )}
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/organizer/events/${ev.id}/registrations`}>
                     <ClipboardList className="h-4 w-4" />
                     Pendaftaran
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/schedule`}>
+                    <CalendarClock className="h-4 w-4" />
+                    Jadwal
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">

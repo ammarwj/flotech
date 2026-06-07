@@ -92,6 +92,44 @@ export type EventStatus =
   | "cancelled";
 export type TeamStatus = "pending" | "approved" | "rejected" | "disqualified" | "withdrawn";
 
+export type MatchStatus = "scheduled" | "ongoing" | "finished" | "cancelled";
+
+export interface MatchTeamRef {
+  id: string;
+  name: string;
+  city: string | null;
+  logo_url: string | null;
+}
+
+export interface Match {
+  id: string;
+  round: number;
+  group_name: string | null;
+  order: number;
+  home_team: MatchTeamRef | null;
+  away_team: MatchTeamRef | null;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: MatchStatus;
+  scheduled_at: string | null;
+  venue: string | null;
+}
+
+export interface Standing {
+  rank: number;
+  team: MatchTeamRef;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+}
+
 export interface SportEvent {
   id: string;
   organization_id: string;
@@ -165,6 +203,7 @@ export interface PublicEvent {
   registration_fee: number;
   organization: { name: string | null; slug: string | null; logo_url: string | null };
   approved_teams_count: number;
+  approved_teams?: { id: string; name: string; city: string | null; logo_url: string | null }[];
 }
 
 export interface UploadSignResult {

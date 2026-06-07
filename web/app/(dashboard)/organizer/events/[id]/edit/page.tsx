@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Rocket, Trash2 } from "lucide-react";
+import { Rocket, Trash2, Eye, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -26,7 +27,7 @@ export default function EditEventPage() {
   const qc = useQueryClient();
   const params = useParams<{ id: string }>();
   const eventId = params.id;
-  const { orgId } = useActiveOrg();
+  const { org, orgId } = useActiveOrg();
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const eventQuery = useQuery({
@@ -108,12 +109,26 @@ export default function EditEventPage() {
         backLabel="Daftar event"
         actions={
           <>
+            {ev.status !== "draft" && org?.slug && (
+              <Button asChild variant="outline">
+                <a href={`/${org.slug}/${ev.slug}`} target="_blank" rel="noopener noreferrer">
+                  <Eye className="h-4 w-4" />
+                  Lihat halaman event
+                </a>
+              </Button>
+            )}
             {ev.status === "draft" && (
               <Button onClick={() => publish.mutate()} disabled={publish.isPending}>
                 <Rocket className="h-4 w-4" />
                 {publish.isPending ? "Mempublikasikan…" : "Publikasikan"}
               </Button>
             )}
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/schedule`}>
+                <CalendarClock className="h-4 w-4" />
+                Jadwal & Klasemen
+              </Link>
+            </Button>
             <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
               <Trash2 className="h-4 w-4" />
               Hapus
@@ -121,6 +136,16 @@ export default function EditEventPage() {
           </>
         }
       />
+
+      {ev.status === "draft" && (
+        <div className="mb-5 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-4 py-3 text-sm text-[var(--warning)]">
+          <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Event ini masih <b>draf</b> dan belum bisa dilihat publik. Klik{" "}
+            <b>Publikasikan</b> agar halaman event &amp; pendaftaran tim aktif.
+          </span>
+        </div>
+      )}
 
       <EventForm
         initial={ev}

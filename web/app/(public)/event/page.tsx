@@ -4,7 +4,7 @@ import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Countdown } from "@/components/event/countdown";
 import { RevealInit } from "@/components/landing/reveal-init";
 import { LogoMark } from "@/components/landing/icons";
-import "./event.css";
+import "../event-shell.css";
 
 export const metadata: Metadata = {
   title: "Jakarta Cup 2026 — flo-event",

@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\RegisterTeamRequest;
+use App\Http\Resources\MatchResource;
 use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Services\PlanGate;
+use App\Services\StandingService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
@@ -24,7 +26,38 @@ class PublicEventController extends Controller
     {
         $event = $this->resolve($orgSlug, $eventSlug);
 
-        return ApiResponse::success(new PublicEventResource($event->load('organization')));
+        $event->load([
+            'organization',
+            'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
+        ]);
+
+        return ApiResponse::success(new PublicEventResource($event));
+    }
+
+    /**
+     * Public schedule (fixtures) for an event.
+     */
+    public function matches(string $orgSlug, string $eventSlug): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        $matches = $event->matches()
+            ->with(['homeTeam', 'awayTeam'])
+            ->orderBy('round')
+            ->orderBy('order')
+            ->get();
+
+        return ApiResponse::success(MatchResource::collection($matches));
+    }
+
+    /**
+     * Public league standings for an event.
+     */
+    public function standings(StandingService $standings, string $orgSlug, string $eventSlug): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        return ApiResponse::success($standings->compute($event));
     }
 
     /**
