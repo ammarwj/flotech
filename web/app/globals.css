@@ -113,8 +113,14 @@ h1, h2, h3, h4 {
 }
 
 p { margin: 0; }
-a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
+
+/* Keep the link reset in the base layer so Tailwind utilities (e.g. text-white
+   on `asChild` button links that render <a>) can override it. An unlayered
+   `a { color: inherit }` would otherwise beat every layered utility. */
+@layer base {
+  a { color: inherit; text-decoration: none; }
+}
 
 .mono { font-family: var(--font-mono); }
 

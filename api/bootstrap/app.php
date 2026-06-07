@@ -20,6 +20,12 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // API-only app has no "login" route; never redirect guests there.
+        // Returning null lets unauthenticated api/* requests resolve to a JSON 401.
+        $middleware->redirectGuestsTo(
+            fn (Request $request) => $request->is('api/*') ? null : route('login'),
+        );
+
         $middleware->alias([
             'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
             'tenant' => \App\Http\Middleware\TenantScope::class,
