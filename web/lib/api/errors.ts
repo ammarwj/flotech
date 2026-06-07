@@ -39,3 +39,13 @@ export function parseApiError(
 
   return { message: fallback, fieldErrors: {} };
 }
+
+/**
+ * True when a request was rejected because a plan limit/feature gate was hit
+ * (HTTP 403 with a `feature` marker in the error bag).
+ */
+export function isPlanLimitError(err: unknown): boolean {
+  if (!(err instanceof AxiosError) || err.response?.status !== 403) return false;
+  const body = err.response?.data as { errors?: { feature?: unknown } } | undefined;
+  return typeof body?.errors?.feature === "string";
+}

@@ -21,7 +21,7 @@ class OrganizationController extends Controller
     {
         $user = auth('api')->user();
 
-        $orgs = Organization::with('plan')
+        $orgs = Organization::with('plan.features')
             ->where('owner_id', $user->id)
             ->orWhereHas('members', fn ($q) => $q->where('user_id', $user->id))
             ->get();
@@ -55,7 +55,7 @@ class OrganizationController extends Controller
             'invited_by' => $user->id,
         ]);
 
-        return ApiResponse::success(new OrganizationResource($org->load('plan')), 'Organisasi dibuat', 201);
+        return ApiResponse::success(new OrganizationResource($org->load('plan.features')), 'Organisasi dibuat', 201);
     }
 
     public function show(Request $request): JsonResponse
@@ -63,7 +63,7 @@ class OrganizationController extends Controller
         /** @var Organization $org */
         $org = $request->attributes->get('organization');
 
-        return ApiResponse::success(new OrganizationResource($org->load('plan')));
+        return ApiResponse::success(new OrganizationResource($org->load('plan.features')));
     }
 
     /**
@@ -79,7 +79,7 @@ class OrganizationController extends Controller
         $org = $request->attributes->get('organization');
         $org->update(['plan_id' => $request->input('plan_id')]);
 
-        return ApiResponse::success(new OrganizationResource($org->load('plan')), 'Paket organisasi diperbarui');
+        return ApiResponse::success(new OrganizationResource($org->load('plan.features')), 'Paket organisasi diperbarui');
     }
 
     protected function uniqueSlug(string $source): string

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Building2, Pencil, ClipboardList } from "lucide-react";
+import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
+import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { EventStatusBadge } from "@/components/shared/status-badge";
 import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS } from "@/lib/labels";
 
 export default function EventsPage() {
-  const { orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
+  const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -55,19 +56,35 @@ export default function EventsPage() {
   }
 
   const events = eventsQuery.data;
+  const limit = getActiveEventLimit(org);
+  const activeCount = countActiveEvents(events);
+  const limitReached = limit !== null && activeCount >= limit;
 
   return (
     <div>
       <PageHeader
         title="Event"
-        description="Kelola semua turnamen organisasimu."
+        description={
+          limit !== null
+            ? `Kelola semua turnamen organisasimu. ${activeCount}/${limit} slot event aktif terpakai.`
+            : "Kelola semua turnamen organisasimu."
+        }
         actions={
-          <Button asChild>
-            <Link href="/dashboard/events/new">
-              <Plus className="h-4 w-4" />
-              Buat Event
-            </Link>
-          </Button>
+          limitReached ? (
+            <Button asChild variant="outline">
+              <Link href="/dashboard/upgrade">
+                <ArrowUpRight className="h-4 w-4" />
+                Upgrade paket
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/dashboard/events/new">
+                <Plus className="h-4 w-4" />
+                Buat Event
+              </Link>
+            </Button>
+          )
         }
       />
 
