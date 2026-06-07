@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
-import { AxiosError } from "axios";
-import { AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import { createEvent, type EventInput } from "@/lib/api/events";
+import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { EventForm } from "@/components/event/event-form";
 import { PageHeader } from "@/components/shared/page-header";
@@ -14,13 +14,24 @@ import { PageHeader } from "@/components/shared/page-header";
 export default function NewEventPage() {
   const router = useRouter();
   const { orgId } = useActiveOrg();
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const mutation = useMutation({
     mutationFn: (values: EventInput) => createEvent(orgId!, values),
-    onSuccess: (ev) => router.push(`/dashboard/events/${ev.id}/edit`),
-    onError: (err) =>
-      setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal") : "Gagal"),
+    onSuccess: (ev) => {
+      toast.success("Event berhasil dibuat", {
+        description: "Lanjutkan mengatur detail, lalu publikasikan.",
+      });
+      router.push(`/dashboard/events/${ev.id}/edit`);
+    },
+    onError: (err) => {
+      const parsed = parseApiError(err, "Gagal membuat event.");
+      setFieldErrors(parsed.fieldErrors);
+      // Per-field errors render inline; only surface a toast for other failures.
+      if (Object.keys(parsed.fieldErrors).length === 0) {
+        toast.error(parsed.message);
+      }
+    },
   });
 
   return (
@@ -32,18 +43,12 @@ export default function NewEventPage() {
         backLabel="Daftar event"
       />
 
-      {error && (
-        <div className="mb-5 flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-4 py-3 text-sm text-[var(--danger)]">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
       <EventForm
         submitLabel="Buat Event"
         pending={mutation.isPending || !orgId}
+        fieldErrors={fieldErrors}
         onSubmit={(values) => {
-          setError(null);
+          setFieldErrors({});
           mutation.mutate(values);
         }}
       />

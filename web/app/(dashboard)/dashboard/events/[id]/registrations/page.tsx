@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Users, Phone, FileText, Inbox, MapPin } from "lucide-react";
 
+import { toast } from "sonner";
+
 import { getRegistrations, updateRegistrationStatus } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";

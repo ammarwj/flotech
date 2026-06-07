@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,18 +10,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SPORT_LABELS, FORMAT_LABELS, rupiah } from "@/lib/labels";
 import type { EventInput } from "@/lib/api/events";
+import type { FieldErrors } from "@/lib/api/errors";
 import type { SportEvent } from "@/types/api";
+
+/** Inline validation message shown under a field. */
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-destructive">
+      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      {message}
+    </p>
+  );
+}
 
 export function EventForm({
   initial,
   submitLabel,
   onSubmit,
   pending,
+  fieldErrors,
 }: {
   initial?: Partial<SportEvent>;
   submitLabel: string;
   onSubmit: (values: EventInput) => void;
   pending?: boolean;
+  /** Server-side validation errors (Laravel 422), keyed by field name. */
+  fieldErrors?: FieldErrors;
 }) {
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
@@ -35,16 +51,49 @@ export function EventForm({
     registration_fee: initial?.registration_fee ?? 0,
   });
 
-  const set = <K extends keyof EventInput>(k: K, val: EventInput[K]) => setV((s) => ({ ...s, [k]: val }));
+  // Client-side overrides: a key present here wins over the server error for
+  // that field (`undefined`/"" = no error). Lets us validate instantly and
+  // clear a stale server error the moment the user edits the field.
+  const [clientErrors, setClientErrors] = useState<Record<string, string | undefined>>({});
+
+  const errorFor = (k: keyof EventInput): string | undefined =>
+    (k in clientErrors ? clientErrors[k as string] : fieldErrors?.[k as string]) || undefined;
+
+  const set = <K extends keyof EventInput>(k: K, val: EventInput[K]) => {
+    setV((s) => ({ ...s, [k]: val }));
+    setClientErrors((e) => ({ ...e, [k as string]: undefined }));
+  };
+
+  // Red border + ring for an invalid field.
+  const invalidCls = (k: keyof EventInput) =>
+    errorFor(k) ? "border-destructive focus-visible:ring-destructive" : "";
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const next: Record<string, string | undefined> = {
+      name: v.name?.trim() ? undefined : "Nama event wajib diisi.",
+      start_date: v.start_date ? undefined : "Tanggal mulai wajib diisi.",
+      end_date: !v.end_date
+        ? "Tanggal selesai wajib diisi."
+        : v.start_date && v.end_date < v.start_date
+          ? "Tanggal selesai harus sama dengan atau setelah tanggal mulai."
+          : undefined,
+    };
+
+    setClientErrors(next);
+
+    if (next.name || next.start_date || next.end_date) {
+      // Surface the first error to the user.
+      document.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
+      return;
+    }
+
+    onSubmit(v);
+  };
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(v);
-      }}
-      className="grid max-w-2xl gap-5"
-    >
+    <form onSubmit={handleSubmit} className="grid max-w-2xl gap-5">
       <Card>
         <CardHeader>
           <CardTitle>Detail Event</CardTitle>
@@ -59,8 +108,10 @@ export function EventForm({
               value={v.name ?? ""}
               onChange={(e) => set("name", e.target.value)}
               placeholder="Liga Komunitas Jakarta 2026"
-              required
+              aria-invalid={!!errorFor("name")}
+              className={invalidCls("name")}
             />
+            <FieldError message={errorFor("name")} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -103,13 +154,30 @@ export function EventForm({
               <Label htmlFor="start" className="font-semibold">
                 Tanggal mulai
               </Label>
-              <Input id="start" type="date" value={v.start_date ?? ""} onChange={(e) => set("start_date", e.target.value)} required />
+              <Input
+                id="start"
+                type="date"
+                value={v.start_date ?? ""}
+                onChange={(e) => set("start_date", e.target.value)}
+                aria-invalid={!!errorFor("start_date")}
+                className={invalidCls("start_date")}
+              />
+              <FieldError message={errorFor("start_date")} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="end" className="font-semibold">
                 Tanggal selesai
               </Label>
-              <Input id="end" type="date" value={v.end_date ?? ""} onChange={(e) => set("end_date", e.target.value)} required />
+              <Input
+                id="end"
+                type="date"
+                value={v.end_date ?? ""}
+                min={v.start_date || undefined}
+                onChange={(e) => set("end_date", e.target.value)}
+                aria-invalid={!!errorFor("end_date")}
+                className={invalidCls("end_date")}
+              />
+              <FieldError message={errorFor("end_date")} />
             </div>
           </div>
         </CardContent>
@@ -124,7 +192,15 @@ export function EventForm({
             <Label htmlFor="loc" className="font-semibold">
               Lokasi
             </Label>
-            <Input id="loc" value={v.location_name ?? ""} onChange={(e) => set("location_name", e.target.value)} placeholder="GBK Soccer Field" />
+            <Input
+              id="loc"
+              value={v.location_name ?? ""}
+              onChange={(e) => set("location_name", e.target.value)}
+              placeholder="GBK Soccer Field"
+              aria-invalid={!!errorFor("location_name")}
+              className={invalidCls("location_name")}
+            />
+            <FieldError message={errorFor("location_name")} />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -139,7 +215,10 @@ export function EventForm({
                 value={v.max_teams ?? ""}
                 onChange={(e) => set("max_teams", e.target.value ? Number(e.target.value) : undefined)}
                 placeholder="Tidak dibatasi"
+                aria-invalid={!!errorFor("max_teams")}
+                className={invalidCls("max_teams")}
               />
+              <FieldError message={errorFor("max_teams")} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="fee" className="font-semibold">
@@ -151,7 +230,10 @@ export function EventForm({
                 min={0}
                 value={v.registration_fee ?? 0}
                 onChange={(e) => set("registration_fee", Number(e.target.value))}
+                aria-invalid={!!errorFor("registration_fee")}
+                className={invalidCls("registration_fee")}
               />
+              <FieldError message={errorFor("registration_fee")} />
               <p className="text-xs text-muted-foreground">
                 {v.registration_fee && v.registration_fee > 0 ? rupiah(v.registration_fee) : "Gratis untuk peserta"}
               </p>
@@ -174,7 +256,10 @@ export function EventForm({
               value={v.description ?? ""}
               onChange={(e) => set("description", e.target.value)}
               placeholder="Jelaskan turnamen, syarat peserta, hadiah, dan informasi penting lainnya."
+              aria-invalid={!!errorFor("description")}
+              className={invalidCls("description")}
             />
+            <FieldError message={errorFor("description")} />
           </div>
         </CardContent>
       </Card>

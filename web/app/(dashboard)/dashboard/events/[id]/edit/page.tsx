@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Rocket, Trash2 } from "lucide-react";
+import { Rocket, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   getEvent,
@@ -13,6 +13,7 @@ import {
   deleteEvent,
   type EventInput,
 } from "@/lib/api/events";
+import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { EventForm } from "@/components/event/event-form";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ export default function EditEventPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { orgId } = useActiveOrg();
-  const [msg, setMsg] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -39,22 +40,41 @@ export default function EditEventPage() {
   const update = useMutation({
     mutationFn: (values: EventInput) => updateEvent(orgId!, eventId, values),
     onSuccess: () => {
-      setMsg("Perubahan tersimpan");
+      toast.success("Perubahan tersimpan");
       refresh();
+    },
+    onError: (err) => {
+      const parsed = parseApiError(err, "Gagal menyimpan perubahan.");
+      setFieldErrors(parsed.fieldErrors);
+      // Per-field errors render inline; only surface a toast for other failures.
+      if (Object.keys(parsed.fieldErrors).length === 0) {
+        toast.error(parsed.message);
+      }
     },
   });
 
   const publish = useMutation({
     mutationFn: () => publishEvent(orgId!, eventId),
     onSuccess: () => {
-      setMsg("Event berhasil dipublikasikan");
+      toast.success("Event berhasil dipublikasikan", {
+        description: "Pendaftaran tim kini terbuka.",
+        action: {
+          label: "Lihat daftar",
+          onClick: () => router.push("/dashboard/events"),
+        },
+      });
       refresh();
     },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mempublikasikan event.").message),
   });
 
   const remove = useMutation({
     mutationFn: () => deleteEvent(orgId!, eventId),
-    onSuccess: () => router.push("/dashboard/events"),
+    onSuccess: () => {
+      toast.success("Event dihapus");
+      router.push("/dashboard/events");
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menghapus event.").message),
   });
 
   if (eventQuery.isLoading) {
@@ -102,24 +122,13 @@ export default function EditEventPage() {
         }
       />
 
-      {msg && (
-        <div className="mb-5 flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--success)_40%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] px-4 py-3 text-sm text-[var(--success)]">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          {msg}
-          {ev.status !== "draft" && (
-            <Link href="/dashboard/events" className="ml-1 font-semibold underline">
-              lihat daftar
-            </Link>
-          )}
-        </div>
-      )}
-
       <EventForm
         initial={ev}
         submitLabel="Simpan perubahan"
         pending={update.isPending}
+        fieldErrors={fieldErrors}
         onSubmit={(values) => {
-          setMsg(null);
+          setFieldErrors({});
           update.mutate(values);
         }}
       />
