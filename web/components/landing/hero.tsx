@@ -20,10 +20,10 @@ export function Hero() {
             kelola seluruh siklus turnamen olahraga dalam satu platform. Mulai gratis dalam 10 menit.
           </p>
           <div className="hero-cta">
-            <a href="#harga" className="btn btn-primary btn-lg">
+            <Link href="/register" className="btn btn-primary btn-lg">
               Mulai Gratis
               <ArrowRight />
-            </a>
+            </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">
               Lihat Contoh Event
             </Link>

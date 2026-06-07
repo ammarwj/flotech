@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AuthGate } from "@/components/auth/auth-gate";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
+import { UserMenu } from "@/components/dashboard/user-menu";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 
 function Logo() {
@@ -50,7 +51,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span className="hidden text-sm font-medium text-muted-foreground md:inline">
             Dashboard Organizer
           </span>
-          <ThemeToggleButton />
+          <div className="ml-auto flex items-center gap-3">
+            <ThemeToggleButton />
+            <UserMenu />
+          </div>
         </header>
         <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">{children}</main>
       </div>

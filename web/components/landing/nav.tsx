@@ -70,9 +70,12 @@ export function Nav() {
               />
             </svg>
           </button>
-          <a href="#harga" className="btn btn-primary btn-sm">
+          <Link href="/login" className="btn btn-secondary btn-sm hidden sm:inline-flex">
+            Masuk
+          </Link>
+          <Link href="/register" className="btn btn-primary btn-sm">
             Mulai Gratis
-          </a>
+          </Link>
           <button
             className="hamburger"
             onClick={() => setMenuOpen((o) => !o)}
@@ -91,6 +94,12 @@ export function Nav() {
             {l.label}
           </Link>
         ))}
+        <Link href="/login" onClick={() => setMenuOpen(false)}>
+          Masuk
+        </Link>
+        <Link href="/register" onClick={() => setMenuOpen(false)}>
+          Mulai Gratis
+        </Link>
       </div>
     </header>
   );

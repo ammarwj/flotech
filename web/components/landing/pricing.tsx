@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CheckIcon, CrossIcon } from "./icons";
 
 type Feature = { label: string; off?: boolean };
@@ -14,11 +15,15 @@ type Plan = {
   per?: string;
   note: string;
   cta: string;
+  href: string;
   featured?: boolean;
   tag?: string;
   delay?: string;
   features: Feature[];
 };
+
+const SALES_MAILTO =
+  "mailto:sales@flo-event.id?subject=Tertarik%20paket%20Professional%20flo-event";
 
 const PLANS: Plan[] = [
   {
@@ -29,6 +34,7 @@ const PLANS: Plan[] = [
     priceYearly: "0",
     note: "Gratis selamanya",
     cta: "Mulai Gratis",
+    href: "/register",
     features: [
       { label: "1 event aktif" },
       { label: "8 tim per event" },
@@ -46,6 +52,7 @@ const PLANS: Plan[] = [
     per: "/bln",
     note: "≈ Rp 1,43jt/tahun",
     cta: "Pilih Starter",
+    href: "/register",
     delay: "60",
     features: [
       { label: "3 event aktif · 32 tim" },
@@ -64,6 +71,7 @@ const PLANS: Plan[] = [
     per: "/bln",
     note: "≈ Rp 3,83jt/tahun",
     cta: "Pilih Pro",
+    href: "/register",
     featured: true,
     tag: "Paling Populer",
     delay: "120",
@@ -84,6 +92,7 @@ const PLANS: Plan[] = [
     per: "/bln",
     note: "≈ Rp 9,59jt/tahun",
     cta: "Hubungi Sales",
+    href: SALES_MAILTO,
     delay: "180",
     features: [
       { label: "Event & tim unlimited" },
@@ -147,9 +156,15 @@ export function Pricing() {
                 {p.per && <span className="per">{p.per}</span>}
               </div>
               <p className="plan-note">{p.note}</p>
-              <a href="#" className={`btn ${p.featured ? "btn-primary" : "btn-secondary"} btn-block`}>
-                {p.cta}
-              </a>
+              {p.href.startsWith("/") ? (
+                <Link href={p.href} className={`btn ${p.featured ? "btn-primary" : "btn-secondary"} btn-block`}>
+                  {p.cta}
+                </Link>
+              ) : (
+                <a href={p.href} className={`btn ${p.featured ? "btn-primary" : "btn-secondary"} btn-block`}>
+                  {p.cta}
+                </a>
+              )}
               <ul className="plan-feats">
                 {p.features.map((f) => (
                   <li key={f.label} className={f.off ? "off" : undefined}>
