@@ -273,7 +273,7 @@ export default function PublicEventPage() {
       </section>
 
       {/* ===== SCHEDULE & STANDINGS ===== */}
-      <PublicResults orgSlug={params.orgSlug} eventSlug={params.eventSlug} />
+      <PublicResults orgSlug={params.orgSlug} eventSlug={params.eventSlug} format={ev.tournament_format} />
 
       {/* ===== REGISTER CTA ===== */}
       {ev.registration_is_open && (

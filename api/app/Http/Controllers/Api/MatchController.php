@@ -32,12 +32,15 @@ class MatchController extends Controller
     public function generate(Request $request, string $organization, string $event): JsonResponse
     {
         $eventModel = $this->event($request, $event);
+        $format = $eventModel->tournament_format;
 
-        if (! in_array($eventModel->tournament_format, ['league', 'hybrid'], true)) {
-            return ApiResponse::error('Pembuatan jadwal otomatis baru mendukung format Liga.', ['feature' => 'schedule_format'], 422);
+        if (in_array($format, ['league', 'hybrid'], true)) {
+            $count = $this->schedule->generateRoundRobin($eventModel);
+        } elseif ($format === 'knockout_single') {
+            $count = $this->schedule->generateKnockout($eventModel);
+        } else {
+            return ApiResponse::error('Pembuatan jadwal otomatis mendukung format Liga dan Knockout.', ['feature' => 'schedule_format'], 422);
         }
-
-        $count = $this->schedule->generateRoundRobin($eventModel);
 
         if ($count === 0) {
             return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk membuat jadwal.', null, 422);
@@ -76,6 +79,7 @@ class MatchController extends Controller
     public function updateResult(Request $request, string $organization, string $match): JsonResponse
     {
         $matchModel = $this->match($request, $match);
+        $eventModel = $matchModel->event;
 
         $validated = $request->validate([
             'home_score' => ['nullable', 'integer', 'min:0', 'max:999'],
@@ -85,14 +89,26 @@ class MatchController extends Controller
             'venue' => ['nullable', 'string', 'max:255'],
         ]);
 
-        if ($validated['status'] === 'finished'
-            && ($validated['home_score'] === null || $validated['away_score'] === null)) {
+        $finished = $validated['status'] === 'finished';
+
+        if ($finished && ($validated['home_score'] === null || $validated['away_score'] === null)) {
             return ApiResponse::error('Skor kedua tim wajib diisi untuk menyelesaikan pertandingan.', [
                 'home_score' => ['Skor wajib diisi.'],
             ], 422);
         }
 
+        $isKnockout = $eventModel->tournament_format === 'knockout_single';
+
+        if ($finished && $isKnockout && $validated['home_score'] === $validated['away_score']) {
+            return ApiResponse::error('Pertandingan knockout tidak boleh berakhir seri — tentukan pemenangnya.', null, 422);
+        }
+
         $matchModel->update($validated);
+
+        // Knockout: push the winner into the next round.
+        if ($finished && $isKnockout) {
+            $this->schedule->advanceWinner($matchModel->fresh());
+        }
 
         return ApiResponse::success(
             new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Sparkles } from "lucide-react";
+import { CalendarClock, ListOrdered, Network, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/matches";
 import { getEvent } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
+import { knockoutRoundLabel, groupByRound } from "@/lib/bracket";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,13 +23,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
+import { BracketView } from "@/components/event/bracket-view";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
+
+type Tab = "schedule" | "standings" | "bracket";
 
 export default function SchedulePage() {
   const { orgId } = useActiveOrg();
   const { id: eventId } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<"schedule" | "standings">("schedule");
+  const [tab, setTab] = useState<Tab | null>(null);
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -48,6 +52,8 @@ export default function SchedulePage() {
 
   const qc = useQueryClient();
   const matches = matchesQuery.data ?? [];
+  const isKnockout = eventQuery.data?.tournament_format === "knockout_single";
+  const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   const generate = useMutation({
     mutationFn: () => generateSchedule(orgId!, eventId),
@@ -66,10 +72,16 @@ export default function SchedulePage() {
     generate.mutate();
   };
 
-  const rounds = matches.reduce<Record<number, Match[]>>((acc, m) => {
-    (acc[m.round] ??= []).push(m);
-    return acc;
-  }, {});
+  const rounds = groupByRound(matches);
+  const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
+    ? [
+        ["bracket", "Bracket", Network],
+        ["schedule", "Jadwal & Hasil", CalendarClock],
+      ]
+    : [
+        ["schedule", "Jadwal", CalendarClock],
+        ["standings", "Klasemen", ListOrdered],
+      ];
 
   return (
     <div>
@@ -87,16 +99,13 @@ export default function SchedulePage() {
       />
 
       <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
-        {([
-          ["schedule", "Jadwal", CalendarClock],
-          ["standings", "Klasemen", ListOrdered],
-        ] as const).map(([key, label, Icon]) => (
+        {tabs.map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
-              tab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+              activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Icon className="h-4 w-4" />
@@ -111,35 +120,41 @@ export default function SchedulePage() {
             <Skeleton key={i} className="h-16 w-full rounded-xl" />
           ))}
         </div>
-      ) : tab === "schedule" ? (
-        matches.length === 0 ? (
-          <EmptyState
-            icon={CalendarClock}
-            title="Belum ada jadwal"
-            description="Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
-            action={
-              <Button onClick={handleGenerate} disabled={generate.isPending}>
-                <Sparkles className="h-4 w-4" />
-                Buat Jadwal
-              </Button>
-            }
-          />
-        ) : (
-          <div className="max-w-3xl">
-            {Object.entries(rounds).map(([round, list]) => (
-              <div key={round}>
-                <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">
-                  Putaran {round}
-                </h3>
-                <div className="grid gap-2">
-                  {list.map((m) => (
-                    <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} />
-                  ))}
-                </div>
+      ) : matches.length === 0 ? (
+        <EmptyState
+          icon={CalendarClock}
+          title="Belum ada jadwal"
+          description={
+            isKnockout
+              ? "Buat bracket knockout otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+              : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+          }
+          action={
+            <Button onClick={handleGenerate} disabled={generate.isPending}>
+              <Sparkles className="h-4 w-4" />
+              Buat Jadwal
+            </Button>
+          }
+        />
+      ) : activeTab === "bracket" ? (
+        <div className="overflow-x-auto pb-2">
+          <BracketView matches={matches} />
+        </div>
+      ) : activeTab === "schedule" ? (
+        <div className="max-w-3xl">
+          {rounds.map(([round, list]) => (
+            <div key={round}>
+              <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">
+                {isKnockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`}
+              </h3>
+              <div className="grid gap-2">
+                {list.map((m) => (
+                  <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} />
+                ))}
               </div>
-            ))}
-          </div>
-        )
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="max-w-3xl">
           <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
@@ -174,19 +189,40 @@ function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eve
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
   });
 
+  // Walkover (bye): one team present, no opponent.
+  if (match.home_team && !match.away_team) {
+    return (
+      <Card className="flex items-center gap-3 p-3 text-sm">
+        <span className="flex-1 font-semibold">{match.home_team.name}</span>
+        <span className="text-xs text-muted-foreground">menang otomatis (bye)</span>
+      </Card>
+    );
+  }
+
+  // A slot still awaiting an earlier result.
+  if (!match.home_team || !match.away_team) {
+    return (
+      <Card className="flex items-center gap-3 p-3 text-sm text-muted-foreground">
+        <span className="flex-1 text-right">{match.home_team?.name ?? "TBD"}</span>
+        <span className="text-xs">menunggu hasil sebelumnya</span>
+        <span className="flex-1">{match.away_team?.name ?? "TBD"}</span>
+      </Card>
+    );
+  }
+
   const dirty = home !== (match.home_score?.toString() ?? "") || away !== (match.away_score?.toString() ?? "");
   const canSave = home !== "" && away !== "" && dirty;
 
   return (
     <Card className="flex items-center gap-3 p-3">
-      <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team?.name ?? "—"}</span>
+      <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
       <Input
         type="number"
         min={0}
         value={home}
         onChange={(e) => setHome(e.target.value)}
         className="h-9 w-14 text-center"
-        aria-label={`Skor ${match.home_team?.name}`}
+        aria-label={`Skor ${match.home_team.name}`}
       />
       <span className="text-xs text-muted-foreground">vs</span>
       <Input
@@ -195,9 +231,9 @@ function MatchCard({ match, orgId, eventId }: { match: Match; orgId: string; eve
         value={away}
         onChange={(e) => setAway(e.target.value)}
         className="h-9 w-14 text-center"
-        aria-label={`Skor ${match.away_team?.name}`}
+        aria-label={`Skor ${match.away_team.name}`}
       />
-      <span className="flex-1 truncate text-sm font-semibold">{match.away_team?.name ?? "—"}</span>
+      <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
       <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
         {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
       </Button>
