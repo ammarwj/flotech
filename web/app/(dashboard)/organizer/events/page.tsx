@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock } from "lucide-react";
+import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
@@ -165,6 +165,12 @@ export default function EventsPage() {
                   <Link href={`/organizer/events/${ev.id}/schedule`}>
                     <CalendarClock className="h-4 w-4" />
                     Jadwal
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/tickets`}>
+                    <Ticket className="h-4 w-4" />
+                    Tiket
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">

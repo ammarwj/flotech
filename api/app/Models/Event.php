@@ -61,6 +61,21 @@ class Event extends Model
         return $this->hasMany(GameMatch::class);
     }
 
+    public function ticketCategories(): HasMany
+    {
+        return $this->hasMany(TicketCategory::class);
+    }
+
+    public function ticketOrders(): HasMany
+    {
+        return $this->hasMany(TicketOrder::class);
+    }
+
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class);
+    }
+
     public function isRegistrationOpen(): bool
     {
         if ($this->status !== 'open') {

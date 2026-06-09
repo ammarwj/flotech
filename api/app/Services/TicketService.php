@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Organization;
+use App\Models\TicketCategory;
+use App\Models\TicketOrder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/**
+ * Ticket order lifecycle: platform-fee calculation, purchase (reserving quota
+ * and issuing the individual QR tickets), settlement and cancellation.
+ *
+ * Tickets are issued at purchase time but only become valid for check-in once
+ * their order is paid — see ScanController.
+ */
+class TicketService
+{
+    public function __construct(protected PlanGate $gate) {}
+
+    /**
+     * Platform fee for an order amount, based on the organizer plan's
+     * `ticket_fee_percent` feature (0 when unset).
+     */
+    public function platformFee(Organization $org, float $amount): float
+    {
+        $percent = (float) ($this->gate->value($org, 'ticket_fee_percent') ?? 0);
+
+        return round($amount * $percent / 100, 2);
+    }
+
+    /**
+     * Create a pending order, reserve the quota and issue one QR ticket per
+     * seat. Runs in a transaction so quota and tickets stay consistent.
+     *
+     * @param  array{buyer_name: string, buyer_email: string, buyer_phone?: string|null, quantity: int}  $buyer
+     * @param  list<string|null>  $holderNames
+     */
+    public function purchase(TicketCategory $category, array $buyer, array $holderNames, float $platformFee, string $orderId, ?string $userId): TicketOrder
+    {
+        $quantity = (int) $buyer['quantity'];
+        $unitPrice = (float) $category->price;
+
+        return DB::transaction(function () use ($category, $buyer, $holderNames, $platformFee, $orderId, $userId, $quantity, $unitPrice) {
+            $category->increment('sold', $quantity);
+
+            $order = $category->orders()->create([
+                'event_id' => $category->event_id,
+                'buyer_user_id' => $userId,
+                'buyer_name' => $buyer['buyer_name'],
+                'buyer_email' => $buyer['buyer_email'],
+                'buyer_phone' => $buyer['buyer_phone'] ?? null,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => $unitPrice * $quantity,
+                'platform_fee' => $platformFee,
+                'status' => 'pending',
+                'midtrans_order_id' => $orderId,
+            ]);
+
+            for ($i = 0; $i < $quantity; $i++) {
+                $order->tickets()->create([
+                    'ticket_category_id' => $category->id,
+                    'event_id' => $category->event_id,
+                    'qr_code' => 'TIX-'.Str::lower(Str::ulid()),
+                    'holder_name' => $holderNames[$i] ?? $buyer['buyer_name'],
+                ]);
+            }
+
+            return $order;
+        });
+    }
+
+    /**
+     * Settle a paid order. Idempotent — re-delivered webhooks are no-ops.
+     */
+    public function markPaid(TicketOrder $order): void
+    {
+        if ($order->status === 'paid') {
+            return;
+        }
+
+        $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
+    }
+
+    /**
+     * Cancel an unpaid order: release its reserved quota and void its tickets.
+     */
+    public function cancel(TicketOrder $order, string $status = 'cancelled'): void
+    {
+        if (in_array($order->status, ['paid', 'cancelled', 'refunded'], true)) {
+            return;
+        }
+
+        DB::transaction(function () use ($order, $status) {
+            $order->update(['status' => $status]);
+            $order->category()->decrement('sold', $order->quantity);
+            $order->tickets()->delete();
+        });
+    }
+}

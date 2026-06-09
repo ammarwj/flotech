@@ -11,8 +11,11 @@ use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\Public\PublicEventController;
+use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\RegistrationController;
+use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
 use App\Http\Resources\PlanResource;
@@ -69,7 +72,12 @@ Route::prefix('v1')->group(function () {
         Route::get('matches', [PublicEventController::class, 'matches']);
         Route::get('standings', [PublicEventController::class, 'standings']);
         Route::get('leaderboard', [PublicEventController::class, 'leaderboard']);
+        Route::get('tickets', [PublicTicketController::class, 'categories']);
+        Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
     });
+
+    // Public e-ticket lookup (by order id).
+    Route::get('ticket-orders/{order}', [PublicTicketController::class, 'order']);
 
     // Presigned upload URL (used by the public registration form too).
     Route::post('uploads/sign', [UploadController::class, 'sign']);
@@ -103,6 +111,14 @@ Route::prefix('v1')->group(function () {
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
+
+            // Tickets & check-in (Phase 3).
+            Route::get('events/{event}/ticket-categories', [TicketCategoryController::class, 'index']);
+            Route::post('events/{event}/ticket-categories', [TicketCategoryController::class, 'store']);
+            Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
+            Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
+            Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
+            Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
         });
 
         // ---- SaaS Super Admin ----

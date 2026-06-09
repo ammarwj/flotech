@@ -31,3 +31,21 @@ export function isActiveEventLimitReached(
   if (limit === null) return false;
   return countActiveEvents(events) >= limit;
 }
+
+/** Whether the org's plan includes the QR ticketing feature (`qr_tickets`). */
+export function isTicketingEnabled(org?: Organization | null): boolean {
+  return org?.plan?.features?.qr_tickets === "true";
+}
+
+/**
+ * Total-tickets-per-event cap for an org's plan (`max_tickets_per_event`).
+ * Returns `null` when unlimited (`-1`) or undefined.
+ */
+export function getTicketLimit(org?: Organization | null): number | null {
+  const raw = org?.plan?.features?.max_tickets_per_event;
+  if (raw === undefined || raw === null) return null;
+
+  const limit = Number(raw);
+  if (Number.isNaN(limit) || limit < 0) return null; // -1 = unlimited
+  return limit;
+}

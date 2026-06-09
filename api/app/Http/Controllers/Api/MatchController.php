@@ -7,12 +7,14 @@ use App\Http\Resources\MatchResource;
 use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\Organization;
+use App\Models\Team;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
 use App\Support\MatchScoring;
 use App\Support\SportStats;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -259,7 +261,7 @@ class MatchController extends Controller
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, GameMatch>
+     * @return Collection<int, GameMatch>
      */
     protected function orderedMatches(Event $event)
     {
@@ -271,7 +273,7 @@ class MatchController extends Controller
     }
 
     /**
-     * @param  \App\Models\Team|null  $team
+     * @param  Team|null  $team
      * @return array<string, mixed>|null
      */
     protected function teamRoster($team): ?array

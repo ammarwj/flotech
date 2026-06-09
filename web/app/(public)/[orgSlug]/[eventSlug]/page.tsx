@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicResults } from "@/components/event/public-results";
@@ -132,6 +132,11 @@ export default function PublicEventPage() {
                   <span className="ehero-badge" style={{ height: 44, paddingInline: 20 }}>
                     Pendaftaran ditutup
                   </span>
+                )}
+                {ev.tickets_on_sale && (
+                  <Link href={`${base}/tickets`} className="btn btn-secondary btn-lg">
+                    Beli Tiket
+                  </Link>
                 )}
               </div>
             </div>
@@ -268,6 +273,22 @@ export default function PublicEventPage() {
                 </p>
               )}
             </div>
+
+            {ev.tickets_on_sale && (
+              <div className="card scard">
+                <h3>
+                  <Ticket />
+                  Tiket Penonton
+                </h3>
+                <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
+                  Tiket digital tersedia. Beli sekarang dan masuk dengan QR Code.
+                </p>
+                <Link href={`${base}/tickets`} className="btn btn-primary btn-block">
+                  <Ticket className="h-4 w-4" />
+                  Beli Tiket
+                </Link>
+              </div>
+            )}
           </aside>
         </div>
       </section>

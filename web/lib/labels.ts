@@ -1,4 +1,10 @@
-import type { EventStatus, SportType, TeamStatus, TournamentFormat } from "@/types/api";
+import type {
+  EventStatus,
+  SportType,
+  TeamStatus,
+  TicketOrderStatus,
+  TournamentFormat,
+} from "@/types/api";
 
 export const SPORT_LABELS: Record<SportType, string> = {
   football: "Sepak Bola",
@@ -38,6 +44,13 @@ export const SPORT_COLORS: Record<SportType, string> = {
   badminton: "var(--sport-badminton)",
   padel: "var(--sport-padel)",
   volleyball: "var(--sport-volleyball)",
+};
+
+export const TICKET_ORDER_STATUS_LABELS: Record<TicketOrderStatus, string> = {
+  pending: "Menunggu Pembayaran",
+  paid: "Lunas",
+  cancelled: "Dibatalkan",
+  refunded: "Dikembalikan",
 };
 
 export const rupiah = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(n);

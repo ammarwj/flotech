@@ -36,6 +36,7 @@ class PublicEventResource extends JsonResource
             'banner_url' => $this->banner_url,
             'max_teams' => $this->max_teams,
             'registration_fee' => (float) $this->registration_fee,
+            'tickets_on_sale' => $this->ticketCategories()->where('is_active', true)->exists(),
             'organization' => [
                 'name' => $this->organization?->name,
                 'slug' => $this->organization?->slug,

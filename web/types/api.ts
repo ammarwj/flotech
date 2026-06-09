@@ -249,9 +249,107 @@ export interface PublicEvent {
   banner_url: string | null;
   max_teams: number | null;
   registration_fee: number;
+  tickets_on_sale: boolean;
   organization: { name: string | null; slug: string | null; logo_url: string | null };
   approved_teams_count: number;
   approved_teams?: { id: string; name: string; city: string | null; logo_url: string | null }[];
+}
+
+// ---- Tickets & payment (Phase 3) ----
+
+export type TicketOrderStatus = "pending" | "paid" | "cancelled" | "refunded";
+
+export interface TicketCategory {
+  id: string;
+  event_id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  quota: number | null;
+  sold: number;
+  remaining: number | null;
+  sale_start: string | null;
+  sale_end: string | null;
+  benefits: string[];
+  is_transferable: boolean;
+  is_active: boolean;
+  is_on_sale: boolean;
+  created_at?: string;
+}
+
+export interface Ticket {
+  id: string;
+  qr_code: string;
+  holder_name: string | null;
+  is_used: boolean;
+  used_at: string | null;
+  category?: { id: string; name: string };
+}
+
+export interface TicketOrder {
+  id: string;
+  event_id: string;
+  buyer_name: string;
+  buyer_email: string;
+  buyer_phone: string | null;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  platform_fee: number;
+  status: TicketOrderStatus;
+  paid_at: string | null;
+  created_at?: string;
+  category?: { id: string; name: string };
+  event?: { id: string; name: string; start_date: string | null; location_name: string | null };
+  tickets?: Ticket[];
+}
+
+export interface PurchaseResult {
+  order: TicketOrder;
+  snap_token: string | null;
+  redirect_url: string | null;
+  mock: boolean;
+}
+
+export type ScanResult = "valid" | "used" | "unpaid" | "invalid";
+
+export interface ScanResponse {
+  result: ScanResult;
+  ticket?: {
+    id: string;
+    holder_name: string | null;
+    category: string | null;
+    used_at: string | null;
+  };
+}
+
+export interface TicketReport {
+  finance: {
+    gross_revenue: number;
+    platform_fee: number;
+    paid_orders: number;
+    tickets_sold: number;
+  };
+  checkin: {
+    total: number;
+    checked_in: number;
+    remaining: number;
+  };
+  categories: {
+    id: string;
+    name: string;
+    price: number;
+    quota: number | null;
+    sold: number;
+    issued: number;
+    checked_in: number;
+  }[];
+  recent_checkins: {
+    id: string;
+    holder_name: string | null;
+    category: string | null;
+    used_at: string | null;
+  }[];
 }
 
 export interface UploadSignResult {
