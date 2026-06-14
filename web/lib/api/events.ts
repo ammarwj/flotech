@@ -1,7 +1,9 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  PayRegistrationResult,
   PublicEvent,
+  RegisterTeamResult,
   SportEvent,
   Team,
   TeamStatus,
@@ -116,8 +118,8 @@ export async function registerTeam(
   orgSlug: string,
   eventSlug: string,
   payload: RegisterTeamPayload
-): Promise<Team> {
-  const { data } = await apiClient.post<ApiEnvelope<Team>>(
+): Promise<RegisterTeamResult> {
+  const { data } = await apiClient.post<ApiEnvelope<RegisterTeamResult>>(
     `/public/events/${orgSlug}/${eventSlug}/register`,
     payload
   );
@@ -141,5 +143,37 @@ export async function signUpload(
 
 export async function getMyTeams(): Promise<Team[]> {
   const { data } = await apiClient.get<ApiEnvelope<Team[]>>("/my-teams");
+  return data.data;
+}
+
+export async function getMyTeam(teamId: string): Promise<Team> {
+  const { data } = await apiClient.get<ApiEnvelope<Team>>(`/my-teams/${teamId}`);
+  return data.data;
+}
+
+export interface UpdateMyTeamPayload {
+  name?: string;
+  city?: string | null;
+  jersey_color?: string | null;
+  logo_url?: string | null;
+  contact_name?: string;
+  contact_phone?: string;
+  players?: { id?: string; full_name: string; jersey_number?: string; position?: string }[];
+}
+
+export async function updateMyTeam(teamId: string, payload: UpdateMyTeamPayload): Promise<Team> {
+  const { data } = await apiClient.patch<ApiEnvelope<Team>>(`/my-teams/${teamId}`, payload);
+  return data.data;
+}
+
+export async function withdrawMyTeam(teamId: string): Promise<Team> {
+  const { data } = await apiClient.post<ApiEnvelope<Team>>(`/my-teams/${teamId}/withdraw`);
+  return data.data;
+}
+
+export async function payRegistration(teamId: string): Promise<PayRegistrationResult> {
+  const { data } = await apiClient.post<ApiEnvelope<PayRegistrationResult>>(
+    `/my-teams/${teamId}/pay`
+  );
   return data.data;
 }

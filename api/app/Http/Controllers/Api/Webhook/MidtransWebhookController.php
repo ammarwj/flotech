@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\Webhook;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Controller;
 use App\Models\Subscription;
+use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
+use App\Services\RegistrationService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -19,11 +21,13 @@ class MidtransWebhookController extends Controller
         protected MidtransService $midtrans,
         protected SubscriptionController $subscriptions,
         protected TicketService $tickets,
+        protected RegistrationService $registration,
     ) {}
 
     /**
      * Handle Midtrans payment notification (HTTP callback). Routes by the
-     * order-id prefix: SUB- = subscription, TIX- = ticket order.
+     * order-id prefix: SUB- = subscription, TIX- = ticket order,
+     * REG- = team registration fee.
      */
     public function handle(Request $request): JsonResponse
     {
@@ -39,6 +43,7 @@ class MidtransWebhookController extends Controller
 
         return match (true) {
             Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus),
+            Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus),
             default => $this->handleSubscription($orderId, $transactionStatus),
         };
     }
@@ -70,6 +75,21 @@ class MidtransWebhookController extends Controller
         match ($status) {
             'capture', 'settlement' => $this->tickets->markPaid($order),
             'deny', 'cancel', 'expire' => $this->tickets->cancel($order),
+            default => null,
+        };
+
+        return ApiResponse::success(null, 'Webhook diproses');
+    }
+
+    protected function handleRegistration(string $orderId, string $status): JsonResponse
+    {
+        $team = Team::where('midtrans_order_id', $orderId)->first();
+        if (! $team) {
+            return ApiResponse::error('Pendaftaran tim tidak ditemukan.', null, 404);
+        }
+
+        match ($status) {
+            'capture', 'settlement' => $this->registration->markPaid($team),
             default => null,
         };
 

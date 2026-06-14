@@ -213,6 +213,8 @@ export interface TeamDocument {
   file_url: string;
 }
 
+export type PaymentStatus = "unpaid" | "paid";
+
 export interface Team {
   id: string;
   event_id: string;
@@ -226,9 +228,28 @@ export interface Team {
   group_name: string | null;
   registered_at: string | null;
   approved_at: string | null;
+  payment_status: PaymentStatus;
+  payment_amount: number;
+  platform_fee: number;
+  paid_at: string | null;
+  midtrans_token: string | null;
   players?: Player[];
   documents?: TeamDocument[];
   event?: SportEvent;
+}
+
+export interface RegisterTeamResult {
+  team: Team;
+  snap_token: string | null;
+  redirect_url: string | null;
+  mock: boolean;
+}
+
+export interface PayRegistrationResult {
+  team: Team;
+  snap_token: string | null;
+  redirect_url: string | null;
+  mock: boolean;
 }
 
 export interface PublicEvent {

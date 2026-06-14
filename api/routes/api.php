@@ -89,6 +89,10 @@ Route::prefix('v1')->group(function () {
 
         // Participant: teams I manage.
         Route::get('my-teams', [MyTeamController::class, 'index']);
+        Route::get('my-teams/{team}', [MyTeamController::class, 'show']);
+        Route::patch('my-teams/{team}', [MyTeamController::class, 'update']);
+        Route::post('my-teams/{team}/withdraw', [MyTeamController::class, 'withdraw']);
+        Route::post('my-teams/{team}/pay', [MyTeamController::class, 'pay']);
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);

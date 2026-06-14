@@ -30,6 +30,11 @@ class TeamResource extends JsonResource
             'registered_at' => $this->registered_at,
             'approved_at' => $this->approved_at,
             'manager_user_id' => $this->manager_user_id,
+            'payment_status' => $this->payment_status,
+            'payment_amount' => (float) $this->payment_amount,
+            'platform_fee' => (float) $this->platform_fee,
+            'paid_at' => $this->paid_at,
+            'midtrans_token' => $this->midtrans_token,
             'event' => new EventResource($this->whenLoaded('event')),
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [
                 'id' => $p->id,

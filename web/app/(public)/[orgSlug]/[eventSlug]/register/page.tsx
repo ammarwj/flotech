@@ -36,6 +36,12 @@ export default function RegisterTeamPage() {
       };
       return registerTeam(params.orgSlug, params.eventSlug, payload);
     },
+    onSuccess: (res) => {
+      // Paid registration fee → hand off to Midtrans before showing success.
+      if (!res.mock && res.redirect_url) {
+        window.location.href = res.redirect_url;
+      }
+    },
     onError: (err) =>
       setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal mendaftar") : "Gagal mendaftar"),
   });

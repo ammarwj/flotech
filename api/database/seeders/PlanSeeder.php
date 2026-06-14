@@ -39,6 +39,7 @@ class PlanSeeder extends Seeder
                     'max_tickets_per_event' => '500',
                     'certificate_generator' => 'true',
                     'ticket_fee_percent' => '3',
+                    'registration_fee_percent' => '3',
                 ],
             ],
             [
@@ -56,6 +57,7 @@ class PlanSeeder extends Seeder
                     'certificate_generator' => 'true',
                     'certificate_email' => 'true',
                     'ticket_fee_percent' => '2',
+                    'registration_fee_percent' => '2',
                 ],
             ],
             [
@@ -75,6 +77,7 @@ class PlanSeeder extends Seeder
                     'custom_domain' => 'true',
                     'api_access' => 'true',
                     'ticket_fee_percent' => '1',
+                    'registration_fee_percent' => '1',
                 ],
             ],
         ];

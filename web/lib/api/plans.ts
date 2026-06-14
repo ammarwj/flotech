@@ -45,3 +45,30 @@ export async function getFeatureDefinitions(): Promise<FeatureDefinition[]> {
   );
   return data.data;
 }
+
+export type FeatureDefinitionInput = Omit<FeatureDefinition, "id">;
+
+export async function createFeatureDefinition(
+  payload: FeatureDefinitionInput
+): Promise<FeatureDefinition> {
+  const { data } = await apiClient.post<ApiEnvelope<FeatureDefinition>>(
+    "/admin/feature-definitions",
+    payload
+  );
+  return data.data;
+}
+
+export async function updateFeatureDefinition(
+  id: string,
+  payload: FeatureDefinitionInput
+): Promise<FeatureDefinition> {
+  const { data } = await apiClient.put<ApiEnvelope<FeatureDefinition>>(
+    `/admin/feature-definitions/${id}`,
+    payload
+  );
+  return data.data;
+}
+
+export async function deleteFeatureDefinition(id: string): Promise<void> {
+  await apiClient.delete(`/admin/feature-definitions/${id}`);
+}

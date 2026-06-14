@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
+use App\Services\RegistrationService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,10 @@ use Illuminate\Support\Carbon;
 
 class PublicEventController extends Controller
 {
-    public function __construct(protected PlanGate $gate) {}
+    public function __construct(
+        protected PlanGate $gate,
+        protected RegistrationService $registration,
+    ) {}
 
     /**
      * Public landing data for an event addressed by org + event slug.
@@ -116,11 +120,20 @@ class PublicEventController extends Controller
             $team->documents()->create($doc + ['uploaded_at' => Carbon::now()]);
         }
 
-        return ApiResponse::success(
-            new TeamResource($team->load(['players', 'documents'])),
-            'Pendaftaran tim berhasil dikirim. Menunggu persetujuan penyelenggara.',
-            201,
-        );
+        // Charge the registration fee when the event has one; free events are
+        // settled immediately inside startPayment().
+        $payment = $this->registration->startPayment($team, $org);
+
+        $message = $team->fresh()->payment_status === 'paid'
+            ? 'Pendaftaran tim berhasil dikirim. Menunggu persetujuan penyelenggara.'
+            : 'Pendaftaran dibuat. Selesaikan pembayaran biaya pendaftaran untuk mengirim ke penyelenggara.';
+
+        return ApiResponse::success([
+            'team' => new TeamResource($team->fresh()->load(['players', 'documents', 'event'])),
+            'snap_token' => $payment['snap_token'],
+            'redirect_url' => $payment['redirect_url'],
+            'mock' => $payment['mock'],
+        ], $message, 201);
     }
 
     /**

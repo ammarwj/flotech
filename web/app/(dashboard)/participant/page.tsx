@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Trophy } from "lucide-react";
+import { Users, Trophy, Settings2, AlertCircle } from "lucide-react";
 
 import { getMyTeams } from "@/lib/api/events";
-import { SPORT_LABELS } from "@/lib/labels";
+import { SPORT_LABELS, rupiah } from "@/lib/labels";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,12 +81,18 @@ export default function ParticipantPage() {
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]" style={{ fontFamily: "var(--font-display)" }}>
               {initials(team.name)}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
                   {team.name}
                 </span>
                 <TeamStatusBadge status={team.status} />
+                {team.payment_status === "unpaid" && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-2 py-0.5 text-xs font-medium text-[var(--danger)]">
+                    <AlertCircle className="h-3 w-3" />
+                    Belum bayar {rupiah(team.payment_amount)}
+                  </span>
+                )}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
@@ -100,6 +106,12 @@ export default function ParticipantPage() {
                 </span>
               </div>
             </div>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href={`/participant/teams/${team.id}`}>
+                <Settings2 className="h-4 w-4" />
+                Kelola
+              </Link>
+            </Button>
           </Card>
         ))}
       </div>

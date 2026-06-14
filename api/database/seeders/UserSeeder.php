@@ -7,7 +7,6 @@ use App\Models\OrganizationMember;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 /**
  * Seeds one user per role with predictable credentials (password: "password").
@@ -77,7 +76,7 @@ class UserSeeder extends Seeder
             [
                 'full_name' => $name,
                 'role' => $role,
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'is_verified' => true,
                 'email_verified_at' => now(),
             ],

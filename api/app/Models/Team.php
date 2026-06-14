@@ -24,6 +24,12 @@ class Team extends Model
         'registered_at',
         'approved_at',
         'manager_user_id',
+        'payment_status',
+        'payment_amount',
+        'platform_fee',
+        'midtrans_order_id',
+        'midtrans_token',
+        'paid_at',
     ];
 
     protected function casts(): array
@@ -31,6 +37,9 @@ class Team extends Model
         return [
             'registered_at' => 'datetime',
             'approved_at' => 'datetime',
+            'paid_at' => 'datetime',
+            'payment_amount' => 'decimal:2',
+            'platform_fee' => 'decimal:2',
         ];
     }
 

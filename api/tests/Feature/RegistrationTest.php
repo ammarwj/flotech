@@ -69,11 +69,27 @@ class RegistrationTest extends TestCase
 
         $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
             ->assertCreated()
-            ->assertJsonPath('data.status', 'pending')
-            ->assertJsonPath('data.name', 'Garuda FC');
+            ->assertJsonPath('data.team.status', 'pending')
+            ->assertJsonPath('data.team.name', 'Garuda FC')
+            ->assertJsonPath('data.team.payment_status', 'paid'); // free event settles immediately
 
         $this->assertDatabaseHas('teams', ['event_id' => $event->id, 'name' => 'Garuda FC', 'status' => 'pending']);
         $this->assertDatabaseCount('players', 2);
+    }
+
+    public function test_paid_event_registration_awaits_payment(): void
+    {
+        $event = $this->openEvent();
+        $event->update(['registration_fee' => 150000]);
+        $org = $event->organization;
+
+        // No Midtrans credentials in tests → gateway is mocked and the fee
+        // settles immediately (dev convenience), so the team is marked paid.
+        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->assertCreated()
+            ->assertJsonPath('data.team.payment_amount', 150000)
+            ->assertJsonPath('data.team.payment_status', 'paid')
+            ->assertJsonPath('data.mock', true);
     }
 
     public function test_registration_blocked_when_event_quota_full(): void
@@ -94,7 +110,7 @@ class RegistrationTest extends TestCase
         $org = $event->organization;
 
         $teamId = $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
-            ->json('data.id');
+            ->json('data.team.id');
 
         $this->actingAs($org->owner, 'api')
             ->patchJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations/{$teamId}", [
