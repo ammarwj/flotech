@@ -81,6 +81,8 @@ Route::prefix('v1')->group(function () {
 
     // Presigned upload URL (used by the public registration form too).
     Route::post('uploads/sign', [UploadController::class, 'sign']);
+    // Direct image upload (compressed client-side; used for banners & logos).
+    Route::post('uploads/image', [UploadController::class, 'image']);
 
     // ---- Authenticated app ----
     Route::middleware('auth:api')->group(function () {

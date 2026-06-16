@@ -808,7 +808,7 @@ flo-event-storage/
 │       ├── logo.webp
 │       └── players/{player-id}/photo.webp
 ├── documents/
-│   └── {registration-id}/{filename}          ← private, signed URL
+│   └── {registration-id}/{filename}       
 ├── certificates/
 │   └── {event-id}/
 │       ├── backgrounds/{template-id}.jpg      ← background yg diupload organizer

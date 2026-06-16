@@ -31,7 +31,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS, rupiah } from "@/lib/labels";
-import { signUpload, type EventInput } from "@/lib/api/events";
+import { compressToWebp } from "@/lib/image";
+import { uploadImage, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SportEvent } from "@/types/api";
 
@@ -120,20 +121,22 @@ function EventSummary({
 
   return (
     <Card className="overflow-hidden">
-      <div
-        className="relative flex aspect-[16/9] items-center justify-center bg-[var(--bg-soft)]"
-        style={
-          banner
-            ? undefined
-            : { background: `linear-gradient(135deg, ${sportColor}26, ${sportColor}0d)` }
-        }
-      >
-        {banner ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={banner} alt="Banner turnamen" className="h-full w-full object-cover" />
-        ) : (
-          <ImagePlus className="h-8 w-8" style={{ color: sportColor }} />
-        )}
+      <div className="flex justify-center bg-[var(--bg-soft)] p-4">
+        <div
+          className="relative flex aspect-[4/5] w-36 items-center justify-center overflow-hidden rounded-md"
+          style={
+            banner
+              ? undefined
+              : { background: `linear-gradient(135deg, ${sportColor}26, ${sportColor}0d)` }
+          }
+        >
+          {banner ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={banner} alt="Banner turnamen" className="h-full w-full object-cover" />
+          ) : (
+            <ImagePlus className="h-7 w-7" style={{ color: sportColor }} />
+          )}
+        </div>
       </div>
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
@@ -236,18 +239,12 @@ export function EventForm({
       toast.error("Ukuran gambar maksimal 5 MB.");
       return;
     }
-    setBannerPreview(URL.createObjectURL(file));
     setBannerUploading(true);
     try {
-      const signed = await signUpload(file.name, file.type, "events");
-      if (signed.upload_url) {
-        await fetch(signed.upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-      }
-      set("banner_url", signed.file_url);
+      // Compress + convert to WebP client-side, then store and keep the real URL.
+      const webp = await compressToWebp(file, { maxDim: 1280, quality: 0.8 });
+      setBannerPreview(URL.createObjectURL(webp));
+      set("banner_url", await uploadImage(webp, "events"));
     } catch {
       toast.error("Gagal mengunggah gambar. Coba lagi.");
       setBannerPreview(null);
@@ -490,10 +487,11 @@ export function EventForm({
             className="hidden"
             onChange={(e) => uploadBanner(e.target.files?.[0])}
           />
+          <div className="max-w-[260px]">
           {bannerShown ? (
             <div className="group relative overflow-hidden rounded-lg border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bannerShown} alt="Banner turnamen" className="aspect-[16/9] w-full object-cover" />
+              <img src={bannerShown} alt="Banner turnamen" className="aspect-[4/5] w-full object-cover" />
               {bannerUploading && (
                 <div className="absolute inset-0 grid place-items-center bg-black/40">
                   <Loader2 className="h-6 w-6 animate-spin text-white" />
@@ -526,7 +524,7 @@ export function EventForm({
               type="button"
               onClick={() => bannerInputRef.current?.click()}
               disabled={bannerUploading}
-              className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-soft)] text-muted-foreground transition-colors hover:border-[var(--brand-500)] hover:text-foreground disabled:opacity-60"
+              className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-soft)] text-muted-foreground transition-colors hover:border-[var(--brand-500)] hover:text-foreground disabled:opacity-60"
             >
               {bannerUploading ? (
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -536,9 +534,10 @@ export function EventForm({
               <span className="text-sm font-medium">
                 {bannerUploading ? "Mengunggah…" : "Unggah gambar turnamen"}
               </span>
-              <span className="text-xs">PNG / JPG, maks 5 MB · rasio 16:9 disarankan</span>
+              <span className="text-xs">PNG / JPG, maks 5 MB · rasio 4:5 disarankan</span>
             </button>
           )}
+          </div>
         </CardContent>
       </Card>
 

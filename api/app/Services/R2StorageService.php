@@ -65,6 +65,20 @@ class R2StorageService
     }
 
     /**
+     * Server-side upload of raw contents straight to R2 via the AWS SDK.
+     * R2 ignores ACLs, so none is set; public reads go through publicUrl().
+     */
+    public function put(string $key, string $contents, ?string $contentType = null): void
+    {
+        $this->client->putObject(array_filter([
+            'Bucket' => $this->bucket,
+            'Key' => $key,
+            'Body' => $contents,
+            'ContentType' => $contentType,
+        ]));
+    }
+
+    /**
      * Public CDN URL for an object (logos, banners, generated certificates).
      */
     public function publicUrl(string $key): string

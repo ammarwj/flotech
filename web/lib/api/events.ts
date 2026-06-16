@@ -133,7 +133,7 @@ export async function registerTeam(
 export async function signUpload(
   fileName: string,
   contentType?: string,
-  folder = "registrations"
+  folder = "documents"
 ): Promise<UploadSignResult> {
   const { data } = await apiClient.post<ApiEnvelope<UploadSignResult>>("/uploads/sign", {
     file_name: fileName,
@@ -141,6 +141,18 @@ export async function signUpload(
     folder,
   });
   return data.data;
+}
+
+/** Upload an image (already compressed) and get back a directly usable URL. */
+export async function uploadImage(file: File, folder = "images"): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", folder);
+  const { data } = await apiClient.post<ApiEnvelope<{ file_url: string; key: string }>>(
+    "/uploads/image",
+    form
+  );
+  return data.data.file_url;
 }
 
 export async function getMyTeams(): Promise<Team[]> {

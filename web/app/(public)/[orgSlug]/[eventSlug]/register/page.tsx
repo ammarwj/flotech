@@ -17,7 +17,8 @@ import {
   ImagePlus,
 } from "lucide-react";
 
-import { registerTeam, signUpload, type RegisterTeamPayload } from "@/lib/api/events";
+import { registerTeam, signUpload, uploadImage, type RegisterTeamPayload } from "@/lib/api/events";
+import { compressToWebp } from "@/lib/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,15 +52,13 @@ export default function RegisterTeamPage() {
       setError("Ukuran logo maksimal 2 MB.");
       return;
     }
-    setLogoPreview(URL.createObjectURL(file));
     setLogoUploading(true);
     setError(null);
     try {
-      const signed = await signUpload(file.name, file.type, "team-logos");
-      if (signed.upload_url) {
-        await fetch(signed.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      }
-      setTeam((t) => ({ ...t, logo_url: signed.file_url }));
+      const webp = await compressToWebp(file, { maxDim: 512, quality: 0.85 });
+      setLogoPreview(URL.createObjectURL(webp));
+      const url = await uploadImage(webp, "teams");
+      setTeam((t) => ({ ...t, logo_url: url }));
     } catch {
       setError("Gagal mengunggah logo.");
       setLogoPreview(null);

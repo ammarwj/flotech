@@ -7,11 +7,42 @@ use App\Services\R2StorageService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class UploadController extends Controller
 {
     public function __construct(protected R2StorageService $r2) {}
+
+    /**
+     * Store an (already client-compressed) image and return a directly usable
+     * URL. Uses R2 when configured, otherwise the local `public` disk so the
+     * URL renders in development too.
+     */
+    public function image(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'image', 'max:5120'], // 5 MB
+            'folder' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $file = $request->file('file');
+        $folder = trim($request->input('folder', 'images'), '/') ?: 'images';
+        $ext = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'webp');
+        $key = $folder.'/'.Str::uuid().'.'.$ext;
+        $contents = file_get_contents($file->getRealPath());
+
+        if (config('r2.key')) {
+            // Direct SDK upload; the bucket is exposed via its public r2.dev URL.
+            $this->r2->put($key, $contents, $file->getMimeType());
+            $url = $this->r2->publicUrl($key);
+        } else {
+            Storage::disk('public')->put($key, $contents);
+            $url = Storage::disk('public')->url($key);
+        }
+
+        return ApiResponse::success(['file_url' => $url, 'key' => $key]);
+    }
 
     /**
      * Issue a presigned URL for a direct-to-R2 upload. When R2 is not
