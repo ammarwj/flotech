@@ -55,6 +55,7 @@ class RegistrationService
         $snap = $this->midtrans->createSnapTransaction(
             ['order_id' => $orderId, 'gross_amount' => (int) round($amount)],
             ['first_name' => $team->contact_name ?? $team->name, 'email' => $org->contact_email],
+            rtrim((string) config('app.frontend_url'), '/')."/{$org->slug}/{$team->event->slug}/register?status=success",
         );
 
         if ($snap['token']) {

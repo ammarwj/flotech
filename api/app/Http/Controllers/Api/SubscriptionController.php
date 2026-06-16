@@ -59,6 +59,7 @@ class SubscriptionController extends Controller
         $snap = $this->midtrans->createSnapTransaction(
             ['order_id' => $orderId, 'gross_amount' => (int) round($amount)],
             ['first_name' => $org->name, 'email' => $org->contact_email],
+            rtrim((string) config('app.frontend_url'), '/').'/organizer/upgrade?status=success',
         );
 
         if ($snap['mock']) {

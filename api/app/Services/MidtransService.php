@@ -31,9 +31,10 @@ class MidtransService
      *
      * @param  array{order_id: string, gross_amount: int}  $transaction
      * @param  array{first_name?: string, email?: string}  $customer
+     * @param  string|null  $finishUrl  Where Snap redirects the buyer after payment.
      * @return array{token: string|null, redirect_url: string|null, mock: bool}
      */
-    public function createSnapTransaction(array $transaction, array $customer = []): array
+    public function createSnapTransaction(array $transaction, array $customer = [], ?string $finishUrl = null): array
     {
         if (! $this->isConfigured()) {
             // Mock token lets the frontend flow continue without credentials.
@@ -54,10 +55,11 @@ class MidtransService
                 'Content-Type' => 'application/json',
                 'Authorization' => 'Basic '.base64_encode($this->serverKey.':'),
             ],
-            'json' => [
+            'json' => array_filter([
                 'transaction_details' => $transaction,
                 'customer_details' => $customer,
-            ],
+                'callbacks' => $finishUrl ? ['finish' => $finishUrl] : null,
+            ]),
             'http_errors' => false,
         ]);
 

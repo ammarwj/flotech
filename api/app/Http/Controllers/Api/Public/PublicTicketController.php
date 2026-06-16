@@ -89,6 +89,7 @@ class PublicTicketController extends Controller
         $snap = $this->midtrans->createSnapTransaction(
             ['order_id' => $orderId, 'gross_amount' => (int) round($total)],
             ['first_name' => $data['buyer_name'], 'email' => $data['buyer_email']],
+            rtrim((string) config('app.frontend_url'), '/').'/tickets/'.$order->id,
         );
 
         if ($snap['token']) {

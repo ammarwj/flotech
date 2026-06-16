@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
@@ -27,8 +27,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 type PlayerRow = { full_name: string; jersey_number: string; position: string };
 type DocRow = { file_name: string; file_url: string };
 
-export default function RegisterTeamPage() {
+function RegisterTeamPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
+  const searchParams = useSearchParams();
+
+  // Returned from Midtrans after a successful payment (finish redirect URL).
+  const paidStatus = searchParams.get("transaction_status");
+  const paidReturn =
+    !!searchParams.get("order_id") &&
+    (paidStatus === "settlement" || paidStatus === "capture" || searchParams.get("status") === "success");
 
   const [team, setTeam] = useState({ name: "", city: "", jersey_color: "", logo_url: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([{ full_name: "", jersey_number: "", position: "" }]);
@@ -113,7 +120,29 @@ export default function RegisterTeamPage() {
     }
   };
 
-  if (mutation.isSuccess) {
+  // Paid registration: the order was created and we're handing off to Midtrans.
+  // Show a "redirecting" state instead of a misleading success card.
+  const redirectingToPay = mutation.isSuccess && !mutation.data?.mock && !!mutation.data?.redirect_url;
+
+  if (redirectingToPay) {
+    return (
+      <div className="container" style={{ paddingBlock: 80, maxWidth: 560 }}>
+        <Card className="p-8 text-center sm:p-10">
+          <div className="mx-auto mb-5 grid h-14 w-14 place-items-center text-[var(--primary)]">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            Mengalihkan ke pembayaran…
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Mohon tunggu, kamu sedang diarahkan ke halaman pembayaran. Jangan tutup halaman ini.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (paidReturn || mutation.isSuccess) {
     return (
       <div className="container" style={{ paddingBlock: 80, maxWidth: 560 }}>
         <Card className="p-8 text-center sm:p-10">
@@ -121,11 +150,19 @@ export default function RegisterTeamPage() {
             <CheckCircle2 className="h-7 w-7" />
           </div>
           <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-            Pendaftaran terkirim 🎉
+            {paidReturn ? "Pembayaran berhasil 🎉" : "Pendaftaran terkirim 🎉"}
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Tim <b className="text-foreground">{team.name}</b> berhasil didaftarkan dan menunggu persetujuan
-            penyelenggara.
+            {paidReturn ? (
+              <>
+                Pembayaran biaya pendaftaran diterima. Pendaftaran tim sedang menunggu persetujuan penyelenggara.
+              </>
+            ) : (
+              <>
+                Tim <b className="text-foreground">{team.name}</b> berhasil didaftarkan dan menunggu persetujuan
+                penyelenggara.
+              </>
+            )}
           </p>
           <Button asChild size="lg" className="mt-6">
             <Link href={`/${params.orgSlug}/${params.eventSlug}`}>Kembali ke halaman event</Link>
@@ -339,5 +376,13 @@ function Field({
       </Label>
       <Input value={value} onChange={(e) => onChange(e.target.value)} required={required} />
     </div>
+  );
+}
+
+export default function RegisterTeamPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterTeamPage />
+    </Suspense>
   );
 }
