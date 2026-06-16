@@ -109,6 +109,7 @@ export interface RegisterTeamPayload {
   name: string;
   city?: string;
   jersey_color?: string;
+  logo_url?: string | null;
   contact_name: string;
   contact_phone: string;
   players: { full_name: string; jersey_number?: string; position?: string }[];

@@ -1,11 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { ChevronLeft, Plus, X, Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import {
+  ChevronLeft,
+  Plus,
+  X,
+  Upload,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ImagePlus,
+} from "lucide-react";
 
 import { registerTeam, signUpload, type RegisterTeamPayload } from "@/lib/api/events";
 import { Button } from "@/components/ui/button";
@@ -19,11 +29,50 @@ type DocRow = { file_name: string; file_url: string };
 export default function RegisterTeamPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
 
-  const [team, setTeam] = useState({ name: "", city: "", jersey_color: "", contact_name: "", contact_phone: "" });
+  const [team, setTeam] = useState({ name: "", city: "", jersey_color: "", logo_url: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([{ full_name: "", jersey_number: "", position: "" }]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Local blob for instant preview (dev R2 returns a non-renderable mock:// URL).
+  const logoShown = logoPreview ?? (team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null);
+
+  const handleLogo = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Logo harus berupa gambar.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Ukuran logo maksimal 2 MB.");
+      return;
+    }
+    setLogoPreview(URL.createObjectURL(file));
+    setLogoUploading(true);
+    setError(null);
+    try {
+      const signed = await signUpload(file.name, file.type, "team-logos");
+      if (signed.upload_url) {
+        await fetch(signed.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      }
+      setTeam((t) => ({ ...t, logo_url: signed.file_url }));
+    } catch {
+      setError("Gagal mengunggah logo.");
+      setLogoPreview(null);
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const clearLogo = () => {
+    setLogoPreview(null);
+    setTeam((t) => ({ ...t, logo_url: "" }));
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -121,6 +170,49 @@ export default function RegisterTeamPage() {
             <CardTitle>Informasi Tim</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="flex items-center gap-4 sm:col-span-2">
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleLogo(e.target.files?.[0])}
+              />
+              {logoShown ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoShown}
+                  alt="Logo tim"
+                  className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
+                />
+              ) : (
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-dashed border-border bg-[var(--bg-soft)] text-muted-foreground">
+                  {logoUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-6 w-6" />}
+                </div>
+              )}
+              <div className="grid gap-1.5">
+                <span className="text-sm font-semibold">
+                  Logo tim <span className="font-normal text-muted-foreground">(opsional)</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={logoUploading}
+                    onClick={() => logoInputRef.current?.click()}
+                  >
+                    {logoUploading ? "Mengunggah…" : logoShown ? "Ganti" : "Unggah logo"}
+                  </Button>
+                  {logoShown && (
+                    <Button type="button" size="sm" variant="ghost" className="text-muted-foreground" onClick={clearLogo}>
+                      Hapus
+                    </Button>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">PNG / JPG, maks 2 MB.</span>
+              </div>
+            </div>
             <Field label="Nama tim" required value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
             <Field label="Kota" value={team.city} onChange={(v) => setTeam({ ...team, city: v })} />
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
@@ -220,7 +312,7 @@ export default function RegisterTeamPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button type="submit" size="lg" disabled={mutation.isPending || uploading}>
+          <Button type="submit" size="lg" disabled={mutation.isPending || uploading || logoUploading}>
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
           </Button>
         </div>
