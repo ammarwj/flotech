@@ -243,7 +243,17 @@ export default function PublicEventPage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   {ev.approved_teams.map((t) => (
                     <div key={t.id} className="match-card" style={{ gridTemplateColumns: "auto 1fr" }}>
-                      <span className="crest" style={{ width: 40, height: 40, borderRadius: 10, background: crest(t.name) }} />
+                      {t.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={t.logo_url}
+                          alt={t.name}
+                          className="object-cover"
+                          style={{ width: 40, height: 40, borderRadius: 10, border: "1px solid var(--border)" }}
+                        />
+                      ) : (
+                        <span className="crest" style={{ width: 40, height: 40, borderRadius: 10, background: crest(t.name) }} />
+                      )}
                       <div className="min-w-0">
                         <div className="match-team" style={{ gap: 0 }}>
                           <span className="truncate">{t.name}</span>

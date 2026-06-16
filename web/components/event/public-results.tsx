@@ -2,20 +2,71 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutList, CalendarRange } from "lucide-react";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
-import { buildMatchSections, isKnockout as isKnockoutFormat, isDoubleElim } from "@/lib/bracket";
-import { matchScoreText } from "@/lib/scoring";
+import { isKnockout as isKnockoutFormat, isDoubleElim, crestGradient, matchWinnerId } from "@/lib/bracket";
 import { StandingsTable } from "./standings-table";
 import { BracketView } from "./bracket-view";
 import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
-import { MatchCalendar } from "./match-calendar";
 import { cn } from "@/lib/utils";
-import type { TournamentFormat } from "@/types/api";
+import type { Match, TournamentFormat } from "@/types/api";
 
 export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
+
+function timeOf(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function dateKeyOf(iso: string | null): string {
+  if (!iso) return "tbd";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function fullDateLabel(iso: string | null): string {
+  if (!iso) return "Jadwal menyusul";
+  return new Date(iso).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function tabDateLabel(iso: string | null): string {
+  if (!iso) return "TBD";
+  return new Date(iso).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Team crest: real logo when uploaded, gradient fallback otherwise. */
+function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undefined }) {
+  if (logoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img className="crest" src={logoUrl} alt={name} style={{ objectFit: "cover" }} />;
+  }
+  return <span className="crest" style={{ background: crestGradient(name) }} />;
+}
+
+type DateGroup = { key: string; iso: string | null; list: Match[] };
+
+/** Group matches into ordered per-day buckets; undated matches go last. */
+function groupByDate(matches: Match[]): DateGroup[] {
+  const dated = matches
+    .filter((m) => m.scheduled_at)
+    .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime());
+  const undated = matches.filter((m) => !m.scheduled_at);
+
+  const groups: DateGroup[] = [];
+  for (const m of dated) {
+    const key = dateKeyOf(m.scheduled_at);
+    let g = groups.find((x) => x.key === key);
+    if (!g) {
+      g = { key, iso: m.scheduled_at, list: [] };
+      groups.push(g);
+    }
+    g.list.push(m);
+  }
+  if (undated.length) groups.push({ key: "tbd", iso: null, list: undated });
+  return groups;
+}
 
 /**
  * Public schedule / bracket / standings / stats panel for an event. The active
@@ -36,7 +87,7 @@ export function PublicResults({
 }) {
   const isKnockout = isKnockoutFormat(format);
   const isDouble = isDoubleElim(format);
-  const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
+  const [dateKey, setDateKey] = useState<string | null>(null);
 
   const matchesQuery = useQuery({
     queryKey: ["public-matches", orgSlug, eventSlug],
@@ -69,7 +120,9 @@ export function PublicResults({
     );
   }
 
-  const sections = buildMatchSections(matches, isKnockout, isDouble);
+  const dateGroups = groupByDate(matches);
+  const activeDateKey = dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : dateGroups[0]?.key;
+  const activeGroup = dateGroups.find((g) => g.key === activeDateKey);
 
   return (
     <section className="section" style={{ paddingTop: 24 }}>
@@ -80,60 +133,67 @@ export function PublicResults({
           </div>
         ) : activeTab === "schedule" ? (
           <div style={{ maxWidth: 760 }}>
-            <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
-              {([
-                ["list", "List", LayoutList],
-                ["calendar", "Kalender", CalendarRange],
-              ] as const).map(([key, label, Icon]) => (
+            {/* date sub-tabs */}
+            <div className="mb-5 flex flex-wrap gap-1.5">
+              {dateGroups.map((g) => (
                 <button
-                  key={key}
-                  onClick={() => setScheduleView(key)}
+                  key={g.key}
+                  onClick={() => setDateKey(g.key)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
-                    scheduleView === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+                    "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                    activeDateKey === g.key
+                      ? "border-transparent bg-[var(--brand-600)] text-white"
+                      : "border-border bg-[var(--surface)] text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
+                  {tabDateLabel(g.iso)}
                 </button>
               ))}
             </div>
 
-            {scheduleView === "calendar" ? (
-              <MatchCalendar matches={matches} />
-            ) : (
-              sections.map(([label, list]) => (
-                <div key={label}>
-                  <div className="match-day">{label}</div>
-                  {list.map((m) => {
-                    const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
-                    const bye = !!m.home_team && !m.away_team && m.status === "finished";
-                    const score = matchScoreText(m);
-                    return (
-                      <div key={m.id} className="match-card" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
-                        <span style={{ textAlign: "right", fontWeight: 600 }}>{m.home_team?.name ?? "TBD"}</span>
-                        <span
-                          style={{
-                            fontFamily: "var(--font-display)",
-                            fontWeight: 800,
-                            fontVariantNumeric: "tabular-nums",
-                            textAlign: "center",
-                            color: done ? "var(--text)" : "var(--text-muted)",
-                          }}
-                        >
-                          {done ? score.main : bye ? "bye" : "vs"}
-                          {done && score.detail && (
-                            <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
-                              {score.detail}
-                            </span>
-                          )}
-                        </span>
-                        <span style={{ fontWeight: 600 }}>{bye ? "—" : m.away_team?.name ?? "TBD"}</span>
+            {activeGroup && (
+              <>
+                <div className="match-day">{fullDateLabel(activeGroup.iso)}</div>
+                {activeGroup.list.map((m) => {
+                  const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
+                  const live = m.status === "ongoing";
+                  const time = timeOf(m.scheduled_at);
+                  const winner = done ? matchWinnerId(m) : null;
+                  const metaLabel = m.group_name ?? (isKnockout ? `Babak ${m.round}` : `Pekan ${m.round}`);
+                  return (
+                    <div key={m.id} className="match-card">
+                      <div className="match-time">
+                        {live ? (
+                          <span className="badge badge-live">
+                            <span className="dot" /> LIVE
+                          </span>
+                        ) : (
+                          <>
+                            <b>{time ?? "TBD"}</b>
+                            {time && <small>WIB</small>}
+                          </>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              ))
+                      <div className="match-teams">
+                        <div className={cn("match-team", winner && winner !== m.home_team_id && "lose")}>
+                          <Crest name={m.home_team?.name ?? "TBD"} logoUrl={m.home_team?.logo_url} />
+                          <span className="truncate">{m.home_team?.name ?? "TBD"}</span>
+                          {done && <span className="sc">{m.home_score}</span>}
+                        </div>
+                        <div className={cn("match-team", winner && winner !== m.away_team_id && "lose")}>
+                          <Crest name={m.away_team?.name ?? "TBD"} logoUrl={m.away_team?.logo_url} />
+                          <span className="truncate">{m.away_team?.name ?? "TBD"}</span>
+                          {done && <span className="sc">{m.away_score}</span>}
+                        </div>
+                      </div>
+                      <div className="match-meta">
+                        <small>{metaLabel}</small>
+                        {m.venue && <small>{m.venue}</small>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
             )}
           </div>
         ) : activeTab === "stats" ? (

@@ -4,18 +4,25 @@ import type { Match } from "@/types/api";
 
 function Side({
   name,
+  logoUrl,
   score,
   isWinner,
   decided,
 }: {
   name: string | null;
+  logoUrl?: string | null;
   score: number | null;
   isWinner: boolean;
   decided: boolean;
 }) {
   return (
     <div className={cn("bkt-side", !name && "bkt-tbd", decided && (isWinner ? "win" : "lose"))}>
-      <span className="bkt-crest" style={{ background: name ? crestGradient(name) : "var(--border)" }} />
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="bkt-crest" src={logoUrl} alt={name ?? ""} style={{ objectFit: "cover" }} />
+      ) : (
+        <span className="bkt-crest" style={{ background: name ? crestGradient(name) : "var(--border)" }} />
+      )}
       <span className="bkt-name">{name ?? "TBD"}</span>
       {score !== null && <span className="bkt-score">{score}</span>}
     </div>
@@ -50,12 +57,14 @@ export function BracketView({
                   <div className="bkt-match">
                     <Side
                       name={m.home_team?.name ?? null}
+                      logoUrl={m.home_team?.logo_url}
                       score={m.home_score}
                       isWinner={winner === m.home_team_id}
                       decided={decided}
                     />
                     <Side
                       name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
+                      logoUrl={m.away_team?.logo_url}
                       score={m.away_score}
                       isWinner={winner === m.away_team_id}
                       decided={decided}
