@@ -1,15 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { useRef, useState } from "react";
+import Link from "next/link";
+import {
+  AlertCircle,
+  CalendarDays,
+  FileText,
+  ImagePlus,
+  Loader2,
+  MapPin,
+  Trophy,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+import { format, parseISO } from "date-fns";
+import { id as idLocale } from "date-fns/locale/id";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SPORT_LABELS, FORMAT_LABELS, rupiah } from "@/lib/labels";
-import type { EventInput } from "@/lib/api/events";
+import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS, rupiah } from "@/lib/labels";
+import { signUpload, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SportEvent } from "@/types/api";
 
@@ -24,12 +46,135 @@ function FieldError({ message }: { message?: string }) {
   );
 }
 
+/** Hint text under a field; rendered only when there's no error to show. */
+function FieldHint({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-muted-foreground">{children}</p>;
+}
+
+/** Card header with an accented icon tile, title, and short description. */
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof Trophy;
+  title: string;
+  description: string;
+}) {
+  return (
+    <CardHeader className="flex-row items-start gap-3 space-y-0">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <CardTitle>{title}</CardTitle>
+        <CardDescription className="mt-1">{description}</CardDescription>
+      </div>
+    </CardHeader>
+  );
+}
+
+/** Whole days between two YYYY-MM-DD dates, inclusive (e.g. same day = 1). */
+function durationDays(start?: string | null, end?: string | null): number | null {
+  if (!start || !end || end < start) return null;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (Number.isNaN(ms)) return null;
+  return Math.round(ms / 86_400_000) + 1;
+}
+
+const fmtDate = (d: string) => format(parseISO(d), "d MMM yyyy", { locale: idLocale });
+
+/** Human date range for the preview, e.g. "12 – 14 Jun 2026". */
+function formatRange(start?: string | null, end?: string | null): string {
+  if (!start && !end) return "Tanggal belum diatur";
+  if (start && end) return start === end ? fmtDate(start) : `${fmtDate(start)} – ${fmtDate(end)}`;
+  return fmtDate((start || end)!);
+}
+
+/** A labelled row in the live preview card. */
+function SummaryRow({ icon: Icon, children }: { icon: typeof Trophy; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 text-foreground">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Live preview of the event as it's being filled in — fills the otherwise empty
+ * space beside the form and mirrors how the public event header will look.
+ */
+function EventSummary({
+  v,
+  banner,
+  days,
+}: {
+  v: EventInput;
+  banner: string | null;
+  days: number | null;
+}) {
+  const sport = v.sport_type ?? "football";
+  const sportColor = SPORT_COLORS[sport];
+  const isFree = !v.registration_fee || v.registration_fee <= 0;
+
+  return (
+    <Card className="overflow-hidden">
+      <div
+        className="relative flex aspect-[16/9] items-center justify-center bg-[var(--bg-soft)]"
+        style={
+          banner
+            ? undefined
+            : { background: `linear-gradient(135deg, ${sportColor}26, ${sportColor}0d)` }
+        }
+      >
+        {banner ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={banner} alt="Banner turnamen" className="h-full w-full object-cover" />
+        ) : (
+          <ImagePlus className="h-8 w-8" style={{ color: sportColor }} />
+        )}
+      </div>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+          <span
+            className="rounded-full px-2 py-0.5"
+            style={{ color: sportColor, background: `${sportColor}1f` }}
+          >
+            {SPORT_LABELS[sport]}
+          </span>
+          <span className="text-muted-foreground">{FORMAT_LABELS[v.tournament_format ?? "league"]}</span>
+        </div>
+        <h3 className="text-lg font-bold leading-snug" style={{ fontFamily: "var(--font-display)" }}>
+          {v.name?.trim() || "Nama event"}
+        </h3>
+        <div className="space-y-2 border-t border-border pt-3">
+          <SummaryRow icon={CalendarDays}>
+            {formatRange(v.start_date, v.end_date)}
+            {days ? <span className="text-muted-foreground"> · {days} hari</span> : null}
+          </SummaryRow>
+          <SummaryRow icon={MapPin}>
+            {v.location_name?.trim() || <span className="text-muted-foreground">Lokasi belum diatur</span>}
+          </SummaryRow>
+          <SummaryRow icon={Wallet}>
+            {isFree ? "Gratis untuk peserta" : rupiah(v.registration_fee ?? 0)}
+          </SummaryRow>
+          <SummaryRow icon={Users}>
+            {v.max_teams ? `Maks. ${v.max_teams} tim` : "Tim tak terbatas"}
+          </SummaryRow>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function EventForm({
   initial,
   submitLabel,
   onSubmit,
   pending,
   fieldErrors,
+  cancelHref,
 }: {
   initial?: Partial<SportEvent>;
   submitLabel: string;
@@ -37,6 +182,8 @@ export function EventForm({
   pending?: boolean;
   /** Server-side validation errors (Laravel 422), keyed by field name. */
   fieldErrors?: FieldErrors;
+  /** When set, renders a "Batal" link in the sticky footer. */
+  cancelHref?: string;
 }) {
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
@@ -47,9 +194,16 @@ export function EventForm({
     location_name: initial?.location_name ?? "",
     location_address: initial?.location_address ?? "",
     description: initial?.description ?? "",
+    banner_url: initial?.banner_url ?? "",
     max_teams: initial?.max_teams ?? undefined,
     registration_fee: initial?.registration_fee ?? 0,
   });
+
+  // Local object URL for instant preview; in dev R2 returns a non-renderable
+  // `mock://` URL, so we keep the local blob to show the image either way.
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   // Client-side overrides: a key present here wins over the server error for
   // that field (`undefined`/"" = no error). Lets us validate instantly and
@@ -67,6 +221,46 @@ export function EventForm({
   // Red border + ring for an invalid field.
   const invalidCls = (k: keyof EventInput) =>
     errorFor(k) ? "border-destructive focus-visible:ring-destructive" : "";
+
+  // Image to render: local blob first, else a stored http(s) URL (mock:// won't render).
+  const bannerShown =
+    bannerPreview ?? (v.banner_url && /^https?:\/\//.test(v.banner_url) ? v.banner_url : null);
+
+  const uploadBanner = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("File harus berupa gambar.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran gambar maksimal 5 MB.");
+      return;
+    }
+    setBannerPreview(URL.createObjectURL(file));
+    setBannerUploading(true);
+    try {
+      const signed = await signUpload(file.name, file.type, "events");
+      if (signed.upload_url) {
+        await fetch(signed.upload_url, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
+      }
+      set("banner_url", signed.file_url);
+    } catch {
+      toast.error("Gagal mengunggah gambar. Coba lagi.");
+      setBannerPreview(null);
+    } finally {
+      setBannerUploading(false);
+    }
+  };
+
+  const clearBanner = () => {
+    setBannerPreview(null);
+    set("banner_url", "");
+    if (bannerInputRef.current) bannerInputRef.current.value = "";
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,12 +286,19 @@ export function EventForm({
     onSubmit(v);
   };
 
+  const days = durationDays(v.start_date, v.end_date);
+  const isFree = !v.registration_fee || v.registration_fee <= 0;
+
   return (
-    <form onSubmit={handleSubmit} className="grid max-w-2xl gap-5">
+    <form onSubmit={handleSubmit} className="grid gap-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+        <div className="grid min-w-0 gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Detail Event</CardTitle>
-        </CardHeader>
+        <SectionHeader
+          icon={Trophy}
+          title="Detail Event"
+          description="Informasi dasar turnamen."
+        />
         <CardContent className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="name" className="font-semibold">
@@ -111,7 +312,11 @@ export function EventForm({
               aria-invalid={!!errorFor("name")}
               className={invalidCls("name")}
             />
-            <FieldError message={errorFor("name")} />
+            {errorFor("name") ? (
+              <FieldError message={errorFor("name")} />
+            ) : (
+              <FieldHint>Tampil sebagai judul di halaman publik event.</FieldHint>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -154,13 +359,12 @@ export function EventForm({
               <Label htmlFor="start" className="font-semibold">
                 Tanggal mulai
               </Label>
-              <Input
+              <DatePicker
                 id="start"
-                type="date"
                 value={v.start_date ?? ""}
-                onChange={(e) => set("start_date", e.target.value)}
+                onChange={(val) => set("start_date", val)}
+                placeholder="Pilih tanggal mulai"
                 aria-invalid={!!errorFor("start_date")}
-                className={invalidCls("start_date")}
               />
               <FieldError message={errorFor("start_date")} />
             </div>
@@ -168,25 +372,30 @@ export function EventForm({
               <Label htmlFor="end" className="font-semibold">
                 Tanggal selesai
               </Label>
-              <Input
+              <DatePicker
                 id="end"
-                type="date"
                 value={v.end_date ?? ""}
                 min={v.start_date || undefined}
-                onChange={(e) => set("end_date", e.target.value)}
+                onChange={(val) => set("end_date", val)}
+                placeholder="Pilih tanggal selesai"
                 aria-invalid={!!errorFor("end_date")}
-                className={invalidCls("end_date")}
               />
-              <FieldError message={errorFor("end_date")} />
+              {errorFor("end_date") ? (
+                <FieldError message={errorFor("end_date")} />
+              ) : (
+                days && <FieldHint>Berlangsung {days} hari.</FieldHint>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Lokasi & Pendaftaran</CardTitle>
-        </CardHeader>
+        <SectionHeader
+          icon={MapPin}
+          title="Lokasi & Pendaftaran"
+          description="Tempat berlangsung dan ketentuan pendaftaran tim."
+        />
         <CardContent className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="loc" className="font-semibold">
@@ -218,34 +427,127 @@ export function EventForm({
                 aria-invalid={!!errorFor("max_teams")}
                 className={invalidCls("max_teams")}
               />
-              <FieldError message={errorFor("max_teams")} />
+              {errorFor("max_teams") ? (
+                <FieldError message={errorFor("max_teams")} />
+              ) : (
+                <FieldHint>Kosongkan untuk peserta tak terbatas.</FieldHint>
+              )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="fee" className="font-semibold">
-                Biaya registrasi (Rp)
-              </Label>
-              <Input
-                id="fee"
-                type="number"
-                min={0}
-                value={v.registration_fee ?? 0}
-                onChange={(e) => set("registration_fee", Number(e.target.value))}
-                aria-invalid={!!errorFor("registration_fee")}
-                className={invalidCls("registration_fee")}
-              />
-              <FieldError message={errorFor("registration_fee")} />
-              <p className="text-xs text-muted-foreground">
-                {v.registration_fee && v.registration_fee > 0 ? rupiah(v.registration_fee) : "Gratis untuk peserta"}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="fee" className="font-semibold">
+                  Biaya registrasi
+                </Label>
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-[var(--brand-600)]"
+                    checked={isFree}
+                    onChange={(e) => set("registration_fee", e.target.checked ? 0 : 1)}
+                  />
+                  Gratis
+                </label>
+              </div>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  Rp
+                </span>
+                <Input
+                  id="fee"
+                  type="number"
+                  min={0}
+                  value={isFree ? "" : v.registration_fee}
+                  disabled={isFree}
+                  placeholder="0"
+                  onChange={(e) => set("registration_fee", e.target.value ? Number(e.target.value) : 0)}
+                  aria-invalid={!!errorFor("registration_fee")}
+                  className={`pl-9 ${invalidCls("registration_fee")}`}
+                />
+              </div>
+              {errorFor("registration_fee") ? (
+                <FieldError message={errorFor("registration_fee")} />
+              ) : (
+                <FieldHint>
+                  {isFree ? "Gratis untuk peserta." : rupiah(v.registration_fee ?? 0)}
+                </FieldHint>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Deskripsi</CardTitle>
-        </CardHeader>
+        <SectionHeader
+          icon={ImagePlus}
+          title="Gambar Turnamen"
+          description="Banner yang tampil di halaman publik event."
+        />
+        <CardContent>
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => uploadBanner(e.target.files?.[0])}
+          />
+          {bannerShown ? (
+            <div className="group relative overflow-hidden rounded-lg border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bannerShown} alt="Banner turnamen" className="aspect-[16/9] w-full object-cover" />
+              {bannerUploading && (
+                <div className="absolute inset-0 grid place-items-center bg-black/40">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                </div>
+              )}
+              <div className="absolute right-2 top-2 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="bg-background/90"
+                  onClick={() => bannerInputRef.current?.click()}
+                >
+                  Ganti
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="bg-background/90"
+                  onClick={clearBanner}
+                  aria-label="Hapus gambar"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => bannerInputRef.current?.click()}
+              disabled={bannerUploading}
+              className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-soft)] text-muted-foreground transition-colors hover:border-[var(--brand-500)] hover:text-foreground disabled:opacity-60"
+            >
+              {bannerUploading ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <ImagePlus className="h-6 w-6" />
+              )}
+              <span className="text-sm font-medium">
+                {bannerUploading ? "Mengunggah…" : "Unggah gambar turnamen"}
+              </span>
+              <span className="text-xs">PNG / JPG, maks 5 MB · rasio 16:9 disarankan</span>
+            </button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <SectionHeader
+          icon={FileText}
+          title="Deskripsi"
+          description="Ceritakan turnamenmu ke calon peserta."
+        />
         <CardContent>
           <div className="grid gap-2">
             <Label htmlFor="desc" className="font-semibold">
@@ -263,8 +565,22 @@ export function EventForm({
           </div>
         </CardContent>
       </Card>
+        </div>
 
-      <div className="flex justify-end">
+        <aside className="lg:sticky lg:top-20">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Pratinjau
+          </p>
+          <EventSummary v={v} banner={bannerShown} days={days} />
+        </aside>
+      </div>
+
+      <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-3 rounded-xl border border-border bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        {cancelHref && (
+          <Button asChild variant="ghost" size="lg">
+            <Link href={cancelHref}>Batal</Link>
+          </Button>
+        )}
         <Button type="submit" size="lg" disabled={pending}>
           {pending ? "Menyimpan…" : submitLabel}
         </Button>

@@ -24,6 +24,7 @@ export type EventInput = Partial<
     | "location_name"
     | "location_address"
     | "description"
+    | "banner_url"
     | "max_teams"
     | "registration_fee"
   >

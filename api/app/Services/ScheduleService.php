@@ -366,4 +366,124 @@ class ScheduleService
         $target->{$home ? 'home_team_id' : 'away_team_id'} = $teamId;
         $target->save();
     }
+
+    /**
+     * Assign a concrete date/time (and venue lane) to every fixture using a
+     * slot allocator. Each round is placed on its own day(s) — which keeps a
+     * team from playing twice the same day in a league — and rounds are either
+     * packed consecutively or spread evenly across the event's date range.
+     *
+     * Options (all optional): start_date, daily_start "H:i", daily_end "H:i",
+     * match_minutes, break_minutes, venues, max_per_day, spread (bool).
+     *
+     * @param  array<string, mixed>  $opts
+     */
+    public function applySchedule(Event $event, array $opts = []): void
+    {
+        $matches = $event->matches()->orderBy('round')->orderBy('order')->get();
+        if ($matches->isEmpty()) {
+            return;
+        }
+
+        $startDate = ! empty($opts['start_date'])
+            ? Carbon::parse($opts['start_date'])->startOfDay()
+            : ($event->start_date ? Carbon::parse($event->start_date)->startOfDay() : Carbon::now()->startOfDay());
+        $endDate = $event->end_date ? Carbon::parse($event->end_date)->startOfDay() : null;
+
+        $startMin = $this->minutesOfDay($opts['daily_start'] ?? '15:00');
+        $endMin = $this->minutesOfDay($opts['daily_end'] ?? '21:00');
+        $dur = (int) ($opts['match_minutes'] ?? 90);
+        $break = (int) ($opts['break_minutes'] ?? 15);
+        $venues = max(1, (int) ($opts['venues'] ?? 1));
+        $maxPerDay = isset($opts['max_per_day']) ? max(1, (int) $opts['max_per_day']) : null;
+        $spread = (bool) ($opts['spread'] ?? true);
+
+        // Kickoff times within the daily window.
+        $times = [];
+        for ($t = $startMin; $t + $dur <= $endMin; $t += $dur + $break) {
+            $times[] = $t;
+        }
+        if (empty($times)) {
+            $times[] = $startMin; // window smaller than one match → one per venue per day
+        }
+
+        $perDay = count($times) * $venues;
+        if ($maxPerDay !== null) {
+            $perDay = min($perDay, $maxPerDay);
+        }
+        $perDay = max(1, $perDay);
+
+        // One round per day (a round never repeats a team), overflowing to extra
+        // days only when a round has more matches than a day can hold.
+        $rounds = $matches->groupBy('round');
+        $daysNeeded = 0;
+        foreach ($rounds as $list) {
+            $daysNeeded += (int) ceil($list->count() / $perDay);
+        }
+
+        $days = $this->scheduleDays($startDate, $endDate, $daysNeeded, $spread);
+        $lastDay = count($days) - 1;
+
+        $dayIdx = 0;
+        foreach ($rounds as $list) {
+            $slot = 0;
+            foreach ($list as $m) {
+                if ($slot >= $perDay) {
+                    $dayIdx++;
+                    $slot = 0;
+                }
+                $day = $days[min($dayIdx, $lastDay)];
+                $lane = $slot % $venues;
+                $time = $times[min(intdiv($slot, $venues), count($times) - 1)];
+
+                $m->update([
+                    'scheduled_at' => $day->copy()->addMinutes($time),
+                    'venue' => $venues > 1 ? 'Lapangan '.($lane + 1) : null,
+                ]);
+                $slot++;
+            }
+            $dayIdx++; // next round starts on a fresh day
+        }
+    }
+
+    private function minutesOfDay(string $hhmm): int
+    {
+        [$h, $m] = array_pad(explode(':', $hhmm), 2, '0');
+
+        return ((int) $h) * 60 + (int) $m;
+    }
+
+    /**
+     * Build $n calendar days from $start, either consecutive or spread evenly
+     * across [$start, $end] when there's room and spreading is requested.
+     *
+     * @return array<int, Carbon>
+     */
+    private function scheduleDays(Carbon $start, ?Carbon $end, int $n, bool $spread): array
+    {
+        $n = max(1, $n);
+        if ($n === 1) {
+            return [$start->copy()];
+        }
+
+        $span = $end ? $start->diffInDays($end) : 0;
+
+        // Not spreading, no end date, or not enough room → consecutive days.
+        if (! $spread || ! $end || $span < $n - 1) {
+            return array_map(fn ($i) => $start->copy()->addDays($i), range(0, $n - 1));
+        }
+
+        $days = [];
+        $prev = -1;
+        for ($i = 0; $i < $n; $i++) {
+            $off = (int) round($i * $span / ($n - 1));
+            if ($off <= $prev) {
+                $off = $prev + 1; // keep strictly increasing
+            }
+            $prev = $off;
+            $days[] = $start->copy()->addDays($off);
+        }
+
+        return $days;
+    }
 }

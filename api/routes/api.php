@@ -112,6 +112,7 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/standings', [MatchController::class, 'standings']);
             Route::get('events/{event}/leaderboard', [MatchController::class, 'leaderboard']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
+            Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);

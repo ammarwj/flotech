@@ -17,9 +17,31 @@ export async function getMatches(orgId: string, eventId: string): Promise<Match[
   return data.data;
 }
 
-export async function generateSchedule(orgId: string, eventId: string): Promise<Match[]> {
+export interface ScheduleOptions {
+  /** Date of the first matchday (YYYY-MM-DD); defaults to the event start. */
+  start_date?: string | null;
+  /** Daily kickoff window, "HH:mm". */
+  daily_start?: string;
+  daily_end?: string;
+  /** Match duration and break between consecutive slots, in minutes. */
+  match_minutes?: number;
+  break_minutes?: number;
+  /** Parallel venues/courts that can host matches in the same slot. */
+  venues?: number;
+  /** Cap on matches scheduled per day. */
+  max_per_day?: number | null;
+  /** Spread rounds across the event date range instead of packing days. */
+  spread?: boolean;
+}
+
+export async function generateSchedule(
+  orgId: string,
+  eventId: string,
+  options?: ScheduleOptions
+): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
-    `/organizations/${orgId}/events/${eventId}/schedule`
+    `/organizations/${orgId}/events/${eventId}/schedule`,
+    options ?? {}
   );
   return data.data;
 }
@@ -68,6 +90,24 @@ export async function updateMatchResult(
 export async function getLeaderboard(orgId: string, eventId: string): Promise<Leaderboard> {
   const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
     `/organizations/${orgId}/events/${eventId}/leaderboard`
+  );
+  return data.data;
+}
+
+export interface MatchSchedulePayload {
+  scheduled_at: string | null;
+  venue?: string | null;
+}
+
+/** Update only kickoff time / venue, leaving any result untouched. */
+export async function updateMatchSchedule(
+  orgId: string,
+  matchId: string,
+  payload: MatchSchedulePayload
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/schedule`,
+    payload
   );
   return data.data;
 }

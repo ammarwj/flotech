@@ -152,6 +152,7 @@ export default function EditEventPage() {
         submitLabel="Simpan perubahan"
         pending={update.isPending}
         fieldErrors={fieldErrors}
+        cancelHref="/organizer/events"
         onSubmit={(values) => {
           setFieldErrors({});
           update.mutate(values);

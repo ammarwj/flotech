@@ -40,6 +40,24 @@ class MatchController extends Controller
         $eventModel = $this->event($request, $event);
         $format = $eventModel->tournament_format;
 
+        $options = $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'daily_start' => ['nullable', 'date_format:H:i'],
+            'daily_end' => ['nullable', 'date_format:H:i'],
+            'match_minutes' => ['nullable', 'integer', 'min:10', 'max:600'],
+            'break_minutes' => ['nullable', 'integer', 'min:0', 'max:240'],
+            'venues' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'max_per_day' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'spread' => ['nullable', 'boolean'],
+        ]);
+
+        if (! empty($options['daily_start']) && ! empty($options['daily_end'])
+            && $options['daily_end'] <= $options['daily_start']) {
+            return ApiResponse::error('Jam selesai harus setelah jam mulai.', [
+                'daily_end' => ['Jam selesai harus setelah jam mulai.'],
+            ], 422);
+        }
+
         if (in_array($format, ['league', 'hybrid'], true)) {
             $count = $this->schedule->generateRoundRobin($eventModel);
         } elseif ($format === 'knockout_single') {
@@ -56,6 +74,9 @@ class MatchController extends Controller
         if ($count === 0) {
             return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk membuat jadwal.', null, 422);
         }
+
+        // Assign concrete date/time (and venue lane) to each fixture.
+        $this->schedule->applySchedule($eventModel, $options);
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($eventModel)),
@@ -218,6 +239,30 @@ class MatchController extends Controller
         return ApiResponse::success(
             new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
             $finished ? 'Hasil disimpan — menunggu konfirmasi' : 'Pertandingan diperbarui',
+        );
+    }
+
+    /**
+     * Set when/where a fixture is played, without touching its result. Safe to
+     * call on finished matches (kickoff time only; scores stay intact).
+     */
+    public function updateSchedule(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+
+        $data = $request->validate([
+            'scheduled_at' => ['nullable', 'date'],
+            'venue' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $matchModel->update([
+            'scheduled_at' => $data['scheduled_at'] ?? null,
+            'venue' => $data['venue'] ?? null,
+        ]);
+
+        return ApiResponse::success(
+            new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+            'Jadwal pertandingan diperbarui',
         );
     }
 

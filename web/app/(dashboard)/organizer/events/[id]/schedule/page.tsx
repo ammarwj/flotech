@@ -12,6 +12,7 @@ import {
   getLeaderboard,
   generateSchedule,
   updateMatchResult,
+  type ScheduleOptions,
 } from "@/lib/api/matches";
 import { getEvent } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
@@ -33,9 +34,11 @@ import { BracketView } from "@/components/event/bracket-view";
 import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
+import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
 import { MatchConfirmBar } from "@/components/event/match-confirm-bar";
+import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -46,6 +49,7 @@ export default function SchedulePage() {
   const { id: eventId } = useParams<{ id: string }>();
   const [tab, setTab] = useState<Tab | null>(null);
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
+  const [scheduleDialog, setScheduleDialog] = useState(false);
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -77,21 +81,15 @@ export default function SchedulePage() {
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   const generate = useMutation({
-    mutationFn: () => generateSchedule(orgId!, eventId),
+    mutationFn: (options: ScheduleOptions) => generateSchedule(orgId!, eventId, options),
     onSuccess: (created) => {
       toast.success(`Jadwal dibuat: ${created.length} pertandingan`);
+      setScheduleDialog(false);
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat jadwal.").message),
   });
-
-  const handleGenerate = () => {
-    if (matches.length > 0 && !confirm("Buat ulang jadwal akan menghapus jadwal & hasil yang ada. Lanjutkan?")) {
-      return;
-    }
-    generate.mutate();
-  };
 
   const sections = buildMatchSections(matches, isKnockout, isDouble);
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
@@ -114,7 +112,7 @@ export default function SchedulePage() {
         backHref={`/organizer/events/${eventId}/edit`}
         backLabel="Kelola event"
         actions={
-          <Button onClick={handleGenerate} disabled={generate.isPending || !orgId}>
+          <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending || !orgId}>
             <Sparkles className="h-4 w-4" />
             {generate.isPending ? "Membuat…" : matches.length > 0 ? "Buat Ulang Jadwal" : "Buat Jadwal"}
           </Button>
@@ -153,16 +151,16 @@ export default function SchedulePage() {
               : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
           }
           action={
-            <Button onClick={handleGenerate} disabled={generate.isPending}>
+            <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending}>
               <Sparkles className="h-4 w-4" />
               Buat Jadwal
             </Button>
           }
         />
       ) : activeTab === "bracket" ? (
-        <div className="overflow-x-auto pb-2">
+        <Card className="overflow-x-auto p-4 md:p-6">
           {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
-        </div>
+        </Card>
       ) : activeTab === "schedule" ? (
         <div className="max-w-3xl">
           <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
@@ -213,6 +211,17 @@ export default function SchedulePage() {
           )}
         </div>
       )}
+
+      {eventQuery.data && (
+        <ScheduleSettingsDialog
+          event={eventQuery.data}
+          open={scheduleDialog}
+          hasMatches={matches.length > 0}
+          pending={generate.isPending}
+          onClose={() => setScheduleDialog(false)}
+          onSubmit={(options) => generate.mutate(options)}
+        />
+      )}
     </div>
   );
 }
@@ -258,13 +267,18 @@ function MatchCard({
     );
   }
 
-  // A slot still awaiting an earlier result.
+  // A slot still awaiting an earlier result — teams TBD, but it can still be scheduled.
   if (!match.home_team || !match.away_team) {
     return (
-      <Card className="flex items-center gap-3 p-3 text-sm text-muted-foreground">
-        <span className="flex-1 text-right">{match.home_team?.name ?? "TBD"}</span>
-        <span className="text-xs">menunggu hasil sebelumnya</span>
-        <span className="flex-1">{match.away_team?.name ?? "TBD"}</span>
+      <Card className="p-3">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
+          <span className="text-xs">menunggu hasil sebelumnya</span>
+          <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
+        </div>
+        <div className="mt-3 border-t border-border pt-3">
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        </div>
       </Card>
     );
   }
@@ -273,7 +287,10 @@ function MatchCard({
   if (setBased) {
     return (
       <Card className="p-3">
-        <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
+        <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        <div className="mt-3 border-t border-border pt-3">
+          <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
+        </div>
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
@@ -293,7 +310,8 @@ function MatchCard({
 
   return (
     <Card className="p-3">
-      <div className="flex items-center gap-3">
+      <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+      <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
         <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
         <Input
           type="number"

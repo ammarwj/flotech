@@ -947,3 +947,61 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
   --font-sans: var(--font-body);
   --font-mono: var(--font-mono);
 }
+
+/* ============================================================
+   Knockout bracket (organizer schedule + public results).
+   Self-contained so it renders identically inside the dashboard
+   (which doesn't load event-shell.css) and the public shell.
+   Real tournament-tree connectors via the flex `flex:1` cell
+   technique: each cell owns an equal vertical slot, so elbow
+   lines join pairs purely with pseudo-elements.
+   ============================================================ */
+.bkt {
+  --bkt-gap: 44px;
+  --bkt-line: var(--border-strong);
+  display: flex; align-items: stretch;
+  overflow-x: auto; padding: 6px 2px 16px;
+}
+.bkt-col { display: flex; flex-direction: column; min-width: 212px; }
+.bkt-col:not(:last-child) { margin-right: var(--bkt-gap); }
+.bkt-head {
+  text-align: center; margin-bottom: 12px;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-weight: 700; color: var(--text-muted);
+}
+.bkt-body { flex: 1; display: flex; flex-direction: column; }
+.bkt-cell {
+  flex: 1; min-height: 64px; position: relative;
+  display: flex; flex-direction: column; justify-content: center; padding: 6px 0;
+}
+
+/* Flat card, matching the simpler .ematch look. */
+.bkt-match {
+  position: relative; z-index: 1;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden;
+}
+.bkt-side { display: flex; align-items: center; gap: 10px; padding: 11px 13px; font-size: 13.5px; }
+.bkt-side + .bkt-side { border-top: 1px solid var(--border); }
+.bkt-crest { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }
+.bkt-name { font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bkt-tbd .bkt-name { color: var(--text-muted); font-style: italic; font-weight: 500; }
+.bkt-score { margin-left: auto; padding-left: 8px; font-family: var(--font-mono); font-weight: 600; color: var(--text-muted); }
+.bkt-side.win .bkt-name { color: var(--text); }
+.bkt-side.win .bkt-score { color: var(--success); }
+.bkt-side.lose .bkt-name { color: var(--text-muted); }
+
+/* Connectors. Horizontal stub out the right of every non-final cell, plus a
+   vertical line on each odd cell joining it to its pair below. The vertical
+   sits flush against the next column, where the merged match is centred. */
+.bkt-col:not(:last-child) .bkt-cell::after {
+  content: ""; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  width: var(--bkt-gap); height: 2px; background: var(--bkt-line);
+}
+.bkt-col:not(:last-child) .bkt-cell:nth-child(odd)::before {
+  content: ""; position: absolute; left: calc(100% + var(--bkt-gap)); top: 50%;
+  width: 2px; height: 100%; background: var(--bkt-line);
+}
+/* A round of one (the final) needs no outgoing connectors. */
+.bkt-col:not(:last-child) .bkt-body:has(.bkt-cell:only-child) .bkt-cell::after,
+.bkt-col:not(:last-child) .bkt-body:has(.bkt-cell:only-child) .bkt-cell::before { display: none; }

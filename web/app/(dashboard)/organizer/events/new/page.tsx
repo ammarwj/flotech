@@ -74,6 +74,7 @@ export default function NewEventPage() {
           submitLabel="Buat Event"
           pending={mutation.isPending || !orgId}
           fieldErrors={fieldErrors}
+          cancelHref="/organizer/events"
           onSubmit={(values) => {
             setFieldErrors({});
             mutation.mutate(values);
