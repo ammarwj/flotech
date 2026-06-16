@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
-import { PublicResults } from "@/components/event/public-results";
+import { PublicResults, type ResultsTab } from "@/components/event/public-results";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { SPORT_LABELS, FORMAT_LABELS, EVENT_STATUS_LABELS, SPORT_COLORS, rupiah } from "@/lib/labels";
+import { isKnockout as isKnockoutFormat } from "@/lib/bracket";
+import { cn } from "@/lib/utils";
 import "../../event-shell.css";
 
 function fmtDate(d: string | null) {
@@ -40,6 +43,7 @@ function crest(seed: string) {
 export default function PublicEventPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   const base = `/${params.orgSlug}/${params.eventSlug}`;
+  const [tab, setTab] = useState<"info" | ResultsTab>("info");
 
   const query = useQuery({
     queryKey: ["public-event", params.orgSlug, params.eventSlug],
@@ -69,6 +73,14 @@ export default function PublicEventPage() {
 
   const ev = query.data;
   const sportColor = SPORT_COLORS[ev.sport_type];
+
+  // Top-level tabs: Info + the format-appropriate match panels.
+  const tabs: ["info" | ResultsTab, string, typeof Info][] = [
+    ["info", "Info", Info],
+    ["schedule", "Jadwal", CalendarClock],
+    isKnockoutFormat(ev.tournament_format) ? ["bracket", "Bracket", Network] : ["standings", "Klasemen", ListOrdered],
+    ["stats", "Statistik", Goal],
+  ];
 
   return (
     <>
@@ -167,6 +179,44 @@ export default function PublicEventPage() {
           </div>
         </div>
       </section>
+
+      {/* ===== TABS ===== */}
+      <section className="section" style={{ paddingBottom: 0 }}>
+        <div className="container">
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
+            {tabs.map(([key, label, Icon]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
+                  tab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ===== INFO TAB ===== */}
+      {tab === "info" && (
+        <>
+          {ev.banner_url && (
+            <section className="section" style={{ paddingBottom: 0 }}>
+              <div className="container">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={ev.banner_url}
+                  alt={ev.name}
+                  className="mx-auto block w-full rounded-2xl border border-border object-cover"
+                  style={{ aspectRatio: "4 / 5", maxWidth: 420 }}
+                />
+              </div>
+            </section>
+          )}
 
       {/* ===== CONTENT ===== */}
       <section className="section">
@@ -292,9 +342,18 @@ export default function PublicEventPage() {
           </aside>
         </div>
       </section>
+        </>
+      )}
 
-      {/* ===== SCHEDULE & STANDINGS ===== */}
-      <PublicResults orgSlug={params.orgSlug} eventSlug={params.eventSlug} format={ev.tournament_format} />
+      {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
+      {tab !== "info" && (
+        <PublicResults
+          orgSlug={params.orgSlug}
+          eventSlug={params.eventSlug}
+          format={ev.tournament_format}
+          activeTab={tab}
+        />
+      )}
 
       {/* ===== REGISTER CTA ===== */}
       {ev.registration_is_open && (

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network, Goal, LayoutList, CalendarRange } from "lucide-react";
+import { LayoutList, CalendarRange } from "lucide-react";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
 import { buildMatchSections, isKnockout as isKnockoutFormat, isDoubleElim } from "@/lib/bracket";
@@ -15,26 +15,28 @@ import { MatchCalendar } from "./match-calendar";
 import { cn } from "@/lib/utils";
 import type { TournamentFormat } from "@/types/api";
 
-type Tab = "schedule" | "standings" | "bracket" | "stats";
+export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
 
 /**
- * Public schedule + standings/bracket for an event. Renders nothing until the
- * organizer has generated a schedule.
+ * Public schedule / bracket / standings / stats panel for an event. The active
+ * sub-tab is controlled by the parent (the event page renders the tab bar);
+ * this component just renders the panel for `activeTab`. Shows an empty state
+ * until the organizer has generated a schedule.
  */
 export function PublicResults({
   orgSlug,
   eventSlug,
   format,
+  activeTab,
 }: {
   orgSlug: string;
   eventSlug: string;
   format: TournamentFormat;
+  activeTab: ResultsTab;
 }) {
   const isKnockout = isKnockoutFormat(format);
   const isDouble = isDoubleElim(format);
-  const [tab, setTab] = useState<Tab | null>(null);
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
-  const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   const matchesQuery = useQuery({
     queryKey: ["public-matches", orgSlug, eventSlug],
@@ -54,46 +56,24 @@ export function PublicResults({
   });
 
   const matches = matchesQuery.data ?? [];
-  if (matchesQuery.isLoading || matches.length === 0) return null;
+  if (matchesQuery.isLoading) return null;
+  if (matches.length === 0) {
+    return (
+      <section className="section" style={{ paddingTop: 24 }}>
+        <div className="container">
+          <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+            Jadwal pertandingan belum tersedia. Nantikan setelah penyelenggara menyusun jadwal.
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const sections = buildMatchSections(matches, isKnockout, isDouble);
-  const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
-    ? [
-        ["bracket", "Bracket", Network],
-        ["schedule", "Jadwal", CalendarClock],
-        ["stats", "Statistik", Goal],
-      ]
-    : [
-        ["schedule", "Jadwal", CalendarClock],
-        ["standings", "Klasemen", ListOrdered],
-        ["stats", "Statistik", Goal],
-      ];
 
   return (
-    <section className="section" style={{ paddingTop: 0 }}>
+    <section className="section" style={{ paddingTop: 24 }}>
       <div className="container">
-        <div className="esection-title">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Jadwal &amp; {isKnockout ? "Bracket" : "Klasemen"}
-          </h2>
-        </div>
-
-        <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
-          {tabs.map(([key, label, Icon]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
-                activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
         {activeTab === "bracket" ? (
           <div className="overflow-x-auto pb-2">
             {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
@@ -123,36 +103,36 @@ export function PublicResults({
               <MatchCalendar matches={matches} />
             ) : (
               sections.map(([label, list]) => (
-              <div key={label}>
-                <div className="match-day">{label}</div>
-                {list.map((m) => {
-                  const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
-                  const bye = !!m.home_team && !m.away_team && m.status === "finished";
-                  const score = matchScoreText(m);
-                  return (
-                    <div key={m.id} className="match-card" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
-                      <span style={{ textAlign: "right", fontWeight: 600 }}>{m.home_team?.name ?? "TBD"}</span>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-display)",
-                          fontWeight: 800,
-                          fontVariantNumeric: "tabular-nums",
-                          textAlign: "center",
-                          color: done ? "var(--text)" : "var(--text-muted)",
-                        }}
-                      >
-                        {done ? score.main : bye ? "bye" : "vs"}
-                        {done && score.detail && (
-                          <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
-                            {score.detail}
-                          </span>
-                        )}
-                      </span>
-                      <span style={{ fontWeight: 600 }}>{bye ? "—" : m.away_team?.name ?? "TBD"}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                <div key={label}>
+                  <div className="match-day">{label}</div>
+                  {list.map((m) => {
+                    const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
+                    const bye = !!m.home_team && !m.away_team && m.status === "finished";
+                    const score = matchScoreText(m);
+                    return (
+                      <div key={m.id} className="match-card" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
+                        <span style={{ textAlign: "right", fontWeight: 600 }}>{m.home_team?.name ?? "TBD"}</span>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 800,
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "center",
+                            color: done ? "var(--text)" : "var(--text-muted)",
+                          }}
+                        >
+                          {done ? score.main : bye ? "bye" : "vs"}
+                          {done && score.detail && (
+                            <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>
+                              {score.detail}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontWeight: 600 }}>{bye ? "—" : m.away_team?.name ?? "TBD"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               ))
             )}
           </div>
