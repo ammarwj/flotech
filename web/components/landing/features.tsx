@@ -47,7 +47,7 @@ export function Features() {
 
           {/* jadwal (wide w/ visual) */}
           <article className="feat span8 reveal">
-            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--sport-football),#1558CC)" }}>
+            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--accent-blue),#1558CC)" }}>
               <svg viewBox="0 0 24 24" fill="none">
                 <rect x="3" y="4" width="18" height="17" rx="2" stroke="#fff" strokeWidth="2" />
                 <path d="M3 9h18M8 2v4M16 2v4" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
@@ -91,7 +91,7 @@ export function Features() {
 
           {/* bracket (visual) */}
           <article className="feat span4 reveal" data-delay="80">
-            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--sport-futsal),#5B21B6)" }}>
+            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--accent-purple),#5B21B6)" }}>
               <svg viewBox="0 0 24 24" fill="none">
                 <path
                   d="M3 5h6v6H3M3 13h6v6H3M9 8h4v8h4M17 10V6h4M17 18v-4h4"
@@ -161,7 +161,7 @@ export function Features() {
 
           {/* statistik */}
           <article className="feat span4 reveal" data-delay="80">
-            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--sport-badminton),#9D174D)" }}>
+            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--accent-pink),#9D174D)" }}>
               <svg viewBox="0 0 24 24" fill="none">
                 <path
                   d="m12 2 2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"
@@ -180,7 +180,7 @@ export function Features() {
 
           {/* landing page per event */}
           <article className="feat span4 reveal" data-delay="160">
-            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--sport-volleyball),#065F46)" }}>
+            <div className="feat-ic" style={{ background: "linear-gradient(135deg,var(--accent-green),#065F46)" }}>
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M3 21V8l9-5 9 5v13" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
                 <path d="M9 21v-6h6v6M3 12h18" stroke="#fff" strokeWidth="2" strokeLinecap="round" />

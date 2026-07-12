@@ -3,21 +3,19 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
-import { SPONSOR_TIER_LABELS } from "@/lib/labels";
-import type { EventPhoto, EventSponsor, SponsorTier } from "@/types/api";
+import { useCatalog } from "@/lib/hooks/use-catalog";
+import type { EventPhoto, EventSponsor } from "@/types/api";
 
-/** Logo size per tier — the host and sponsors get the biggest badges. */
-const TIER_HEIGHT: Record<SponsorTier, string> = {
-  host: "h-16",
-  sponsor: "h-14",
-  media_partner: "h-11",
-  supporter: "h-11",
-};
+/**
+ * Logo size by rank: the first tier the admin configured (typically the host)
+ * gets the biggest badge, the rest step down.
+ */
+const TIER_HEIGHTS = ["h-16", "h-14", "h-11", "h-11"];
 
-const TIER_ORDER: SponsorTier[] = ["host", "sponsor", "media_partner", "supporter"];
-
-/** Partner logos, grouped by tier (host first). */
+/** Partner logos, grouped by tier, in the order the admin arranged them. */
 export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
+  const { sponsor_tiers } = useCatalog();
+
   if (sponsors.length === 0) return null;
 
   return (
@@ -29,14 +27,16 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
       </div>
 
       <div className="grid gap-5">
-        {TIER_ORDER.map((tier) => {
-          const list = sponsors.filter((s) => s.tier === tier);
+        {sponsor_tiers.map((tier, i) => {
+          const list = sponsors.filter((s) => s.tier === tier.key);
           if (list.length === 0) return null;
 
+          const height = TIER_HEIGHTS[Math.min(i, TIER_HEIGHTS.length - 1)];
+
           return (
-            <div key={tier}>
+            <div key={tier.key}>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {SPONSOR_TIER_LABELS[tier]}
+                {tier.label}
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 {list.map((s) => {
@@ -46,7 +46,7 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
                       src={s.logo_url}
                       alt={s.name}
                       title={s.name}
-                      className={`${TIER_HEIGHT[tier]} w-auto max-w-[160px] object-contain`}
+                      className={`${height} w-auto max-w-[160px] object-contain`}
                     />
                   );
 

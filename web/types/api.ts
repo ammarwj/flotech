@@ -81,31 +81,55 @@ export interface CheckoutResult {
   mock: boolean;
 }
 
-export type SportType =
-  | "football"
-  | "mini_soccer"
-  | "futsal"
-  | "badminton"
-  | "padel"
-  | "volleyball";
-export type TournamentFormat = "league" | "knockout_single" | "knockout_double" | "hybrid";
+// The vocabulary below is admin-managed data (see /catalog), so these are open
+// string keys, not closed unions — a new sport or format appears without a
+// deploy. Use useCatalog() to turn a key into a label/colour.
+export type SportType = string;
+export type TournamentFormat = string;
+export type KnockoutRound = string;
+export type Tiebreaker = string;
+export type DrawMethod = string;
 
-export type KnockoutRound =
-  | "final"
-  | "semifinal"
-  | "quarter_final"
-  | "round_of_16"
-  | "round_of_32"
-  | "round_of_64";
+/** The engines the backend can actually run a format on. */
+export type FormatEngine = "league" | "knockout_single" | "knockout_double" | "hybrid";
 
-export type Tiebreaker =
-  | "head_to_head"
-  | "goal_difference"
-  | "goals_scored"
-  | "fair_play"
-  | "drawing_lots";
+export interface SportStatDef {
+  key: string;
+  label: string;
+  short: string;
+  /** 'goal' cross-checks the score, 'assist' can't outnumber the goals. */
+  role: "goal" | "assist" | null;
+  /** Weight in the fair-play tiebreaker (yellow 1, red 3). 0 = not misconduct. */
+  fair_play_weight: number;
+}
 
-export type DrawMethod = "random" | "manual" | "pot";
+export interface SportDef {
+  slug: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  scoring: "goal" | "set";
+  default_match_minutes: number;
+  stats: SportStatDef[];
+}
+
+/** A reference option: a format, tiebreaker, draw method, round, sponsor tier. */
+export interface CatalogOption {
+  key: string;
+  label: string;
+  description: string | null;
+  /** Binds the option to code: {engine} / {comparator} / {strategy} / {size}. */
+  meta: Record<string, unknown>;
+}
+
+export interface Catalog {
+  sports: SportDef[];
+  tournament_formats: CatalogOption[];
+  tiebreakers: CatalogOption[];
+  draw_methods: CatalogOption[];
+  knockout_rounds: CatalogOption[];
+  sponsor_tiers: CatalogOption[];
+}
 
 /**
  * Format configuration of an event (`bracket_config`). Only the hybrid format
@@ -212,10 +236,14 @@ export interface Standing {
   fair_play: number;
 }
 
+/** A stat column of a sport, as the API hands it to the editors. */
 export interface StatColumn {
   key: string;
   label: string;
   short: string;
+  /** What the stat means: 'goal' is the scoreline, 'assist' can't exceed it. */
+  role?: "goal" | "assist" | null;
+  fair_play_weight?: number;
 }
 
 export interface LeaderboardRow {
@@ -259,7 +287,11 @@ export interface SportEvent {
   name: string;
   slug: string;
   sport_type: SportType;
+  /** The sport itself, embedded so the UI needn't look it up. */
+  sport: SportDef | null;
   tournament_format: TournamentFormat;
+  /** The engine the format runs on — branch on this, not the format key. */
+  engine: FormatEngine | null;
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
@@ -285,7 +317,7 @@ export interface EventPhoto {
   sort_order?: number;
 }
 
-export type SponsorTier = "host" | "sponsor" | "media_partner" | "supporter";
+export type SponsorTier = string;
 
 export interface EventSponsor {
   id: string;
@@ -356,7 +388,11 @@ export interface PublicEvent {
   name: string;
   slug: string;
   sport_type: SportType;
+  /** The sport itself, embedded so the UI needn't look it up. */
+  sport: SportDef | null;
   tournament_format: TournamentFormat;
+  /** The engine the format runs on — branch on this, not the format key. */
+  engine: FormatEngine | null;
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;

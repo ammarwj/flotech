@@ -22,7 +22,7 @@ const TESTIMONIALS: Testimonial[] = [
     quote:
       "Fitur sertifikatnya juara. Kami upload desain sendiri, atur posisi sekali, generate 200 sertifikat pemain dalam hitungan menit.",
     initials: "SW",
-    avatar: "linear-gradient(135deg,var(--sport-futsal),#5B21B6)",
+    avatar: "linear-gradient(135deg,var(--accent-purple),#5B21B6)",
     name: "Sari Wulandari",
     role: "Event Organizer, Surabaya",
     delay: "80",
@@ -31,7 +31,7 @@ const TESTIMONIALS: Testimonial[] = [
     quote:
       "Tiket QR + scan check-in bikin pintu masuk turnamen badminton kami nggak antre lagi. Validasi instan, anti tiket palsu.",
     initials: "DA",
-    avatar: "linear-gradient(135deg,var(--sport-badminton),#9D174D)",
+    avatar: "linear-gradient(135deg,var(--accent-pink),#9D174D)",
     name: "Dimas Aryo",
     role: "PB Garuda Mas, Yogyakarta",
     delay: "160",

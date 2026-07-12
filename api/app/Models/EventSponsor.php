@@ -11,8 +11,8 @@ class EventSponsor extends Model
 {
     use HasUuids;
 
-    /** Partner tiers, most prominent first. */
-    public const TIERS = ['host', 'sponsor', 'media_partner', 'supporter'];
+    // Tiers live in the catalog (config_options group `sponsor_tier`), so an
+    // admin can rename or add one.
 
     protected $fillable = [
         'event_id',

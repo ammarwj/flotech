@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Event;
 
+use App\Services\Catalog;
 use App\Support\HybridConfig;
-use App\Support\Sports;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,8 +21,8 @@ class UpdateEventRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
-            'sport_type' => ['sometimes', Rule::in(Sports::ALL)],
-            'tournament_format' => ['sometimes', Rule::in(['league', 'knockout_single', 'knockout_double', 'hybrid'])],
+            'sport_type' => ['sometimes', Rule::in(Catalog::sportSlugs())],
+            'tournament_format' => ['sometimes', Rule::in(Catalog::keys('tournament_format'))],
             'status' => ['sometimes', Rule::in(['draft', 'open', 'registration_closed', 'ongoing', 'finished', 'cancelled'])],
             'start_date' => ['sometimes', 'date'],
             'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],

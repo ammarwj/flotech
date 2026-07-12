@@ -41,7 +41,7 @@
   backdrop-filter: blur(4px);
   white-space: nowrap;
 }
-.ehero-badge.sport { background: rgba(255,255,255,0.96); color: var(--sport-football); }
+.ehero-badge.sport { background: rgba(255,255,255,0.96); color: var(--accent-blue); }
 .ehero h1 {
   color: #fff; margin-top: 22px;
   font-size: clamp(38px, 6vw, 66px); font-weight: 800; letter-spacing: -0.035em;
@@ -180,7 +180,7 @@
 /* register CTA */
 .ereg {
   border-radius: var(--r-xl);
-  background: linear-gradient(125deg, var(--brand-700), var(--brand-600) 60%, var(--sport-futsal));
+  background: linear-gradient(125deg, var(--brand-700), var(--brand-600) 60%, var(--accent-purple));
   color: #fff; padding: clamp(32px, 5vw, 56px); text-align: center; position: relative; overflow: hidden;
 }
 .ereg::before {

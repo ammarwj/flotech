@@ -1,15 +1,17 @@
-import type { Match, TournamentFormat } from "@/types/api";
+import type { FormatEngine, Match } from "@/types/api";
 
-export function isKnockout(format: TournamentFormat): boolean {
-  return format === "knockout_single" || format === "knockout_double";
+// Formats are admin-managed presets; what decides behaviour is the engine the
+// backend runs them on (see SportEvent.engine).
+export function isKnockout(engine: FormatEngine | null | undefined): boolean {
+  return engine === "knockout_single" || engine === "knockout_double";
 }
 
-export function isDoubleElim(format: TournamentFormat): boolean {
-  return format === "knockout_double";
+export function isDoubleElim(engine: FormatEngine | null | undefined): boolean {
+  return engine === "knockout_double";
 }
 
-export function isHybrid(format: TournamentFormat): boolean {
-  return format === "hybrid";
+export function isHybrid(engine: FormatEngine | null | undefined): boolean {
+  return engine === "hybrid";
 }
 
 /** Human label for a knockout round based on how many matches it holds. */

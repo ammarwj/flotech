@@ -27,7 +27,8 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
-import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS, rupiah } from "@/lib/labels";
+import { rupiah } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { hybridConfig, qualifierCount } from "@/lib/hybrid";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventInput } from "@/lib/api/events";
@@ -85,15 +86,19 @@ function EventSummary({
   v,
   banner,
   days,
+  isHybrid,
 }: {
   v: EventInput;
   banner: string | null;
   days: number | null;
+  /** The chosen format runs on the hybrid engine. */
+  isHybrid: boolean;
 }) {
-  const sport = v.sport_type ?? "football";
-  const sportColor = SPORT_COLORS[sport];
+  const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
+  const sport = v.sport_type ?? "";
+  const sportColor = colorOf(sport);
   const isFree = !v.registration_fee || v.registration_fee <= 0;
-  const hybrid = v.tournament_format === "hybrid" ? hybridConfig(v.bracket_config) : null;
+  const hybrid = isHybrid ? hybridConfig(v.bracket_config) : null;
 
   return (
     <Card className="overflow-hidden">
@@ -120,9 +125,9 @@ function EventSummary({
             className="rounded-full px-2 py-0.5"
             style={{ color: sportColor, background: `${sportColor}1f` }}
           >
-            {SPORT_LABELS[sport]}
+            {sportLabel(sport)}
           </span>
-          <span className="text-muted-foreground">{FORMAT_LABELS[v.tournament_format ?? "league"]}</span>
+          <span className="text-muted-foreground">{formatLabel(v.tournament_format)}</span>
         </div>
         <h3 className="text-lg font-bold leading-snug" style={{ fontFamily: "var(--font-display)" }}>
           {v.name?.trim() || "Nama event"}
@@ -170,10 +175,14 @@ export function EventForm({
   /** When set, renders a "Batal" link in the sticky footer. */
   cancelHref?: string;
 }) {
+  const { sports, tournament_formats } = useCatalog();
+
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
-    sport_type: initial?.sport_type ?? "football",
-    tournament_format: initial?.tournament_format ?? "league",
+    // Empty until the catalog arrives; the first sport/format then becomes the
+    // default, so the form works no matter what the admin has configured.
+    sport_type: initial?.sport_type ?? "",
+    tournament_format: initial?.tournament_format ?? "",
     start_date: initial?.start_date ?? "",
     end_date: initial?.end_date ?? "",
     location_name: initial?.location_name ?? "",
@@ -263,8 +272,17 @@ export function EventForm({
       return;
     }
 
-    onSubmit(v);
+    onSubmit({ ...v, sport_type: sportValue, tournament_format: formatValue });
   };
+
+  // Fall back to the first catalog entry until the user picks one.
+  const sportValue = v.sport_type || sports[0]?.slug || "";
+  const formatValue = v.tournament_format || tournament_formats[0]?.key || "";
+
+  // A format is a preset over an engine — the hybrid card belongs to any format
+  // that runs on the hybrid engine, whatever the admin named it.
+  const isHybrid =
+    tournament_formats.find((f) => f.key === formatValue)?.meta?.engine === "hybrid";
 
   const days = durationDays(v.start_date, v.end_date);
   const isFree = !v.registration_fee || v.registration_fee <= 0;
@@ -306,12 +324,12 @@ export function EventForm({
               </Label>
               <Select
                 id="sport"
-                value={v.sport_type}
+                value={sportValue}
                 onChange={(e) => set("sport_type", e.target.value as EventInput["sport_type"])}
               >
-                {Object.entries(SPORT_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
+                {sports.map((s) => (
+                  <option key={s.slug} value={s.slug}>
+                    {s.name}
                   </option>
                 ))}
               </Select>
@@ -322,12 +340,12 @@ export function EventForm({
               </Label>
               <Select
                 id="format"
-                value={v.tournament_format}
+                value={formatValue}
                 onChange={(e) => set("tournament_format", e.target.value as EventInput["tournament_format"])}
               >
-                {Object.entries(FORMAT_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
+                {tournament_formats.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
                   </option>
                 ))}
               </Select>
@@ -370,7 +388,7 @@ export function EventForm({
         </CardContent>
       </Card>
 
-      {v.tournament_format === "hybrid" && (
+      {isHybrid && (
         <HybridConfigCard
           value={v.bracket_config}
           onChange={(config) => set("bracket_config", config)}
@@ -560,7 +578,7 @@ export function EventForm({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Pratinjau
           </p>
-          <EventSummary v={v} banner={bannerShown} days={days} />
+          <EventSummary v={v} banner={bannerShown} days={days} isHybrid={isHybrid} />
         </aside>
       </div>
 

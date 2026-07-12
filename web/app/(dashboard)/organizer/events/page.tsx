@@ -13,9 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EventStatusBadge } from "@/components/shared/status-badge";
-import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 
 export default function EventsPage() {
+  const { sportLabel, sportColor, formatLabel } = useCatalog();
   const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
 
   const eventsQuery = useQuery({
@@ -114,7 +115,7 @@ export default function EventsPage() {
 
       <div className="grid gap-3">
         {events?.map((ev) => {
-          const color = SPORT_COLORS[ev.sport_type];
+          const color = sportColor(ev.sport_type);
           return (
             <Card
               key={ev.id}
@@ -136,9 +137,9 @@ export default function EventsPage() {
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5" style={{ color }}>
-                      {SPORT_LABELS[ev.sport_type]}
+                      {sportLabel(ev.sport_type)}
                     </span>
-                    <span>{FORMAT_LABELS[ev.tournament_format]}</span>
+                    <span>{formatLabel(ev.tournament_format)}</span>
                     <span className="inline-flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" />
                       {ev.teams_count ?? 0} tim

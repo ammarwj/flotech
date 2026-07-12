@@ -13,9 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EventStatusBadge } from "@/components/shared/status-badge";
-import { SPORT_LABELS, SPORT_COLORS } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 
 export default function TicketsOverviewPage() {
+  const { sportLabel, sportColor } = useCatalog();
   const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
   const ticketing = isTicketingEnabled(org);
 
@@ -109,7 +110,7 @@ export default function TicketsOverviewPage() {
 
       <div className="grid gap-3">
         {events?.map((ev) => {
-          const color = SPORT_COLORS[ev.sport_type];
+          const color = sportColor(ev.sport_type);
           return (
             <Card key={ev.id} className="flex flex-wrap items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-4">
@@ -126,7 +127,7 @@ export default function TicketsOverviewPage() {
                     </span>
                     <EventStatusBadge status={ev.status} />
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">{SPORT_LABELS[ev.sport_type]}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{sportLabel(ev.sport_type)}</div>
                 </div>
               </div>
               <div className="flex gap-2">

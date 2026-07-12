@@ -1,10 +1,12 @@
-import type { Match, SportType } from "@/types/api";
+import type { Match, SportEvent } from "@/types/api";
 
-/** Sports scored per set (match score = number of sets won). */
-const SET_BASED: SportType[] = ["volleyball", "badminton", "padel"];
-
-export function isSetBased(sport: SportType): boolean {
-  return SET_BASED.includes(sport);
+/**
+ * Whether an event is scored per set (match score = sets won). The sport says
+ * so itself now — see the `scoring` column behind the catalog — so there's no
+ * list of sports to keep in sync here.
+ */
+export function isSetBased(event: Pick<SportEvent, "sport"> | null | undefined): boolean {
+  return event?.sport?.scoring === "set";
 }
 
 /** Display text for a match result: a main score plus optional set detail. */

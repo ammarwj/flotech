@@ -177,13 +177,13 @@ export default function EventTicketsPage() {
             icon={TrendingUp}
             label="Biaya platform"
             value={rupiah(report.finance.platform_fee)}
-            color="var(--sport-padel)"
+            color="var(--accent-amber)"
           />
           <StatCard
             icon={Ticket}
             label="Tiket terjual"
             value={String(report.finance.tickets_sold)}
-            color="var(--sport-futsal)"
+            color="var(--accent-purple)"
           />
           <StatCard
             icon={Users}

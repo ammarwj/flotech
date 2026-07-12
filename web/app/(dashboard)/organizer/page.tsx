@@ -12,13 +12,13 @@ const STATS = [
     label: "Tim Terdaftar",
     value: "0",
     icon: Users,
-    color: "var(--sport-volleyball)",
+    color: "var(--accent-green)",
   },
   {
     label: "Tiket Terjual",
     value: "0",
     icon: Ticket,
-    color: "var(--sport-futsal)",
+    color: "var(--accent-purple)",
   },
   {
     label: "Sertifikat",

@@ -8,6 +8,7 @@ use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Services\Catalog;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -37,6 +38,13 @@ class EventController extends Controller
         $data = $request->validated();
         $data['slug'] = $this->uniqueSlug($org, $data['slug'] ?? $data['name']);
         $data['status'] = 'draft';
+
+        // A format preset can carry a starting bracket_config ("Liga 2 Putaran"
+        // = engine league + legs 2). What the organizer sent still wins.
+        $defaults = Catalog::formatDefaults($data['tournament_format'] ?? null);
+        if ($defaults !== []) {
+            $data['bracket_config'] = [...$defaults, ...($data['bracket_config'] ?? [])];
+        }
 
         $event = $org->events()->create($data);
 

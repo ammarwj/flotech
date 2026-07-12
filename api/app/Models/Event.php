@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Catalog;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -84,6 +85,27 @@ class Event extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
+    }
+
+    /**
+     * The engine that runs this event's format. A format is a preset — several
+     * may share one engine ("Liga" and "Liga 2 Putaran" are both `league`), so
+     * scheduling and standings branch on this, never on `tournament_format`.
+     */
+    public function engine(): ?string
+    {
+        return Catalog::engineOf($this->tournament_format);
+    }
+
+    /** Catalog entry for this event's sport (name, colour, scoring, stats). */
+    public function sportDefinition(): ?array
+    {
+        return Catalog::sport($this->sport_type);
+    }
+
+    public function isSetBased(): bool
+    {
+        return Catalog::isSetBased($this->sport_type);
     }
 
     public function isRegistrationOpen(): bool

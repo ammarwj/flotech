@@ -13,6 +13,7 @@ import {
   wentToPenalties,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate, timeOf } from "@/lib/match-dates";
 import { MatchDayTabs } from "./match-day-tabs";
 import { StandingsTable } from "./standings-table";
@@ -21,7 +22,7 @@ import { BracketView } from "./bracket-view";
 import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
 import { cn } from "@/lib/utils";
-import type { BracketConfig, TournamentFormat } from "@/types/api";
+import type { BracketConfig, FormatEngine } from "@/types/api";
 
 export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
 
@@ -43,20 +44,25 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
 export function PublicResults({
   orgSlug,
   eventSlug,
-  format,
+  engine,
   bracketConfig,
   activeTab,
 }: {
   orgSlug: string;
   eventSlug: string;
-  format: TournamentFormat;
+  /** The engine the event's format runs on — decides which panels make sense. */
+  engine: FormatEngine | null;
   bracketConfig?: BracketConfig | null;
   activeTab: ResultsTab;
 }) {
-  const isKnockout = isKnockoutFormat(format);
-  const isDouble = isDoubleElim(format);
-  const isHybrid = isHybridFormat(format);
-  const config = hybridConfig(bracketConfig);
+  const catalog = useCatalog();
+  const isKnockout = isKnockoutFormat(engine);
+  const isDouble = isDoubleElim(engine);
+  const isHybrid = isHybridFormat(engine);
+  const config = hybridConfig(
+    bracketConfig,
+    catalog.tiebreakers.map((t) => t.key),
+  );
   const [dateKey, setDateKey] = useState<string | null>(null);
 
   const matchesQuery = useQuery({

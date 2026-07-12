@@ -13,13 +13,14 @@
   --brand-500: #3B7BE8;
   --brand-100: #E7F0FF;
 
-  /* sport accents */
-  --sport-football: #1E6FFF;
-  --sport-mini-soccer: #0EA5E9;
-  --sport-futsal: #7C3AED;
-  --sport-badminton: #DB2777;
-  --sport-padel: #D97706;
-  --sport-volleyball: #059669;
+  /* Decorative accents. A *sport's* colour now comes from the database
+     (sports.color) and is applied inline — these are ornament only. */
+  --accent-blue: #1E6FFF;
+  --accent-sky: #0EA5E9;
+  --accent-purple: #7C3AED;
+  --accent-pink: #DB2777;
+  --accent-amber: #D97706;
+  --accent-green: #059669;
 
   /* plan colors */
   --plan-free: #6B7280;
@@ -505,7 +506,7 @@ img { max-width: 100%; display: block; }
 .mock-evt { display: flex; align-items: center; gap: 11px; }
 .mock-evt-logo {
   width: 38px; height: 38px; border-radius: 10px;
-  background: linear-gradient(135deg, var(--sport-football), var(--brand-700));
+  background: linear-gradient(135deg, var(--accent-blue), var(--brand-700));
   display: grid; place-items: center; color: #fff; flex-shrink: 0;
 }
 .mock-evt-logo svg { width: 20px; height: 20px; }

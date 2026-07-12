@@ -9,16 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-/** Sensible per-match duration (minutes) by sport. */
-const DEFAULT_DURATION: Record<string, number> = {
-  football: 90,
-  mini_soccer: 50,
-  futsal: 40,
-  badminton: 30,
-  padel: 40,
-  volleyball: 60,
-};
-
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
@@ -51,7 +41,8 @@ export function ScheduleSettingsDialog({
   const [startDate, setStartDate] = useState(event.start_date ?? "");
   const [dailyStart, setDailyStart] = useState("15:00");
   const [dailyEnd, setDailyEnd] = useState("21:00");
-  const [duration, setDuration] = useState(String(DEFAULT_DURATION[event.sport_type] ?? 60));
+  // The sport carries its own sensible match length (admin-configurable).
+  const [duration, setDuration] = useState(String(event.sport?.default_match_minutes ?? 60));
   const [breakMin, setBreakMin] = useState("15");
   const [venues, setVenues] = useState("1");
   const [maxPerDay, setMaxPerDay] = useState("");

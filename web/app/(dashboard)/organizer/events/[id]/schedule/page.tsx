@@ -36,6 +36,7 @@ import {
   isHybrid as isHybridFormat,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { isSetBased } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
@@ -95,13 +96,18 @@ export default function SchedulePage() {
   });
 
   const qc = useQueryClient();
+  const catalog = useCatalog();
   const matches = matchesQuery.data ?? [];
-  const format = eventQuery.data?.tournament_format;
-  const isKnockout = format ? isKnockoutFormat(format) : false;
-  const isDouble = format ? isDoubleElim(format) : false;
-  const isHybrid = format ? isHybridFormat(format) : false;
-  const setBased = eventQuery.data ? isSetBased(eventQuery.data.sport_type) : false;
-  const config = hybridConfig(eventQuery.data?.bracket_config);
+  // Branch on the engine, not the format key: a preset can be named anything.
+  const engine = eventQuery.data?.engine ?? null;
+  const isKnockout = isKnockoutFormat(engine);
+  const isDouble = isDoubleElim(engine);
+  const isHybrid = isHybridFormat(engine);
+  const setBased = isSetBased(eventQuery.data);
+  const config = hybridConfig(
+    eventQuery.data?.bracket_config,
+    catalog.tiebreakers.map((t) => t.key),
+  );
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
   // Only a hybrid event needs the roster, for the group draw.

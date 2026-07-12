@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Event;
-use App\Support\SportStats;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -16,9 +15,9 @@ class PlayerStatService
      */
     public function leaderboard(Event $event, int $limit = 100): array
     {
-        $columns = SportStats::columns($event->sport_type);
+        $columns = Catalog::statColumns($event->sport_type);
         $keys = array_column($columns, 'key');
-        $primary = $keys[0];
+        $primary = $keys[0] ?? '';
 
         $aggregates = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')

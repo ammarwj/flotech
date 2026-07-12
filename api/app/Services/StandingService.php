@@ -29,7 +29,7 @@ class StandingService
         $config = HybridConfig::fromEvent($event);
         $rows = $this->rows($event, $config);
 
-        if ($event->tournament_format !== 'hybrid') {
+        if ($event->engine() !== 'hybrid') {
             return $this->rank(array_values($rows), $event, $config);
         }
 
@@ -226,10 +226,19 @@ class StandingService
      */
     protected function fairPlayPoints(Event $event): array
     {
+        // Which stats count as misconduct, and how heavily, is per-sport data
+        // (football: yellow 1, red 3). A sport with no weighted stat simply has
+        // no fair-play score.
+        $weights = Catalog::fairPlayWeights($event->sport_type);
+
+        if ($weights === []) {
+            return [];
+        }
+
         $rows = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
             ->where('matches.event_id', $event->id)
-            ->whereIn('player_match_stats.stat_key', ['yellow_cards', 'red_cards'])
+            ->whereIn('player_match_stats.stat_key', array_keys($weights))
             ->groupBy('player_match_stats.team_id', 'player_match_stats.stat_key')
             ->select(
                 'player_match_stats.team_id',
@@ -240,8 +249,7 @@ class StandingService
 
         $out = [];
         foreach ($rows as $r) {
-            $weight = $r->stat_key === 'red_cards' ? 3 : 1;
-            $out[$r->team_id] = ($out[$r->team_id] ?? 0) + $weight * (int) $r->total;
+            $out[$r->team_id] = ($out[$r->team_id] ?? 0) + $weights[$r->stat_key] * (int) $r->total;
         }
 
         return $out;

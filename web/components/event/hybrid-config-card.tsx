@@ -13,23 +13,10 @@ import {
   hybridConfig,
   qualifierCount,
   totalTeams,
-  KNOCKOUT_ROUND_SIZES,
   type HybridConfig,
 } from "@/lib/hybrid";
-import {
-  DRAW_METHOD_LABELS,
-  KNOCKOUT_ROUND_LABELS,
-  TIEBREAKER_LABELS,
-} from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { BracketConfig, DrawMethod, KnockoutRound, Tiebreaker } from "@/types/api";
-
-/** Round label for a bracket of `size` teams, e.g. 8 → "Perempat Final". */
-function bracketRoundLabel(size: number): string {
-  const round = (Object.keys(KNOCKOUT_ROUND_SIZES) as KnockoutRound[]).find(
-    (k) => KNOCKOUT_ROUND_SIZES[k] === size
-  );
-  return round ? KNOCKOUT_ROUND_LABELS[round] : `${size} Besar`;
-}
 
 function Sub({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -85,13 +72,17 @@ export function HybridConfigCard({
   value?: BracketConfig | null;
   onChange: (config: BracketConfig) => void;
 }) {
-  const c = hybridConfig(value);
+  const catalog = useCatalog();
+  const c = hybridConfig(
+    value,
+    catalog.tiebreakers.map((t) => t.key),
+  );
 
   const set = (patch: Partial<HybridConfig>) => onChange({ ...c, ...patch });
 
   const qualified = qualifierCount(c);
-  const size = bracketSize(c);
-  const byes = byeCount(c);
+  const size = bracketSize(c, catalog.roundSize);
+  const byes = byeCount(c, catalog.roundSize);
   const tooMany = qualified > size;
 
   const moveTiebreaker = (index: number, dir: -1 | 1) => {
@@ -251,9 +242,9 @@ export function HybridConfigCard({
                 }
               >
                 <option value="">Otomatis dari jumlah tim lolos</option>
-                {(Object.keys(KNOCKOUT_ROUND_LABELS) as KnockoutRound[]).map((k) => (
-                  <option key={k} value={k}>
-                    {KNOCKOUT_ROUND_LABELS[k]}
+                {catalog.knockout_rounds.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.label}
                   </option>
                 ))}
               </Select>
@@ -264,9 +255,9 @@ export function HybridConfigCard({
                 value={c.draw_method}
                 onChange={(e) => set({ draw_method: e.target.value as DrawMethod })}
               >
-                {(Object.keys(DRAW_METHOD_LABELS) as DrawMethod[]).map((k) => (
-                  <option key={k} value={k}>
-                    {DRAW_METHOD_LABELS[k]}
+                {catalog.draw_methods.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
                   </option>
                 ))}
               </Select>
@@ -290,12 +281,12 @@ export function HybridConfigCard({
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-card text-xs font-bold">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-sm font-medium">{TIEBREAKER_LABELS[t]}</span>
+                <span className="flex-1 text-sm font-medium">{catalog.tiebreakerLabel(t)}</span>
                 <button
                   type="button"
                   onClick={() => moveTiebreaker(i, -1)}
                   disabled={i === 0}
-                  aria-label={`Naikkan ${TIEBREAKER_LABELS[t]}`}
+                  aria-label={`Naikkan ${catalog.tiebreakerLabel(t)}`}
                   className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
                 >
                   <ArrowUp className="h-4 w-4" />
@@ -304,7 +295,7 @@ export function HybridConfigCard({
                   type="button"
                   onClick={() => moveTiebreaker(i, 1)}
                   disabled={i === c.tiebreakers.length - 1}
-                  aria-label={`Turunkan ${TIEBREAKER_LABELS[t]}`}
+                  aria-label={`Turunkan ${catalog.tiebreakerLabel(t)}`}
                   className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
                 >
                   <ArrowDown className="h-4 w-4" />
@@ -329,7 +320,7 @@ export function HybridConfigCard({
             {c.groups} grup × {c.teams_per_group} tim = {totalTeams(c)} tim
           </p>
           <p className="mt-1 text-muted-foreground">
-            {qualified} tim lolos → bracket {bracketRoundLabel(size)}
+            {qualified} tim lolos → bracket {catalog.roundLabelForSize(size)}
             {byes > 0 && ` · ${byes} BYE`}
           </p>
           {tooMany && (

@@ -2,19 +2,21 @@
 
 namespace App\Support;
 
+use App\Services\Catalog;
+
 /**
  * How a sport is scored. Goal-based sports use a single final score; set-based
  * sports (racket sports, volleyball) are scored per set and the match score is
  * the number of sets won.
+ *
+ * Which sport is which comes from the catalog (`sports.scoring`), so a sport
+ * declares its scoring style when the admin creates it.
  */
 class MatchScoring
 {
-    /** Sports scored by sets rather than a single running total. */
-    public const SET_BASED = ['volleyball', 'badminton', 'padel'];
-
-    public static function isSetBased(string $sport): bool
+    public static function isSetBased(?string $sport): bool
     {
-        return in_array($sport, self::SET_BASED, true);
+        return Catalog::isSetBased($sport);
     }
 
     /**

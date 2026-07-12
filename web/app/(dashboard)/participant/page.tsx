@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Users, Trophy, Settings2, AlertCircle } from "lucide-react";
 
 import { getMyTeams } from "@/lib/api/events";
-import { SPORT_LABELS, rupiah } from "@/lib/labels";
+import { rupiah } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +24,7 @@ function initials(name: string) {
 }
 
 export default function ParticipantPage() {
+  const { sportLabel } = useCatalog();
   const query = useQuery({ queryKey: ["my-teams"], queryFn: getMyTeams });
   const teams = query.data;
   const approvedCount = teams?.filter((t) => t.status === "approved").length ?? 0;
@@ -99,7 +101,7 @@ export default function ParticipantPage() {
                   <Trophy className="h-3.5 w-3.5" />
                   {team.event?.name ?? "Event"}
                 </span>
-                {team.event?.sport_type && <span>{SPORT_LABELS[team.event.sport_type]}</span>}
+                {team.event?.sport_type && <span>{sportLabel(team.event.sport_type)}</span>}
                 <span className="inline-flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5" />
                   {team.players?.length ?? 0} pemain

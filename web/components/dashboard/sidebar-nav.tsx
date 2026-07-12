@@ -11,6 +11,8 @@ import {
   Ticket,
   Award,
   Settings,
+  Settings2,
+  SlidersHorizontal,
   CreditCard,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +44,9 @@ export const ORGANIZER_NAV: NavItem[] = [
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
   { href: "/admin/plans", label: "Paket & Fitur", icon: CreditCard, mobile: true },
+  { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
+  { href: "/admin/sports", label: "Cabang Olahraga", icon: Trophy, mobile: true },
+  { href: "/admin/config-options", label: "Opsi Konfigurasi", icon: Settings2, mobile: true },
 ];
 
 /** Pick the navigation set for the signed-in user's role. */

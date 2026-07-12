@@ -25,7 +25,7 @@ export function Certificate() {
                 </div>
               </div>
               <div className="sl-item">
-                <span className="sl-ic" style={{ background: "linear-gradient(135deg,var(--sport-futsal),#5B21B6)" }}>
+                <span className="sl-ic" style={{ background: "linear-gradient(135deg,var(--accent-purple),#5B21B6)" }}>
                   <svg viewBox="0 0 24 24" fill="none">
                     <path d="M5 5h6v6H5zM13 13h6v6h-6z" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
                     <path d="M11 8h4a2 2 0 0 1 2 2v3" stroke="#fff" strokeWidth="2" strokeLinecap="round" />

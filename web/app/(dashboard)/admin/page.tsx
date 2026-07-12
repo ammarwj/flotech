@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CreditCard, Building2, ArrowRight, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import {
+  CreditCard,
+  Building2,
+  ArrowRight,
+  ShieldCheck,
+  SlidersHorizontal,
+  Settings2,
+  Trophy,
+} from "lucide-react";
 
 import { getAdminPlans } from "@/lib/api/plans";
 import { useAuthStore } from "@/stores/auth-store";
@@ -83,6 +91,52 @@ export default function AdminOverviewPage() {
         <Button asChild variant="outline" className="shrink-0">
           <Link href="/admin/feature-definitions">
             Kelola fitur
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </Card>
+
+      <Card className="mt-4 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
+            <Trophy className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+              Cabang olahraga
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Tambah cabang baru beserta gaya skor, durasi match, dan kolom statistiknya — langsung
+              bisa dipakai organizer tanpa deploy.
+            </p>
+          </div>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href="/admin/sports">
+            Kelola cabang
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </Card>
+
+      <Card className="mt-4 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
+            <Settings2 className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+              Opsi konfigurasi
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Format turnamen (termasuk preset seperti “Liga 2 Putaran”), tie breaker, metode
+              undian, babak knockout, dan tier sponsor.
+            </p>
+          </div>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href="/admin/config-options">
+            Kelola opsi
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>

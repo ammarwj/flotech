@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { DRAW_METHOD_LABELS } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { groupNames, type HybridConfig } from "@/lib/hybrid";
 import type { DrawPayload } from "@/lib/api/matches";
 import type { DrawMethod, Team } from "@/types/api";
@@ -32,6 +32,7 @@ export function GroupDrawDialog({ open, ...props }: DrawDialogProps & { open: bo
 }
 
 function DrawDialog({ teams, config, hasMatches, pending, onClose, onSubmit }: DrawDialogProps) {
+  const { draw_methods } = useCatalog();
   const [method, setMethod] = useState<DrawMethod>(config.draw_method);
   const [assignments, setAssignments] = useState<Record<string, string>>(() =>
     Object.fromEntries(teams.filter((t) => t.group_name).map((t) => [t.id, t.group_name!]))
@@ -83,9 +84,9 @@ function DrawDialog({ teams, config, hasMatches, pending, onClose, onSubmit }: D
           <div className="grid gap-1.5">
             <Label className="font-semibold">Metode</Label>
             <Select value={method} onChange={(e) => setMethod(e.target.value as DrawMethod)}>
-              {(Object.keys(DRAW_METHOD_LABELS) as DrawMethod[]).map((k) => (
-                <option key={k} value={k}>
-                  {DRAW_METHOD_LABELS[k]}
+              {draw_methods.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
                 </option>
               ))}
             </Select>

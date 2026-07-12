@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\ConfigOptionController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
+use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
+use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\MatchController;
@@ -47,6 +50,10 @@ Route::prefix('v1')->group(function () {
                 ->get()
         )
     ));
+
+    // Admin-managed vocabulary: sports (+ stat columns), formats, tiebreakers,
+    // draw methods, knockout rounds, sponsor tiers. Read by the whole web app.
+    Route::get('/catalog', CatalogController::class);
 
     // ---- Auth ----
     Route::prefix('auth')->group(function () {
@@ -148,6 +155,14 @@ Route::prefix('v1')->group(function () {
             Route::put('plans/{plan}/features', [PlanFeatureController::class, 'sync']);
             Route::apiResource('feature-definitions', FeatureDefinitionController::class)
                 ->parameters(['feature-definitions' => 'feature_definition'])
+                ->except(['show']);
+
+            // Catalog administration.
+            Route::get('engines', [ConfigOptionController::class, 'engines']);
+            Route::put('sports/{sport}/stats', [SportController::class, 'syncStats']);
+            Route::apiResource('sports', SportController::class)->except(['show']);
+            Route::apiResource('config-options', ConfigOptionController::class)
+                ->parameters(['config-options' => 'config_option'])
                 ->except(['show']);
         });
     });

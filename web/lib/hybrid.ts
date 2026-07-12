@@ -1,30 +1,19 @@
 import type { BracketConfig, KnockoutRound, Match, Tiebreaker } from "@/types/api";
 
-/** Teams held by each knockout entry round. Mirrors HybridConfig on the API. */
-export const KNOCKOUT_ROUND_SIZES: Record<KnockoutRound, number> = {
-  final: 2,
-  semifinal: 4,
-  quarter_final: 8,
-  round_of_16: 16,
-  round_of_32: 32,
-  round_of_64: 64,
-};
-
-export const TIEBREAKER_ORDER: Tiebreaker[] = [
-  "head_to_head",
-  "goal_difference",
-  "goals_scored",
-  "fair_play",
-  "drawing_lots",
-];
-
-/** A fully-filled config, so the form never has to deal with `undefined`. */
-export type HybridConfig = Required<Omit<BracketConfig, "points" | "qualification" | "knockout_start">> & {
+/**
+ * The hybrid format's per-event settings. The *vocabulary* (which tiebreakers,
+ * draw methods and knockout rounds exist) comes from the catalog — see
+ * useCatalog() — so nothing is mirrored from the backend here any more.
+ */
+export type HybridConfig = Required<
+  Omit<BracketConfig, "points" | "qualification" | "knockout_start">
+> & {
   points: { win: number; draw: number; lose: number };
   qualification: { top_per_group: number; best_runners_up: number; best_thirds: number };
   knockout_start: KnockoutRound | null;
 };
 
+/** Mirrors HybridConfig's defaults on the API. */
 export const DEFAULT_HYBRID: HybridConfig = {
   groups: 4,
   teams_per_group: 4,
@@ -34,23 +23,34 @@ export const DEFAULT_HYBRID: HybridConfig = {
   qualification: { top_per_group: 2, best_runners_up: 0, best_thirds: 0 },
   knockout_start: null,
   draw_method: "random",
-  tiebreakers: TIEBREAKER_ORDER,
+  tiebreakers: [],
 };
 
-export function hybridConfig(raw?: BracketConfig | null): HybridConfig {
+/**
+ * @param raw the event's stored bracket_config
+ * @param tiebreakers the catalog's tiebreaker keys, used when the event has none
+ */
+export function hybridConfig(
+  raw?: BracketConfig | null,
+  tiebreakers: Tiebreaker[] = []
+): HybridConfig {
   return {
     ...DEFAULT_HYBRID,
     ...raw,
     points: { ...DEFAULT_HYBRID.points, ...raw?.points },
     qualification: { ...DEFAULT_HYBRID.qualification, ...raw?.qualification },
     knockout_start: raw?.knockout_start ?? null,
-    tiebreakers: raw?.tiebreakers?.length ? raw.tiebreakers : TIEBREAKER_ORDER,
+    tiebreakers: raw?.tiebreakers?.length ? raw.tiebreakers : tiebreakers,
   };
 }
 
 export const totalTeams = (c: HybridConfig) => c.groups * c.teams_per_group;
 
-/** Teams reaching the knockout stage: the automatic places plus the extras. */
+/**
+ * Teams reaching the knockout stage: the automatic places, plus the extras that
+ * aren't already covered by them (a "best runner-up" is meaningless when every
+ * runner-up qualifies anyway).
+ */
 export function qualifierCount(c: HybridConfig): number {
   const { top_per_group, best_runners_up, best_thirds } = c.qualification;
   const extras =
@@ -58,16 +58,22 @@ export function qualifierCount(c: HybridConfig): number {
   return c.groups * top_per_group + extras;
 }
 
-/** Bracket size: the chosen entry round, or the next power of two above the field. */
-export function bracketSize(c: HybridConfig): number {
-  if (c.knockout_start) return KNOCKOUT_ROUND_SIZES[c.knockout_start];
+/**
+ * Bracket size: the chosen entry round, or the next power of two above the
+ * field.
+ *
+ * @param roundSize resolves a knockout round key to its team count (from the catalog)
+ */
+export function bracketSize(c: HybridConfig, roundSize: (key: string) => number): number {
+  if (c.knockout_start) return Math.max(2, roundSize(c.knockout_start));
   let size = 2;
   while (size < Math.max(2, qualifierCount(c))) size *= 2;
   return size;
 }
 
 /** Slots the bracket can't fill from the qualifiers — they become BYEs. */
-export const byeCount = (c: HybridConfig) => Math.max(0, bracketSize(c) - qualifierCount(c));
+export const byeCount = (c: HybridConfig, roundSize: (key: string) => number) =>
+  Math.max(0, bracketSize(c, roundSize) - qualifierCount(c));
 
 export const groupNames = (c: HybridConfig): string[] =>
   Array.from({ length: c.groups }, (_, i) => String.fromCharCode(65 + i));

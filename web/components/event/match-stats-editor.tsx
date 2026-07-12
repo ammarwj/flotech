@@ -75,10 +75,13 @@ export function MatchStatsEditor({
     return <div className="px-3 py-2 text-xs text-muted-foreground">Memuat pemain…</div>;
   }
 
-  // Only goal-based sports can be cross-checked: the score *is* the goal count.
-  const goalColumn = columns.some((c) => c.key === "goals") ? "goals" : null;
+  // Which column *is* the score, and which one is the assist, is per-sport data
+  // (a sport declares the role of each stat), so this works for any sport the
+  // admin adds — not just football.
+  const goalColumn = columns.find((c) => c.role === "goal")?.key ?? null;
+  const assistColumn = columns.find((c) => c.role === "assist")?.key ?? null;
 
-  const hasAssists = columns.some((c) => c.key === "assists");
+  const hasAssists = assistColumn !== null;
 
   /** A squad's running total for one stat, including unsaved edits. */
   const totalOf = (team: MatchRoster | null, key: string) =>
@@ -92,8 +95,8 @@ export function MatchStatsEditor({
   const homeScore = scoreOf("home");
   const awayScore = scoreOf("away");
 
-  const homeAssists = hasAssists ? totalOf(data?.home_team ?? null, "assists") : 0;
-  const awayAssists = hasAssists ? totalOf(data?.away_team ?? null, "assists") : 0;
+  const homeAssists = assistColumn ? totalOf(data?.home_team ?? null, assistColumn) : 0;
+  const awayAssists = assistColumn ? totalOf(data?.away_team ?? null, assistColumn) : 0;
 
   const mismatch =
     goalColumn !== null &&

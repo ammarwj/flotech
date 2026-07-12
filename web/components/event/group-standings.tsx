@@ -1,5 +1,7 @@
+"use client";
+
 import { StandingsTable } from "@/components/event/standings-table";
-import { TIEBREAKER_LABELS } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { HybridConfig } from "@/lib/hybrid";
 import type { Standing } from "@/types/api";
 
@@ -15,6 +17,7 @@ export function GroupStandings({
   standings: Standing[];
   config: HybridConfig;
 }) {
+  const { tiebreakerLabel } = useCatalog();
   const groups = new Map<string, Standing[]>();
   for (const s of standings) {
     const key = s.group_name ?? "-";
@@ -48,7 +51,7 @@ export function GroupStandings({
 
       <p className="text-xs text-muted-foreground lg:col-span-full">
         Baris hijau = lolos otomatis ke knockout. Tie breaker:{" "}
-        {config.tiebreakers.map((t) => TIEBREAKER_LABELS[t]).join(" → ")}.
+        {config.tiebreakers.map(tiebreakerLabel).join(" → ")}.
       </p>
     </div>
   );

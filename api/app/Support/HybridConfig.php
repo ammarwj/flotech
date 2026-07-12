@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Event;
+use App\Services\Catalog;
 
 /**
  * Format configuration for an event, stored in `events.bracket_config`.
@@ -10,32 +11,14 @@ use App\Models\Event;
  * Everything is optional — the defaults describe a plain single round-robin
  * with 3/1/0 points, so league events can read the same object without ever
  * having been configured.
+ *
+ * The *vocabulary* (which knockout rounds, tiebreakers and draw methods exist)
+ * comes from the catalog, so an admin can rename, reorder or disable them.
  */
 class HybridConfig
 {
-    /** Knockout entry rounds, keyed by the number of teams they hold. */
-    public const KNOCKOUT_ROUNDS = [
-        'final' => 2,
-        'semifinal' => 4,
-        'quarter_final' => 8,
-        'round_of_16' => 16,
-        'round_of_32' => 32,
-        'round_of_64' => 64,
-    ];
-
-    /** Tiebreakers, applied in the configured order after points. */
-    public const TIEBREAKERS = [
-        'head_to_head',
-        'goal_difference',
-        'goals_scored',
-        'fair_play',
-        'drawing_lots',
-    ];
-
-    public const DRAW_METHODS = ['random', 'manual', 'pot'];
-
     public function __construct(
-        public readonly int $groups = 1,
+        public readonly int $groups = 4,
         public readonly int $teamsPerGroup = 4,
         public readonly bool $homeAway = false,
         public readonly int $legs = 1,
@@ -68,15 +51,20 @@ class HybridConfig
         $points = is_array($raw['points'] ?? null) ? $raw['points'] : [];
         $qual = is_array($raw['qualification'] ?? null) ? $raw['qualification'] : [];
 
+        $known = Catalog::keys('tiebreaker');
+        $drawMethods = Catalog::keys('draw_method');
+        $rounds = array_keys(Catalog::roundSizes());
+
+        // Keep only tiebreakers the catalog still offers, in the event's order.
         $tiebreakers = array_values(array_intersect(
-            is_array($raw['tiebreakers'] ?? null) ? $raw['tiebreakers'] : self::TIEBREAKERS,
-            self::TIEBREAKERS,
+            is_array($raw['tiebreakers'] ?? null) ? $raw['tiebreakers'] : $known,
+            $known,
         ));
 
         $homeAway = (bool) ($raw['home_away'] ?? false);
 
         return new self(
-            groups: max(1, (int) ($raw['groups'] ?? 1)),
+            groups: max(1, (int) ($raw['groups'] ?? 4)),
             teamsPerGroup: max(2, (int) ($raw['teams_per_group'] ?? 4)),
             homeAway: $homeAway,
             // Home & away implies two legs; an explicit `legs` still wins.
@@ -87,13 +75,13 @@ class HybridConfig
             topPerGroup: max(1, min(3, (int) ($qual['top_per_group'] ?? 2))),
             bestRunnersUp: max(0, (int) ($qual['best_runners_up'] ?? 0)),
             bestThirds: max(0, (int) ($qual['best_thirds'] ?? 0)),
-            knockoutStart: in_array($raw['knockout_start'] ?? null, array_keys(self::KNOCKOUT_ROUNDS), true)
+            knockoutStart: in_array($raw['knockout_start'] ?? null, $rounds, true)
                 ? $raw['knockout_start']
                 : null,
-            drawMethod: in_array($raw['draw_method'] ?? null, self::DRAW_METHODS, true)
+            drawMethod: in_array($raw['draw_method'] ?? null, $drawMethods, true)
                 ? $raw['draw_method']
-                : 'random',
-            tiebreakers: $tiebreakers ?: self::TIEBREAKERS,
+                : ($drawMethods[0] ?? 'random'),
+            tiebreakers: $tiebreakers ?: $known,
         );
     }
 
@@ -109,7 +97,13 @@ class HybridConfig
      */
     public function qualifierCount(): int
     {
-        return $this->groups * $this->topPerGroup + $this->bestRunnersUp + $this->bestThirds;
+        // Extras only count when that place doesn't already qualify: a "best
+        // runner-up" is meaningless if every runner-up goes through anyway.
+        // Mirrors qualifierSlots(), which skips them for the same reason.
+        $extras = ($this->topPerGroup < 2 ? $this->bestRunnersUp : 0)
+            + ($this->topPerGroup < 3 ? $this->bestThirds : 0);
+
+        return $this->groups * $this->topPerGroup + $extras;
     }
 
     /**
@@ -122,7 +116,7 @@ class HybridConfig
         $qualifiers = max(2, $this->qualifierCount());
 
         if ($this->knockoutStart !== null) {
-            return max(self::KNOCKOUT_ROUNDS[$this->knockoutStart], 2);
+            return max((int) Catalog::roundSize($this->knockoutStart), 2);
         }
 
         $size = 2;
@@ -160,10 +154,10 @@ class HybridConfig
             'bracket_config.qualification.top_per_group' => ['nullable', 'integer', 'min:1', 'max:3'],
             'bracket_config.qualification.best_runners_up' => ['nullable', 'integer', 'min:0', 'max:32'],
             'bracket_config.qualification.best_thirds' => ['nullable', 'integer', 'min:0', 'max:32'],
-            'bracket_config.knockout_start' => ['nullable', 'in:'.implode(',', array_keys(self::KNOCKOUT_ROUNDS))],
-            'bracket_config.draw_method' => ['nullable', 'in:'.implode(',', self::DRAW_METHODS)],
+            'bracket_config.knockout_start' => ['nullable', 'in:'.implode(',', array_keys(Catalog::roundSizes()))],
+            'bracket_config.draw_method' => ['nullable', 'in:'.implode(',', Catalog::keys('draw_method'))],
             'bracket_config.tiebreakers' => ['nullable', 'array'],
-            'bracket_config.tiebreakers.*' => ['in:'.implode(',', self::TIEBREAKERS)],
+            'bracket_config.tiebreakers.*' => ['in:'.implode(',', Catalog::keys('tiebreaker'))],
         ];
     }
 }

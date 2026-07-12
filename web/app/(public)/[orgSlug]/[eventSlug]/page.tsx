@@ -10,7 +10,8 @@ import { getPublicEvent } from "@/lib/api/events";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
-import { SPORT_LABELS, FORMAT_LABELS, EVENT_STATUS_LABELS, SPORT_COLORS, rupiah } from "@/lib/labels";
+import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat } from "@/lib/bracket";
 import { cn } from "@/lib/utils";
 import "../../event-shell.css";
@@ -42,6 +43,7 @@ function crest(seed: string) {
 }
 
 export default function PublicEventPage() {
+  const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   const base = `/${params.orgSlug}/${params.eventSlug}`;
   const [tab, setTab] = useState<"info" | ResultsTab>("info");
@@ -73,16 +75,16 @@ export default function PublicEventPage() {
   }
 
   const ev = query.data;
-  const sportColor = SPORT_COLORS[ev.sport_type];
+  const sportColor = colorOf(ev.sport_type);
 
   // Top-level tabs: Info + the format-appropriate match panels. A hybrid event
   // has both a group table and a bracket.
   const tabs: ["info" | ResultsTab, string, typeof Info][] = [
     ["info", "Info", Info],
     ["schedule", "Jadwal", CalendarClock],
-    ...(isKnockoutFormat(ev.tournament_format)
+    ...(isKnockoutFormat(ev.engine)
       ? ([["bracket", "Bracket", Network]] as ["info" | ResultsTab, string, typeof Info][])
-      : isHybridFormat(ev.tournament_format)
+      : isHybridFormat(ev.engine)
         ? ([
             ["standings", "Klasemen", ListOrdered],
             ["bracket", "Bracket", Network],
@@ -108,9 +110,9 @@ export default function PublicEventPage() {
             <div>
               <div className="ehero-badges">
                 <span className="ehero-badge sport" style={{ color: sportColor }}>
-                  {SPORT_LABELS[ev.sport_type]}
+                  {sportLabel(ev.sport_type)}
                 </span>
-                <span className="ehero-badge">{FORMAT_LABELS[ev.tournament_format]}</span>
+                <span className="ehero-badge">{formatLabel(ev.tournament_format)}</span>
                 <span className="ehero-badge">
                   <span
                     style={{
@@ -173,7 +175,7 @@ export default function PublicEventPage() {
             <span>Tim disetujui</span>
           </div>
           <div className="ebar-cell">
-            <b style={{ fontSize: 18, paddingTop: 4 }}>{FORMAT_LABELS[ev.tournament_format]}</b>
+            <b style={{ fontSize: 18, paddingTop: 4 }}>{formatLabel(ev.tournament_format)}</b>
             <span>Format turnamen</span>
           </div>
           <div className="ebar-cell">
@@ -301,7 +303,7 @@ export default function PublicEventPage() {
                   <small>Olahraga</small>
                 </div>
                 <span className="amt" style={{ fontSize: 14, color: sportColor }}>
-                  {SPORT_LABELS[ev.sport_type]}
+                  {sportLabel(ev.sport_type)}
                 </span>
               </div>
               <div className="price-tier">
@@ -372,7 +374,7 @@ export default function PublicEventPage() {
         <PublicResults
           orgSlug={params.orgSlug}
           eventSlug={params.eventSlug}
-          format={ev.tournament_format}
+          engine={ev.engine}
           bracketConfig={ev.bracket_config}
           activeTab={tab}
         />

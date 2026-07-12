@@ -22,7 +22,10 @@ class EventResource extends JsonResource
             'name' => $this->name,
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,
+            // The sport itself, so the client doesn't have to look it up.
+            'sport' => $this->sportDefinition(),
             'tournament_format' => $this->tournament_format,
+            'engine' => $this->engine(),
             'status' => $this->status,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),

@@ -9,6 +9,7 @@ use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Team;
+use App\Services\Catalog;
 use App\Services\GroupDrawService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
@@ -16,7 +17,6 @@ use App\Services\StandingService;
 use App\Support\ApiResponse;
 use App\Support\HybridConfig;
 use App\Support\MatchScoring;
-use App\Support\SportStats;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,7 +42,8 @@ class MatchController extends Controller
     public function generate(Request $request, string $organization, string $event): JsonResponse
     {
         $eventModel = $this->event($request, $event);
-        $format = $eventModel->tournament_format;
+        // A format is a preset; the engine is what actually schedules.
+        $engine = $eventModel->engine();
 
         $options = $request->validate([
             'start_date' => ['nullable', 'date'],
@@ -62,18 +63,18 @@ class MatchController extends Controller
             ], 422);
         }
 
-        if ($format === 'hybrid') {
+        if ($engine === 'hybrid') {
             // Nobody drawn yet → draw first, so "Generate" alone is enough to get going.
             if (! $eventModel->teams()->where('status', 'approved')->whereNotNull('group_name')->exists()) {
                 $this->draw->draw($eventModel, HybridConfig::fromEvent($eventModel)->drawMethod);
             }
 
             $count = $this->schedule->generateGroupStage($eventModel);
-        } elseif ($format === 'league') {
+        } elseif ($engine === 'league') {
             $count = $this->schedule->generateRoundRobin($eventModel);
-        } elseif ($format === 'knockout_single') {
+        } elseif ($engine === 'knockout_single') {
             $count = $this->schedule->generateKnockout($eventModel);
-        } elseif ($format === 'knockout_double') {
+        } elseif ($engine === 'knockout_double') {
             $count = $this->schedule->generateDoubleElim($eventModel);
             if ($count === -1) {
                 return ApiResponse::error('Double elimination butuh jumlah tim kelipatan dua (4, 8, 16, …).', ['feature' => 'schedule_format'], 422);
@@ -104,12 +105,12 @@ class MatchController extends Controller
     {
         $eventModel = $this->event($request, $event);
 
-        if ($eventModel->tournament_format !== 'hybrid') {
+        if ($eventModel->engine() !== 'hybrid') {
             return ApiResponse::error('Undian grup hanya untuk format Grup + Knockout.', null, 422);
         }
 
         $validated = $request->validate([
-            'method' => ['required', Rule::in(HybridConfig::DRAW_METHODS)],
+            'method' => ['required', Rule::in(Catalog::keys('draw_method'))],
             'assignments' => ['nullable', 'array'],       // team_id => group name
             'assignments.*' => ['string', 'max:10'],
             'pots' => ['nullable', 'array'],              // team_id => pot number
@@ -139,7 +140,7 @@ class MatchController extends Controller
     {
         $eventModel = $this->event($request, $event);
 
-        if ($eventModel->tournament_format !== 'hybrid') {
+        if ($eventModel->engine() !== 'hybrid') {
             return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
         }
 
@@ -178,7 +179,7 @@ class MatchController extends Controller
     {
         $eventModel = $this->event($request, $event);
 
-        if ($eventModel->tournament_format !== 'hybrid') {
+        if ($eventModel->engine() !== 'hybrid') {
             return ApiResponse::error('Bracket knockout otomatis hanya untuk format Grup + Knockout.', null, 422);
         }
 
@@ -264,7 +265,7 @@ class MatchController extends Controller
             ->map(fn ($rows) => $rows->mapWithKeys(fn ($s) => [$s->stat_key => $s->value]));
 
         return ApiResponse::success([
-            'columns' => SportStats::columns($matchModel->event->sport_type),
+            'columns' => Catalog::statColumns($matchModel->event->sport_type),
             'home_team' => $this->teamRoster($matchModel->homeTeam),
             'away_team' => $this->teamRoster($matchModel->awayTeam),
             'stats' => $current,
@@ -277,7 +278,7 @@ class MatchController extends Controller
     public function saveMatchStats(Request $request, string $organization, string $match): JsonResponse
     {
         $matchModel = $this->match($request, $match)->load(['homeTeam.players', 'awayTeam.players']);
-        $allowedKeys = SportStats::keys($matchModel->event->sport_type);
+        $allowedKeys = Catalog::statKeys($matchModel->event->sport_type);
 
         $validated = $request->validate([
             'stats' => ['present', 'array'],
@@ -329,7 +330,7 @@ class MatchController extends Controller
         ]);
 
         $finished = $base['status'] === 'finished';
-        $setBased = MatchScoring::isSetBased($eventModel->sport_type);
+        $setBased = $eventModel->isSetBased();
 
         if ($setBased) {
             $data = $request->validate([
@@ -458,10 +459,10 @@ class MatchController extends Controller
 
         $matchModel->update(['confirmed_at' => now()]);
 
-        $format = $eventModel->tournament_format;
-        if ($format === 'knockout_single' || $matchModel->stage === 'knockout') {
+        $engine = $eventModel->engine();
+        if ($engine === 'knockout_single' || $matchModel->stage === 'knockout') {
             $this->schedule->advanceWinner($matchModel->fresh());
-        } elseif ($format === 'knockout_double') {
+        } elseif ($engine === 'knockout_double') {
             $this->schedule->advanceDouble($matchModel->fresh());
         }
 
@@ -482,8 +483,11 @@ class MatchController extends Controller
      */
     protected function assistError(GameMatch $match, array $stats, $roster): ?string
     {
-        $keys = SportStats::keys($match->event->sport_type);
-        if (! in_array('assists', $keys, true) || ! in_array('goals', $keys, true)) {
+        $sport = $match->event->sport_type;
+        $goalKey = Catalog::statKeyForRole($sport, 'goal');
+        $assistKey = Catalog::statKeyForRole($sport, 'assist');
+
+        if ($goalKey === null || $assistKey === null) {
             return null; // sport doesn't track both
         }
 
@@ -504,8 +508,8 @@ class MatchController extends Controller
         ];
 
         foreach ($totals as $teamId => $tally) {
-            $assists = $tally['assists'] ?? 0;
-            $goals = $match->isFinished() ? (int) ($scores[$teamId] ?? 0) : ($tally['goals'] ?? 0);
+            $assists = $tally[$assistKey] ?? 0;
+            $goals = $match->isFinished() ? (int) ($scores[$teamId] ?? 0) : ($tally[$goalKey] ?? 0);
 
             if ($assists > $goals) {
                 return "Assist ({$assists}) tidak boleh lebih banyak dari gol tim ({$goals}) — satu gol maksimal satu assist.";
@@ -525,7 +529,7 @@ class MatchController extends Controller
             return false;
         }
 
-        return in_array($match->event->tournament_format, ['knockout_single', 'knockout_double'], true)
+        return in_array($match->event->engine(), ['knockout_single', 'knockout_double'], true)
             || $match->stage === 'knockout';
     }
 

@@ -1,13 +1,19 @@
-const SPORTS = [
-  { color: "var(--sport-football)", icon: "⚽", name: "Sepak Bola", formats: "Liga · Knockout · Grup + Knockout", delay: undefined },
-  { color: "var(--sport-mini-soccer)", icon: "🥅", name: "Mini Soccer", formats: "Liga · Knockout · Grup + Knockout", delay: "60" },
-  { color: "var(--sport-futsal)", icon: "🏟️", name: "Futsal", formats: "Liga · Knockout · Grup + Knockout", delay: "120" },
-  { color: "var(--sport-badminton)", icon: "🏸", name: "Badminton", formats: "Liga · Knockout · Round Robin", delay: "180" },
-  { color: "var(--sport-padel)", icon: "🎾", name: "Padel", formats: "Liga · Knockout · Round Robin", delay: "240" },
-  { color: "var(--sport-volleyball)", icon: "🏐", name: "Voli", formats: "Liga · Knockout · Pool Play", delay: "300" },
-];
+"use client";
 
+import { useCatalog } from "@/lib/hooks/use-catalog";
+
+/**
+ * The sports the platform supports — straight from the catalog, so a sport the
+ * admin adds shows up on the marketing page too (no more "five sports" copy
+ * drifting out of date).
+ */
 export function Sports() {
+  const { sports, tournament_formats } = useCatalog();
+
+  if (sports.length === 0) return null;
+
+  const formats = tournament_formats.map((f) => f.label).join(" · ");
+
   return (
     <section
       className="section section-sm"
@@ -17,22 +23,24 @@ export function Sports() {
       <div className="container">
         <div className="section-head center reveal">
           <span className="eyebrow">Cabang Olahraga</span>
-          <h2 className="section-title">Lima cabang, banyak format turnamen</h2>
+          <h2 className="section-title">
+            {sports.length} cabang, banyak format turnamen
+          </h2>
           <p className="section-sub">
             Setiap cabang punya aturan skor, statistik, dan klasemen yang tepat sesuai karakter olahraganya.
           </p>
         </div>
         <div className="sports-grid">
-          {SPORTS.map((s) => (
+          {sports.map((s, i) => (
             <article
-              key={s.name}
+              key={s.slug}
               className="sport reveal"
-              data-delay={s.delay}
+              data-delay={i === 0 ? undefined : String(i * 60)}
               style={{ ["--sc" as string]: s.color }}
             >
-              <div className="sport-ic">{s.icon}</div>
+              <div className="sport-ic">{s.icon ?? "🏆"}</div>
               <h4>{s.name}</h4>
-              <p>{s.formats}</p>
+              <p>{formats}</p>
             </article>
           ))}
         </div>

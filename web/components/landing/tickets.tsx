@@ -77,7 +77,7 @@ export function Tickets() {
                 </div>
               </div>
               <div className="sl-item">
-                <span className="sl-ic" style={{ background: "linear-gradient(135deg,var(--sport-football),#1558CC)" }}>
+                <span className="sl-ic" style={{ background: "linear-gradient(135deg,var(--accent-blue),#1558CC)" }}>
                   <svg viewBox="0 0 24 24" fill="none">
                     <path d="M3 3v18h18" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
                     <path d="m7 14 3-3 3 3 5-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

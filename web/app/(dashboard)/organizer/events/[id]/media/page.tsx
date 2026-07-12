@@ -28,7 +28,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
-import { SPONSOR_TIER_LABELS } from "@/lib/labels";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { EventPhoto, SponsorTier } from "@/types/api";
 
 /** Group an event's photos by album, default album last. */
@@ -42,6 +42,7 @@ function byAlbum(photos: EventPhoto[]): [string, EventPhoto[]][] {
 }
 
 export default function EventMediaPage() {
+  const { sponsor_tiers, sponsorTierLabel } = useCatalog();
   const { orgId } = useActiveOrg();
   const { id: eventId } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -326,9 +327,9 @@ export default function EventMediaPage() {
                   onChange={(e) => setSponsor((s) => ({ ...s, tier: e.target.value as SponsorTier }))}
                   className="w-40"
                 >
-                  {(Object.keys(SPONSOR_TIER_LABELS) as SponsorTier[]).map((t) => (
-                    <option key={t} value={t}>
-                      {SPONSOR_TIER_LABELS[t]}
+                  {sponsor_tiers.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
                     </option>
                   ))}
                 </Select>
@@ -360,7 +361,7 @@ export default function EventMediaPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{s.name}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {SPONSOR_TIER_LABELS[s.tier]}
+                        {sponsorTierLabel(s.tier)}
                         {s.website_url ? ` · ${s.website_url}` : ""}
                       </p>
                     </div>

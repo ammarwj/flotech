@@ -15,6 +15,8 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            // The catalog first: events can't validate without it.
+            CatalogSeeder::class,
             PlanSeeder::class,
             UserSeeder::class,
             DemoEventSeeder::class,

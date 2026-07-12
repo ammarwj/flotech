@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventPhoto;
 use App\Models\EventSponsor;
 use App\Models\Organization;
+use App\Services\Catalog;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,7 +98,8 @@ class EventMediaController extends Controller
 
         $sponsor = $eventModel->sponsors()->create([
             ...$data,
-            'tier' => $data['tier'] ?? 'sponsor',
+            // Default to the first tier the admin has configured.
+            'tier' => $data['tier'] ?? (Catalog::keys('sponsor_tier')[1] ?? 'sponsor'),
             'sort_order' => $data['sort_order'] ?? ((int) $eventModel->sponsors()->max('sort_order') + 1),
         ]);
 
@@ -131,7 +133,7 @@ class EventMediaController extends Controller
             'name' => [$required, 'string', 'max:255'],
             'logo_url' => [$required, 'string'],
             'website_url' => ['nullable', 'string', 'max:255'],
-            'tier' => ['nullable', Rule::in(EventSponsor::TIERS)],
+            'tier' => ['nullable', Rule::in(Catalog::keys('sponsor_tier'))],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

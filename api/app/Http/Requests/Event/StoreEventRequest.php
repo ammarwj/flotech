@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Event;
 
+use App\Services\Catalog;
 use App\Support\HybridConfig;
-use App\Support\Sports;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,8 +22,8 @@ class StoreEventRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],
-            'sport_type' => ['required', Rule::in(Sports::ALL)],
-            'tournament_format' => ['required', Rule::in(['league', 'knockout_single', 'knockout_double', 'hybrid'])],
+            'sport_type' => ['required', Rule::in(Catalog::sportSlugs())],
+            'tournament_format' => ['required', Rule::in(Catalog::keys('tournament_format'))],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'registration_open' => ['nullable', 'date'],
