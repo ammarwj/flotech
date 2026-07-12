@@ -12,6 +12,7 @@ import { apiClient } from "@/lib/api/client";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
 const schema = z.object({
@@ -68,9 +69,8 @@ export default function LoginPage() {
 
         <div className="grid gap-2">
           <Label htmlFor="password">Password</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             {...register("password")}
           />

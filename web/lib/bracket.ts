@@ -8,6 +8,10 @@ export function isDoubleElim(format: TournamentFormat): boolean {
   return format === "knockout_double";
 }
 
+export function isHybrid(format: TournamentFormat): boolean {
+  return format === "hybrid";
+}
+
 /** Human label for a knockout round based on how many matches it holds. */
 export function knockoutRoundLabel(matchesInRound: number): string {
   switch (matchesInRound) {
@@ -32,9 +36,18 @@ export function matchWinnerId(m: Match): string | null {
   if (m.status === "finished" && m.home_score !== null && m.away_score !== null) {
     if (m.home_score > m.away_score) return m.home_team_id;
     if (m.away_score > m.home_score) return m.away_team_id;
+    // Level: the shootout decided it.
+    if (m.home_penalty !== null && m.away_penalty !== null) {
+      if (m.home_penalty > m.away_penalty) return m.home_team_id;
+      if (m.away_penalty > m.home_penalty) return m.away_team_id;
+    }
   }
   return null;
 }
+
+/** True when the tie went to penalties. */
+export const wentToPenalties = (m: Match) =>
+  m.home_penalty !== null && m.away_penalty !== null;
 
 const CREST_GRADIENTS = [
   "linear-gradient(135deg,#1E6FFF,#1558CC)",
@@ -64,14 +77,29 @@ export function groupByRound(matches: Match[]): [number, Match[]][] {
 
 /**
  * Build labelled match sections for the schedule list. Double elimination is
- * split by bracket (Winners / Losers / Grand Final); other formats group by
- * round.
+ * split by bracket (Winners / Losers / Grand Final), hybrid by stage (group
+ * matchdays, then the knockout rounds); other formats group by round.
  */
 export function buildMatchSections(
   matches: Match[],
   knockout: boolean,
-  doubleElim: boolean
+  doubleElim: boolean,
+  hybrid = false
 ): [string, Match[]][] {
+  if (hybrid) {
+    const out: [string, Match[]][] = [];
+
+    for (const [round, list] of groupByRound(matches.filter((m) => m.stage === "group"))) {
+      const leg = list[0]?.leg ?? 1;
+      out.push([leg > 1 ? `Fase Grup · Matchday ${round} (Leg 2)` : `Fase Grup · Matchday ${round}`, list]);
+    }
+    for (const [, list] of groupByRound(matches.filter((m) => m.stage === "knockout"))) {
+      out.push([`Knockout · ${knockoutRoundLabel(list.length)}`, list]);
+    }
+
+    return out;
+  }
+
   if (doubleElim) {
     const groups: [Match["bracket"], string][] = [
       ["winners", "Winners"],

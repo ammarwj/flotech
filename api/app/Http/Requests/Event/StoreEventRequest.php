@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Event;
 
+use App\Support\HybridConfig;
+use App\Support\Sports;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +22,7 @@ class StoreEventRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],
-            'sport_type' => ['required', Rule::in(['football', 'futsal', 'badminton', 'padel', 'volleyball'])],
+            'sport_type' => ['required', Rule::in(Sports::ALL)],
             'tournament_format' => ['required', Rule::in(['league', 'knockout_single', 'knockout_double', 'hybrid'])],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
@@ -32,6 +34,7 @@ class StoreEventRequest extends FormRequest
             'banner_url' => ['nullable', 'string'],
             'max_teams' => ['nullable', 'integer', 'min:2'],
             'registration_fee' => ['nullable', 'numeric', 'min:0'],
+            ...HybridConfig::validationRules(),
         ];
     }
 }

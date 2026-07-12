@@ -15,6 +15,7 @@
 
   /* sport accents */
   --sport-football: #1E6FFF;
+  --sport-mini-soccer: #0EA5E9;
   --sport-futsal: #7C3AED;
   --sport-badminton: #DB2777;
   --sport-padel: #D97706;
@@ -103,13 +104,18 @@ body {
   transition: background-color 0.3s var(--ease), color 0.3s var(--ease);
 }
 
-h1, h2, h3, h4 {
-  font-family: var(--font-display);
-  font-weight: 700;
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  margin: 0;
-  color: var(--text);
+/* In the base layer for the same reason as the link reset below: an unlayered
+   `margin: 0` here would beat every layered utility, so `mb-4` on a heading
+   would silently do nothing. */
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--text);
+  }
 }
 
 p { margin: 0; }
@@ -989,6 +995,9 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
 .bkt-name { font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bkt-tbd .bkt-name { color: var(--text-muted); font-style: italic; font-weight: 500; }
 .bkt-score { margin-left: auto; padding-left: 8px; font-family: var(--font-mono); font-weight: 600; color: var(--text-muted); }
+/* Shootout score, e.g. "(4)" — sits just before the scoreline. */
+.bkt-pen { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.bkt-pen + .bkt-score { margin-left: 0; }
 .bkt-side.win .bkt-name { color: var(--text); }
 .bkt-side.win .bkt-score { color: var(--success); }
 .bkt-side.lose .bkt-name { color: var(--text-muted); }

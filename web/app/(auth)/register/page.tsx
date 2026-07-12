@@ -12,6 +12,7 @@ import { register as registerUser } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
 const schema = z
@@ -79,14 +80,13 @@ export default function RegisterPage() {
         </div>
         <div className="grid gap-2">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+          <PasswordInput id="password" autoComplete="new-password" {...register("password")} />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="password_confirmation">Konfirmasi password</Label>
-          <Input
+          <PasswordInput
             id="password_confirmation"
-            type="password"
             autoComplete="new-password"
             {...register("password_confirmation")}
           />

@@ -1,4 +1,4 @@
-import { knockoutRoundLabel, matchWinnerId, crestGradient, groupByRound } from "@/lib/bracket";
+import { knockoutRoundLabel, matchWinnerId, crestGradient, groupByRound, wentToPenalties } from "@/lib/bracket";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -6,12 +6,15 @@ function Side({
   name,
   logoUrl,
   score,
+  penalty,
   isWinner,
   decided,
 }: {
   name: string | null;
   logoUrl?: string | null;
   score: number | null;
+  /** Shootout score, shown next to the scoreline when the tie went to penalties. */
+  penalty?: number | null;
   isWinner: boolean;
   decided: boolean;
 }) {
@@ -24,6 +27,11 @@ function Side({
         <span className="bkt-crest" style={{ background: name ? crestGradient(name) : "var(--border)" }} />
       )}
       <span className="bkt-name">{name ?? "TBD"}</span>
+      {penalty !== null && penalty !== undefined && (
+        <span className="bkt-pen" title="Adu penalti">
+          ({penalty})
+        </span>
+      )}
       {score !== null && <span className="bkt-score">{score}</span>}
     </div>
   );
@@ -52,6 +60,7 @@ export function BracketView({
               const decided = winner !== null;
               // A lone team is a real "Bye" only once the match is settled.
               const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
+              const pens = wentToPenalties(m);
               return (
                 <div key={m.id} className="bkt-cell">
                   <div className="bkt-match">
@@ -59,6 +68,7 @@ export function BracketView({
                       name={m.home_team?.name ?? null}
                       logoUrl={m.home_team?.logo_url}
                       score={m.home_score}
+                      penalty={pens ? m.home_penalty : null}
                       isWinner={winner === m.home_team_id}
                       decided={decided}
                     />
@@ -66,6 +76,7 @@ export function BracketView({
                       name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
                       logoUrl={m.away_team?.logo_url}
                       score={m.away_score}
+                      penalty={pens ? m.away_penalty : null}
                       isWinner={winner === m.away_team_id}
                       decided={decided}
                     />

@@ -21,6 +21,7 @@ class Team extends Model
         'contact_phone',
         'status',
         'group_name',
+        'seed_pot',
         'registered_at',
         'approved_at',
         'manager_user_id',

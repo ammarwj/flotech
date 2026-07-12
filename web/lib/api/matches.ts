@@ -1,11 +1,14 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  DrawMethod,
+  KnockoutPlan,
   Leaderboard,
   Match,
   MatchStatsData,
   MatchStatus,
   Standing,
+  Team,
 } from "@/types/api";
 
 // ---- Organizer (tenant-scoped) ----
@@ -46,6 +49,43 @@ export async function generateSchedule(
   return data.data;
 }
 
+export interface DrawPayload {
+  method: DrawMethod;
+  /** Manual draw: team id => group name. */
+  assignments?: Record<string, string>;
+  /** Pot draw: team id => pot number. */
+  pots?: Record<string, number>;
+}
+
+/** Draw the approved teams of a hybrid event into groups. */
+export async function drawGroups(
+  orgId: string,
+  eventId: string,
+  payload: DrawPayload
+): Promise<Team[]> {
+  const { data } = await apiClient.post<ApiEnvelope<Team[]>>(
+    `/organizations/${orgId}/events/${eventId}/draw`,
+    payload
+  );
+  return data.data;
+}
+
+/** The planned knockout bracket ("Juara Grup A" v "Runner-up Grup D"). */
+export async function getKnockoutPlan(orgId: string, eventId: string): Promise<KnockoutPlan> {
+  const { data } = await apiClient.get<ApiEnvelope<KnockoutPlan>>(
+    `/organizations/${orgId}/events/${eventId}/knockout-plan`
+  );
+  return data.data;
+}
+
+/** Build the knockout bracket of a hybrid event from the group qualifiers. */
+export async function generateKnockout(orgId: string, eventId: string): Promise<Match[]> {
+  const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/events/${eventId}/knockout`
+  );
+  return data.data;
+}
+
 export async function confirmResult(
   orgId: string,
   matchId: string,
@@ -68,6 +108,9 @@ export async function getStandings(orgId: string, eventId: string): Promise<Stan
 export interface MatchResultPayload {
   home_score?: number | null;
   away_score?: number | null;
+  /** Shootout score; required when a knockout tie ends level. */
+  home_penalty?: number | null;
+  away_penalty?: number | null;
   /** For set-based sports; backend derives home/away score from this. */
   sets?: { home: number; away: number }[] | null;
   status: MatchStatus;

@@ -10,7 +10,7 @@ import { AxiosError } from "axios";
 
 import { resetPassword } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
 const schema = z
@@ -58,14 +58,13 @@ function ResetForm() {
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 grid gap-4">
         <div className="grid gap-2">
           <Label htmlFor="password">Password baru</Label>
-          <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
+          <PasswordInput id="password" autoComplete="new-password" {...register("password")} />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="password_confirmation">Konfirmasi password</Label>
-          <Input
+          <PasswordInput
             id="password_confirmation"
-            type="password"
             autoComplete="new-password"
             {...register("password_confirmation")}
           />

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 /** Sensible per-match duration (minutes) by sport. */
 const DEFAULT_DURATION: Record<string, number> = {
   football: 90,
+  mini_soccer: 50,
   futsal: 40,
   badminton: 30,
   padel: 40,

@@ -81,8 +81,52 @@ export interface CheckoutResult {
   mock: boolean;
 }
 
-export type SportType = "football" | "futsal" | "badminton" | "padel" | "volleyball";
+export type SportType =
+  | "football"
+  | "mini_soccer"
+  | "futsal"
+  | "badminton"
+  | "padel"
+  | "volleyball";
 export type TournamentFormat = "league" | "knockout_single" | "knockout_double" | "hybrid";
+
+export type KnockoutRound =
+  | "final"
+  | "semifinal"
+  | "quarter_final"
+  | "round_of_16"
+  | "round_of_32"
+  | "round_of_64";
+
+export type Tiebreaker =
+  | "head_to_head"
+  | "goal_difference"
+  | "goals_scored"
+  | "fair_play"
+  | "drawing_lots";
+
+export type DrawMethod = "random" | "manual" | "pot";
+
+/**
+ * Format configuration of an event (`bracket_config`). Only the hybrid format
+ * uses all of it; a league reads the points and tiebreakers.
+ */
+export interface BracketConfig {
+  groups?: number;
+  teams_per_group?: number;
+  home_away?: boolean;
+  legs?: number;
+  points?: { win?: number; draw?: number; lose?: number };
+  qualification?: {
+    top_per_group?: number;
+    best_runners_up?: number;
+    best_thirds?: number;
+  };
+  /** Entry round of the knockout stage; omitted = sized from the qualifiers. */
+  knockout_start?: KnockoutRound | null;
+  draw_method?: DrawMethod;
+  tiebreakers?: Tiebreaker[];
+}
 export type EventStatus =
   | "draft"
   | "open"
@@ -103,18 +147,27 @@ export interface MatchTeamRef {
 
 export type BracketSide = "winners" | "losers" | "grand_final";
 
+/** Stage of a hybrid event; null for the single-stage formats. */
+export type MatchStage = "group" | "knockout" | null;
+
 export interface Match {
   id: string;
+  stage: MatchStage;
   round: number;
   group_name: string | null;
   bracket: BracketSide | null;
   order: number;
+  /** Leg of a home & away tie (1 or 2). */
+  leg: number;
   home_team: MatchTeamRef | null;
   away_team: MatchTeamRef | null;
   home_team_id: string | null;
   away_team_id: string | null;
   home_score: number | null;
   away_score: number | null;
+  /** Penalty shootout — only set on a knockout tie that ended level. */
+  home_penalty: number | null;
+  away_penalty: number | null;
   /** Per-set scores for set-based sports; null for goal-based sports. */
   sets: { home: number; away: number }[] | null;
   status: MatchStatus;
@@ -124,9 +177,29 @@ export interface Match {
   venue: string | null;
 }
 
+/** A place in the knockout bracket, e.g. "Juara Grup A" — and who holds it now. */
+export interface KnockoutSlot {
+  label: string;
+  group: string | null;
+  place: number;
+  /** Current occupant from the live group table; null until there are results. */
+  team: MatchTeamRef | null;
+}
+
+/** The bracket as planned, before (or while) the group stage plays out. */
+export interface KnockoutPlan {
+  bracket_size: number;
+  qualifiers: number;
+  byes: number;
+  group_matches_pending: number;
+  ties: { order: number; home: KnockoutSlot | null; away: KnockoutSlot | null }[];
+}
+
 export interface Standing {
   rank: number;
   team: MatchTeamRef;
+  /** Group the team was drawn into (hybrid); null for a single table. */
+  group_name: string | null;
   played: number;
   won: number;
   drawn: number;
@@ -135,6 +208,8 @@ export interface Standing {
   goals_against: number;
   goal_diff: number;
   points: number;
+  /** Disciplinary points: 1 per yellow, 3 per red. Lower is better. */
+  fair_play: number;
 }
 
 export interface StatColumn {
@@ -196,7 +271,29 @@ export interface SportEvent {
   banner_url: string | null;
   max_teams: number | null;
   registration_fee: number;
+  bracket_config: BracketConfig | null;
   teams_count?: number;
+}
+
+/** A photo in one of an event's albums. */
+export interface EventPhoto {
+  id: string;
+  /** Album name; null = the event's default album. */
+  album: string | null;
+  photo_url: string;
+  caption: string | null;
+  sort_order?: number;
+}
+
+export type SponsorTier = "host" | "sponsor" | "media_partner" | "supporter";
+
+export interface EventSponsor {
+  id: string;
+  name: string;
+  logo_url: string;
+  website_url: string | null;
+  tier: SponsorTier;
+  sort_order?: number;
 }
 
 export interface Player {
@@ -226,6 +323,8 @@ export interface Team {
   contact_phone: string | null;
   status: TeamStatus;
   group_name: string | null;
+  /** Seeding pot used by a pot-based group draw. */
+  seed_pot: number | null;
   registered_at: string | null;
   approved_at: string | null;
   payment_status: PaymentStatus;
@@ -270,8 +369,11 @@ export interface PublicEvent {
   banner_url: string | null;
   max_teams: number | null;
   registration_fee: number;
+  bracket_config: BracketConfig | null;
   tickets_on_sale: boolean;
   organization: { name: string | null; slug: string | null; logo_url: string | null };
+  sponsors?: EventSponsor[];
+  photos?: EventPhoto[];
   approved_teams_count: number;
   approved_teams?: { id: string; name: string; city: string | null; logo_url: string | null }[];
 }

@@ -34,6 +34,7 @@ class EventResource extends JsonResource
             'banner_url' => $this->banner_url,
             'max_teams' => $this->max_teams,
             'registration_fee' => (float) $this->registration_fee,
+            'bracket_config' => $this->bracket_config,
             'teams_count' => $this->whenCounted('teams'),
             'created_at' => $this->created_at,
         ];

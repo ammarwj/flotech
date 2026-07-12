@@ -1,9 +1,10 @@
 const SPORTS = [
-  { color: "var(--sport-football)", icon: "⚽", name: "Sepak Bola", formats: "Liga · Knockout · Hybrid · Grup + Playoff", delay: undefined },
-  { color: "var(--sport-futsal)", icon: "🥅", name: "Futsal", formats: "Liga · Knockout · Hybrid", delay: "60" },
-  { color: "var(--sport-badminton)", icon: "🏸", name: "Badminton", formats: "Liga · Knockout · Round Robin", delay: "120" },
-  { color: "var(--sport-padel)", icon: "🎾", name: "Padel", formats: "Liga · Knockout · Round Robin", delay: "180" },
-  { color: "var(--sport-volleyball)", icon: "🏐", name: "Voli", formats: "Liga · Knockout · Pool Play", delay: "240" },
+  { color: "var(--sport-football)", icon: "⚽", name: "Sepak Bola", formats: "Liga · Knockout · Grup + Knockout", delay: undefined },
+  { color: "var(--sport-mini-soccer)", icon: "🥅", name: "Mini Soccer", formats: "Liga · Knockout · Grup + Knockout", delay: "60" },
+  { color: "var(--sport-futsal)", icon: "🏟️", name: "Futsal", formats: "Liga · Knockout · Grup + Knockout", delay: "120" },
+  { color: "var(--sport-badminton)", icon: "🏸", name: "Badminton", formats: "Liga · Knockout · Round Robin", delay: "180" },
+  { color: "var(--sport-padel)", icon: "🎾", name: "Padel", formats: "Liga · Knockout · Round Robin", delay: "240" },
+  { color: "var(--sport-volleyball)", icon: "🏐", name: "Voli", formats: "Liga · Knockout · Pool Play", delay: "300" },
 ];
 
 export function Sports() {

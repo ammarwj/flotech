@@ -19,14 +19,18 @@ class GameMatch extends Model
 
     protected $fillable = [
         'event_id',
+        'stage',
         'round',
         'group_name',
         'bracket',
         'order',
+        'leg',
         'home_team_id',
         'away_team_id',
         'home_score',
         'away_score',
+        'home_penalty',
+        'away_penalty',
         'sets',
         'scheduled_at',
         'venue',
@@ -39,10 +43,13 @@ class GameMatch extends Model
         return [
             'round' => 'integer',
             'order' => 'integer',
+            'leg' => 'integer',
             'sets' => 'array',
             'confirmed_at' => 'datetime',
             'home_score' => 'integer',
             'away_score' => 'integer',
+            'home_penalty' => 'integer',
+            'away_penalty' => 'integer',
             'scheduled_at' => 'datetime',
         ];
     }

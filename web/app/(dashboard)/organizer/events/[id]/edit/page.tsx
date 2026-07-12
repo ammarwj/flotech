@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Rocket, Trash2, Eye, CalendarClock } from "lucide-react";
+import { Rocket, Trash2, Eye, CalendarClock, Images } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -127,6 +127,12 @@ export default function EditEventPage() {
               <Link href={`/organizer/events/${eventId}/schedule`}>
                 <CalendarClock className="h-4 w-4" />
                 Jadwal & Klasemen
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/media`}>
+                <Images className="h-4 w-4" />
+                Galeri & Sponsor
               </Link>
             </Button>
             <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>

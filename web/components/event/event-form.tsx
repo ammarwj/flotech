@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Loader2,
   MapPin,
+  Network,
   Trophy,
   Users,
   Wallet,
@@ -23,14 +24,11 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { SectionHeader } from "@/components/event/section-header";
+import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { SPORT_LABELS, SPORT_COLORS, FORMAT_LABELS, rupiah } from "@/lib/labels";
+import { hybridConfig, qualifierCount } from "@/lib/hybrid";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
@@ -50,29 +48,6 @@ function FieldError({ message }: { message?: string }) {
 /** Hint text under a field; rendered only when there's no error to show. */
 function FieldHint({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>;
-}
-
-/** Card header with an accented icon tile, title, and short description. */
-function SectionHeader({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: typeof Trophy;
-  title: string;
-  description: string;
-}) {
-  return (
-    <CardHeader className="flex-row items-start gap-3 space-y-0">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <CardTitle>{title}</CardTitle>
-        <CardDescription className="mt-1">{description}</CardDescription>
-      </div>
-    </CardHeader>
-  );
 }
 
 /** Whole days between two YYYY-MM-DD dates, inclusive (e.g. same day = 1). */
@@ -118,6 +93,7 @@ function EventSummary({
   const sport = v.sport_type ?? "football";
   const sportColor = SPORT_COLORS[sport];
   const isFree = !v.registration_fee || v.registration_fee <= 0;
+  const hybrid = v.tournament_format === "hybrid" ? hybridConfig(v.bracket_config) : null;
 
   return (
     <Card className="overflow-hidden">
@@ -165,6 +141,12 @@ function EventSummary({
           <SummaryRow icon={Users}>
             {v.max_teams ? `Maks. ${v.max_teams} tim` : "Tim tak terbatas"}
           </SummaryRow>
+          {hybrid && (
+            <SummaryRow icon={Network}>
+              {hybrid.groups} grup × {hybrid.teams_per_group} tim ·{" "}
+              {qualifierCount(hybrid)} lolos ke knockout
+            </SummaryRow>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -200,6 +182,7 @@ export function EventForm({
     banner_url: initial?.banner_url ?? "",
     max_teams: initial?.max_teams ?? undefined,
     registration_fee: initial?.registration_fee ?? 0,
+    bracket_config: initial?.bracket_config ?? undefined,
   });
 
   // Local object URL for instant preview; in dev R2 returns a non-renderable
@@ -386,6 +369,13 @@ export function EventForm({
           </div>
         </CardContent>
       </Card>
+
+      {v.tournament_format === "hybrid" && (
+        <HybridConfigCard
+          value={v.bracket_config}
+          onChange={(config) => set("bracket_config", config)}
+        />
+      )}
 
       <Card>
         <SectionHeader

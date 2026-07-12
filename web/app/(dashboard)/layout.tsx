@@ -43,8 +43,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Content */}
-      <div className="flex min-h-screen flex-col">
+      {/* Content — min-w-0 so a wide child (bracket, table) scrolls inside its
+          own box instead of stretching the grid column and the page with it. */}
+      <div className="flex min-h-screen min-w-0 flex-col">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-[color-mix(in_srgb,var(--surface)_85%,transparent)] px-5 backdrop-blur-md md:px-6">
           <div className="md:hidden">
             <Logo />

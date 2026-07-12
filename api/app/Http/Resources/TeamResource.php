@@ -27,6 +27,7 @@ class TeamResource extends JsonResource
             'contact_phone' => $this->contact_phone,
             'status' => $this->status,
             'group_name' => $this->group_name,
+            'seed_pot' => $this->seed_pot,
             'registered_at' => $this->registered_at,
             'approved_at' => $this->approved_at,
             'manager_user_id' => $this->manager_user_id,

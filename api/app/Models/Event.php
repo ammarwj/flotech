@@ -61,6 +61,16 @@ class Event extends Model
         return $this->hasMany(GameMatch::class);
     }
 
+    public function photos(): HasMany
+    {
+        return $this->hasMany(EventPhoto::class)->orderBy('sort_order')->orderBy('created_at');
+    }
+
+    public function sponsors(): HasMany
+    {
+        return $this->hasMany(EventSponsor::class)->orderBy('sort_order')->orderBy('created_at');
+    }
+
     public function ticketCategories(): HasMany
     {
         return $this->hasMany(TicketCategory::class);

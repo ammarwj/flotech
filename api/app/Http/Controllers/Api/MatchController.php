@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
+use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Team;
+use App\Services\GroupDrawService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
+use App\Support\HybridConfig;
 use App\Support\MatchScoring;
 use App\Support\SportStats;
 use Illuminate\Database\Eloquent\Collection;
@@ -30,6 +33,7 @@ class MatchController extends Controller
         protected ScheduleService $schedule,
         protected StandingService $standings,
         protected PlayerStatService $stats,
+        protected GroupDrawService $draw,
     ) {}
 
     /**
@@ -58,7 +62,14 @@ class MatchController extends Controller
             ], 422);
         }
 
-        if (in_array($format, ['league', 'hybrid'], true)) {
+        if ($format === 'hybrid') {
+            // Nobody drawn yet → draw first, so "Generate" alone is enough to get going.
+            if (! $eventModel->teams()->where('status', 'approved')->whereNotNull('group_name')->exists()) {
+                $this->draw->draw($eventModel, HybridConfig::fromEvent($eventModel)->drawMethod);
+            }
+
+            $count = $this->schedule->generateGroupStage($eventModel);
+        } elseif ($format === 'league') {
             $count = $this->schedule->generateRoundRobin($eventModel);
         } elseif ($format === 'knockout_single') {
             $count = $this->schedule->generateKnockout($eventModel);
@@ -81,6 +92,130 @@ class MatchController extends Controller
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($eventModel)),
             "Jadwal dibuat: {$count} pertandingan",
+            201,
+        );
+    }
+
+    /**
+     * Draw the approved teams of a hybrid event into groups (random, seeding
+     * pots, or the organizer's own assignment).
+     */
+    public function drawGroups(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        if ($eventModel->tournament_format !== 'hybrid') {
+            return ApiResponse::error('Undian grup hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $validated = $request->validate([
+            'method' => ['required', Rule::in(HybridConfig::DRAW_METHODS)],
+            'assignments' => ['nullable', 'array'],       // team_id => group name
+            'assignments.*' => ['string', 'max:10'],
+            'pots' => ['nullable', 'array'],              // team_id => pot number
+            'pots.*' => ['integer', 'min:1', 'max:16'],
+        ]);
+
+        $teams = $this->draw->draw(
+            $eventModel,
+            $validated['method'],
+            $validated['assignments'] ?? [],
+            $validated['pots'] ?? [],
+        );
+
+        if ($teams->isEmpty()) {
+            return ApiResponse::error('Belum ada tim yang disetujui untuk diundi.', null, 422);
+        }
+
+        return ApiResponse::success(TeamResource::collection($teams), 'Undian grup selesai');
+    }
+
+    /**
+     * The knockout bracket as *planned*: which slot meets which ("Juara Grup A"
+     * v "Runner-up Grup D"), with whoever currently holds each slot. Available
+     * from the moment the groups are drawn, long before they finish.
+     */
+    public function knockoutPlan(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        if ($eventModel->tournament_format !== 'hybrid') {
+            return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $config = HybridConfig::fromEvent($eventModel);
+        $slots = $this->standings->qualifierSlots($eventModel);
+
+        $pairs = $this->schedule->firstRoundPairs(
+            $config->bracketSize(),
+            $slots,
+            fn (array $slot) => $slot['group'],
+        );
+
+        $pending = $eventModel->matches()
+            ->where('stage', 'group')
+            ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
+            ->count();
+
+        return ApiResponse::success([
+            'bracket_size' => $config->bracketSize(),
+            'qualifiers' => count($slots),
+            'byes' => max(0, $config->bracketSize() - count($slots)),
+            'group_matches_pending' => $pending,
+            'ties' => array_map(fn ($pair, $order) => [
+                'order' => $order,
+                'home' => $pair[0],
+                'away' => $pair[1],
+            ], $pairs, array_keys($pairs)),
+        ]);
+    }
+
+    /**
+     * Build the knockout bracket of a hybrid event from the teams that came
+     * through the groups. Group fixtures and results are left untouched.
+     */
+    public function generateKnockout(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        if ($eventModel->tournament_format !== 'hybrid') {
+            return ApiResponse::error('Bracket knockout otomatis hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $config = HybridConfig::fromEvent($eventModel);
+
+        $pending = $eventModel->matches()
+            ->where('stage', 'group')
+            ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
+            ->count();
+
+        if ($pending > 0) {
+            return ApiResponse::error(
+                "Masih ada {$pending} pertandingan grup yang belum selesai/dikonfirmasi.",
+                ['feature' => 'group_stage_incomplete'],
+                422,
+            );
+        }
+
+        $qualifiers = $this->standings->qualifiers($eventModel);
+
+        if (count($qualifiers) > $config->bracketSize()) {
+            return ApiResponse::error(
+                'Babak awal knockout terlalu kecil untuk '.count($qualifiers).' tim yang lolos.',
+                ['feature' => 'knockout_start'],
+                422,
+            );
+        }
+
+        if ($this->schedule->generateHybridKnockout($eventModel, $qualifiers) === 0) {
+            return ApiResponse::error('Butuh minimal 2 tim lolos untuk membuat bracket.', null, 422);
+        }
+
+        $this->schedule->applySchedule($eventModel, [], 'knockout');
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($eventModel)),
+            'Bracket knockout dibuat: '.count($qualifiers).' tim lolos',
             201,
         );
     }
@@ -157,6 +292,10 @@ class MatchController extends Controller
             ->flatMap(fn ($team) => $team->players->map(fn ($p) => ['player_id' => $p->id, 'team_id' => $team->id]))
             ->keyBy('player_id');
 
+        if ($error = $this->assistError($matchModel, $validated['stats'], $roster)) {
+            return ApiResponse::error($error, ['assists' => [$error]], 422);
+        }
+
         $matchModel->stats()->delete();
 
         foreach ($validated['stats'] as $entry) {
@@ -224,11 +363,38 @@ class MatchController extends Controller
             $payload = [...$base, 'home_score' => $data['home_score'], 'away_score' => $data['away_score'], 'sets' => null];
         }
 
-        $format = $eventModel->tournament_format;
-        $isKnockout = in_array($format, ['knockout_single', 'knockout_double'], true);
+        $shootout = $request->validate([
+            'home_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'away_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
+        ]);
 
-        if ($finished && $isKnockout && $payload['home_score'] === $payload['away_score']) {
-            return ApiResponse::error('Pertandingan knockout tidak boleh berakhir seri — tentukan pemenangnya.', null, 422);
+        $level = $payload['home_score'] !== null && $payload['home_score'] === $payload['away_score'];
+        $knockout = $this->isKnockoutTie($matchModel);
+
+        // A knockout tie that ends level is settled on penalties; anything else
+        // has no shootout at all.
+        if ($finished && $knockout && $level) {
+            $home = $shootout['home_penalty'] ?? null;
+            $away = $shootout['away_penalty'] ?? null;
+
+            if ($home === null || $away === null) {
+                return ApiResponse::error('Skor imbang di knockout — isi hasil adu penalti.', [
+                    'home_penalty' => ['Skor adu penalti wajib diisi.'],
+                ], 422);
+            }
+
+            if ($home === $away) {
+                return ApiResponse::error('Adu penalti tidak boleh berakhir imbang — tentukan pemenangnya.', [
+                    'home_penalty' => ['Harus ada pemenang.'],
+                ], 422);
+            }
+
+            $payload['home_penalty'] = $home;
+            $payload['away_penalty'] = $away;
+        } else {
+            // Decided in normal time (or a group game): drop any stale shootout.
+            $payload['home_penalty'] = null;
+            $payload['away_penalty'] = null;
         }
 
         // Entering or editing a result makes it provisional again; it only
@@ -293,7 +459,7 @@ class MatchController extends Controller
         $matchModel->update(['confirmed_at' => now()]);
 
         $format = $eventModel->tournament_format;
-        if ($format === 'knockout_single') {
+        if ($format === 'knockout_single' || $matchModel->stage === 'knockout') {
             $this->schedule->advanceWinner($matchModel->fresh());
         } elseif ($format === 'knockout_double') {
             $this->schedule->advanceDouble($matchModel->fresh());
@@ -306,12 +472,71 @@ class MatchController extends Controller
     }
 
     /**
+     * A goal carries at most one assist, so a side can never register more
+     * assists than it scored. The scoreline is the source of truth when the
+     * match is finished; otherwise the recorded scorers are.
+     *
+     * @param  array<int, array{player_id: string, stat_key: string, value: int}>  $stats
+     * @param  \Illuminate\Support\Collection<string, array{player_id: string, team_id: string}>  $roster
+     * @return string|null the error message, or null when the stats are sound
+     */
+    protected function assistError(GameMatch $match, array $stats, $roster): ?string
+    {
+        $keys = SportStats::keys($match->event->sport_type);
+        if (! in_array('assists', $keys, true) || ! in_array('goals', $keys, true)) {
+            return null; // sport doesn't track both
+        }
+
+        // team_id => [goals, assists]
+        $totals = [];
+        foreach ($stats as $entry) {
+            if (! $roster->has($entry['player_id'])) {
+                continue;
+            }
+
+            $teamId = $roster[$entry['player_id']]['team_id'];
+            $totals[$teamId][$entry['stat_key']] = ($totals[$teamId][$entry['stat_key']] ?? 0) + $entry['value'];
+        }
+
+        $scores = [
+            $match->home_team_id => $match->home_score,
+            $match->away_team_id => $match->away_score,
+        ];
+
+        foreach ($totals as $teamId => $tally) {
+            $assists = $tally['assists'] ?? 0;
+            $goals = $match->isFinished() ? (int) ($scores[$teamId] ?? 0) : ($tally['goals'] ?? 0);
+
+            if ($assists > $goals) {
+                return "Assist ({$assists}) tidak boleh lebih banyak dari gol tim ({$goals}) — satu gol maksimal satu assist.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A match that must produce a winner: any tie in a knockout format, or the
+     * knockout stage of a hybrid event. Group fixtures may end level.
+     */
+    protected function isKnockoutTie(GameMatch $match): bool
+    {
+        if ($match->stage === 'group') {
+            return false;
+        }
+
+        return in_array($match->event->tournament_format, ['knockout_single', 'knockout_double'], true)
+            || $match->stage === 'knockout';
+    }
+
+    /**
      * @return Collection<int, GameMatch>
      */
     protected function orderedMatches(Event $event)
     {
         return $event->matches()
             ->with(['homeTeam', 'awayTeam'])
+            ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')
             ->get();

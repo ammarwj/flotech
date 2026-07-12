@@ -27,6 +27,7 @@ export type EventInput = Partial<
     | "banner_url"
     | "max_teams"
     | "registration_fee"
+    | "bracket_config"
   >
 >;
 

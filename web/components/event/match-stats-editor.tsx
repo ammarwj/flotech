@@ -8,17 +8,28 @@ import { getMatchStats, saveMatchStats, type MatchStatEntry } from "@/lib/api/ma
 import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { MatchRoster, StatColumn } from "@/types/api";
+import { cn } from "@/lib/utils";
+import type { Match, MatchRoster, StatColumn } from "@/types/api";
 
-/** Inline editor for per-player match statistics (columns vary by sport). */
+/**
+ * Inline editor for per-player match statistics (columns vary by sport).
+ *
+ * For goal-based sports it keeps the scorers honest against the scoreline: each
+ * squad shows how many of its goals are already accounted for, and a mismatch is
+ * called out. It's a warning, not a block — an own goal legitimately leaves a
+ * goal with no scorer on that side.
+ */
 export function MatchStatsEditor({
   orgId,
   eventId,
   matchId,
+  match,
 }: {
   orgId: string;
   eventId: string;
   matchId: string;
+  /** The fixture being edited; enables the goals-vs-score cross-check. */
+  match?: Match;
 }) {
   const qc = useQueryClient();
   const statsQuery = useQuery({
@@ -64,14 +75,82 @@ export function MatchStatsEditor({
     return <div className="px-3 py-2 text-xs text-muted-foreground">Memuat pemain…</div>;
   }
 
-  const teamBlock = (team: MatchRoster | null, cols: StatColumn[]) =>
+  // Only goal-based sports can be cross-checked: the score *is* the goal count.
+  const goalColumn = columns.some((c) => c.key === "goals") ? "goals" : null;
+
+  const hasAssists = columns.some((c) => c.key === "assists");
+
+  /** A squad's running total for one stat, including unsaved edits. */
+  const totalOf = (team: MatchRoster | null, key: string) =>
+    team ? team.players.reduce((sum, p) => sum + valueFor(p.id, key), 0) : 0;
+
+  const scoreOf = (side: "home" | "away") =>
+    match && match.status === "finished" ? match[`${side}_score`] : null;
+
+  const homeGoals = goalColumn ? totalOf(data?.home_team ?? null, goalColumn) : 0;
+  const awayGoals = goalColumn ? totalOf(data?.away_team ?? null, goalColumn) : 0;
+  const homeScore = scoreOf("home");
+  const awayScore = scoreOf("away");
+
+  const homeAssists = hasAssists ? totalOf(data?.home_team ?? null, "assists") : 0;
+  const awayAssists = hasAssists ? totalOf(data?.away_team ?? null, "assists") : 0;
+
+  const mismatch =
+    goalColumn !== null &&
+    ((homeScore !== null && homeGoals !== homeScore) ||
+      (awayScore !== null && awayGoals !== awayScore));
+
+  // A goal carries at most one assist, so a squad can never assist more than it
+  // scored. Unlike the scorer mismatch (own goals), this is simply impossible —
+  // so it blocks saving.
+  const goalCeiling = (score: number | null, scored: number) => score ?? scored;
+  const tooManyAssists =
+    hasAssists &&
+    (homeAssists > goalCeiling(homeScore, homeGoals) ||
+      awayAssists > goalCeiling(awayScore, awayGoals));
+
+  /** Small tally chip, e.g. "2/3 gol" — green when it adds up, else amber. */
+  const chip = (label: string, ok: boolean) => (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
+        ok ? "text-[var(--success)]" : "text-[var(--warning)]"
+      )}
+      style={{
+        background: ok
+          ? "color-mix(in srgb, var(--success) 12%, transparent)"
+          : "color-mix(in srgb, var(--warning) 12%, transparent)",
+      }}
+    >
+      {label}
+    </span>
+  );
+
+  const tallies = (side: "home" | "away") => {
+    const goals = side === "home" ? homeGoals : awayGoals;
+    const score = side === "home" ? homeScore : awayScore;
+    const assists = side === "home" ? homeAssists : awayAssists;
+    const ceiling = goalCeiling(score, goals);
+
+    return (
+      <>
+        {goalColumn && score !== null && chip(`${goals}/${score} gol`, goals === score)}
+        {hasAssists && assists > 0 && chip(`${assists}/${ceiling} assist`, assists <= ceiling)}
+      </>
+    );
+  };
+
+  const teamBlock = (team: MatchRoster | null, cols: StatColumn[], side: "home" | "away") =>
     team && (
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 truncate text-xs font-bold text-muted-foreground">{team.name}</div>
+      <div className="min-w-0 flex-1 overflow-x-auto">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="truncate text-xs font-bold text-muted-foreground">{team.name}</span>
+          {tallies(side)}
+        </div>
         {team.players.length === 0 ? (
           <p className="text-xs text-muted-foreground">Belum ada pemain terdaftar.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[16rem] text-sm">
             <thead>
               <tr className="text-[11px] uppercase text-muted-foreground">
                 <th className="pb-1 text-left font-medium">Pemain</th>
@@ -111,12 +190,36 @@ export function MatchStatsEditor({
 
   return (
     <div className="mt-2 rounded-lg border border-dashed border-border bg-[var(--surface-2)] p-3">
-      <div className="flex flex-col gap-6 sm:flex-row">
-        {teamBlock(data?.home_team ?? null, columns)}
-        {teamBlock(data?.away_team ?? null, columns)}
+      {/* Squads sit side by side only once there's room; below that they stack. */}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {teamBlock(data?.home_team ?? null, columns, "home")}
+        {teamBlock(data?.away_team ?? null, columns, "away")}
       </div>
-      <div className="mt-3 flex justify-end">
-        <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+
+      {match && match.status !== "finished" && goalColumn && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Simpan skor pertandingan dulu supaya pencetak gol bisa dicocokkan dengan skor.
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+        {tooManyAssists ? (
+          <p className="mr-auto text-xs font-medium text-destructive">
+            Assist tidak boleh lebih banyak dari gol tim — satu gol maksimal satu assist.
+          </p>
+        ) : (
+          mismatch && (
+            <p className="mr-auto text-xs text-[var(--warning)]">
+              Pencetak gol belum cocok dengan skor {homeScore}–{awayScore}. Abaikan jika selisihnya
+              gol bunuh diri.
+            </p>
+          )
+        )}
+        <Button
+          size="sm"
+          onClick={() => save.mutate()}
+          disabled={save.isPending || tooManyAssists}
+        >
           {save.isPending ? "Menyimpan…" : "Simpan statistik"}
         </Button>
       </div>

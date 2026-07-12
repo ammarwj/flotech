@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
@@ -108,8 +109,21 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
             Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
 
+            // Photo albums & sponsor logos.
+            Route::get('events/{event}/photos', [EventMediaController::class, 'photos']);
+            Route::post('events/{event}/photos', [EventMediaController::class, 'storePhotos']);
+            Route::patch('photos/{photo}', [EventMediaController::class, 'updatePhoto']);
+            Route::delete('photos/{photo}', [EventMediaController::class, 'destroyPhoto']);
+            Route::get('events/{event}/sponsors', [EventMediaController::class, 'sponsors']);
+            Route::post('events/{event}/sponsors', [EventMediaController::class, 'storeSponsor']);
+            Route::patch('sponsors/{sponsor}', [EventMediaController::class, 'updateSponsor']);
+            Route::delete('sponsors/{sponsor}', [EventMediaController::class, 'destroySponsor']);
+
             // Schedule, results & standings (Sprint 2B).
             Route::post('events/{event}/schedule', [MatchController::class, 'generate']);
+            Route::post('events/{event}/draw', [MatchController::class, 'drawGroups']);
+            Route::get('events/{event}/knockout-plan', [MatchController::class, 'knockoutPlan']);
+            Route::post('events/{event}/knockout', [MatchController::class, 'generateKnockout']);
             Route::get('events/{event}/matches', [MatchController::class, 'index']);
             Route::get('events/{event}/standings', [MatchController::class, 'standings']);
             Route::get('events/{event}/leaderboard', [MatchController::class, 'leaderboard']);

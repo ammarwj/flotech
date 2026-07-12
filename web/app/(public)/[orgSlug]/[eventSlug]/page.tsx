@@ -8,9 +8,10 @@ import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Tick
 
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
+import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { SPORT_LABELS, FORMAT_LABELS, EVENT_STATUS_LABELS, SPORT_COLORS, rupiah } from "@/lib/labels";
-import { isKnockout as isKnockoutFormat } from "@/lib/bracket";
+import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat } from "@/lib/bracket";
 import { cn } from "@/lib/utils";
 import "../../event-shell.css";
 
@@ -74,11 +75,19 @@ export default function PublicEventPage() {
   const ev = query.data;
   const sportColor = SPORT_COLORS[ev.sport_type];
 
-  // Top-level tabs: Info + the format-appropriate match panels.
+  // Top-level tabs: Info + the format-appropriate match panels. A hybrid event
+  // has both a group table and a bracket.
   const tabs: ["info" | ResultsTab, string, typeof Info][] = [
     ["info", "Info", Info],
     ["schedule", "Jadwal", CalendarClock],
-    isKnockoutFormat(ev.tournament_format) ? ["bracket", "Bracket", Network] : ["standings", "Klasemen", ListOrdered],
+    ...(isKnockoutFormat(ev.tournament_format)
+      ? ([["bracket", "Bracket", Network]] as ["info" | ResultsTab, string, typeof Info][])
+      : isHybridFormat(ev.tournament_format)
+        ? ([
+            ["standings", "Klasemen", ListOrdered],
+            ["bracket", "Bracket", Network],
+          ] as ["info" | ResultsTab, string, typeof Info][])
+        : ([["standings", "Klasemen", ListOrdered]] as ["info" | ResultsTab, string, typeof Info][])),
     ["stats", "Statistik", Goal],
   ];
 
@@ -265,6 +274,9 @@ export default function PublicEventPage() {
                 </div>
               </>
             )}
+
+            {ev.photos && <PhotoGallery photos={ev.photos} />}
+            {ev.sponsors && <SponsorStrip sponsors={ev.sponsors} />}
           </div>
 
           {/* sidebar */}
@@ -361,6 +373,7 @@ export default function PublicEventPage() {
           orgSlug={params.orgSlug}
           eventSlug={params.eventSlug}
           format={ev.tournament_format}
+          bracketConfig={ev.bracket_config}
           activeTab={tab}
         />
       )}

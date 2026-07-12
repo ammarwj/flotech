@@ -34,6 +34,8 @@ class PublicEventController extends Controller
         $event->load([
             'organization',
             'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
+            'sponsors',
+            'photos',
         ]);
 
         return ApiResponse::success(new PublicEventResource($event));
@@ -48,6 +50,7 @@ class PublicEventController extends Controller
 
         $matches = $event->matches()
             ->with(['homeTeam', 'awayTeam'])
+            ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')
             ->get();

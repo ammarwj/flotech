@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, ListOrdered, Network, Sparkles, Goal, LayoutList, CalendarRange } from "lucide-react";
+import {
+  CalendarClock,
+  ListOrdered,
+  Network,
+  Shuffle,
+  Sparkles,
+  Goal,
+  LayoutList,
+  CalendarRange,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -11,16 +20,23 @@ import {
   getStandings,
   getLeaderboard,
   generateSchedule,
+  drawGroups,
+  getKnockoutPlan,
+  generateKnockout,
   updateMatchResult,
+  type DrawPayload,
   type ScheduleOptions,
 } from "@/lib/api/matches";
-import { getEvent } from "@/lib/api/events";
+import { getEvent, getRegistrations } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import {
   buildMatchSections,
   isKnockout as isKnockoutFormat,
   isDoubleElim,
+  isHybrid as isHybridFormat,
 } from "@/lib/bracket";
+import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { isSetBased } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
@@ -30,6 +46,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
+import { GroupStandings } from "@/components/event/group-standings";
+import { GroupDrawDialog } from "@/components/event/group-draw-dialog";
+import { KnockoutPlanView } from "@/components/event/knockout-plan-view";
+import { MatchDayTabs } from "@/components/event/match-day-tabs";
 import { BracketView } from "@/components/event/bracket-view";
 import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
@@ -50,6 +70,8 @@ export default function SchedulePage() {
   const [tab, setTab] = useState<Tab | null>(null);
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const [scheduleDialog, setScheduleDialog] = useState(false);
+  const [drawDialog, setDrawDialog] = useState(false);
+  const [dateKey, setDateKey] = useState<string | null>(null);
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -77,32 +99,95 @@ export default function SchedulePage() {
   const format = eventQuery.data?.tournament_format;
   const isKnockout = format ? isKnockoutFormat(format) : false;
   const isDouble = format ? isDoubleElim(format) : false;
+  const isHybrid = format ? isHybridFormat(format) : false;
   const setBased = eventQuery.data ? isSetBased(eventQuery.data.sport_type) : false;
+  const config = hybridConfig(eventQuery.data?.bracket_config);
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
+
+  // Only a hybrid event needs the roster, for the group draw.
+  const teamsQuery = useQuery({
+    queryKey: ["registrations", orgId, eventId],
+    queryFn: () => getRegistrations(orgId!, eventId),
+    enabled: !!orgId && isHybrid,
+  });
+  // The planned bracket, shown until the real one is built.
+  const planQuery = useQuery({
+    queryKey: ["knockout-plan", orgId, eventId],
+    queryFn: () => getKnockoutPlan(orgId!, eventId),
+    enabled: !!orgId && isHybrid,
+  });
+  const approvedTeams = (teamsQuery.data ?? []).filter((t) => t.status === "approved");
+
+  const refreshEventData = () => {
+    qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
+    qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+    qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
+    qc.invalidateQueries({ queryKey: ["knockout-plan", orgId, eventId] });
+  };
 
   const generate = useMutation({
     mutationFn: (options: ScheduleOptions) => generateSchedule(orgId!, eventId, options),
     onSuccess: (created) => {
       toast.success(`Jadwal dibuat: ${created.length} pertandingan`);
       setScheduleDialog(false);
-      qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+      refreshEventData();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat jadwal.").message),
   });
 
-  const sections = buildMatchSections(matches, isKnockout, isDouble);
+  const draw = useMutation({
+    mutationFn: (payload: DrawPayload) => drawGroups(orgId!, eventId, payload),
+    onSuccess: () => {
+      toast.success("Undian grup selesai", {
+        description: "Buat ulang jadwal agar cocok dengan isi grup yang baru.",
+      });
+      setDrawDialog(false);
+      refreshEventData();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengundi grup.").message),
+  });
+
+  const knockout = useMutation({
+    mutationFn: () => generateKnockout(orgId!, eventId),
+    onSuccess: () => {
+      toast.success("Bracket knockout dibuat dari tim yang lolos fase grup");
+      setTab("bracket");
+      refreshEventData();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal membuat bracket.").message),
+  });
+
+  const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
+  const knockoutTies = knockoutMatches(matches);
+
+  // The list view shows one matchday at a time; round/group headings are kept
+  // inside the day, so a fixture never loses its context.
+  const dateGroups = groupByDate(matches);
+  const activeDateKey =
+    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups);
+  const activeDateGroup = dateGroups.find((g) => g.key === activeDateKey);
+  const daySections = sections
+    .map(([label, list]) => [label, list.filter((m) => dateKeyOf(m.scheduled_at) === activeDateKey)] as [string, Match[]])
+    .filter(([, list]) => list.length > 0);
+
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
     ? [
         ["bracket", "Bracket", Network],
         ["schedule", "Jadwal & Hasil", CalendarClock],
         ["stats", "Statistik", Goal],
       ]
-    : [
-        ["schedule", "Jadwal", CalendarClock],
-        ["standings", "Klasemen", ListOrdered],
-        ["stats", "Statistik", Goal],
-      ];
+    : isHybrid
+      ? [
+          ["schedule", "Jadwal", CalendarClock],
+          ["standings", "Klasemen Grup", ListOrdered],
+          ["bracket", "Bracket", Network],
+          ["stats", "Statistik", Goal],
+        ]
+      : [
+          ["schedule", "Jadwal", CalendarClock],
+          ["standings", "Klasemen", ListOrdered],
+          ["stats", "Statistik", Goal],
+        ];
 
   return (
     <div>
@@ -112,10 +197,28 @@ export default function SchedulePage() {
         backHref={`/organizer/events/${eventId}/edit`}
         backLabel="Kelola event"
         actions={
-          <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending || !orgId}>
-            <Sparkles className="h-4 w-4" />
-            {generate.isPending ? "Membuat…" : matches.length > 0 ? "Buat Ulang Jadwal" : "Buat Jadwal"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isHybrid && (
+              <Button
+                variant="outline"
+                onClick={() => setDrawDialog(true)}
+                disabled={draw.isPending || !orgId}
+              >
+                <Shuffle className="h-4 w-4" />
+                Undian Grup
+              </Button>
+            )}
+            <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending || !orgId}>
+              <Sparkles className="h-4 w-4" />
+              {generate.isPending
+                ? "Membuat…"
+                : matches.length > 0
+                  ? isHybrid
+                    ? "Buat Ulang Jadwal Grup"
+                    : "Buat Ulang Jadwal"
+                  : "Buat Jadwal"}
+            </Button>
+          </div>
         }
       />
 
@@ -148,7 +251,9 @@ export default function SchedulePage() {
           description={
             isKnockout
               ? "Buat bracket knockout otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
-              : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+              : isHybrid
+                ? `Tim diundi ke ${config.groups} grup, lalu jadwal fase grup dibuat otomatis. Bracket knockout menyusul setelah grup selesai.`
+                : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
           }
           action={
             <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending}>
@@ -158,11 +263,48 @@ export default function SchedulePage() {
           }
         />
       ) : activeTab === "bracket" ? (
-        <Card className="overflow-x-auto p-4 md:p-6">
-          {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
-        </Card>
+        isHybrid && knockoutTies.length === 0 ? (
+          // No bracket yet — show the plan, so the pairings are known while the
+          // groups are still being played.
+          <div className="grid gap-4">
+            {planQuery.data ? (
+              <KnockoutPlanView plan={planQuery.data} />
+            ) : (
+              <Skeleton className="h-40 w-full rounded-xl" />
+            )}
+            <div className="flex justify-end">
+              <Button onClick={() => knockout.mutate()} disabled={knockout.isPending}>
+                <Sparkles className="h-4 w-4" />
+                {knockout.isPending ? "Membuat…" : "Buat Bracket Knockout"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            <Card className="overflow-x-auto p-4 md:p-6">
+              {isDouble ? (
+                <DoubleBracketView matches={matches} />
+              ) : (
+                <BracketView matches={isHybrid ? knockoutTies : matches} />
+              )}
+            </Card>
+            {isHybrid && (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => knockout.mutate()}
+                  disabled={knockout.isPending}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {knockout.isPending ? "Membuat…" : "Buat Ulang Bracket"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )
       ) : activeTab === "schedule" ? (
-        <div className="max-w-3xl">
+        <div>
           <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
             {([
               ["list", "List", LayoutList],
@@ -185,25 +327,68 @@ export default function SchedulePage() {
           {scheduleView === "calendar" ? (
             <MatchCalendar matches={matches} />
           ) : (
-            sections.map(([label, list]) => (
-              <div key={label}>
-                <h3 className="mb-3 mt-6 text-sm font-bold text-muted-foreground first:mt-0">{label}</h3>
-                <div className="grid gap-2">
-                  {list.map((m) => (
-                    <MatchCard key={m.id} match={m} orgId={orgId!} eventId={eventId} setBased={setBased} />
-                  ))}
-                </div>
+            <>
+              {/* One matchday at a time, like the public page. */}
+              <MatchDayTabs
+                groups={dateGroups}
+                activeKey={activeDateKey}
+                onSelect={setDateKey}
+              />
+
+              <div className="mb-6 grid gap-1 border-b border-border pb-3">
+                <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+                  {fullDateLabel(activeDateGroup?.iso ?? null)}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {activeDateGroup?.list.length ?? 0} pertandingan
+                </p>
               </div>
-            ))
+
+              {/* Sections (matchday / knockout round) are spaced apart from each
+                  other, not just from the day heading. */}
+              <div className="grid gap-8">
+                {daySections.map(([label, list]) => (
+                  // Spacing via gap, not heading margins: a global `h1..h4 {
+                  // margin: 0 }` can out-rank margin utilities.
+                  <div key={label} className="grid gap-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      {label}
+                    </h3>
+                    {/* Wide screens fit two fixtures side by side. */}
+                    <div className="grid items-start gap-3 xl:grid-cols-2">
+                      {list.map((m) => (
+                        <MatchCard
+                          key={m.id}
+                          match={m}
+                          orgId={orgId!}
+                          eventId={eventId}
+                          setBased={setBased}
+                          knockout={isKnockout || m.stage === "knockout"}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       ) : activeTab === "stats" ? (
-        <div className="max-w-2xl">
-          {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
+        <div>
+          {leaderboardQuery.data && (
+            <LeaderboardTable
+              leaderboard={leaderboardQuery.data}
+              eventName={eventQuery.data?.name}
+            />
+          )}
         </div>
       ) : (
-        <div className="max-w-3xl">
-          <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+        <div className={isHybrid ? undefined : "max-w-3xl"}>
+          {isHybrid ? (
+            <GroupStandings standings={standingsQuery.data ?? []} config={config} />
+          ) : (
+            <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+          )}
           {(standingsQuery.data?.length ?? 0) > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
               M: main · M/S/K: menang/seri/kalah · GM/GK: gol masuk/kemasukan · SG: selisih gol.
@@ -222,6 +407,18 @@ export default function SchedulePage() {
           onSubmit={(options) => generate.mutate(options)}
         />
       )}
+
+      {isHybrid && (
+        <GroupDrawDialog
+          open={drawDialog}
+          teams={approvedTeams}
+          config={config}
+          hasMatches={matches.length > 0}
+          pending={draw.isPending}
+          onClose={() => setDrawDialog(false)}
+          onSubmit={(payload) => draw.mutate(payload)}
+        />
+      )}
     </div>
   );
 }
@@ -231,22 +428,34 @@ function MatchCard({
   orgId,
   eventId,
   setBased,
+  knockout,
 }: {
   match: Match;
   orgId: string;
   eventId: string;
   setBased: boolean;
+  /** A tie that must produce a winner — level scores go to penalties. */
+  knockout: boolean;
 }) {
   const qc = useQueryClient();
   const [home, setHome] = useState(match.home_score?.toString() ?? "");
   const [away, setAway] = useState(match.away_score?.toString() ?? "");
+  const [homePen, setHomePen] = useState(match.home_penalty?.toString() ?? "");
+  const [awayPen, setAwayPen] = useState(match.away_penalty?.toString() ?? "");
   const [showGoals, setShowGoals] = useState(false);
+
+  // A level knockout tie is settled on penalties, so the shootout fields appear
+  // exactly when they're needed.
+  const level = home !== "" && home === away;
+  const needsPenalties = knockout && level;
 
   const save = useMutation({
     mutationFn: () =>
       updateMatchResult(orgId, match.id, {
         home_score: home === "" ? null : Number(home),
         away_score: away === "" ? null : Number(away),
+        home_penalty: needsPenalties && homePen !== "" ? Number(homePen) : null,
+        away_penalty: needsPenalties && awayPen !== "" ? Number(awayPen) : null,
         status: "finished",
       }),
     onSuccess: () => {
@@ -286,7 +495,7 @@ function MatchCard({
   // Set-based sports (volleyball/badminton/padel): score per set.
   if (setBased) {
     return (
-      <Card className="p-3">
+      <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
         <div className="mt-3 border-t border-border pt-3">
           <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
@@ -299,17 +508,23 @@ function MatchCard({
               Statistik pemain
             </Button>
           </div>
-          {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
+          {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}
         </div>
       </Card>
     );
   }
 
-  const dirty = home !== (match.home_score?.toString() ?? "") || away !== (match.away_score?.toString() ?? "");
-  const canSave = home !== "" && away !== "" && dirty;
+  const dirty =
+    home !== (match.home_score?.toString() ?? "") ||
+    away !== (match.away_score?.toString() ?? "") ||
+    homePen !== (match.home_penalty?.toString() ?? "") ||
+    awayPen !== (match.away_penalty?.toString() ?? "");
+  const penaltiesOk = !needsPenalties || (homePen !== "" && awayPen !== "" && homePen !== awayPen);
+  const canSave = home !== "" && away !== "" && dirty && penaltiesOk;
 
   return (
-    <Card className="p-3">
+    // Opening the stat editor needs the full row; a half-width card squashes it.
+    <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
       <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
       <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
         <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
@@ -344,12 +559,43 @@ function MatchCard({
           {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
         </Button>
       </div>
+
+      {needsPenalties && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border bg-[var(--surface-2)] px-3 py-2">
+          <span className="text-xs font-semibold text-muted-foreground">Adu penalti</span>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              value={homePen}
+              onChange={(e) => setHomePen(e.target.value)}
+              className="h-8 w-12 text-center"
+              aria-label={`Penalti ${match.home_team.name}`}
+            />
+            <span className="text-xs text-muted-foreground">–</span>
+            <Input
+              type="number"
+              min={0}
+              value={awayPen}
+              onChange={(e) => setAwayPen(e.target.value)}
+              className="h-8 w-12 text-center"
+              aria-label={`Penalti ${match.away_team.name}`}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {penaltiesOk
+              ? "Pemenang adu penalti yang lolos ke babak berikutnya."
+              : "Skor imbang — isi hasil penalti, tidak boleh sama."}
+          </p>
+        </div>
+      )}
+
       {match.status === "finished" && (
         <div className="mt-2 border-t border-border pt-2">
           <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
         </div>
       )}
-      {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} />}
+      {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}
     </Card>
   );
 }

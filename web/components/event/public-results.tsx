@@ -4,37 +4,26 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
-import { isKnockout as isKnockoutFormat, isDoubleElim, crestGradient, matchWinnerId } from "@/lib/bracket";
+import {
+  isKnockout as isKnockoutFormat,
+  isDoubleElim,
+  isHybrid as isHybridFormat,
+  crestGradient,
+  matchWinnerId,
+  wentToPenalties,
+} from "@/lib/bracket";
+import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { defaultDateKey, fullDateLabel, groupByDate, timeOf } from "@/lib/match-dates";
+import { MatchDayTabs } from "./match-day-tabs";
 import { StandingsTable } from "./standings-table";
+import { GroupStandings } from "./group-standings";
 import { BracketView } from "./bracket-view";
 import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
 import { cn } from "@/lib/utils";
-import type { Match, TournamentFormat } from "@/types/api";
+import type { BracketConfig, TournamentFormat } from "@/types/api";
 
 export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
-
-function timeOf(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function dateKeyOf(iso: string | null): string {
-  if (!iso) return "tbd";
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function fullDateLabel(iso: string | null): string {
-  if (!iso) return "Jadwal menyusul";
-  return new Date(iso).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
-
-function tabDateLabel(iso: string | null): string {
-  if (!iso) return "TBD";
-  return new Date(iso).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
-}
 
 /** Team crest: real logo when uploaded, gradient fallback otherwise. */
 function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undefined }) {
@@ -43,29 +32,6 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
     return <img className="crest" src={logoUrl} alt={name} style={{ objectFit: "cover" }} />;
   }
   return <span className="crest" style={{ background: crestGradient(name) }} />;
-}
-
-type DateGroup = { key: string; iso: string | null; list: Match[] };
-
-/** Group matches into ordered per-day buckets; undated matches go last. */
-function groupByDate(matches: Match[]): DateGroup[] {
-  const dated = matches
-    .filter((m) => m.scheduled_at)
-    .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime());
-  const undated = matches.filter((m) => !m.scheduled_at);
-
-  const groups: DateGroup[] = [];
-  for (const m of dated) {
-    const key = dateKeyOf(m.scheduled_at);
-    let g = groups.find((x) => x.key === key);
-    if (!g) {
-      g = { key, iso: m.scheduled_at, list: [] };
-      groups.push(g);
-    }
-    g.list.push(m);
-  }
-  if (undated.length) groups.push({ key: "tbd", iso: null, list: undated });
-  return groups;
 }
 
 /**
@@ -78,15 +44,19 @@ export function PublicResults({
   orgSlug,
   eventSlug,
   format,
+  bracketConfig,
   activeTab,
 }: {
   orgSlug: string;
   eventSlug: string;
   format: TournamentFormat;
+  bracketConfig?: BracketConfig | null;
   activeTab: ResultsTab;
 }) {
   const isKnockout = isKnockoutFormat(format);
   const isDouble = isDoubleElim(format);
+  const isHybrid = isHybridFormat(format);
+  const config = hybridConfig(bracketConfig);
   const [dateKey, setDateKey] = useState<string | null>(null);
 
   const matchesQuery = useQuery({
@@ -121,35 +91,30 @@ export function PublicResults({
   }
 
   const dateGroups = groupByDate(matches);
-  const activeDateKey = dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : dateGroups[0]?.key;
+  const activeDateKey =
+    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups);
   const activeGroup = dateGroups.find((g) => g.key === activeDateKey);
 
   return (
     <section className="section" style={{ paddingTop: 24 }}>
       <div className="container">
         {activeTab === "bracket" ? (
-          <div className="overflow-x-auto pb-2">
-            {isDouble ? <DoubleBracketView matches={matches} /> : <BracketView matches={matches} />}
-          </div>
+          isHybrid && knockoutMatches(matches).length === 0 ? (
+            <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+              Bracket knockout dibuat setelah fase grup selesai.
+            </div>
+          ) : (
+            <div className="overflow-x-auto pb-2">
+              {isDouble ? (
+                <DoubleBracketView matches={matches} />
+              ) : (
+                <BracketView matches={isHybrid ? knockoutMatches(matches) : matches} />
+              )}
+            </div>
+          )
         ) : activeTab === "schedule" ? (
           <div style={{ maxWidth: 760 }}>
-            {/* date sub-tabs */}
-            <div className="mb-5 flex flex-wrap gap-1.5">
-              {dateGroups.map((g) => (
-                <button
-                  key={g.key}
-                  onClick={() => setDateKey(g.key)}
-                  className={cn(
-                    "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                    activeDateKey === g.key
-                      ? "border-transparent bg-[var(--brand-600)] text-white"
-                      : "border-border bg-[var(--surface)] text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {tabDateLabel(g.iso)}
-                </button>
-              ))}
-            </div>
+            <MatchDayTabs groups={dateGroups} activeKey={activeDateKey} onSelect={setDateKey} />
 
             {activeGroup && (
               <>
@@ -159,7 +124,11 @@ export function PublicResults({
                   const live = m.status === "ongoing";
                   const time = timeOf(m.scheduled_at);
                   const winner = done ? matchWinnerId(m) : null;
-                  const metaLabel = m.group_name ?? (isKnockout ? `Babak ${m.round}` : `Pekan ${m.round}`);
+                  const metaLabel = m.group_name
+                    ? `Grup ${m.group_name}`
+                    : isKnockout || m.stage === "knockout"
+                      ? `Babak ${m.round}`
+                      : `Pekan ${m.round}`;
                   return (
                     <div key={m.id} className="match-card">
                       <div className="match-time">
@@ -188,7 +157,13 @@ export function PublicResults({
                       </div>
                       <div className="match-meta">
                         <small>{metaLabel}</small>
-                        {m.venue && <small>{m.venue}</small>}
+                        {wentToPenalties(m) ? (
+                          <small>
+                            Pen {m.home_penalty}–{m.away_penalty}
+                          </small>
+                        ) : (
+                          m.venue && <small>{m.venue}</small>
+                        )}
                       </div>
                     </div>
                   );
@@ -197,12 +172,16 @@ export function PublicResults({
             )}
           </div>
         ) : activeTab === "stats" ? (
-          <div style={{ maxWidth: 640 }}>
+          <div style={{ maxWidth: 900 }}>
             {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
           </div>
         ) : (
-          <div style={{ maxWidth: 760 }}>
-            <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+          <div style={{ maxWidth: isHybrid ? 1120 : 760 }}>
+            {isHybrid ? (
+              <GroupStandings standings={standingsQuery.data ?? []} config={config} />
+            ) : (
+              <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+            )}
           </div>
         )}
       </div>

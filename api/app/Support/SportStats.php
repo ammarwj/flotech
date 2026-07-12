@@ -19,6 +19,12 @@ class SportStats
             ['key' => 'yellow_cards', 'label' => 'Kartu Kuning', 'short' => 'KK'],
             ['key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM'],
         ],
+        'mini_soccer' => [
+            ['key' => 'goals', 'label' => 'Gol', 'short' => 'G'],
+            ['key' => 'assists', 'label' => 'Assist', 'short' => 'A'],
+            ['key' => 'yellow_cards', 'label' => 'Kartu Kuning', 'short' => 'KK'],
+            ['key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM'],
+        ],
         'futsal' => [
             ['key' => 'goals', 'label' => 'Gol', 'short' => 'G'],
             ['key' => 'assists', 'label' => 'Assist', 'short' => 'A'],

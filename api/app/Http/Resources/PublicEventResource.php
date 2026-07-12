@@ -36,12 +36,26 @@ class PublicEventResource extends JsonResource
             'banner_url' => $this->banner_url,
             'max_teams' => $this->max_teams,
             'registration_fee' => (float) $this->registration_fee,
+            'bracket_config' => $this->bracket_config,
             'tickets_on_sale' => $this->ticketCategories()->where('is_active', true)->exists(),
             'organization' => [
                 'name' => $this->organization?->name,
                 'slug' => $this->organization?->slug,
                 'logo_url' => $this->organization?->logo_url,
             ],
+            'sponsors' => $this->whenLoaded('sponsors', fn () => $this->sponsors->map(fn ($s) => [
+                'id' => $s->id,
+                'name' => $s->name,
+                'logo_url' => $s->logo_url,
+                'website_url' => $s->website_url,
+                'tier' => $s->tier,
+            ])),
+            'photos' => $this->whenLoaded('photos', fn () => $this->photos->map(fn ($p) => [
+                'id' => $p->id,
+                'album' => $p->album,
+                'photo_url' => $p->photo_url,
+                'caption' => $p->caption,
+            ])),
             'approved_teams_count' => $this->teams()->where('status', 'approved')->count(),
             'approved_teams' => $this->whenLoaded('teams', fn () => $this->teams->map(fn ($t) => [
                 'id' => $t->id,

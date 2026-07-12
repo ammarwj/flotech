@@ -1,0 +1,167 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
+
+import { SPONSOR_TIER_LABELS } from "@/lib/labels";
+import type { EventPhoto, EventSponsor, SponsorTier } from "@/types/api";
+
+/** Logo size per tier — the host and sponsors get the biggest badges. */
+const TIER_HEIGHT: Record<SponsorTier, string> = {
+  host: "h-16",
+  sponsor: "h-14",
+  media_partner: "h-11",
+  supporter: "h-11",
+};
+
+const TIER_ORDER: SponsorTier[] = ["host", "sponsor", "media_partner", "supporter"];
+
+/** Partner logos, grouped by tier (host first). */
+export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
+  if (sponsors.length === 0) return null;
+
+  return (
+    <>
+      <div className="esection-title" style={{ marginTop: 40 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>
+          Sponsor &amp; Partner
+        </h2>
+      </div>
+
+      <div className="grid gap-5">
+        {TIER_ORDER.map((tier) => {
+          const list = sponsors.filter((s) => s.tier === tier);
+          if (list.length === 0) return null;
+
+          return (
+            <div key={tier}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {SPONSOR_TIER_LABELS[tier]}
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                {list.map((s) => {
+                  const logo = (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.logo_url}
+                      alt={s.name}
+                      title={s.name}
+                      className={`${TIER_HEIGHT[tier]} w-auto max-w-[160px] object-contain`}
+                    />
+                  );
+
+                  return (
+                    <span
+                      key={s.id}
+                      className="grid place-items-center rounded-lg border border-border bg-[var(--surface)] px-4 py-3"
+                    >
+                      {s.website_url ? (
+                        <a href={s.website_url} target="_blank" rel="noopener noreferrer sponsored">
+                          {logo}
+                        </a>
+                      ) : (
+                        logo
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/** Photo albums, with a click-to-enlarge viewer. */
+export function PhotoGallery({ photos }: { photos: EventPhoto[] }) {
+  const [active, setActive] = useState<EventPhoto | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setActive(null);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [active]);
+
+  if (photos.length === 0) return null;
+
+  // Albums in name order; the unnamed "general" album goes last.
+  const albums = new Map<string, EventPhoto[]>();
+  for (const p of photos) {
+    const key = p.album ?? "";
+    albums.set(key, [...(albums.get(key) ?? []), p]);
+  }
+  const names = [...albums.keys()].sort((a, b) =>
+    a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)
+  );
+
+  return (
+    <>
+      <div className="esection-title" style={{ marginTop: 40 }}>
+        <h2 className="section-title" style={{ margin: 0 }}>
+          Galeri
+        </h2>
+        <span className="pill">{photos.length} foto</span>
+      </div>
+
+      <div className="grid gap-6">
+        {names.map((name) => (
+          <div key={name || "umum"}>
+            {names.length > 1 && (
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {name || "Galeri umum"}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              {albums.get(name)!.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setActive(p)}
+                  className="aspect-square overflow-hidden rounded-lg border border-border"
+                  aria-label={p.caption ?? "Perbesar foto"}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.photo_url}
+                    alt={p.caption ?? ""}
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform hover:scale-105"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {active && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
+          onClick={() => setActive(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            onClick={() => setActive(null)}
+            aria-label="Tutup"
+            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-white/10 text-white hover:bg-white/20"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={active.photo_url}
+            alt={active.caption ?? ""}
+            className="max-h-[85vh] max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          {active.caption && (
+            <p className="mt-3 text-center text-sm text-white/80">{active.caption}</p>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
