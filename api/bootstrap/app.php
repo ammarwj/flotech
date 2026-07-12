@@ -1,5 +1,11 @@
 <?php
 
+use App\Exceptions\WalletException;
+use App\Http\Middleware\CheckPlanFeature;
+use App\Http\Middleware\CheckPlanLimit;
+use App\Http\Middleware\EnsureOrgAdmin;
+use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\TenantScope;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -27,10 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         $middleware->alias([
-            'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
-            'tenant' => \App\Http\Middleware\TenantScope::class,
-            'plan.feature' => \App\Http\Middleware\CheckPlanFeature::class,
-            'plan.limit' => \App\Http\Middleware\CheckPlanLimit::class,
+            'superadmin' => EnsureSuperAdmin::class,
+            'tenant' => TenantScope::class,
+            'org.admin' => EnsureOrgAdmin::class,
+            'plan.feature' => CheckPlanFeature::class,
+            'plan.limit' => CheckPlanLimit::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -42,6 +49,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (ValidationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error('The given data was invalid.', $e->errors(), 422);
+            }
+        });
+
+        $exceptions->render(function (WalletException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }
         });
 

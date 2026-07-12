@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
+use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Services\Catalog;
@@ -59,7 +60,15 @@ class EventController extends Controller
     public function update(UpdateEventRequest $request, string $organization, string $event): JsonResponse
     {
         $model = $this->find($request, $event);
+        $wasFinished = $model->status === 'finished';
+
         $model->update($request->validated());
+
+        // Closing an event releases the ticket & registration money the
+        // platform has been holding for this organizer.
+        if (! $wasFinished && $model->status === 'finished') {
+            ReleaseEventFundsJob::dispatch($model->id)->afterCommit();
+        }
 
         return ApiResponse::success(new EventResource($model), 'Event diperbarui');
     }

@@ -411,7 +411,15 @@ export interface PublicEvent {
   sponsors?: EventSponsor[];
   photos?: EventPhoto[];
   approved_teams_count: number;
-  approved_teams?: { id: string; name: string; city: string | null; logo_url: string | null }[];
+  approved_teams?: PublicTeam[];
+}
+
+export interface PublicTeam {
+  id: string;
+  name: string;
+  city: string | null;
+  logo_url: string | null;
+  players?: (Player & { photo_url?: string | null })[] | null;
 }
 
 // ---- Tickets & payment (Phase 3) ----
@@ -516,4 +524,131 @@ export interface UploadSignResult {
   upload_url: string | null;
   file_url: string;
   mock: boolean;
+}
+
+/* ---------------------------------------------------------------------------
+ * Wallet & payouts
+ *
+ * Buyers pay the platform's Midtrans account, so an organizer's share is held
+ * in a wallet: pending until the event is over, then available to withdraw.
+ * -------------------------------------------------------------------------*/
+
+export interface Wallet {
+  id: string;
+  organization_id: string;
+  balance_available: number;
+  /** Held until the event finishes. */
+  balance_pending: number;
+  /** Debited already, sitting in an open payout request. */
+  balance_on_hold: number;
+  total_earned: number;
+  total_withdrawn: number;
+  has_bank_account: boolean;
+  has_active_withdrawal: boolean;
+  rules: {
+    minimum_withdrawal: number;
+    admin_fee: number;
+  };
+}
+
+export type WalletTxType = "credit" | "debit";
+
+export type WalletTxStatus = "pending" | "available" | "cancelled";
+
+export type WalletTxCategory =
+  | "ticket_sale"
+  | "registration_fee"
+  | "refund"
+  | "withdrawal"
+  | "withdrawal_reversal"
+  | "adjustment";
+
+export interface WalletTransaction {
+  id: string;
+  event_id: string | null;
+  event_name?: string | null;
+  type: WalletTxType;
+  category: WalletTxCategory;
+  status: WalletTxStatus;
+  amount: number;
+  gross_amount: number;
+  fee_amount: number;
+  available_at: string | null;
+  released_at: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  meta: { page: number; last_page: number; total: number };
+}
+
+export interface BankAccount {
+  id: string;
+  organization_id: string;
+  bank_name: string;
+  bank_code: string | null;
+  /** Masked for the organizer; full digits for the super admin who transfers. */
+  account_number: string;
+  account_holder: string;
+  is_primary: boolean;
+  created_at?: string;
+}
+
+export type WithdrawalStatus = "pending" | "processing" | "completed" | "rejected";
+
+export interface Withdrawal {
+  id: string;
+  organization_id: string;
+  organization_name?: string | null;
+  reference: string;
+  /** What the organizer receives. */
+  amount: number;
+  admin_fee: number;
+  /** amount + admin_fee — what left the wallet. */
+  total_debit: number;
+  status: WithdrawalStatus;
+  bank_name: string;
+  bank_code: string | null;
+  account_number: string;
+  account_holder: string;
+  note: string | null;
+  proof_url: string | null;
+  transfer_reference: string | null;
+  admin_note: string | null;
+  processed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** A row in the admin's platform-wide payments list. */
+export interface AdminPayment {
+  id: string;
+  kind: "ticket_order" | "team";
+  reference: string | null;
+  organization_name: string | null;
+  event_name: string | null;
+  payer: string | null;
+  amount: number;
+  platform_fee: number;
+  status: string;
+  paid_at: string | null;
+}
+
+export interface AdminWallet extends Wallet {
+  organization_name: string | null;
+}
+
+/** A super-admin editable platform rule (payout policy). */
+export interface PlatformSetting {
+  key: string;
+  label: string;
+  type: "money" | "int";
+  value: number;
+  /** From config/wallet.php — used when never overridden. */
+  default: number;
+  min: number;
+  max: number;
+  is_overridden: boolean;
 }

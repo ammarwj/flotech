@@ -34,6 +34,12 @@ class PublicEventController extends Controller
         $event->load([
             'organization',
             'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
+            // jersey_number is free text, so sort numerically when it looks like a
+            // number and push the rest (blank / "GK-2") to the bottom.
+            'teams.players' => fn ($q) => $q
+                ->orderByRaw("(jersey_number ~ '^[0-9]+$') desc")
+                ->orderByRaw("case when jersey_number ~ '^[0-9]+$' then jersey_number::int end asc")
+                ->orderBy('full_name'),
             'sponsors',
             'photos',
         ]);

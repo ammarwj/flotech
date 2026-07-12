@@ -16,7 +16,19 @@ $testDatabase = [
     'DB_PASSWORD' => '',
 ];
 
-foreach ($testDatabase as $key => $value) {
+/**
+ * Same story for the gateway: .env carries real sandbox keys, so the suite was
+ * trying to reach Midtrans over HTTP and payments never settled. Blanking the
+ * key puts MidtransService in mock mode, which is what the tests assume ("no
+ * credentials in tests → the fee settles immediately").
+ */
+$testGateway = [
+    'MIDTRANS_SERVER_KEY' => '',
+    'MIDTRANS_CLIENT_KEY' => '',
+    'MIDTRANS_IS_PRODUCTION' => 'false',
+];
+
+foreach ([...$testDatabase, ...$testGateway] as $key => $value) {
     putenv("{$key}={$value}");
     $_ENV[$key] = $value;
     $_SERVER[$key] = $value;

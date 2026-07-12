@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Organization;
 use App\Models\Team;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -14,7 +15,11 @@ use Illuminate\Support\Str;
  */
 class RegistrationService
 {
-    public function __construct(protected PlanGate $gate, protected MidtransService $midtrans) {}
+    public function __construct(
+        protected PlanGate $gate,
+        protected MidtransService $midtrans,
+        protected WalletService $wallet,
+    ) {}
 
     /**
      * Platform fee for a registration amount, based on the organizer plan's
@@ -75,7 +80,8 @@ class RegistrationService
     }
 
     /**
-     * Settle a paid registration. Idempotent — re-delivered webhooks are no-ops.
+     * Settle a paid registration and credit the organizer's wallet. Idempotent
+     * — re-delivered webhooks are no-ops.
      */
     public function markPaid(Team $team): void
     {
@@ -83,6 +89,9 @@ class RegistrationService
             return;
         }
 
-        $team->update(['payment_status' => 'paid', 'paid_at' => Carbon::now()]);
+        DB::transaction(function () use ($team) {
+            $team->update(['payment_status' => 'paid', 'paid_at' => Carbon::now()]);
+            $this->wallet->creditRegistration($team->load('event.organization'));
+        });
     }
 }

@@ -4,10 +4,15 @@ use App\Http\Controllers\Api\Admin\ConfigOptionController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
+use App\Http\Controllers\Api\Admin\PlatformSettingController;
+use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SportController;
+use App\Http\Controllers\Api\Admin\WalletController as AdminWalletController;
+use App\Http\Controllers\Api\Admin\WithdrawalController as AdminWithdrawalController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
+use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
@@ -21,7 +26,9 @@ use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\UploadController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
+use App\Http\Controllers\Api\WithdrawalController;
 use App\Http\Resources\PlanResource;
 use App\Models\Plan;
 use App\Support\ApiResponse;
@@ -147,6 +154,22 @@ Route::prefix('v1')->group(function () {
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
+
+            // Wallet & payouts (Phase 4). Money endpoints are narrowed to the
+            // owner/admin — `tenant` alone would also admit gate operators.
+            Route::middleware('org.admin')->group(function () {
+                Route::get('wallet', [WalletController::class, 'show']);
+                Route::get('wallet/transactions', [WalletController::class, 'transactions']);
+
+                Route::get('bank-accounts', [BankAccountController::class, 'index']);
+                Route::post('bank-accounts', [BankAccountController::class, 'store']);
+                Route::patch('bank-accounts/{bankAccount}', [BankAccountController::class, 'update']);
+                Route::delete('bank-accounts/{bankAccount}', [BankAccountController::class, 'destroy']);
+
+                Route::get('withdrawals', [WithdrawalController::class, 'index']);
+                Route::post('withdrawals', [WithdrawalController::class, 'store']);
+                Route::delete('withdrawals/{withdrawal}', [WithdrawalController::class, 'cancel']);
+            });
         });
 
         // ---- SaaS Super Admin ----
@@ -164,6 +187,27 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('config-options', ConfigOptionController::class)
                 ->parameters(['config-options' => 'config_option'])
                 ->except(['show']);
+
+            // Payout queue: the platform holds every buyer's payment, so an
+            // admin transfers each organizer's share by hand and records it.
+            Route::get('withdrawals', [AdminWithdrawalController::class, 'index']);
+            Route::get('withdrawals/{withdrawal}', [AdminWithdrawalController::class, 'show']);
+            Route::patch('withdrawals/{withdrawal}/process', [AdminWithdrawalController::class, 'process']);
+            Route::patch('withdrawals/{withdrawal}/complete', [AdminWithdrawalController::class, 'complete']);
+            Route::patch('withdrawals/{withdrawal}/reject', [AdminWithdrawalController::class, 'reject']);
+
+            // Collected payments + refunds (a refund reverses the wallet credit).
+            Route::get('payments', [AdminRefundController::class, 'index']);
+            Route::post('ticket-orders/{ticketOrder}/refund', [AdminRefundController::class, 'refundTicketOrder']);
+            Route::post('teams/{team}/refund', [AdminRefundController::class, 'refundTeam']);
+
+            Route::get('wallets', [AdminWalletController::class, 'index']);
+            Route::post('wallets/{wallet}/adjust', [AdminWalletController::class, 'adjust']);
+
+            // Payout policy (minimum, admin fee, hold days) — editable without
+            // a deploy; config/wallet.php holds the defaults.
+            Route::get('settings', [PlatformSettingController::class, 'index']);
+            Route::put('settings', [PlatformSettingController::class, 'update']);
         });
     });
 

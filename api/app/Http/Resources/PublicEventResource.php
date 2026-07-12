@@ -64,6 +64,15 @@ class PublicEventResource extends JsonResource
                 'name' => $t->name,
                 'city' => $t->city,
                 'logo_url' => $t->logo_url,
+                // Roster is public, but only the on-pitch fields — no birth dates
+                // or contact details.
+                'players' => $t->relationLoaded('players') ? $t->players->map(fn ($p) => [
+                    'id' => $p->id,
+                    'full_name' => $p->full_name,
+                    'jersey_number' => $p->jersey_number,
+                    'position' => $p->position,
+                    'photo_url' => $p->photo_url,
+                ])->values() : null,
             ])),
         ];
     }

@@ -3,6 +3,7 @@
 namespace Tests;
 
 use App\Services\Catalog;
+use App\Services\PlatformSettings;
 use Database\Seeders\CatalogSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
@@ -21,7 +22,9 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
-        // The catalog is cached; a fresh database per test means a stale cache.
+        // Both are cached (and memoized in a static); a fresh database per test
+        // would otherwise be read through the previous test's cache.
         Catalog::flush();
+        PlatformSettings::flush();
     }
 }

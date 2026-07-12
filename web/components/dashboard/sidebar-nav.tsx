@@ -14,6 +14,9 @@ import {
   Settings2,
   SlidersHorizontal,
   CreditCard,
+  Wallet,
+  Banknote,
+  ReceiptText,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +39,7 @@ export const ORGANIZER_NAV: NavItem[] = [
   { href: "/organizer/schedule", label: "Jadwal", icon: CalendarDays, mobile: true },
   { href: "/organizer/standings", label: "Klasemen", icon: ListOrdered },
   { href: "/organizer/tickets", label: "Tiket", icon: Ticket },
+  { href: "/organizer/wallet", label: "Dompet", icon: Wallet },
   { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
   { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
 ];
@@ -44,9 +48,12 @@ export const ORGANIZER_NAV: NavItem[] = [
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
   { href: "/admin/plans", label: "Paket & Fitur", icon: CreditCard, mobile: true },
+  { href: "/admin/withdrawals", label: "Penarikan Dana", icon: Banknote, mobile: true },
+  { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },
   { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
   { href: "/admin/sports", label: "Cabang Olahraga", icon: Trophy, mobile: true },
   { href: "/admin/config-options", label: "Opsi Konfigurasi", icon: Settings2, mobile: true },
+  { href: "/admin/settings", label: "Pengaturan Platform", icon: Settings },
 ];
 
 /** Pick the navigation set for the signed-in user's role. */

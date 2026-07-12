@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
  */
 class TicketService
 {
-    public function __construct(protected PlanGate $gate) {}
+    public function __construct(protected PlanGate $gate, protected WalletService $wallet) {}
 
     /**
      * Platform fee for an order amount, based on the organizer plan's
@@ -74,7 +74,8 @@ class TicketService
     }
 
     /**
-     * Settle a paid order. Idempotent — re-delivered webhooks are no-ops.
+     * Settle a paid order and credit the organizer's wallet. Idempotent —
+     * re-delivered webhooks are no-ops, and the wallet guards itself besides.
      */
     public function markPaid(TicketOrder $order): void
     {
@@ -82,7 +83,24 @@ class TicketService
             return;
         }
 
-        $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
+        DB::transaction(function () use ($order) {
+            $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
+            $this->wallet->creditTicketOrder($order->load('event.organization'));
+        });
+    }
+
+    /**
+     * Void a *paid* order: release its quota and tickets. The wallet reversal
+     * is RefundService's job. `cancel()` can't be reused — it deliberately
+     * refuses paid orders.
+     */
+    public function refund(TicketOrder $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $order->update(['status' => 'refunded']);
+            $order->category()->decrement('sold', $order->quantity);
+            $order->tickets()->delete();
+        });
     }
 
     /**
