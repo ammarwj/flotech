@@ -78,6 +78,8 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 | 🎾 | Padel | Liga, Knockout, Round Robin |
 | 🏐 | Voli | Liga, Knockout, Pool Play |
 
+> Daftar ini **bukan lagi hardcode**. Cabang olahraga, format turnamen, kolom statistik, tiebreaker, metode undian, dan tier sponsor kini tersimpan di database dan dikelola Super Admin (lihat §4.16). Menambah cabang baru tidak butuh deploy — selama **engine**-nya (liga / knockout / hybrid) sudah ada di kode.
+
 ### 1.6 Value Proposition
 
 | Untuk | Value |
@@ -161,7 +163,9 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 #### FR-14: Payment Gateway
 - Integrasi Midtrans untuk semua transaksi
-- Dashboard keuangan per event dan refund management
+- **Semua pembayaran masuk ke satu akun merchant milik platform** (tidak ada split payment / sub-merchant per organizer)
+- Platform fee dihitung & dicatat per transaksi sesuai paket organizer
+- Refund dikelola Super Admin
 
 #### FR-15: Tiket QR Code + Scan Check-in
 - Tiket digital dengan QR Code unik per tiket
@@ -171,6 +175,20 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 #### FR-16: Laporan Turnamen
 - Laporan end-of-tournament: klasemen akhir, statistik, ringkasan keuangan
 - Export PDF & Excel, share link online
+
+#### FR-17: Dompet Organizer & Penarikan Dana
+- Karena uang pembeli mendarat di akun platform (FR-14), bagian organizer ditampung di **dompet** per organisasi
+- Pemasukan = penjualan tiket + biaya pendaftaran tim, dikreditkan **neto** (bruto − platform fee)
+- Dana **tertahan** sampai event selesai, lalu jadi **tersedia** untuk ditarik
+- Organizer mengajukan penarikan ke rekening bank; Super Admin transfer manual lalu mencatat bukti transfer
+- Ledger immutable + audit otomatis; refund mengoreksi saldo organizer
+
+#### FR-18: Katalog & Pengaturan Platform
+- Cabang olahraga, format turnamen, kolom statistik, tiebreaker, metode undian, tier sponsor: dikelola Super Admin dari panel, tanpa deploy
+- Aturan pencairan (minimal penarikan, biaya admin, masa tahan) dapat diubah Super Admin dan berlaku instan untuk penarikan baru
+
+#### FR-19: Media Event (Galeri & Sponsor)
+- Album foto per event dan logo sponsor bertingkat (tier), tampil di landing page publik
 
 ### 2.2 Non-Functional Requirements
 
@@ -264,6 +282,20 @@ value per paket   → { free: "1", starter: "3", pro: "10", professional: "-1" }
 ```
 
 SaaS Super Admin dapat mengubah nilai ini kapan saja via panel admin, berlaku instan untuk semua tenant di paket tersebut tanpa deploy ulang.
+
+Platform fee juga berupa feature value per paket: `ticket_fee_percent` dan `registration_fee_percent` (mis. Pro 3%, Business 2%, Enterprise 1%). Nilai yang berlaku **disimpan di setiap transaksi**, jadi mengubah paket tidak menulis ulang fee transaksi lama.
+
+### 3.6 SaaS Admin — Pengaturan Pencairan
+
+Terpisah dari paket, karena ini kebijakan **platform**, bukan per-tenant. Disimpan di tabel `platform_settings` dengan default dari `config/wallet.php`:
+
+| Setting | Contoh | Batas |
+|---------|--------|-------|
+| Minimal penarikan | Rp 100.000 | 0 – 100.000.000 |
+| Biaya admin per penarikan | Rp 5.000 | 0 – 1.000.000 |
+| Masa tahan setelah event selesai | 0 hari | 0 – 90 |
+
+Perubahan berlaku untuk penarikan **baru**. Penarikan yang sudah diajukan menyimpan snapshot aturan yang berlaku saat itu, sehingga riwayat tidak pernah ditulis ulang.
 
 ---
 
@@ -445,7 +477,9 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 
 **Transaksi:** biaya subscription SaaS, biaya registrasi tim, pembelian tiket penonton
 
-**Platform fee** dipotong otomatis dari setiap transaksi sesuai paket organizer.
+**Semua uang masuk ke satu akun merchant Midtrans milik platform.** Tidak ada split payment maupun sub-merchant per organizer — pembeli membayar ke platform, bukan ke organizer.
+
+**Platform fee** dihitung dari paket organizer (`ticket_fee_percent` / `registration_fee_percent`) dan **dicatat di setiap transaksi**. Sisanya (neto) menjadi hak organizer dan ditampung di dompet (§4.15).
 
 ---
 
@@ -462,6 +496,59 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 Konten: ringkasan event, klasemen akhir, bracket hasil, top statistik, rekap keuangan
 
 Output: PDF siap cetak, Excel arsip, share link online
+
+---
+
+### 4.15 Dompet Organizer & Penarikan Dana
+
+Konsekuensi langsung dari §4.12: uang pembeli ada di akun platform, jadi harus ada mekanisme meneruskannya ke organizer.
+
+**Siklus dana**
+
+```
+Pembeli bayar (Midtrans → akun platform)
+  → kredit NETO ke dompet organizer (bruto − platform fee)
+    status: TERTAHAN
+  → event selesai  ──►  status: TERSEDIA
+  → organizer ajukan penarikan (dana langsung ditahan)
+  → Super Admin transfer MANUAL via m-banking + upload bukti
+  → status: SELESAI
+```
+
+**Kenapa dana ditahan sampai event selesai:** kalau terjadi refund saat kredit masih tertahan, kreditnya cukup **dibatalkan** — tanpa perlu menarik balik uang yang sudah dicairkan.
+
+**Aturan penarikan:** minimal penarikan, biaya admin tetap per penarikan (dipotong dari saldo), dan maksimal **1 permintaan aktif** per organisasi. Nilainya diatur Super Admin (§3.6).
+
+**Refund** (Super Admin): membatalkan pesanan dan mengoreksi saldo organizer. Kalau dananya sudah dicairkan **dan** ditarik, saldo bisa **minus** — ini disengaja, dan otomatis mengunci penarikan berikutnya sampai tertutup pendapatan baru.
+
+> ⚠️ Refund **tidak** mengembalikan uang ke pembeli secara otomatis. Uangnya ada di akun Midtrans platform, jadi refund harus diproses juga di dashboard Midtrans.
+
+**Integritas:** setiap pergerakan uang tercatat di ledger immutable (`wallet_transactions`). Saldo didenormalisasi agar penarikan bisa dicek + dikunci dalam satu baris, dan perintah audit harian memastikan saldo selalu sama dengan jumlah ledger.
+
+Detail teknis lengkap: **`WALLET.md`**.
+
+---
+
+### 4.16 Katalog & Konfigurasi Platform
+
+Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yang dikelola Super Admin:
+
+| Dikelola | Contoh |
+|----------|--------|
+| Cabang olahraga | Sepak Bola, Futsal, Badminton, Padel, Voli (+ warna, durasi match default, set-based atau tidak) |
+| Kolom statistik per cabang | gol, assist, kartu, ace, smash… |
+| Format turnamen | Liga, Liga 2 Putaran, Knockout, Hybrid, Grup + Playoff |
+| Tiebreaker, metode undian, ronde knockout, tier sponsor | — |
+
+**Format adalah preset di atas engine.** Engine (`league`, `knockout`, `hybrid`) hidup di kode; admin bisa membuat preset "Liga 2 Putaran" (engine `league`, default `legs: 2`) tanpa deploy — tapi **tidak bisa** mengarang engine yang tidak ada implementasinya.
+
+---
+
+### 4.17 Media Event (Galeri & Sponsor)
+
+**Galeri:** album foto per event, upload ke R2, tampil di landing page publik.
+
+**Sponsor:** logo sponsor dengan **tier** (mis. Platinum/Gold/Silver) yang menentukan ukuran & urutan tampil di landing page. Daftar tier dikelola lewat katalog (§4.16).
 
 ---
 
@@ -537,7 +624,7 @@ Output: PDF siap cetak, Excel arsip, share link online
   → Download ZIP atau "Kirim via Email" (Pro ke atas)
 ```
 
-### 5.6 SaaS Super Admin — Kelola Paket
+### 5.6 SaaS Super Admin — Kelola Paket & Katalog
 
 ```
 [Login Super Admin]
@@ -545,7 +632,44 @@ Output: PDF siap cetak, Excel arsip, share link online
   → Menu "Kelola Paket" → Pilih/buat paket
   → Edit feature values:
       max_events: 10 | certificate_email: true | storage_gb: 50
+      ticket_fee_percent: 3 | registration_fee_percent: 2
   → Simpan → Berlaku instan untuk semua tenant di paket tersebut
+
+  → Menu "Cabang Olahraga" / "Opsi Konfigurasi"
+      Tambah cabang baru, kolom statistik, format turnamen (preset di atas engine)
+  → Menu "Pengaturan Platform"
+      Minimal penarikan, biaya admin, masa tahan → berlaku untuk penarikan baru
+```
+
+---
+
+### 5.7 Organizer — Tarik Dana
+
+```
+[Event selesai]
+  → Dana pindah dari "Saldo Tertahan" ke "Saldo Tersedia"
+  → Menu "Dompet" → cek saldo & mutasi
+  → Tambah rekening bank (sekali saja)
+  → "Tarik Dana" → isi jumlah
+      Sistem tampilkan: kamu terima Rp X · biaya admin Rp Y · total dipotong Rp X+Y
+  → Ajukan → saldo LANGSUNG berkurang (dana ditahan)
+  → Tunggu admin transfer → status Selesai + bukti transfer bisa dilihat
+```
+
+Tombol "Tarik Dana" **dimatikan dengan alasan eksplisit** kalau: rekening belum ada / masih ada penarikan berjalan / saldo di bawah minimal / saldo minus.
+
+---
+
+### 5.8 SaaS Super Admin — Proses Pencairan
+
+```
+[Login Super Admin]
+  → Menu "Penarikan Dana" → antrian status "Menunggu"
+  → Salin nomor rekening → transfer MANUAL via m-banking
+  → "Proses" → "Tandai Selesai" + upload bukti transfer (wajib)
+  → Organizer melihat status Selesai + bukti
+
+  (atau) → "Tolak" + alasan → dana kembali ke saldo tersedia organizer
 ```
 
 ---
@@ -1092,6 +1216,34 @@ player_stats (
   updated_at        TIMESTAMP DEFAULT NOW(),
   UNIQUE(event_id, player_id)
 )
+
+-- Tambahan untuk format Hybrid (grup → playoff) dan adu penalti:
+--   matches.stage        → 'group' | 'knockout' (fase pertandingan)
+--   matches.penalties_*  → skor adu penalti saat knockout imbang
+--   teams.seed_pot       → pot unggulan untuk undian grup
+
+-- EVENT PHOTOS — galeri per event (§4.17)
+event_photos (
+  id          UUID PK,
+  event_id    UUID FK → events,
+  album       VARCHAR(100),
+  photo_url   TEXT,           -- R2
+  caption     TEXT,
+  sort_order  INT,
+  created_at
+)
+
+-- EVENT SPONSORS — logo sponsor bertingkat; daftar tier dari katalog (§4.16)
+event_sponsors (
+  id          UUID PK,
+  event_id    UUID FK → events,
+  name        VARCHAR(150),
+  logo_url    TEXT,           -- R2
+  website_url TEXT,
+  tier        VARCHAR(40),    -- platinum | gold | silver | ...
+  sort_order  INT,
+  created_at
+)
 ```
 
 ### 7.4 Ticket & Payment Tables
@@ -1158,7 +1310,147 @@ registration_payments (
 )
 ```
 
-### 7.5 Certificate Tables
+### 7.5 Wallet & Payout Tables
+
+Uang pembeli ada di akun platform, jadi bagian organizer ditampung di sini sampai ditransfer manual (§4.15).
+
+```sql
+-- WALLETS — satu per organisasi. Saldo BOLEH negatif (refund atas dana
+-- yang sudah ditarik), dan saldo negatif otomatis mengunci penarikan.
+wallets (
+  id                 UUID PK,
+  organization_id    UUID FK → organizations UNIQUE,
+  balance_available  DECIMAL(16,2) DEFAULT 0,  -- siap ditarik
+  balance_pending    DECIMAL(16,2) DEFAULT 0,  -- tertahan sampai event selesai
+  total_earned       DECIMAL(16,2) DEFAULT 0,
+  total_withdrawn    DECIMAL(16,2) DEFAULT 0,
+  created_at, updated_at
+)
+
+-- WALLET TRANSACTIONS — ledger immutable. Satu baris = satu pergerakan uang.
+-- Invarian (dicek perintah audit harian):
+--   balance_available = Σ ±amount WHERE status='available'
+--   balance_pending   = Σ ±amount WHERE status='pending'
+wallet_transactions (
+  id              UUID PK,
+  wallet_id       UUID FK → wallets,
+  organization_id UUID FK → organizations,
+  event_id        UUID FK → events NULL,
+  type            ENUM('credit','debit'),
+  category        ENUM('ticket_sale','registration_fee','refund',
+                       'withdrawal','withdrawal_reversal','adjustment'),
+  status          ENUM('pending','available','cancelled'),
+  amount          DECIMAL(12,2),   -- selalu > 0; `type` yang memberi tanda
+  gross_amount    DECIMAL(12,2),   -- yang dibayar pembeli
+  fee_amount      DECIMAL(12,2),   -- platform fee / biaya admin penarikan
+  source_type     VARCHAR(40),     -- ticket_order | team | withdrawal
+  source_id       UUID,
+  available_at    TIMESTAMP,       -- kapan boleh cair (akhir hari event, zona WIB)
+  released_at     TIMESTAMP,
+  created_by      UUID FK → users NULL,
+  description     TEXT,
+  created_at, updated_at,
+
+  -- Kunci idempotensi: webhook Midtrans yang dikirim ulang tidak akan
+  -- mengkredit pesanan yang sama dua kali.
+  UNIQUE(source_type, source_id, category)
+)
+
+-- BANK ACCOUNTS — rekening tujuan pencairan (satu is_primary per organisasi)
+bank_accounts (
+  id              UUID PK,
+  organization_id UUID FK → organizations,
+  bank_name       VARCHAR(100),
+  bank_code       VARCHAR(20),
+  account_number  VARCHAR(50),
+  account_holder  VARCHAR(150),
+  is_primary      BOOLEAN DEFAULT TRUE,
+  created_at, updated_at
+)
+
+-- WITHDRAWALS — permintaan penarikan. Menyimpan SNAPSHOT rekening tujuan dan
+-- aturan yang berlaku saat dibuat, jadi mengubah setting/rekening tidak
+-- pernah menulis ulang riwayat.
+withdrawals (
+  id                  UUID PK,
+  organization_id     UUID FK → organizations,
+  wallet_id           UUID FK → wallets,
+  bank_account_id     UUID FK → bank_accounts NULL,
+  reference           VARCHAR(30) UNIQUE,        -- WD-XXXXXXXX
+  amount              DECIMAL(12,2),             -- yang diterima organizer
+  admin_fee           DECIMAL(12,2),
+  total_debit         DECIMAL(12,2),             -- amount + admin_fee
+  minimum_at_request  DECIMAL(12,2),
+  status              ENUM('pending','processing','completed','rejected'),
+  bank_name, bank_code, account_number, account_holder,   -- snapshot
+  note                TEXT,
+  proof_url           TEXT,                      -- bukti transfer (wajib saat selesai)
+  transfer_reference  VARCHAR(100),
+  admin_note          TEXT,
+  requested_by        UUID FK → users NULL,
+  processed_by        UUID FK → users NULL,
+  processed_at, completed_at, created_at, updated_at
+)
+
+-- Backstop DB untuk "maksimal 1 penarikan aktif per organisasi"
+CREATE UNIQUE INDEX withdrawals_one_active_per_org ON withdrawals (organization_id)
+  WHERE status IN ('pending','processing');
+```
+
+---
+
+### 7.6 Catalog & Platform Settings Tables
+
+Vokabuler turnamen dan kebijakan platform yang dikelola Super Admin (§4.16, §3.6).
+
+```sql
+-- SPORTS — cabang olahraga (dulu hardcode)
+sports (
+  id                    UUID PK,
+  key                   VARCHAR(20) UNIQUE,   -- football | futsal | badminton | ...
+  name                  VARCHAR(50),
+  color, icon,
+  is_set_based          BOOLEAN,              -- badminton/voli: skor per set
+  default_match_minutes INT,
+  is_active             BOOLEAN,
+  sort_order            INT
+)
+
+-- SPORT STATS — kolom statistik pemain per cabang (gol, assist, ace, ...)
+sport_stats (
+  id        UUID PK,
+  sport_id  UUID FK → sports,
+  key, label, sort_order
+)
+
+-- CONFIG OPTIONS — format turnamen, tiebreaker, metode undian, ronde
+-- knockout, tier sponsor. Format = PRESET di atas engine yang ada di kode.
+config_options (
+  id         UUID PK,
+  group      VARCHAR(40),   -- tournament_format | tiebreaker | draw_method | ...
+  key        VARCHAR(40),
+  label      VARCHAR(100),
+  engine     VARCHAR(20),   -- league | knockout | hybrid (hanya untuk format)
+  defaults   JSONB,         -- mis. { "legs": 2 } untuk "Liga 2 Putaran"
+  is_active  BOOLEAN,
+  sort_order INT,
+  UNIQUE(group, key)
+)
+
+-- PLATFORM SETTINGS — key/value. Default diambil dari config/wallet.php,
+-- baris di sini hanya meng-override.
+platform_settings (
+  id         UUID PK,
+  key        VARCHAR(60) UNIQUE,   -- wallet_minimum_withdrawal | wallet_admin_fee | wallet_hold_days
+  value      VARCHAR,
+  updated_by UUID FK → users NULL,
+  created_at, updated_at
+)
+```
+
+---
+
+### 7.7 Certificate Tables
 
 ```sql
 -- CERTIFICATE TEMPLATES
@@ -1214,7 +1506,7 @@ certificates (
 )
 ```
 
-### 7.6 Indexes
+### 7.8 Indexes
 
 ```sql
 CREATE INDEX idx_events_org_id        ON events(organization_id);
@@ -1231,6 +1523,13 @@ CREATE INDEX idx_certs_event_id       ON certificates(event_id);
 CREATE INDEX idx_plan_features_plan   ON plan_features(plan_id);
 CREATE INDEX idx_plan_features_key    ON plan_features(feature_key);
 CREATE INDEX idx_refresh_tokens_user  ON user_refresh_tokens(user_id);
+
+-- Wallet & payout
+CREATE INDEX idx_wallet_tx_wallet     ON wallet_transactions(wallet_id, created_at);
+CREATE INDEX idx_wallet_tx_release    ON wallet_transactions(status, available_at);
+CREATE INDEX idx_withdrawals_status   ON withdrawals(status, created_at);
+CREATE INDEX idx_withdrawals_org      ON withdrawals(organization_id, status);
+CREATE INDEX idx_bank_accounts_org    ON bank_accounts(organization_id);
 ```
 
 ---
@@ -1625,6 +1924,31 @@ web/:
   → Dashboard keuangan & check-in report
 ```
 
+#### Phase 3B — Dompet & Penarikan Dana
+
+Konsekuensi dari keputusan bahwa **semua uang mendarat di akun Midtrans platform** (§4.12): tanpa fase ini, dana organizer tidak punya jalan keluar.
+
+```
+api/:
+  → wallets + wallet_transactions (ledger immutable, idempoten per sumber)
+  → Kredit neto saat pembayaran lunas; dana tertahan sampai event selesai
+  → Perintah terjadwal: rilis dana (per jam) + audit saldo vs ledger (harian)
+  → Rekening bank + permintaan penarikan (min, biaya admin, 1 request aktif)
+  → Antrian pencairan Super Admin: proses / selesai (+bukti) / tolak
+  → Refund Super Admin → koreksi saldo organizer
+  → Middleware org.admin: endpoint uang tertutup untuk member `operator`
+  → platform_settings: aturan pencairan diubah tanpa deploy
+  → wallet:backfill untuk pembayaran lunas yang sudah ada
+
+web/:
+  → /organizer/wallet — saldo, mutasi, rekening, dialog tarik dana
+  → /admin/withdrawals — antrian pencairan + upload bukti transfer
+  → /admin/payments — pembayaran platform + refund
+  → /admin/settings — aturan pencairan
+```
+
+Detail: **`WALLET.md`**.
+
 #### Phase 4 — Generator Sertifikat (Minggu 11–12)
 
 ```
@@ -1881,6 +2205,8 @@ Verifikasi publik:  flo-event.id/verify/COT-2026-00001
 
 | Timeline | Fitur |
 |----------|-------|
+| Q3 2026 | Pencairan **otomatis** via Midtrans Iris (menggantikan transfer manual §4.15) |
+| Q3 2026 | Sinkronisasi refund dari dashboard Midtrans ke dompet (webhook `refund` / `partial_refund`) |
 | Q3 2026 | Live scoring WebSocket |
 | Q4 2026 | Tambahan cabang olahraga (basket, tenis) |
 | Q1 2027 | Mobile app (React Native) |
@@ -1900,12 +2226,18 @@ Verifikasi publik:  flo-event.id/verify/COT-2026-00001
 | JWT key compromise | Very Low | Critical | Key rotation policy, stored di .env terenkripsi |
 | Queue job failure | Medium | Medium | Laravel Horizon retry, failed job table |
 | Scope creep | High | Medium | Strict phase planning, backlog grooming |
+| Refund setelah dana ditarik organizer | Medium | High | Dana ditahan sampai event selesai; saldo boleh minus & mengunci penarikan; opsi masa tahan tambahan (§3.6) |
+| Saldo dompet melenceng dari ledger | Low | Critical | Semua mutasi lewat satu service + row lock; unique index per sumber; audit harian `wallet:audit` |
+| Operator organisasi menyalahgunakan dompet | Medium | Critical | Endpoint uang wajib `org.admin` — member `operator` (petugas scan) ditolak |
+| Refund Midtrans tidak sinkron dengan dompet | Medium | High | Prosedur: refund selalu lewat panel admin; webhook refund masuk roadmap Q3 2026 |
 
 ---
 
 *Dokumen ini adalah living document yang diperbarui setiap sprint.*
 
-**Version:** 1.0.0
-**Last Updated:** Juni 2026
-**Next Review:** Juli 2026
+**Version:** 1.1.0
+**Last Updated:** Juli 2026
+**Next Review:** Agustus 2026
 **Owner:** Product Team flo-event
+
+**Changelog v1.1.0** — Hybrid format (grup → playoff, undian pot, adu penalti) & media event; katalog cabang olahraga / format / statistik dipindah ke database dan dikelola Super Admin; dompet organizer & penarikan dana (FR-17), pengaturan platform (FR-18), galeri & sponsor (FR-19).
