@@ -28,7 +28,9 @@ export interface Plan {
   slug: string;
   description: string | null;
   price_monthly: number;
+  /** Derived server-side from `yearly_discount_percent`; this is what gets billed. */
   price_yearly: number;
+  yearly_discount_percent: number;
   is_active: boolean;
   is_public: boolean;
   sort_order: number;
@@ -57,14 +59,21 @@ export interface FeatureDefinition {
   sort_order: number;
 }
 
+export type SocialPlatform = "instagram" | "youtube" | "x" | "tiktok" | "facebook";
+
+/** Profile URLs per platform. Unset platforms are `null` (or absent, publicly). */
+export type SocialLinks = Partial<Record<SocialPlatform, string | null>>;
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   logo_url: string | null;
+  banner_url: string | null;
   description: string | null;
   contact_email: string | null;
   contact_phone: string | null;
+  social_links: SocialLinks;
   custom_domain: string | null;
   owner_id: string;
   plan_id: string | null;
@@ -433,6 +442,41 @@ export interface PublicEvent {
   approved_teams?: PublicTeam[];
 }
 
+/** Public organizer profile — the outward-facing subset of Organization. */
+export interface PublicOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  banner_url: string | null;
+  description: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  social_links: SocialLinks;
+  published_events_count: number;
+}
+
+/** One row of the public event catalog — a trimmed PublicEvent, no relations. */
+export interface PublicEventListItem {
+  id: string;
+  name: string;
+  slug: string;
+  sport_type: SportType;
+  sport: SportDef | null;
+  tournament_format: TournamentFormat;
+  status: EventStatus;
+  start_date: string | null;
+  end_date: string | null;
+  location_name: string | null;
+  banner_url: string | null;
+  registration_fee: number;
+  registration_is_open: boolean;
+  max_teams: number | null;
+  approved_teams_count: number;
+  tickets_on_sale: boolean;
+  organization: { name: string | null; slug: string | null; logo_url: string | null };
+}
+
 export interface PublicTeam {
   id: string;
   name: string;
@@ -670,4 +714,86 @@ export interface PlatformSetting {
   min: number;
   max: number;
   is_overridden: boolean;
+}
+
+// ---- Certificates ----
+
+/** A placeable field key, e.g. "recipient_name" or "qr". Catalogued by the API. */
+export type CertificateFieldKey = string;
+
+export interface CertificateFieldDef {
+  key: CertificateFieldKey;
+  label: string;
+}
+
+/** One field placed on a template. x/y are percentages of the background. */
+export interface CertificateField {
+  key: CertificateFieldKey;
+  x: number;
+  y: number;
+  size: number;
+  color?: string;
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  uppercase?: boolean;
+}
+
+export interface CertificateTemplate {
+  id: string;
+  organization_id: string;
+  name: string;
+  background_url: string;
+  orientation: "landscape" | "portrait";
+  fields: CertificateField[];
+  certificates_count?: number;
+  created_at: string;
+}
+
+export interface Certificate {
+  id: string;
+  event_id: string;
+  event_name?: string;
+  certificate_template_id: string | null;
+  certificate_number: string;
+  recipient_type: "team" | "player";
+  recipient_id: string | null;
+  recipient_name: string;
+  team_name: string | null;
+  /** The team manager's address — teams and players carry no email of their own. */
+  recipient_email: string | null;
+  award_title: string;
+  has_pdf: boolean;
+  issued_at: string;
+  sent_at: string | null;
+}
+
+export interface CertificateRecipientTeam {
+  id: string;
+  name: string;
+  city: string | null;
+  email: string | null;
+  players_count: number;
+}
+
+export interface CertificateRecipientPlayer {
+  id: string;
+  name: string;
+  team_id: string;
+  jersey_number: string | null;
+}
+
+export interface CertificateRecipients {
+  teams: CertificateRecipientTeam[];
+  players: CertificateRecipientPlayer[];
+}
+
+/** What the public QR lands on: proof the document is real. */
+export interface CertificateVerification {
+  certificate_number: string;
+  recipient_name: string;
+  team_name: string | null;
+  award_title: string;
+  issued_at: string;
+  event: { name: string | null; start_date: string | null };
+  organization: { name: string | null; slug: string | null; logo_url: string | null };
 }

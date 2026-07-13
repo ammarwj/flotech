@@ -3,10 +3,10 @@ FROM php:8.4-cli-alpine AS base
 
 # System libs needed to build PHP extensions.
 RUN apk add --no-cache \
-    libpng libjpeg-turbo freetype libzip icu-libs postgresql-libs \
+    libpng libjpeg-turbo freetype libwebp libzip icu-libs postgresql-libs \
   && apk add --no-cache --virtual .build-deps \
-    $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev freetype-dev libzip-dev icu-dev postgresql-dev \
-  && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev libzip-dev icu-dev postgresql-dev \
+  && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
   && docker-php-ext-install -j"$(nproc)" \
     pdo_pgsql pgsql gd zip bcmath intl exif pcntl opcache \
   && apk del .build-deps

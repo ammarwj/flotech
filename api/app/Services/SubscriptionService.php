@@ -133,9 +133,14 @@ class SubscriptionService
         $period = Carbon::now()->format('Y/m');
 
         return DB::transaction(function () use ($column, $prefix, $period) {
+            // Postgres rejects FOR UPDATE alongside an aggregate ("FOR UPDATE is
+            // not allowed with aggregate functions"), so take the highest row and
+            // lock *that* rather than locking a max(). Sequences are zero-padded,
+            // so lexical order is numeric order.
             $last = Subscription::where($column, 'like', "{$prefix}/{$period}/%")
+                ->orderByDesc($column)
                 ->lockForUpdate()
-                ->max($column);
+                ->value($column);
 
             $seq = $last ? ((int) Str::afterLast($last, '/')) + 1 : 1;
 

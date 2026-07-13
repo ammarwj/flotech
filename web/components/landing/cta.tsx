@@ -15,7 +15,7 @@ export function Cta() {
               Mulai Gratis Sekarang
             </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">
-              Lihat Contoh Event
+              Jelajahi Event
             </Link>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Building2, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket } from "lucide-react";
+import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
@@ -17,7 +17,7 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 
 export default function EventsPage() {
   const { sportLabel, sportColor, formatLabel } = useCatalog();
-  const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
+  const { org, orgId, isLoading: orgLoading } = useActiveOrg();
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -34,24 +34,6 @@ export default function EventsPage() {
             <Skeleton key={i} className="h-[88px] w-full rounded-xl" />
           ))}
         </div>
-      </div>
-    );
-  }
-
-  if (hasNoOrg) {
-    return (
-      <div>
-        <PageHeader title="Event" description="Kelola semua turnamen organisasimu." />
-        <EmptyState
-          icon={Building2}
-          title="Belum punya organisasi"
-          description="Buat organisasi terlebih dahulu untuk mulai menyelenggarakan turnamen."
-          action={
-            <Button asChild>
-              <Link href="/onboarding">Buat organisasi</Link>
-            </Button>
-          }
-        />
       </div>
     );
   }

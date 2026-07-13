@@ -43,7 +43,7 @@ function daysUntil(iso: string | null): number | null {
 
 export default function SubscriptionPage() {
   const qc = useQueryClient();
-  const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
+  const { org, orgId, isLoading: orgLoading } = useActiveOrg();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewDocument | null>(null);
 
@@ -95,7 +95,9 @@ export default function SubscriptionPage() {
     return <Skeleton className="h-[200px] rounded-xl" />;
   }
 
-  if (hasNoOrg || !org) {
+  // The organizer layout already bounces org-less users to onboarding; this only
+  // catches super admins (who own no org) and narrows `org` for the code below.
+  if (!org) {
     return (
       <EmptyState
         icon={Building2}

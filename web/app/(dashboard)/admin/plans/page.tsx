@@ -7,20 +7,27 @@ import { toast } from "sonner";
 import {
   getAdminPlans,
   createPlan,
+  updatePlan,
   deletePlan,
   syncPlanFeatures,
 } from "@/lib/api/plans";
+import { parseApiError } from "@/lib/api/errors";
+import { computeYearlyPrice } from "@/lib/plan";
+import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Plan } from "@/types/api";
 
+const EMPTY_FORM = { name: "", slug: "", price_monthly: 0, yearly_discount_percent: 0 };
+
 export default function AdminPlansPage() {
   const qc = useQueryClient();
   const plansQuery = useQuery({ queryKey: ["admin-plans"], queryFn: getAdminPlans });
 
-  const [form, setForm] = useState({ name: "", slug: "", price_monthly: 0, price_yearly: 0 });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<string | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-plans"] });
 
@@ -28,10 +35,10 @@ export default function AdminPlansPage() {
     mutationFn: () => createPlan(form),
     onSuccess: () => {
       toast.success("Paket berhasil ditambahkan.");
-      setForm({ name: "", slug: "", price_monthly: 0, price_yearly: 0 });
+      setForm(EMPTY_FORM);
       invalidate();
     },
-    onError: () => toast.error("Gagal menambahkan paket."),
+    onError: (err) => toast.error(parseApiError(err, "Gagal menambahkan paket.").message),
   });
 
   const remove = useMutation({
@@ -62,7 +69,7 @@ export default function AdminPlansPage() {
           e.preventDefault();
           create.mutate();
         }}
-        className="mt-6 grid items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-5"
+        className="mt-6 grid items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-3 lg:grid-cols-6"
       >
         <div className="grid gap-1.5">
           <Label htmlFor="name">Nama</Label>
@@ -82,13 +89,23 @@ export default function AdminPlansPage() {
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="py">Harga/thn</Label>
+          <Label htmlFor="yd">Diskon tahunan (%)</Label>
           <Input
-            id="py"
+            id="yd"
             type="number"
-            value={form.price_yearly}
-            onChange={(e) => setForm({ ...form, price_yearly: Number(e.target.value) })}
+            min={0}
+            max={100}
+            value={form.yearly_discount_percent}
+            onChange={(e) =>
+              setForm({ ...form, yearly_discount_percent: Number(e.target.value) })
+            }
           />
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Harga/thn</Label>
+          <p className="text-sm font-semibold">
+            {rupiah(computeYearlyPrice(form.price_monthly, form.yearly_discount_percent))}
+          </p>
         </div>
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? "…" : "Tambah paket"}
@@ -106,10 +123,22 @@ export default function AdminPlansPage() {
                 </span>
                 <span className="ml-2 text-xs text-muted-foreground">/{plan.slug}</span>
                 <span className="ml-3 text-sm text-muted-foreground">
-                  Rp {plan.price_monthly.toLocaleString("id-ID")}/bln
+                  {rupiah(plan.price_monthly)}/bln · {rupiah(plan.price_yearly)}/thn
+                  {plan.yearly_discount_percent > 0 && (
+                    <span className="ml-2 font-semibold text-[var(--brand-600)]">
+                      hemat {Math.round(plan.yearly_discount_percent)}%
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPricing(pricing === plan.id ? null : plan.id)}
+                >
+                  {pricing === plan.id ? "Tutup" : "Harga"}
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -128,9 +157,94 @@ export default function AdminPlansPage() {
               </div>
             </div>
 
+            {pricing === plan.id && (
+              <PriceEditor
+                plan={plan}
+                onSaved={() => {
+                  invalidate();
+                  setPricing(null);
+                }}
+              />
+            )}
             {editing === plan.id && <FeatureEditor plan={plan} onSaved={invalidate} />}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The yearly price is not editable: the backend derives it from the discount, so
+ * showing an input for it would invite a number that disagrees with what Midtrans
+ * actually charges. We preview the derived value instead.
+ */
+function PriceEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
+  const [values, setValues] = useState({
+    name: plan.name,
+    slug: plan.slug,
+    price_monthly: plan.price_monthly,
+    yearly_discount_percent: plan.yearly_discount_percent,
+  });
+
+  const save = useMutation({
+    mutationFn: () => updatePlan(plan.id, values),
+    onSuccess: () => {
+      toast.success("Harga paket berhasil disimpan.");
+      onSaved();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan harga.").message),
+  });
+
+  const yearly = computeYearlyPrice(values.price_monthly, values.yearly_discount_percent);
+
+  return (
+    <div className="mt-4 grid items-end gap-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-1.5">
+        <Label htmlFor={`n-${plan.id}`}>Nama</Label>
+        <Input
+          id={`n-${plan.id}`}
+          value={values.name}
+          onChange={(e) => setValues({ ...values, name: e.target.value })}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`s-${plan.id}`}>Slug</Label>
+        <Input
+          id={`s-${plan.id}`}
+          value={values.slug}
+          onChange={(e) => setValues({ ...values, slug: e.target.value })}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`pm-${plan.id}`}>Harga/bln</Label>
+        <Input
+          id={`pm-${plan.id}`}
+          type="number"
+          min={0}
+          value={values.price_monthly}
+          onChange={(e) => setValues({ ...values, price_monthly: Number(e.target.value) })}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`yd-${plan.id}`}>Diskon tahunan (%)</Label>
+        <Input
+          id={`yd-${plan.id}`}
+          type="number"
+          min={0}
+          max={100}
+          value={values.yearly_discount_percent}
+          onChange={(e) =>
+            setValues({ ...values, yearly_discount_percent: Number(e.target.value) })
+          }
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <span className="text-xs text-muted-foreground">Harga/thn (otomatis)</span>
+        <p className="text-sm font-semibold">{rupiah(yearly)}</p>
+        <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+          {save.isPending ? "Menyimpan…" : "Simpan harga"}
+        </Button>
       </div>
     </div>
   );

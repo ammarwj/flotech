@@ -6,26 +6,30 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AxiosError } from "axios";
 
 import { register as registerUser } from "@/lib/api/auth";
+import { parseApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
-const schema = z
-  .object({
-    full_name: z.string().min(2, "Nama minimal 2 karakter"),
-    email: z.string().email("Email tidak valid"),
-    password: z.string().min(8, "Minimal 8 karakter"),
-    password_confirmation: z.string(),
-  })
-  .refine((d) => d.password === d.password_confirmation, {
-    message: "Konfirmasi password tidak cocok",
-    path: ["password_confirmation"],
-  });
+const fields = z.object({
+  full_name: z.string().min(2, "Nama minimal 2 karakter"),
+  email: z.string().email("Email tidak valid"),
+  password: z
+    .string()
+    .min(8, "Minimal 8 karakter")
+    .regex(/\p{L}/u, "Harus mengandung minimal satu huruf")
+    .regex(/\d/, "Harus mengandung minimal satu angka"),
+  password_confirmation: z.string(),
+});
+
+const schema = fields.refine((d) => d.password === d.password_confirmation, {
+  message: "Konfirmasi password tidak cocok",
+  path: ["password_confirmation"],
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -37,6 +41,7 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -47,11 +52,16 @@ export default function RegisterPage() {
       setAuth(res.access_token, res.user);
       router.push("/onboarding");
     } catch (err) {
-      setServerError(
-        err instanceof AxiosError
-          ? (err.response?.data?.message ?? "Registrasi gagal")
-          : "Registrasi gagal"
-      );
+      const { message, fieldErrors } = parseApiError(err, "Registrasi gagal");
+      const entries = Object.entries(fieldErrors);
+
+      for (const [field, msg] of entries) {
+        if (field in fields.shape) {
+          setError(field as keyof FormValues, { message: msg });
+        }
+      }
+
+      if (entries.length === 0) setServerError(message);
     }
   };
 

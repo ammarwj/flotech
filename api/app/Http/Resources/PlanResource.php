@@ -32,6 +32,7 @@ class PlanResource extends JsonResource
             'description' => $this->description,
             'price_monthly' => (float) $this->price_monthly,
             'price_yearly' => (float) $this->price_yearly,
+            'yearly_discount_percent' => (float) $this->yearly_discount_percent,
             'is_active' => (bool) $this->is_active,
             'is_public' => (bool) $this->is_public,
             'sort_order' => (int) $this->sort_order,

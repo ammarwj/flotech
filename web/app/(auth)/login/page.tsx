@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AxiosError } from "axios";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
+import { getOrganizations } from "@/lib/api/organizations";
+import { parseApiError } from "@/lib/api/errors";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +26,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -37,14 +40,21 @@ export default function LoginPage() {
     setServerError(null);
     try {
       const { data } = await apiClient.post("/auth/login", values);
-      setAuth(data.data.access_token, data.data.user as AuthUser);
-      router.push("/organizer");
+      const user = data.data.user as AuthUser;
+      setAuth(data.data.access_token, user);
+
+      if (user.role === "super_admin") {
+        router.push("/admin");
+        return;
+      }
+
+      // A user who never finished onboarding owns no organization; the organizer
+      // dashboard is useless to them, so route them back into the flow.
+      const orgs = await getOrganizations();
+      qc.setQueryData(["organizations"], orgs);
+      router.push(orgs.length === 0 ? "/onboarding" : "/organizer");
     } catch (err) {
-      const message =
-        err instanceof AxiosError
-          ? (err.response?.data?.message ?? "Login gagal")
-          : "Login gagal";
-      setServerError(message);
+      setServerError(parseApiError(err, "Login gagal").message);
     }
   };
 

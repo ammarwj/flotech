@@ -1,30 +1,9 @@
-import Link from "next/link";
-
 import { AuthGate } from "@/components/auth/auth-gate";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { HeaderLabel } from "@/components/dashboard/header-label";
+import { Logo } from "@/components/shared/logo";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
-
-function Logo() {
-  return (
-    <Link href="/" className="logo">
-      <span className="logo-mark">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="M5 4h14l-2 6H7l1 10"
-            stroke="#fff"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="9" cy="12" r="1.4" fill="#fff" />
-        </svg>
-      </span>
-      flo<span>-event</span>
-    </Link>
-  );
-}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (

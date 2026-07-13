@@ -12,13 +12,30 @@ class Organization extends Model
 {
     use HasUuids;
 
+    /**
+     * Platforms accepted in `social_links`, each with the base URL used to turn
+     * a bare handle into a full profile URL. Adding one here is all it takes —
+     * the request, the resources and the settings form all read this list.
+     *
+     * @var array<string, string>
+     */
+    public const SOCIAL_PLATFORMS = [
+        'instagram' => 'https://instagram.com/',
+        'youtube' => 'https://youtube.com/@',
+        'x' => 'https://x.com/',
+        'tiktok' => 'https://tiktok.com/@',
+        'facebook' => 'https://facebook.com/',
+    ];
+
     protected $fillable = [
         'name',
         'slug',
         'logo_url',
+        'banner_url',
         'description',
         'contact_email',
         'contact_phone',
+        'social_links',
         'custom_domain',
         'owner_id',
         'plan_id',
@@ -31,7 +48,28 @@ class Organization extends Model
         return [
             'plan_expires_at' => 'datetime',
             'storage_used_bytes' => 'integer',
+            'social_links' => 'array',
         ];
+    }
+
+    /**
+     * Social links as a complete map — every known platform is present, with
+     * `null` where the organizer hasn't filled one in, so the settings form can
+     * bind to a stable shape.
+     *
+     * @return array<string, string|null>
+     */
+    public function socialLinksMap(): array
+    {
+        $stored = $this->social_links ?? [];
+
+        return array_map(
+            fn (string $platform) => $stored[$platform] ?? null,
+            array_combine(
+                array_keys(self::SOCIAL_PLATFORMS),
+                array_keys(self::SOCIAL_PLATFORMS),
+            ),
+        );
     }
 
     public function owner(): BelongsTo
@@ -57,6 +95,16 @@ class Organization extends Model
     public function events(): HasMany
     {
         return $this->hasMany(Event::class);
+    }
+
+    public function certificateTemplates(): HasMany
+    {
+        return $this->hasMany(CertificateTemplate::class);
+    }
+
+    public function certificates(): HasMany
+    {
+        return $this->hasMany(Certificate::class);
     }
 
     public function wallet(): HasOne

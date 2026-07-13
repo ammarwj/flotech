@@ -1,9 +1,24 @@
 import { apiClient } from "./client";
 import { downloadBlob, fileNameFromDisposition } from "@/lib/download";
-import type { ApiEnvelope, CheckoutResult, Organization, Subscription } from "@/types/api";
+import type {
+  ApiEnvelope,
+  CheckoutResult,
+  Organization,
+  PublicOrganization,
+  SocialLinks,
+  Subscription,
+} from "@/types/api";
 
 export async function getOrganizations(): Promise<Organization[]> {
   const { data } = await apiClient.get<ApiEnvelope<Organization[]>>("/organizations");
+  return data.data;
+}
+
+/** Public organizer profile. 404s for an unknown slug. */
+export async function getPublicOrganization(orgSlug: string): Promise<PublicOrganization> {
+  const { data } = await apiClient.get<ApiEnvelope<PublicOrganization>>(
+    `/public/organizations/${orgSlug}`
+  );
   return data.data;
 }
 
@@ -17,6 +32,29 @@ export interface CreateOrgPayload {
 
 export async function createOrganization(payload: CreateOrgPayload): Promise<Organization> {
   const { data } = await apiClient.post<ApiEnvelope<Organization>>("/organizations", payload);
+  return data.data;
+}
+
+export interface UpdateOrgPayload {
+  name?: string;
+  slug?: string;
+  logo_url?: string | null;
+  banner_url?: string | null;
+  description?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  /** Handle or full URL per platform; the API normalizes both into a link. */
+  social_links?: SocialLinks;
+}
+
+export async function updateOrganization(
+  orgId: string,
+  payload: UpdateOrgPayload
+): Promise<Organization> {
+  const { data } = await apiClient.patch<ApiEnvelope<Organization>>(
+    `/organizations/${orgId}`,
+    payload
+  );
   return data.data;
 }
 

@@ -27,7 +27,9 @@ class PlanRequest extends FormRequest
             ],
             'description' => ['nullable', 'string'],
             'price_monthly' => ['required', 'numeric', 'min:0'],
-            'price_yearly' => ['required', 'numeric', 'min:0'],
+            // No price_yearly: the controller derives it from the discount so the
+            // two can never disagree. See Plan::computeYearlyPrice().
+            'yearly_discount_percent' => ['numeric', 'min:0', 'max:100'],
             'is_active' => ['boolean'],
             'is_public' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],

@@ -1,8 +1,11 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  EventStatus,
+  Paginated,
   PayRegistrationResult,
   PublicEvent,
+  PublicEventListItem,
   RegisterTeamResult,
   SportEvent,
   Team,
@@ -98,6 +101,31 @@ export async function updateRegistrationStatus(
 }
 
 // ---- Public ----
+
+export interface PublicEventQuery {
+  search?: string;
+  /** Organizer slug — powers the organizer profile page. */
+  org?: string;
+  sport?: string;
+  status?: EventStatus;
+  page?: number;
+  per_page?: number;
+}
+
+/** The public event catalog. Empty filters are dropped so they stay out of the URL. */
+export async function getPublicEvents(
+  query: PublicEventQuery = {}
+): Promise<Paginated<PublicEventListItem>> {
+  const params = Object.fromEntries(
+    Object.entries(query).filter(([, v]) => v !== undefined && v !== "")
+  );
+
+  const { data } = await apiClient.get<ApiEnvelope<Paginated<PublicEventListItem>>>(
+    "/public/events",
+    { params }
+  );
+  return data.data;
+}
 
 export async function getPublicEvent(orgSlug: string, eventSlug: string): Promise<PublicEvent> {
   const { data } = await apiClient.get<ApiEnvelope<PublicEvent>>(

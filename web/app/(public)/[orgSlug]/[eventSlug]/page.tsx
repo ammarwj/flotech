@@ -227,7 +227,11 @@ export default function PublicEventPage() {
                       <small>Organizer</small>
                     </div>
                     <span className="amt" style={{ fontSize: 14 }}>
-                      {ev.organization.name ?? "-"}
+                      {ev.organization.slug ? (
+                        <Link href={`/${ev.organization.slug}`}>{ev.organization.name ?? "-"}</Link>
+                      ) : (
+                        (ev.organization.name ?? "-")
+                      )}
                     </span>
                   </div>
                   <div className="price-tier">

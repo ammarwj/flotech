@@ -5,10 +5,12 @@ const COLUMNS = [
   {
     title: "Produk",
     links: [
-      { href: "#fitur", label: "Fitur" },
-      { href: "#cabang", label: "Cabang Olahraga" },
-      { href: "#harga", label: "Harga" },
-      { href: "/event", label: "Contoh Event" },
+      // Absolute anchors: the footer also renders on the event catalog, where a
+      // bare "#fitur" would go nowhere.
+      { href: "/#fitur", label: "Fitur" },
+      { href: "/#cabang", label: "Cabang Olahraga" },
+      { href: "/#harga", label: "Harga" },
+      { href: "/event", label: "Jelajahi Event" },
     ],
   },
   {

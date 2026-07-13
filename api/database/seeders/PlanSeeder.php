@@ -16,7 +16,7 @@ class PlanSeeder extends Seeder
                 'slug' => 'free',
                 'description' => 'Untuk komunitas kecil yang baru mulai.',
                 'price_monthly' => 0,
-                'price_yearly' => 0,
+                'yearly_discount_percent' => 0,
                 'sort_order' => 1,
                 'features' => [
                     'max_active_events' => '1',
@@ -30,7 +30,7 @@ class PlanSeeder extends Seeder
                 'slug' => 'starter',
                 'description' => 'Untuk klub & kampus yang rutin gelar event.',
                 'price_monthly' => 149000,
-                'price_yearly' => 1430000,
+                'yearly_discount_percent' => 20,
                 'sort_order' => 2,
                 'features' => [
                     'max_active_events' => '3',
@@ -47,7 +47,7 @@ class PlanSeeder extends Seeder
                 'slug' => 'pro',
                 'description' => 'Untuk EO profesional & turnamen besar.',
                 'price_monthly' => 399000,
-                'price_yearly' => 3830000,
+                'yearly_discount_percent' => 20,
                 'sort_order' => 3,
                 'features' => [
                     'max_active_events' => '10',
@@ -65,7 +65,7 @@ class PlanSeeder extends Seeder
                 'slug' => 'professional',
                 'description' => 'Untuk federasi & turnamen skala nasional.',
                 'price_monthly' => 999000,
-                'price_yearly' => 9590000,
+                'yearly_discount_percent' => 20,
                 'sort_order' => 4,
                 'features' => [
                     'max_active_events' => '-1',
@@ -85,6 +85,13 @@ class PlanSeeder extends Seeder
         foreach ($plans as $data) {
             $features = $data['features'];
             unset($data['features']);
+
+            // Yearly price is derived, never seeded by hand — same rule the admin
+            // editor goes through, so the two can't drift apart.
+            $data['price_yearly'] = Plan::computeYearlyPrice(
+                (float) $data['price_monthly'],
+                (float) $data['yearly_discount_percent'],
+            );
 
             $plan = Plan::updateOrCreate(['slug' => $data['slug']], $data);
 

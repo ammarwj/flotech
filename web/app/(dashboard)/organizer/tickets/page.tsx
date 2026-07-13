@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Ticket, Trophy, Building2, ArrowUpRight, ScanLine, ArrowRight } from "lucide-react";
+import { Ticket, Trophy, ArrowUpRight, ScanLine, ArrowRight } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { isTicketingEnabled } from "@/lib/plan";
@@ -17,7 +17,7 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 
 export default function TicketsOverviewPage() {
   const { sportLabel, sportColor } = useCatalog();
-  const { org, orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
+  const { org, orgId, isLoading: orgLoading } = useActiveOrg();
   const ticketing = isTicketingEnabled(org);
 
   const eventsQuery = useQuery({
@@ -35,24 +35,6 @@ export default function TicketsOverviewPage() {
             <Skeleton key={i} className="h-[80px] w-full rounded-xl" />
           ))}
         </div>
-      </div>
-    );
-  }
-
-  if (hasNoOrg) {
-    return (
-      <div>
-        <PageHeader title="Tiket" description="Kelola penjualan tiket tiap event." />
-        <EmptyState
-          icon={Building2}
-          title="Belum punya organisasi"
-          description="Buat organisasi terlebih dahulu untuk mulai menjual tiket."
-          action={
-            <Button asChild>
-              <Link href="/onboarding">Buat organisasi</Link>
-            </Button>
-          }
-        />
       </div>
     );
   }

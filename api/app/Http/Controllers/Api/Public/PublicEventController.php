@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Public;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\MatchResource;
+use App\Http\Resources\PublicEventListResource;
 use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
@@ -15,6 +16,7 @@ use App\Services\RegistrationService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class PublicEventController extends Controller
@@ -23,6 +25,46 @@ class PublicEventController extends Controller
         protected PlanGate $gate,
         protected RegistrationService $registration,
     ) {}
+
+    /**
+     * Public event catalog: every published event, newest live ones first.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $page = Event::query()
+            ->where('status', '!=', 'draft')
+            ->with('organization')
+            ->withCount(['teams as approved_teams_count' => fn ($q) => $q->where('status', 'approved')])
+            ->withExists(['ticketCategories as tickets_on_sale' => fn ($q) => $q->where('is_active', true)])
+            ->when($request->query('org'), fn ($q, $slug) => $q->whereHas(
+                'organization',
+                fn ($o) => $o->where('slug', $slug)
+            ))
+            ->when($request->query('sport'), fn ($q, $sport) => $q->where('sport_type', $sport))
+            ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
+            ->when($request->query('search'), function ($q, $term) {
+                $like = '%'.$term.'%';
+
+                $q->where(fn ($w) => $w
+                    ->where('name', 'ilike', $like)
+                    ->orWhere('location_name', 'ilike', $like)
+                    ->orWhereHas('organization', fn ($o) => $o->where('name', 'ilike', $like)));
+            })
+            // Events people can still act on float to the top; finished and
+            // cancelled ones sink but stay browsable as an archive.
+            ->orderByRaw("case when status in ('open', 'registration_closed', 'ongoing') then 0 else 1 end")
+            ->orderBy('start_date', 'desc')
+            ->paginate(min((int) $request->query('per_page', 12), 50));
+
+        return ApiResponse::success([
+            'items' => PublicEventListResource::collection($page->items()),
+            'meta' => [
+                'page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
+        ]);
+    }
 
     /**
      * Public landing data for an event addressed by org + event slug.

@@ -14,12 +14,16 @@ use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\CatalogController;
+use App\Http\Controllers\Api\CertificateController;
+use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
+use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
+use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\ScanController;
@@ -81,7 +85,13 @@ Route::prefix('v1')->group(function () {
         });
     });
 
-    // ---- Public event landing & registration ----
+    // ---- Public event catalog, landing & registration ----
+    Route::get('public/events', [PublicEventController::class, 'index']);
+    Route::get('public/organizations/{orgSlug}', [PublicOrganizationController::class, 'show']);
+
+    // Certificate verification — what the QR printed on every certificate opens.
+    Route::get('public/certificates/{number}', [PublicCertificateController::class, 'show']);
+
     Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
         Route::get('/', [PublicEventController::class, 'show']);
         Route::post('register', [PublicEventController::class, 'register']);
@@ -118,6 +128,9 @@ Route::prefix('v1')->group(function () {
             // Billing. Like the wallet, this is money: `tenant` alone would let
             // an `operator` member switch the plan or read the invoices.
             Route::middleware('org.admin')->group(function () {
+                // Org profile & branding — the slug is the public URL, so this
+                // is owner/admin only too.
+                Route::patch('/', [OrganizationController::class, 'update']);
                 Route::patch('plan', [OrganizationController::class, 'assignPlan']);
                 Route::get('subscriptions', [SubscriptionController::class, 'index']);
                 Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
@@ -163,6 +176,22 @@ Route::prefix('v1')->group(function () {
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
+
+            // Certificates. Gated on `certificate_generator` inside the
+            // controllers (and `certificate_email` for the sending routes), the
+            // same way ticketing gates on `qr_tickets`.
+            Route::get('certificate-fields', [CertificateTemplateController::class, 'fields']);
+            Route::get('certificate-templates', [CertificateTemplateController::class, 'index']);
+            Route::post('certificate-templates', [CertificateTemplateController::class, 'store']);
+            Route::patch('certificate-templates/{template}', [CertificateTemplateController::class, 'update']);
+            Route::delete('certificate-templates/{template}', [CertificateTemplateController::class, 'destroy']);
+
+            Route::get('certificates', [CertificateController::class, 'index']);
+            Route::get('events/{event}/certificate-recipients', [CertificateController::class, 'recipients']);
+            Route::post('events/{event}/certificates', [CertificateController::class, 'generate']);
+            Route::get('certificates/{certificate}/download', [CertificateController::class, 'download']);
+            Route::post('certificates/{certificate}/send', [CertificateController::class, 'send']);
+            Route::delete('certificates/{certificate}', [CertificateController::class, 'destroy']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LogoMark } from "./icons";
 
+// Anchors are absolute so they still reach the landing sections when the nav is
+// rendered on another page (e.g. the event catalog).
 const LINKS = [
-  { href: "#fitur", label: "Fitur" },
-  { href: "#cabang", label: "Cabang Olahraga" },
-  { href: "#cara-kerja", label: "Cara Kerja" },
-  { href: "#harga", label: "Harga" },
-  { href: "/event", label: "Contoh Event" },
+  { href: "/#fitur", label: "Fitur" },
+  { href: "/#cabang", label: "Cabang Olahraga" },
+  { href: "/#cara-kerja", label: "Cara Kerja" },
+  { href: "/#harga", label: "Harga" },
+  { href: "/event", label: "Jelajahi Event" },
 ];
 
 export function Nav() {

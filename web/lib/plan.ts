@@ -1,4 +1,4 @@
-import type { Organization, PlanFeatureDetail, SportEvent } from "@/types/api";
+import type { Organization, Plan, PlanFeatureDetail, SportEvent } from "@/types/api";
 
 /**
  * Active-event cap for an org's plan, mirroring the backend `max_active_events`
@@ -20,6 +20,34 @@ export function formatPlanFeature(feature: PlanFeatureDetail): string {
     return `${feature.label}: Unlimited`; // -1 = unlimited
   }
   return `${feature.label}: ${feature.value}`;
+}
+
+/**
+ * Whole-percent yearly discount, or 0 when the plan is free / undiscounted.
+ * Free plans are excluded so they never render a "save 20%" badge on Rp 0.
+ */
+export function getYearlyDiscount(plan: Plan): number {
+  if (plan.price_monthly <= 0) return 0;
+  return Math.round(plan.yearly_discount_percent ?? 0);
+}
+
+/**
+ * Mirrors Plan::computeYearlyPrice() on the backend, for previewing the result in
+ * the admin editor before saving. The server recomputes it on write and stays the
+ * source of truth — never send the result of this back as a price.
+ */
+export function computeYearlyPrice(monthly: number, discountPercent: number): number {
+  return Math.round((monthly * 12 * (1 - discountPercent / 100)) / 1000) * 1000;
+}
+
+/** Undiscounted yearly price (12 x monthly) — the struck-through figure. */
+export function getYearlyListPrice(plan: Plan): number {
+  return plan.price_monthly * 12;
+}
+
+/** Best discount across plans, for the billing-cycle toggle badge. */
+export function getMaxYearlyDiscount(plans?: Plan[] | null): number {
+  return plans?.reduce((best, plan) => Math.max(best, getYearlyDiscount(plan)), 0) ?? 0;
 }
 
 /** An event counts against the limit unless it's finished or cancelled. */
@@ -44,6 +72,16 @@ export function isActiveEventLimitReached(
 /** Whether the org's plan includes the QR ticketing feature (`qr_tickets`). */
 export function isTicketingEnabled(org?: Organization | null): boolean {
   return org?.plan?.features?.qr_tickets === "true";
+}
+
+/** Whether the org's plan includes the certificate generator. */
+export function isCertificateEnabled(org?: Organization | null): boolean {
+  return org?.plan?.features?.certificate_generator === "true";
+}
+
+/** Whether the org's plan can email issued certificates to their recipients. */
+export function isCertificateEmailEnabled(org?: Organization | null): boolean {
+  return org?.plan?.features?.certificate_email === "true";
 }
 
 /**

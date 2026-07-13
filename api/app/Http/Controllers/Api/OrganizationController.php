@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Organization\StoreOrganizationRequest;
+use App\Http\Requests\Organization\UpdateOrganizationRequest;
 use App\Http\Resources\OrganizationResource;
 use App\Models\Organization;
 use App\Models\Plan;
@@ -64,6 +65,34 @@ class OrganizationController extends Controller
         $org = $request->attributes->get('organization');
 
         return ApiResponse::success(new OrganizationResource($org->load('plan.features')));
+    }
+
+    /**
+     * Organizer settings: profile, branding & contact details.
+     *
+     * Restricted to owner/admin by the `org.admin` middleware — the slug is the
+     * public event-page URL, so an `operator` must not be able to move it.
+     */
+    public function update(UpdateOrganizationRequest $request): JsonResponse
+    {
+        /** @var Organization $org */
+        $org = $request->attributes->get('organization');
+
+        $org->update($request->safe()->only([
+            'name',
+            'slug',
+            'logo_url',
+            'banner_url',
+            'description',
+            'contact_email',
+            'contact_phone',
+            'social_links',
+        ]));
+
+        return ApiResponse::success(
+            new OrganizationResource($org->load('plan.features')),
+            'Pengaturan organisasi disimpan'
+        );
     }
 
     /**

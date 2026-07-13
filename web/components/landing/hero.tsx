@@ -25,7 +25,7 @@ export function Hero() {
               <ArrowRight />
             </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">
-              Lihat Contoh Event
+              Jelajahi Event
             </Link>
           </div>
           <div className="hero-meta">

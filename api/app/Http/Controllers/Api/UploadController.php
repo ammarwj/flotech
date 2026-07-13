@@ -9,15 +9,24 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Encoders\WebpEncoder;
+use Intervention\Image\ImageManager;
 
 class UploadController extends Controller
 {
     public function __construct(protected R2StorageService $r2) {}
 
     /**
-     * Store an (already client-compressed) image and return a directly usable
-     * URL. Uses R2 when configured, otherwise the local `public` disk so the
-     * URL renders in development too.
+     * Store an uploaded image and return a directly usable URL. Uses R2 when
+     * configured, otherwise the local `public` disk so the URL renders in
+     * development too.
+     *
+     * Everything stored here is re-encoded to WebP. The web app already
+     * compresses to WebP before uploading, but that's a convenience, not a
+     * guarantee — `compressToWebp()` falls back to the original file when the
+     * browser can't produce a WebP blob, and other clients hit this endpoint
+     * too. Re-encoding server-side is what actually makes the rule hold.
      */
     public function image(Request $request): JsonResponse
     {
@@ -28,13 +37,18 @@ class UploadController extends Controller
 
         $file = $request->file('file');
         $folder = trim($request->input('folder', 'images'), '/') ?: 'images';
-        $ext = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'webp');
-        $key = $folder.'/'.Str::uuid().'.'.$ext;
-        $contents = file_get_contents($file->getRealPath());
+        $key = $folder.'/'.Str::uuid().'.webp';
+
+        $contents = (string) (new ImageManager(new GdDriver))
+            ->decodePath($file->getRealPath())
+            // Guard against a client that skipped compression; an image the web
+            // app already sized is well under this and passes through untouched.
+            ->scaleDown(width: 2000, height: 2000)
+            ->encode(new WebpEncoder(quality: 82));
 
         if (config('r2.key')) {
             // Direct SDK upload; the bucket is exposed via its public r2.dev URL.
-            $this->r2->put($key, $contents, $file->getMimeType());
+            $this->r2->put($key, $contents, 'image/webp');
             $url = $this->r2->publicUrl($key);
         } else {
             Storage::disk('public')->put($key, $contents);

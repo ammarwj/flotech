@@ -77,7 +77,7 @@ const dateTime = (iso: string | null) =>
 
 export default function WalletPage() {
   const qc = useQueryClient();
-  const { org, orgId, isLoading: orgLoading, hasNoOrg } = useActiveOrg();
+  const { org, orgId, isLoading: orgLoading } = useActiveOrg();
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [bankErrors, setBankErrors] = useState<FieldErrors>({});
@@ -160,7 +160,9 @@ export default function WalletPage() {
     );
   }
 
-  if (hasNoOrg || !org) {
+  // The organizer layout already bounces org-less users to onboarding; this only
+  // catches super admins (who own no org) and narrows `org` for the code below.
+  if (!org) {
     return (
       <EmptyState
         icon={Building2}

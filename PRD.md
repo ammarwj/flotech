@@ -112,6 +112,8 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Organizer dapat membuat event sesuai kuota paket
 - Mendukung format: Liga, Knockout (single/double elimination), Hybrid
 - Landing page publik per event dengan URL `flo-event.id/[org-slug]/[event-slug]`
+- **Katalog event publik** di `flo-event.id/event` (pencarian, filter cabang/status, paginasi — semuanya di server) agar event bisa **ditemukan**, bukan hanya diakses lewat tautan langsung
+- **Profil penyelenggara publik** di `flo-event.id/[org-slug]`, berisi profil organizer + seluruh event yang ia publikasikan
 
 #### FR-04: Registrasi Tim & Peserta
 - Form registrasi yang dapat dikonfigurasi organizer
@@ -152,10 +154,11 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 #### FR-12: Generator Sertifikat
 - Organizer upload file background sertifikat (JPG/PNG) ke R2
-- Atur posisi elemen di atas background: nama peserta, nama tim, penghargaan, logo event, tanda tangan
-- Preview hasil sebelum generate
-- Generate batch PDF + PNG per penerima via background job
-- Output disimpan di R2, dapat didownload atau dikirim via email
+- Atur posisi elemen di atas background dengan **drag & drop** (koordinat persen): nama penerima, nama tim, penghargaan, nama event, tanggal, penyelenggara, nomor sertifikat, QR
+- Kanvas editor **adalah** previewnya — geometrinya identik dengan renderer PDF
+- Terbitkan batch PDF per penerima (tim yang disetujui atau pemain aktif), idempoten per `(event, penerima, penghargaan)`
+- Output disimpan di R2, dapat didownload; opsional dikirim via email (queue, paket Pro ke atas)
+- Setiap sertifikat punya nomor unik + QR ke halaman verifikasi publik
 
 #### FR-13: Export Excel / PDF
 - Export jadwal, klasemen, statistik, data peserta
@@ -417,49 +420,50 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 
 **Konsep:** Organizer membawa desain sertifikat mereka sendiri (dalam bentuk gambar), flo-event hanya bertugas mencetak data penerima di atas desain tersebut secara otomatis.
 
+**Gating paket:** `certificate_generator` (Starter ke atas) untuk template & generate; `certificate_email` (Pro ke atas) untuk pengiriman email. Ditolak dengan **403 + `errors.feature`** di controller, bukan diam-diam diabaikan.
+
 **Alur Setup Template:**
-1. Organizer upload file background sertifikat (JPG/PNG, resolusi tinggi) ke R2
-2. Sistem menampilkan preview background di layar
-3. Organizer menentukan **posisi** setiap elemen dengan menggeser atau input koordinat X/Y:
-   - Nama penerima (tim atau pemain)
-   - Nama tim
-   - Jenis penghargaan (Juara 1, Top Scorer, dll.)
-   - Nama event & tanggal
-   - Logo event (opsional, jika ingin di-overlay)
-   - Tanda tangan digital (gambar, opsional)
-4. Organizer mengatur: ukuran font, warna teks, alignment per field
-5. Klik **Preview** → sistem render contoh sertifikat dengan data dummy
-6. Simpan konfigurasi posisi sebagai template
+1. Organizer upload file background sertifikat (JPG/PNG) — endpoint upload me-re-encode ke WebP dan menyimpannya di R2 (`certificates/`)
+2. Background tampil sebagai kanvas; organizer **menggeser** setiap field ke posisinya (koordinat X/Y juga bisa diketik manual)
+3. Field yang bisa ditempatkan **berasal dari katalog** `config/certificate.php` — bukan daftar hardcode di UI:
+   `recipient_name`, `team_name`, `award_title`, `event_name`, `event_date`, `organization_name`, `certificate_number`, `qr`
+4. Per field: ukuran font (pt), warna, alignment (kiri/tengah/kanan), tebal, huruf kapital
+5. Simpan → template milik **organisasi** (bukan per event), jadi satu desain bisa dipakai lintas musim
+
+> **Catatan implementasi:** tanda tangan dan logo tidak menjadi field terpisah — keduanya sudah menyatu di artwork yang diunggah organizer. Preview tidak memakai render server: kanvas editor memakai **geometri identik dengan renderer PDF** (anchor per alignment, font pt diskalakan ke lebar halaman), sehingga yang terlihat di layar sama dengan yang tercetak.
 
 **Alur Generate Sertifikat:**
 ```
 [Event Selesai]
-  → Dashboard → Modul Sertifikat
-  → Pilih template yang sudah dikonfigurasi
-  → Pilih jenis: Juara Tim / Penghargaan Individu / Semua
-  → Klik "Generate Semua"
-  → [Background Job: Laravel Queue]
-      → Ambil background dari R2
-      → Overlay teks + logo per penerima (Intervention Image / GD)
-      → Generate PDF A4 landscape per sertifikat
-      → Upload ke R2: certificates/[event-id]/[cert-id].pdf
-  → Notifikasi: "X sertifikat siap didownload"
-  → Download ZIP semua sertifikat
-  → Atau "Kirim via Email" (paket Pro ke atas)
+  → Dashboard → Sertifikat → "Terbitkan"
+  → Pilih event + template + judul penghargaan (teks bebas, mis. "Juara 1")
+  → Pilih penerima: tim yang disetujui, atau pemain aktif di tim-tim itu
+  → Klik "Terbitkan"
+  → [CertificateService, sinkron]
+      → Ambil background sekali (dibaca langsung dari bucket, di-re-encode ke JPEG)
+      → Render PDF A4 per penerima (dompdf; teks + QR vektor di atas background)
+      → Upload ke R2: certificates/{certificate-id}.pdf
+  → Daftar sertifikat + tombol Download PDF per baris
+  → Opsional: "Kirim ke email penerima" → [Queue: SendCertificateJob] (paket Pro ke atas)
 ```
 
-**Jenis Sertifikat yang Di-generate:**
-- Juara 1, 2, 3 (tim)
-- Juara Harapan (opsional)
-- Top Scorer, Top Assist, MVP
-- Penghargaan custom (dikonfigurasi organizer)
+**Idempoten:** unique `(event, penerima, penghargaan)` — menjalankan ulang batch setelah menambah tim tidak akan menerbitkan "Juara 1" kedua untuk tim yang sama; yang sudah punya dilewati, bukan menggagalkan batch.
+
+**Jenis penghargaan:** teks bebas yang diketik organizer (Juara 1, Top Scorer, Peserta, …) — tidak ada daftar tertutup di sistem.
 
 **Data Auto-populate:**
-- Nama penerima (tim atau pemain)
-- Nama event & tanggal pelaksanaan
-- Jenis penghargaan
-- Nomor sertifikat unik: `COT-2026-00001`
-- QR Code verifikasi → `flo-event.id/verify/[cert-id]`
+- Nama penerima (tim atau pemain) + nama tim (untuk sertifikat pemain)
+- Nama event & tanggal pelaksanaan, nama penyelenggara
+- Judul penghargaan
+- Nomor sertifikat unik: `CERT-2026-07-0001` (lihat Lampiran B)
+- QR Code verifikasi → `flo-event.id/verify/CERT-2026-07-0001`
+
+**Email penerima:** tim dan pemain **tidak punya kolom email**. Alamat tujuan diambil dari akun **manajer tim** (`teams.manager_user_id`); tim yang didaftarkan tanpa akun tidak punya email dan tombol kirimnya nonaktif.
+
+**Kendala renderer yang menentukan desain (jangan diutak-atik tanpa alasan):**
+
+1. **PDF dirender dompdf, bukan Intervention Image.** Sertifikat butuh teks tajam yang bisa diseleksi dan QR vektor — bukan gambar raster yang pecah saat dicetak. Konsekuensinya, tata letak terbatas pada subset CSS lama dompdf: **absolute positioning, tanpa flexbox/grid/transform**.
+2. **dompdf tidak bisa membaca WebP**, padahal endpoint upload justru menyimpan gambar sebagai WebP. Karena itu background di-**re-encode ke JPEG** (Intervention/GD) sebelum ditempel sebagai data URI. Ini juga alasan gambar tidak dibiarkan diambil dompdf lewat URL: byte-nya dibaca **langsung dari bucket** (sekali per batch, bukan sekali per sertifikat), sekaligus menghindari egress dan verifikasi TLS ke host publik R2.
 
 ---
 
@@ -552,6 +556,33 @@ Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yan
 
 ---
 
+### 4.18 Katalog Event Publik
+
+Halaman publik `flo-event.id/event` — pintu masuk bagi orang yang **belum tahu** event apa saja yang ada. Tanpa ini, landing page event (§4.1) hanya bisa dicapai kalau seseorang sudah memegang tautannya.
+
+- **Isi:** semua event dengan `status != 'draft'` — aturan visibilitas yang sama persis dengan landing page event, jadi tidak ada dua definisi "publik" yang harus dijaga. Event `finished` dan `cancelled` tetap tampil (dengan badge status) sebagai arsip.
+- **Urutan:** event yang masih bisa ditindaklanjuti (`open`, `registration_closed`, `ongoing`) di atas, lalu yang terbaru.
+- **Pencarian & filter di server:** `?search=` (nama event, lokasi, atau nama penyelenggara), `?sport=`, `?status=`, `?org=`, dengan paginasi. State filter disinkron ke URL supaya `/event?sport=futsal` bisa dibagikan.
+- Kartu event → tautan ke `/{org-slug}/{event-slug}`.
+
+> Halaman demo statis lama ("Contoh Event") dipindah ke `/event/demo` dan tetap dipakai sebagai showcase untuk calon organizer.
+
+---
+
+### 4.19 Profil Penyelenggara Publik
+
+Halaman publik `flo-event.id/{org-slug}` — profil organizer beserta seluruh event yang ia publikasikan.
+
+- **Isi:** banner, logo, nama, deskripsi, kontak, social links, jumlah event, dan grid event-nya (memakai ulang endpoint katalog dengan filter `?org=`).
+- Nama penyelenggara di landing page event menautkan ke sini.
+- Banner, logo, deskripsi, kontak, dan social links diedit organizer di **Pengaturan Organisasi**.
+
+**Social links — satu aturan yang menentukan seluruh alurnya:** organizer boleh mengetik apa saja (`@klubku`, `instagram.com/klubku`, atau URL penuh). Ketiganya **dinormalisasi menjadi URL profil lengkap saat validasi** (`UpdateOrganizationRequest`), memakai base URL dari `Organization::SOCIAL_PLATFORMS`. Konsekuensinya: yang tersimpan **selalu berupa tautan**, sehingga form settings maupun halaman publik cukup me-render `<a>` tanpa pernah menebak-nebak platform. Platform yang tidak diisi disimpan `null` (bentuk map-nya stabil untuk form), tapi **dibuang dari payload publik** — halaman publik hanya menerima platform yang benar-benar diisi, jadi tidak ada ikon kosong yang perlu di-skip.
+
+**Slug tak dikenal wajib menjawab HTTP 404 sungguhan.** Route ini duduk di root, jadi ia menangkap *setiap* path tak dikenal (`/pricingg`, typo apa pun). Karena itu profilnya di-fetch **di server** (Next.js server component → `notFound()`); kalau di-fetch di klien, semua URL ngawur akan menjawab 200 dan terindeks mesin pencari. Grid event-nya tetap client-side.
+
+---
+
 ## 5. User Flow
 
 ### 5.1 Organizer — Onboarding & Buat Event
@@ -608,20 +639,22 @@ Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yan
 ### 5.5 Organizer — Setup & Generate Sertifikat
 
 ```
-[Dashboard] → Modul Sertifikat
-  → "Buat Template Baru"
+[Dashboard] → Sertifikat                      (paket tanpa fitur → panel upgrade)
+  → Tab "Template" → "Template baru"
       → Upload file background sertifikat (JPG/PNG)
-      → Atur posisi setiap field (drag atau input X/Y):
+      → Geser tiap field ke posisinya di atas kanvas (X/Y juga bisa diketik)
           • Nama penerima, nama tim, penghargaan
-          • Nama event, tanggal, logo event (opsional)
-          • Tanda tangan digital (opsional)
-      → Atur font size, warna teks per field
-      → Klik "Preview" → cek hasil render
-      → Simpan template
-  → [Event Selesai] → Pilih template
-  → "Generate Semua" → [Queue Job berjalan di background]
-  → Notifikasi: "Sertifikat siap"
-  → Download ZIP atau "Kirim via Email" (Pro ke atas)
+          • Nama event, tanggal, penyelenggara
+          • Nomor sertifikat, QR verifikasi
+      → Atur font size (pt), warna, alignment, tebal, kapital per field
+      → Simpan template  (dipakai ulang lintas event)
+  → [Event Selesai] → "Terbitkan"
+      → Pilih event + template + judul penghargaan
+      → Pilih penerima: tim disetujui / pemain aktif  ("Pilih semua" tersedia)
+      → Centang "Kirim ke email penerima" (Pro ke atas; mati kalau paket belum mencakup)
+      → Terbitkan → PDF langsung jadi & tersimpan
+  → Tab "Diterbitkan" → Download PDF per sertifikat, kirim ulang email, hapus
+  → Penerima memindai QR → /verify/{nomor} → halaman verifikasi publik
 ```
 
 ### 5.6 SaaS Super Admin — Kelola Paket & Katalog
@@ -798,12 +831,14 @@ volumes:
 web/
 ├── app/
 │   ├── (public)/                   # Route tanpa auth
-│   │   ├── [org-slug]/
-│   │   │   └── [event-slug]/       # Landing page event
+│   │   ├── event/                  # Katalog event publik (§4.18)
+│   │   │   └── demo/               # Halaman contoh event (statis, showcase)
+│   │   ├── [orgSlug]/              # Profil penyelenggara (§4.19) — SERVER component (404 asli)
+│   │   │   └── [eventSlug]/        # Landing page event (+ /register, /tickets)
 │   │   ├── verify/
-│   │   │   └── [cert-id]/          # Verifikasi sertifikat publik
-│   │   └── scan/
-│   │       └── [event-id]/         # QR Scanner check-in
+│   │   │   └── [number]/           # Verifikasi sertifikat publik
+│   │   └── tickets/
+│   │       └── [orderId]/          # E-tiket pembeli
 │   ├── (auth)/                     # Login, Register, Reset Password
 │   ├── (dashboard)/                # Protected routes
 │   │   ├── organizer/              # Dashboard organizer
@@ -813,7 +848,11 @@ web/
 │   │   │   ├── results/
 │   │   │   ├── standings/
 │   │   │   ├── tickets/
-│   │   │   ├── certificates/
+│   │   │   ├── certificates/       # Tab: Diterbitkan | Template
+│   │   │   │   ├── generate/       # Wizard terbitkan batch
+│   │   │   │   └── templates/      # new/ + [id]/ → editor drag & drop
+│   │   │   ├── wallet/
+│   │   │   ├── upgrade/            # Checkout paket (satu-satunya halaman billing)
 │   │   │   ├── reports/
 │   │   │   └── settings/
 │   │   ├── participant/            # Dashboard peserta/tim
@@ -866,22 +905,26 @@ api/
 │   │   ├── StandingService.php     # Klasemen engine
 │   │   ├── BracketService.php      # Bracket logic
 │   │   ├── ScheduleService.php     # Auto-schedule generator
-│   │   ├── CertificateService.php  # Overlay teks ke background image
+│   │   ├── CertificateService.php  # Nomor + render PDF + simpan ke R2 (satu-satunya)
+│   │   ├── SubscriptionService.php # Satu-satunya yang menggeser status langganan
+│   │   ├── WalletService.php       # Satu-satunya yang menggeser uang
 │   │   ├── MidtransService.php     # Payment wrapper
 │   │   ├── R2StorageService.php    # Cloudflare R2 operations
-│   │   └── NotificationService.php # Email sender
+│   │   └── PlanGate.php            # Feature flag & limit paket
 │   ├── Jobs/
-│   │   ├── GenerateCertificateBatch.php
-│   │   ├── SendCertificateEmail.php
-│   │   ├── RecalculateStandings.php
-│   │   └── GenerateTournamentReport.php
+│   │   ├── SendCertificateJob.php  # Kirim 1 sertifikat; sent_at ditulis setelah terkirim
+│   │   ├── ReleaseEventFundsJob.php
+│   │   └── RecalculateStandings.php
 │   └── Events/ + Listeners/
 ├── routes/
 │   ├── api.php                     # API routes (v1)
 │   └── webhook.php                 # Midtrans webhook
 ├── config/
 │   ├── jwt.php
-│   └── r2.php
+│   ├── r2.php
+│   ├── wallet.php                  # Aturan uang (minimum, fee, hold)
+│   ├── billing.php                 # Identitas penerbit invoice/kwitansi
+│   └── certificate.php             # Prefix nomor, URL verifikasi, katalog field
 ├── Dockerfile
 └── artisan
 ```
@@ -934,11 +977,8 @@ flo-event-storage/
 ├── documents/
 │   └── {registration-id}/{filename}       
 ├── certificates/
-│   └── {event-id}/
-│       ├── backgrounds/{template-id}.jpg      ← background yg diupload organizer
-│       └── generated/
-│               ├── {cert-id}.pdf
-│               └── {cert-id}.png
+│   ├── {uuid}.webp                        ← background yg diupload organizer
+│   └── {certificate-id}.pdf               ← sertifikat terbit (diakses lewat API, bukan URL publik)
 └── exports/
     └── {event-id}/
         ├── report-{slug}.pdf
@@ -946,8 +986,8 @@ flo-event-storage/
 ```
 
 **Akses Policy:**
-- **Public read:** logo, banner, foto pemain, sertifikat yang sudah generate
-- **Private (signed URL):** dokumen registrasi, background template sertifikat
+- **Public read:** logo, banner, foto pemain, background template sertifikat
+- **Private:** dokumen registrasi (signed URL); **PDF sertifikat** di-stream lewat API (auth + tenant), key bucket-nya tidak pernah keluar ke klien
 - **Signed URL upload:** semua upload dari client langsung ke R2 (tidak lewat Laravel, hemat bandwidth VPS)
 - **Signed URL expire:** upload = 15 menit, download private = 1 jam
 
@@ -999,9 +1039,16 @@ organizations (
   name              VARCHAR(255) NOT NULL,
   slug              VARCHAR(100) UNIQUE NOT NULL,
   logo_url          TEXT,
+  banner_url        TEXT,                           -- header profil publik (§4.19)
   description       TEXT,
   contact_email     VARCHAR(255),
   contact_phone     VARCHAR(20),
+  social_links      JSONB,                          -- { "instagram": "https://…", "youtube": null, … }
+  -- Satu map JSON, bukan kolom per platform: daftar platform digerakkan kebutuhan
+  -- marketing, dan menambah platform berikutnya tidak boleh perlu migrasi.
+  -- Sumber kebenaran daftar platform = Organization::SOCIAL_PLATFORMS (mengandung
+  -- base URL tiap platform). Form settings, validasi, dan halaman publik membacanya
+  -- dari sana — jangan hardcode daftar platform di tempat lain.
   custom_domain     VARCHAR(255),
   owner_id          UUID REFERENCES users(id),
   plan_id           UUID REFERENCES plans(id),
@@ -1454,57 +1501,59 @@ platform_settings (
 
 ```sql
 -- CERTIFICATE TEMPLATES
+-- Milik organisasi, bukan event: satu desain dipakai ulang lintas musim.
 certificate_templates (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id   UUID REFERENCES organizations(id),
+  organization_id   UUID REFERENCES organizations(id) ON DELETE CASCADE,
   name              VARCHAR(255) NOT NULL,
-  background_url    TEXT NOT NULL,                  -- R2: certificates/{event-id}/backgrounds/
-  layout            ENUM('landscape','portrait') DEFAULT 'landscape',
-  canvas_width      INT NOT NULL,                   -- lebar background dalam pixel
-  canvas_height     INT NOT NULL,                   -- tinggi background dalam pixel
-  fields_config     JSONB NOT NULL,
-  -- fields_config: [
-  --   {
-  --     "key": "recipient_name",
-  --     "label": "Nama Penerima",
-  --     "x": 540, "y": 320,
-  --     "font_size": 48,
-  --     "font_weight": "bold",
-  --     "color": "#1a1a1a",
-  --     "align": "center",
-  --     "max_width": 600
-  --   },
-  --   { "key": "team_name", "x": 540, "y": 390, ... },
-  --   { "key": "award_type", ... },
-  --   { "key": "event_name", ... },
-  --   { "key": "event_date", ... },
-  --   { "key": "logo_event", "x": 80, "y": 60, "width": 120, "height": 120 },
-  --   { "key": "signature", "x": 200, "y": 520, "width": 200 },
-  --   { "key": "qr_code", "x": 860, "y": 490, "size": 100 }
+  background_url    TEXT NOT NULL,                  -- R2: certificates/
+  orientation       VARCHAR(20) DEFAULT 'landscape',-- landscape|portrait (A4)
+  fields            JSONB NOT NULL,
+  -- x/y = PERSEN dari background, bukan pixel — layout bertahan di ukuran/DPI apa pun.
+  -- x adalah titik yang ditempeli teks (bukan sudut kotak): align=left → teks mulai
+  -- di x; right → berakhir di x; center → terpusat di x. Renderer PDF & kanvas editor
+  -- memakai rumus yang sama.
+  -- fields: [
+  --   { "key": "recipient_name", "x": 50, "y": 45, "size": 32,
+  --     "color": "#111111", "align": "center", "bold": true, "uppercase": false },
+  --   { "key": "award_title",        "x": 50, "y": 35, "size": 16, "align": "center" },
+  --   { "key": "certificate_number", "x": 8,  "y": 92, "size": 9,  "align": "left" },
+  --   { "key": "qr",                 "x": 85, "y": 70, "size": 15 }   -- sisi = size*3 pt
   -- ]
-  show_qr_code      BOOLEAN DEFAULT TRUE,
-  show_cert_number  BOOLEAN DEFAULT TRUE,
   created_at        TIMESTAMP DEFAULT NOW(),
   updated_at        TIMESTAMP DEFAULT NOW()
 )
 
--- CERTIFICATES (record per sertifikat yang di-generate)
+-- CERTIFICATES (satu baris = satu sertifikat terbit)
+-- Nama penerima di-SNAPSHOT, tidak dibaca lewat relasi: tim bisa berganti nama dan
+-- pemain bisa dihapus, tapi dokumen yang sudah terbit harus tetap berkata sama.
 certificates (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_id          UUID REFERENCES events(id),
-  template_id       UUID REFERENCES certificate_templates(id),
-  cert_number       VARCHAR(50) UNIQUE NOT NULL,     -- COT-2026-00001
-  recipient_type    ENUM('team','player'),
-  team_id           UUID REFERENCES teams(id),
-  player_id         UUID REFERENCES players(id),
-  award_type        VARCHAR(100) NOT NULL,
-  award_detail      TEXT,
-  pdf_url           TEXT,                            -- R2 URL
-  png_url           TEXT,                            -- R2 URL
-  email_sent_at     TIMESTAMP,
-  generated_at      TIMESTAMP DEFAULT NOW()
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id         UUID REFERENCES organizations(id) ON DELETE CASCADE,
+  event_id                UUID REFERENCES events(id) ON DELETE CASCADE,
+  certificate_template_id UUID REFERENCES certificate_templates(id) ON DELETE SET NULL,
+  certificate_number      VARCHAR(255) UNIQUE NOT NULL,   -- CERT-2026-07-0001
+  recipient_type          VARCHAR(10) NOT NULL,           -- team|player
+  recipient_id            UUID,                           -- id tim / pemain
+  recipient_name          VARCHAR(255) NOT NULL,          -- snapshot
+  team_name               VARCHAR(255),                   -- tim si pemain; NULL untuk sertifikat tim
+  recipient_email         VARCHAR(255),                   -- email MANAJER tim (tim/pemain tak punya email)
+  award_title             VARCHAR(255) NOT NULL,          -- teks bebas: "Juara 1", "Peserta"
+  pdf_key                 TEXT,                           -- object key di R2 (bukan URL publik)
+  issued_at               TIMESTAMP NOT NULL,
+  sent_at                 TIMESTAMP,                      -- diisi hanya setelah email benar-benar terkirim
+  created_at              TIMESTAMP DEFAULT NOW(),
+  updated_at              TIMESTAMP DEFAULT NOW(),
+
+  -- Satu penghargaan per penerima per event: batch yang dijalankan ulang tidak
+  -- boleh menerbitkan "Juara 1" kedua untuk tim yang sama.
+  UNIQUE (event_id, recipient_type, recipient_id, award_title)
 )
 ```
+
+> **Template dihapus ≠ sertifikat hilang.** FK-nya `ON DELETE SET NULL` karena PDF-nya sudah ter-render dan tersimpan; template hanya resep, bukan dokumennya.
+>
+> **`pdf_key`, bukan `pdf_url`.** Sertifikat diunduh lewat API (auth + tenant) yang men-stream objeknya; key bucket tidak pernah keluar ke klien. Tidak ada `png_url` — keluarannya hanya PDF.
 
 ### 7.8 Indexes
 
@@ -1518,8 +1567,8 @@ CREATE INDEX idx_matches_date         ON matches(match_date);
 CREATE INDEX idx_standings_event_id   ON standings(event_id);
 CREATE INDEX idx_player_stats_event   ON player_stats(event_id);
 CREATE INDEX idx_tickets_qr           ON tickets(qr_code);
-CREATE INDEX idx_certs_number         ON certificates(cert_number);
-CREATE INDEX idx_certs_event_id       ON certificates(event_id);
+CREATE UNIQUE INDEX idx_certs_number  ON certificates(certificate_number);
+CREATE INDEX idx_certs_event_type     ON certificates(event_id, recipient_type);
 CREATE INDEX idx_plan_features_plan   ON plan_features(plan_id);
 CREATE INDEX idx_plan_features_key    ON plan_features(feature_key);
 CREATE INDEX idx_refresh_tokens_user  ON user_refresh_tokens(user_id);
@@ -1571,10 +1620,12 @@ CREATE INDEX idx_bank_accounts_org    ON bank_accounts(organization_id);
 | **Laravel Horizon** | 6+ | Queue monitoring |
 | **Laravel Telescope** | 5+ | Debugging (dev only) |
 | **Spatie Permission** | 6+ | Role & permission |
-| **barryvdh/laravel-dompdf** | latest | Export PDF (laporan & sertifikat) |
+| **barryvdh/laravel-dompdf** | 3+ | Render PDF: invoice, kwitansi, **sertifikat** |
 | **maatwebsite/excel** | 3+ | Export Excel |
-| **intervention/image** | 3+ | Image overlay untuk sertifikat (GD/Imagick) |
+| **intervention/image** | 4+ | Re-encode gambar (upload → WebP; background sertifikat → JPEG) |
+| **bacon/bacon-qr-code** | 3+ | QR verifikasi sertifikat (SVG, digambar dompdf sebagai vektor) |
 | **aws/aws-sdk-php** | 3+ | Cloudflare R2 (S3-compatible SDK) |
+| **league/flysystem-aws-s3-v3** | 3+ | Adapter disk `r2` (wajib; tanpa ini `Storage::disk('r2')` fatal) |
 | **GuzzleHTTP** | 7+ | HTTP client (Midtrans) |
 | **Laravel Pint** | — | Code formatter |
 | **Pest PHP** | 4+ | Testing framework (browser testing) |
@@ -1776,7 +1827,7 @@ Size: sm (32px h), md (40px h), lg (48px h). Selalu ada loading state dan disabl
 
 ### 9.6 Certificate Positioner UI
 
-Halaman setup template sertifikat menggunakan pendekatan **overlay preview** sederhana:
+Halaman setup template sertifikat menggunakan pendekatan **overlay preview** (`components/certificate/template-editor.tsx`):
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -1793,17 +1844,22 @@ Halaman setup template sertifikat menggunakan pendekatan **overlay preview** sed
 │  KANAN: Panel Properti Field yang Dipilih             │
 │  ┌─────────────────────────────────────────────────┐  │
 │  │  Field: Nama Penerima                            │  │
-│  │  X: [540]  Y: [320]                              │  │
-│  │  Font size: [48]  Weight: [Bold ▼]               │  │
-│  │  Color: [#1a1a1a]  Align: [Center ▼]             │  │
+│  │  X: [50] %  Y: [45] %                            │  │
+│  │  Font size: [32] pt   Align: [Tengah ▼]          │  │
+│  │  Color: [#111111]   ☑ Tebal   ☐ HURUF KAPITAL    │  │
 │  └─────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────┘
 ```
 
 - Drag field di canvas → update nilai X/Y di panel kanan
 - Input X/Y manual di panel → pindah posisi field di canvas
-- Tombol "Preview dengan data asli" → request ke server, render gambar nyata, tampil di modal
-- Simpan → POST konfigurasi ke API → disimpan di `fields_config` JSONB
+- Dropdown "Tambah field" hanya menampilkan field yang **belum dipakai**; opsinya ditarik dari `GET /certificate-fields` (katalog `config/certificate.php`), tidak dihardcode di UI
+- Field menampilkan **contoh teks** ("Garuda FC", "Juara 1"), bukan `{{placeholder}}`
+- Simpan → POST ke API → disimpan di kolom `fields` (JSONB)
+
+**Kanvas wajib memakai geometri yang sama dengan renderer PDF.** Koordinat disimpan dalam persen, ukuran font dalam **pt** diskalakan ke lebar halaman A4 di layar (`px = pt × lebarKanvas / 842`), dan alignment menentukan sisi teks mana yang menempel di X. Kalau editor dan PDF memakai rumus berbeda, hasil cetak akan meleset dari yang disusun organizer — dan itu baru ketahuan setelah ratusan sertifikat tercetak.
+
+> Tidak ada tombol "Preview dengan data asli" ke server: kanvas **adalah** previewnya. Menambah render-preview di server berarti dua implementasi tata letak yang harus dijaga tetap sinkron.
 
 ---
 
@@ -1949,29 +2005,39 @@ web/:
 
 Detail: **`WALLET.md`**.
 
-#### Phase 4 — Generator Sertifikat (Minggu 11–12)
+#### Phase 4 — Generator Sertifikat (Minggu 11–12) — ✅ selesai
 
 ```
 api/:
-  → Certificate template CRUD (simpan fields_config JSONB)
-  → R2 signed URL untuk upload background sertifikat
-  → Preview endpoint: terima config → overlay teks ke background → return image
-  → GenerateCertificateBatch Job (Queue):
-      → Ambil background dari R2
-      → Intervention Image: overlay semua field per penerima
-      → DomPDF atau GD: generate PDF
-      → Upload ke R2: certificates/{event-id}/generated/
-  → SendCertificateEmail Job (Queue, paket Pro+)
+  → Certificate template CRUD (simpan fields JSONB, koordinat persen)
+  → Upload background lewat endpoint upload gambar yang sudah ada (R2)
+  → CertificateService (sinkron, bukan queue):
+      → Ambil background dari bucket sekali per batch → re-encode ke JPEG
+      → dompdf: render teks + QR vektor di atas background → PDF A4
+      → Upload ke R2: certificates/{certificate-id}.pdf
+  → Nomor sertifikat: CERT-YYYY-MM-NNNN, sequence dikunci, unique index
+  → SendCertificateJob (Queue, paket Pro+) — sent_at ditulis setelah terkirim
   → Verifikasi sertifikat endpoint (publik)
+  → Download PDF lewat API (stream), bukan URL bucket
 
 web/:
   → Upload background interface
   → Certificate positioner (drag field + input X/Y + panel properti)
-  → Tombol "Preview" → tampil hasil render dari server
-  → Generate UI (pilih jenis, konfirmasi, progress)
-  → Download ZIP / kirim via email
+  → Generate UI (pilih event, template, penghargaan, penerima; "Pilih semua")
+  → Download PDF per sertifikat / kirim via email
   → Halaman verifikasi sertifikat publik
 ```
+
+**Yang berubah dari rencana awal, beserta alasannya:**
+
+| Rencana | Yang dibangun | Alasan |
+|---------|---------------|--------|
+| Generate lewat Queue job | **Sinkron** di request | Batch normal (puluhan) selesai dalam detik; queue menambah status "sedang diproses" yang harus di-poll UI tanpa manfaat nyata. Yang di-queue justru **email**, karena SMTP-lah yang lambat & bisa gagal. |
+| Preview endpoint di server | **Kanvas editor = preview** | Dua implementasi tata letak (server & klien) pasti akan berbeda diam-diam. Satu rumus, dipakai keduanya. |
+| Overlay via Intervention Image | **dompdf** | Butuh teks tajam & QR vektor yang tidak pecah saat dicetak; raster tidak memenuhi itu. |
+| Output PDF **+ PNG** | **PDF saja** | Tidak ada alur yang memakai PNG-nya. |
+| Download **ZIP** semua | Download **per sertifikat** | ZIP ratusan file berarti kerja batch + storage sementara; belum ada bukti dibutuhkan. Bisa ditambahkan nanti kalau organizer memintanya. |
+| Field `logo_event` & `signature` | **Tidak ada** | Keduanya sudah menyatu di artwork yang diunggah organizer — itu inti dari "bawa desainmu sendiri". |
 
 #### Phase 5 — Export & Laporan (Minggu 13–14)
 
@@ -2039,16 +2105,37 @@ Launch:
 ```
 
 **Endpoint Naming (RESTful):**
+
+Endpoint milik tenant selalu bersarang di bawah organisasi dan melewati middleware `tenant`
+(+ `org.admin` untuk endpoint uang/langganan):
 ```
-GET    /v1/events
-POST   /v1/events
-GET    /v1/events/{id}
-PUT    /v1/events/{id}
-DELETE /v1/events/{id}
-POST   /v1/events/{id}/publish        ← custom action
-POST   /v1/certificates/{id}/preview  ← preview render
-POST   /v1/certificates/generate      ← trigger batch job
+GET    /v1/organizations/{org}/events
+POST   /v1/organizations/{org}/events
+POST   /v1/organizations/{org}/events/{event}/publish        ← custom action
+
+GET    /v1/organizations/{org}/certificate-fields            ← katalog field (untuk editor)
+GET    /v1/organizations/{org}/certificate-templates
+POST   /v1/organizations/{org}/certificate-templates
+PATCH  /v1/organizations/{org}/certificate-templates/{id}
+DELETE /v1/organizations/{org}/certificate-templates/{id}
+
+GET    /v1/organizations/{org}/certificates                  ← ?event_id= (opsional)
+GET    /v1/organizations/{org}/events/{event}/certificate-recipients
+POST   /v1/organizations/{org}/events/{event}/certificates   ← terbitkan batch
+GET    /v1/organizations/{org}/certificates/{id}/download    ← stream PDF
+POST   /v1/organizations/{org}/certificates/{id}/send        ← queue email
+DELETE /v1/organizations/{org}/certificates/{id}
 ```
+
+Endpoint publik (tanpa auth):
+```
+GET    /v1/public/events                       ← katalog: ?search=&sport=&status=&org=&page=
+GET    /v1/public/events/{orgSlug}/{eventSlug} ← landing page event
+GET    /v1/public/organizations/{orgSlug}      ← profil penyelenggara
+GET    /v1/public/certificates/{number}        ← verifikasi sertifikat (tujuan QR)
+```
+
+**Pelanggaran batas paket dijawab `403` dengan `errors.feature`** (mis. `{"feature": "certificate_email"}`), supaya klien bisa membedakannya dari 403 biasa dan mengarahkan user ke halaman upgrade.
 
 ---
 
@@ -2116,8 +2203,8 @@ Merge ke main:
 3. Peserta registrasi tim → bayar → approval → dashboard tim aktif
 4. Generate jadwal → input hasil → klasemen auto-update
 5. Beli tiket → terima QR → scan check-in valid
-6. Upload background sertifikat → atur posisi → preview → generate batch
-7. Download ZIP sertifikat
+6. Upload background sertifikat → atur posisi → terbitkan batch
+7. Download PDF sertifikat → scan QR → halaman verifikasi menampilkan dokumen yang sah
 8. Export laporan PDF & Excel
 9. JWT expired → refresh token → request berhasil
 10. SaaS admin ubah plan feature → langsung berlaku untuk tenant
@@ -2173,9 +2260,9 @@ Merge ke main:
 |------|----------|
 | **Tenant** | Satu organisasi dalam sistem multi-tenant |
 | **Feature Flag** | Toggle fitur dikontrol berdasarkan paket |
-| **fields_config** | JSONB yang menyimpan posisi & style setiap field sertifikat |
+| **fields** (template) | JSONB berisi posisi (persen) & style setiap field sertifikat |
 | **Certificate Background** | File gambar (JPG/PNG) yang diupload organizer sebagai template sertifikat |
-| **Overlay** | Proses menambahkan teks/logo di atas background image di server |
+| **Overlay** | Proses mencetak teks/QR di atas background saat merender PDF sertifikat |
 | **Signed URL** | URL sementara untuk akses/upload file R2 secara langsung |
 | **Horizon** | Dashboard monitoring queue Laravel |
 | **TenantScope** | Middleware yang memastikan query selalu di-filter per `organization_id` |
@@ -2183,11 +2270,15 @@ Merge ke main:
 ### B. Certificate Number Format
 
 ```
-Format:  COT-{YEAR}-{5DIGIT}
-Contoh:  COT-2026-00001
+Format:  {PREFIX}-{YEAR}-{MONTH}-{4DIGIT}     -- prefix dari config/certificate.php
+Contoh:  CERT-2026-07-0001
 
-Verifikasi publik:  flo-event.id/verify/COT-2026-00001
+Verifikasi publik:  flo-event.id/verify/CERT-2026-07-0001
 ```
+
+- Urutan **reset tiap bulan**, sama seperti penomoran invoice (`INV/2026/07/0001`).
+- Dipisah **tanda hubung**, bukan garis miring seperti invoice: nomor ini menjadi segmen URL verifikasi dan nama file PDF, jadi slash akan merusak keduanya.
+- Nomor dicetak sekali saat terbit dan dijamin unik oleh unique index — sequence diambil dengan mengunci baris tertinggi (`ORDER BY … DESC … FOR UPDATE`), **bukan** mengunci `max()`: Postgres menolak `FOR UPDATE` bersama fungsi agregat.
 
 ### C. VPS Recommended Spec
 

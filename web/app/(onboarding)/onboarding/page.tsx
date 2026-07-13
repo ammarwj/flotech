@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { AxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, Building2, CreditCard } from "lucide-react";
 
 import { getPublicPlans } from "@/lib/api/plans";
 import { createOrganization, checkoutSubscription } from "@/lib/api/organizations";
+import { parseApiError } from "@/lib/api/errors";
+import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { getMaxYearlyDiscount } from "@/lib/plan";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,17 +18,13 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import {
+  BillingCycleToggle,
+  PlanCard,
+  type BillingCycle,
+} from "@/components/subscription/plan-card";
 import { cn } from "@/lib/utils";
 import type { Plan } from "@/types/api";
-
-const rupiah = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(n);
-
-const PLAN_COLORS: Record<string, string> = {
-  free: "var(--plan-free)",
-  starter: "var(--plan-starter)",
-  pro: "var(--plan-pro)",
-  professional: "var(--plan-professional)",
-};
 
 function Steps({ step }: { step: 1 | 2 }) {
   const items = [
@@ -58,16 +56,29 @@ function Steps({ step }: { step: 1 | 2 }) {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [orgName, setOrgName] = useState("");
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly");
+  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/login");
   }, [isAuthenticated, router]);
+
+  // Step 1 creates an organization, and nothing on the API side stops a second
+  // one — but useActiveOrg() only ever reads data[0], so a duplicate would be an
+  // invisible ghost. Bounce anyone who already has an org (back button, bookmark)
+  // before they can submit the form. Only guards step 1: once step 1 succeeds the
+  // org exists by design and the user must be allowed through to pick a plan.
+  const { org } = useActiveOrg();
+
+  useEffect(() => {
+    if (step === 1 && org) router.replace("/organizer");
+  }, [step, org, router]);
 
   const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
 
@@ -75,13 +86,11 @@ export default function OnboardingPage() {
     mutationFn: () => createOrganization({ name: orgName }),
     onSuccess: (org) => {
       toast.success("Organisasi berhasil dibuat!");
+      qc.invalidateQueries({ queryKey: ["organizations"] });
       setOrgId(org.id);
       setStep(2);
     },
-    onError: (err) => {
-      const msg = err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal membuat organisasi.") : "Gagal membuat organisasi.";
-      toast.error(msg);
-    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal membuat organisasi.").message),
   });
 
   const checkout = useMutation({
@@ -89,15 +98,16 @@ export default function OnboardingPage() {
     onSuccess: (res) => {
       if (res.redirect_url) {
         window.location.assign(res.redirect_url);
-      } else {
-        toast.success("Langganan aktif. Selamat datang!");
-        router.push("/organizer");
+        return;
       }
+      // Dev/mock: subscription auto-activated and the plan switched.
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      toast.success("Langganan aktif. Selamat datang!");
+      router.push("/organizer");
     },
-    onError: (err) => {
-      const msg = err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal memproses pembayaran.") : "Gagal memproses pembayaran.";
-      toast.error(msg);
-    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal memproses pembayaran.").message),
+    onSettled: () => setPendingPlanId(null),
   });
 
   return (
@@ -142,20 +152,11 @@ export default function OnboardingPage() {
 
       {step === 2 && (
         <div>
-          <div className="mb-5 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
-            {(["monthly", "yearly"] as const).map((c) => (
-              <button
-                key={c}
-                onClick={() => setCycle(c)}
-                className={cn(
-                  "rounded-full px-4 py-1.5 transition-colors",
-                  cycle === c ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {c === "monthly" ? "Bulanan" : "Tahunan"}
-              </button>
-            ))}
-          </div>
+          <BillingCycleToggle
+            cycle={cycle}
+            onChange={setCycle}
+            discount={getMaxYearlyDiscount(plansQuery.data)}
+          />
 
           {plansQuery.isLoading && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -169,49 +170,19 @@ export default function OnboardingPage() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {plansQuery.data?.map((plan) => {
-              const price = cycle === "yearly" ? plan.price_yearly : plan.price_monthly;
-              const color = PLAN_COLORS[plan.slug] ?? "var(--brand-600)";
-              const featured = plan.slug === "pro";
-              return (
-                <Card
-                  key={plan.id}
-                  className={cn(
-                    "relative flex flex-col p-5",
-                    featured && "ring-1 ring-[var(--brand-600)]"
-                  )}
-                >
-                  {featured && (
-                    <span className="absolute -top-2.5 left-5 rounded-full bg-[var(--brand-600)] px-2.5 py-0.5 text-[11px] font-bold text-white">
-                      Populer
-                    </span>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-                    <span className="font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                      {plan.name}
-                    </span>
-                  </div>
-                  <div className="mt-3 text-2xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-                    {price === 0 ? "Gratis" : rupiah(price)}
-                    {price > 0 && (
-                      <span className="text-sm font-medium text-muted-foreground">
-                        /{cycle === "yearly" ? "thn" : "bln"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 min-h-[36px] text-xs text-muted-foreground">{plan.description}</p>
-                  <Button
-                    className="mt-4"
-                    variant={featured ? "default" : "outline"}
-                    disabled={checkout.isPending}
-                    onClick={() => checkout.mutate(plan)}
-                  >
-                    {checkout.isPending ? "Memproses…" : "Pilih paket"}
-                  </Button>
-                </Card>
-              );
-            })}
+            {plansQuery.data?.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                cycle={cycle}
+                isPending={pendingPlanId === plan.id}
+                disabled={checkout.isPending}
+                onSelect={(p) => {
+                  setPendingPlanId(p.id);
+                  checkout.mutate(p);
+                }}
+              />
+            ))}
           </div>
         </div>
       )}
