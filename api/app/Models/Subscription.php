@@ -13,12 +13,16 @@ class Subscription extends Model
     protected $fillable = [
         'organization_id',
         'plan_id',
+        'invoice_number',
+        'receipt_number',
         'billing_cycle',
         'amount',
         'status',
         'starts_at',
         'expires_at',
         'midtrans_order_id',
+        'payment_type',
+        'midtrans_token',
         'paid_at',
     ];
 

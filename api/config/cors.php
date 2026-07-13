@@ -16,7 +16,9 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Without this the browser hides the header from JS, and a downloaded
+    // invoice lands on disk named after its UUID instead of its number.
+    'exposed_headers' => ['Content-Disposition'],
 
     'max_age' => 0,
 

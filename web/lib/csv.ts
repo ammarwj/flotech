@@ -1,3 +1,5 @@
+import { downloadBlob } from "./download";
+
 /**
  * CSV export that opens cleanly in Excel.
  *
@@ -20,14 +22,8 @@ export function toCsv(headers: string[], rows: (string | number | null | undefin
 /** Trigger a download of `content` as a spreadsheet-friendly CSV file. */
 export function downloadCsv(fileName: string, content: string): void {
   const blob = new Blob([`﻿${content}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName.endsWith(".csv") ? fileName : `${fileName}.csv`;
-  a.click();
-
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, fileName.endsWith(".csv") ? fileName : `${fileName}.csv`);
 }
 
 /** "Statistik Pemain — RING OF JOGJA" → "statistik-pemain-ring-of-jogja". */

@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Mail\TicketPurchasedMail;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
+use App\Models\TicketOrder;
 use App\Models\User;
+use App\Services\TicketService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class TicketTest extends TestCase
@@ -131,6 +135,73 @@ class TicketTest extends TestCase
             ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/scan", ['qr_code' => $qr])
             ->assertStatus(409)
             ->assertJsonPath('errors.result', 'used');
+    }
+
+    public function test_buyer_gets_a_confirmation_mail_once_the_order_is_paid(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+        $category = $event->ticketCategories()->create(['name' => 'Gratis', 'price' => 0, 'is_active' => true]);
+
+        $orderId = $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+            'ticket_category_id' => $category->id,
+            'quantity' => 1,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+        ])->json('data.order.id');
+
+        Mail::assertQueued(
+            TicketPurchasedMail::class,
+            fn (TicketPurchasedMail $mail) => $mail->order->id === $orderId
+                && $mail->hasTo('budi@test.com'),
+        );
+
+        // A re-delivered webhook must not send a second confirmation.
+        app(TicketService::class)->markPaid(TicketOrder::find($orderId));
+
+        Mail::assertQueuedCount(1);
+    }
+
+    public function test_organizer_sees_the_buyer_list(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+        $category = $event->ticketCategories()->create(['name' => 'Gratis', 'price' => 0, 'is_active' => true]);
+
+        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+            'ticket_category_id' => $category->id,
+            'quantity' => 2,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+            'holder_names' => ['Budi', 'Ani'],
+        ])->assertCreated();
+
+        $this->actingAs($user, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/ticket-orders")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.buyer_name', 'Budi')
+            ->assertJsonPath('data.0.buyer_email', 'budi@test.com')
+            ->assertJsonPath('data.0.status', 'paid')
+            ->assertJsonCount(2, 'data.0.tickets');
+    }
+
+    public function test_operator_cannot_read_the_buyer_list(): void
+    {
+        $owner = User::factory()->create();
+        $operator = User::factory()->create();
+        $org = $this->orgWithPlan($owner, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+
+        $org->members()->create(['user_id' => $operator->id, 'role' => 'operator']);
+
+        $this->actingAs($operator, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/ticket-orders")
+            ->assertStatus(403);
     }
 
     public function test_scan_rejects_ticket_from_another_event(): void

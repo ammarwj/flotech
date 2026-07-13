@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TicketCategoryController;
+use App\Http\Controllers\Api\TicketOrderController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
@@ -113,9 +114,17 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);
-            Route::patch('plan', [OrganizationController::class, 'assignPlan']);
-            Route::get('subscriptions', [SubscriptionController::class, 'index']);
-            Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
+
+            // Billing. Like the wallet, this is money: `tenant` alone would let
+            // an `operator` member switch the plan or read the invoices.
+            Route::middleware('org.admin')->group(function () {
+                Route::patch('plan', [OrganizationController::class, 'assignPlan']);
+                Route::get('subscriptions', [SubscriptionController::class, 'index']);
+                Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
+                Route::post('subscriptions/{subscription}/pay', [SubscriptionController::class, 'pay']);
+                Route::get('subscriptions/{subscription}/invoice', [SubscriptionController::class, 'invoice']);
+                Route::get('subscriptions/{subscription}/receipt', [SubscriptionController::class, 'receipt']);
+            });
 
             // Event CRUD + registrations management.
             Route::apiResource('events', EventController::class);
@@ -154,6 +163,13 @@ Route::prefix('v1')->group(function () {
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
+
+            // Buyer list. Narrowed to owner/admin — the rows carry buyer
+            // contact details, unlike the aggregate report above.
+            Route::middleware('org.admin')->get(
+                'events/{event}/ticket-orders',
+                [TicketOrderController::class, 'index'],
+            );
 
             // Wallet & payouts (Phase 4). Money endpoints are narrowed to the
             // owner/admin — `tenant` alone would also admit gate operators.

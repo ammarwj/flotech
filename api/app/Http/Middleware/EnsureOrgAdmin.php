@@ -13,8 +13,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * TenantScope alone admits every member, including `operator` (the person
  * scanning tickets at the gate). That's fine for events, but not for money:
- * an operator must not be able to change the payout account or drain the
- * wallet. Always stack this after `tenant`.
+ * an operator must not be able to change the payout account, drain the wallet,
+ * or buy a plan. Always stack this after `tenant`.
  */
 class EnsureOrgAdmin
 {
@@ -36,7 +36,7 @@ class EnsureOrgAdmin
                 ->exists();
 
         if (! $allowed) {
-            return ApiResponse::error('Hanya pemilik atau admin organisasi yang bisa mengakses dompet.', null, 403);
+            return ApiResponse::error('Hanya pemilik atau admin organisasi yang bisa mengakses halaman ini.', null, 403);
         }
 
         return $next($request);

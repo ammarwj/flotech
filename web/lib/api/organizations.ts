@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
-import type { ApiEnvelope, CheckoutResult, Organization } from "@/types/api";
+import { downloadBlob, fileNameFromDisposition } from "@/lib/download";
+import type { ApiEnvelope, CheckoutResult, Organization, Subscription } from "@/types/api";
 
 export async function getOrganizations(): Promise<Organization[]> {
   const { data } = await apiClient.get<ApiEnvelope<Organization[]>>("/organizations");
@@ -29,4 +30,58 @@ export async function checkoutSubscription(
     { plan_id: planId, billing_cycle: billingCycle }
   );
   return data.data;
+}
+
+export async function getSubscriptions(orgId: string): Promise<Subscription[]> {
+  const { data } = await apiClient.get<ApiEnvelope<Subscription[]>>(
+    `/organizations/${orgId}/subscriptions`
+  );
+  return data.data;
+}
+
+/** Reopen payment for an unpaid invoice. Returns a fresh Snap transaction. */
+export async function paySubscription(orgId: string, subId: string): Promise<CheckoutResult> {
+  const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
+    `/organizations/${orgId}/subscriptions/${subId}/pay`
+  );
+  return data.data;
+}
+
+export interface SubscriptionDocument {
+  blob: Blob;
+  fileName: string;
+}
+
+/**
+ * Fetch an invoice or receipt PDF.
+ *
+ * The access token lives in memory, so a plain <a href> to the API would 401 —
+ * the request has to go through apiClient and come back as a blob. The blob is
+ * what both the preview (an object URL in an iframe) and the download use.
+ */
+export async function getSubscriptionDocument(
+  orgId: string,
+  subId: string,
+  kind: "invoice" | "receipt"
+): Promise<SubscriptionDocument> {
+  const response = await apiClient.get<Blob>(
+    `/organizations/${orgId}/subscriptions/${subId}/${kind}`,
+    { responseType: "blob" }
+  );
+
+  const fallback = `${kind === "receipt" ? "Kwitansi" : "Invoice"}-${subId}.pdf`;
+
+  return {
+    blob: response.data,
+    fileName: fileNameFromDisposition(response.headers["content-disposition"], fallback),
+  };
+}
+
+export async function downloadSubscriptionDocument(
+  orgId: string,
+  subId: string,
+  kind: "invoice" | "receipt"
+): Promise<void> {
+  const { blob, fileName } = await getSubscriptionDocument(orgId, subId, kind);
+  downloadBlob(blob, fileName);
 }

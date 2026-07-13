@@ -60,6 +60,14 @@ export async function deleteTicketCategory(orgId: string, categoryId: string): P
   await apiClient.delete(`/organizations/${orgId}/ticket-categories/${categoryId}`);
 }
 
+/** Buyer list for an event — owner/admin only (the rows carry buyer contacts). */
+export async function getTicketOrders(orgId: string, eventId: string): Promise<TicketOrder[]> {
+  const { data } = await apiClient.get<ApiEnvelope<TicketOrder[]>>(
+    `/organizations/${orgId}/events/${eventId}/ticket-orders`
+  );
+  return data.data;
+}
+
 export async function getTicketReport(orgId: string, eventId: string): Promise<TicketReport> {
   const { data } = await apiClient.get<ApiEnvelope<TicketReport>>(
     `/organizations/${orgId}/events/${eventId}/ticket-report`

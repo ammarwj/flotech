@@ -1,4 +1,4 @@
-import type { Organization, SportEvent } from "@/types/api";
+import type { Organization, PlanFeatureDetail, SportEvent } from "@/types/api";
 
 /**
  * Active-event cap for an org's plan, mirroring the backend `max_active_events`
@@ -11,6 +11,15 @@ export function getActiveEventLimit(org?: Organization | null): number | null {
   const limit = Number(raw);
   if (Number.isNaN(limit) || limit < 0) return null; // -1 = unlimited
   return limit;
+}
+
+/** Human-readable line for a plan feature, e.g. "Event aktif: 3" or "Tiket QR". */
+export function formatPlanFeature(feature: PlanFeatureDetail): string {
+  if (feature.value === null || feature.type === "boolean") return feature.label;
+  if (feature.type === "numeric" && Number(feature.value) < 0) {
+    return `${feature.label}: Unlimited`; // -1 = unlimited
+  }
+  return `${feature.label}: ${feature.value}`;
 }
 
 /** An event counts against the limit unless it's finished or cancelled. */

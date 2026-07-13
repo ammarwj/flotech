@@ -1,11 +1,20 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import {
   EVENT_STATUS_LABELS,
+  SUBSCRIPTION_STATUS_LABELS,
   TEAM_STATUS_LABELS,
+  TICKET_ORDER_STATUS_LABELS,
   WALLET_TX_STATUS_LABELS,
   WITHDRAWAL_STATUS_LABELS,
 } from "@/lib/labels";
-import type { EventStatus, TeamStatus, WalletTxStatus, WithdrawalStatus } from "@/types/api";
+import type {
+  EventStatus,
+  SubscriptionStatus,
+  TeamStatus,
+  TicketOrderStatus,
+  WalletTxStatus,
+  WithdrawalStatus,
+} from "@/types/api";
 
 type Variant = NonNullable<BadgeProps["variant"]>;
 
@@ -62,4 +71,30 @@ export function WithdrawalStatusBadge({ status }: { status: WithdrawalStatus }) 
 
 export function WalletTxStatusBadge({ status }: { status: WalletTxStatus }) {
   return <Badge variant={WALLET_TX_VARIANT[status]}>{WALLET_TX_STATUS_LABELS[status]}</Badge>;
+}
+
+const TICKET_ORDER_VARIANT: Record<TicketOrderStatus, Variant> = {
+  pending: "warning",
+  paid: "success",
+  cancelled: "neutral",
+  refunded: "danger",
+};
+
+export function TicketOrderStatusBadge({ status }: { status: TicketOrderStatus }) {
+  return (
+    <Badge variant={TICKET_ORDER_VARIANT[status]}>{TICKET_ORDER_STATUS_LABELS[status]}</Badge>
+  );
+}
+
+const SUBSCRIPTION_VARIANT: Record<SubscriptionStatus, Variant> = {
+  active: "success",
+  past_due: "warning",
+  cancelled: "danger",
+  expired: "neutral",
+};
+
+export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus }) {
+  return (
+    <Badge variant={SUBSCRIPTION_VARIANT[status]}>{SUBSCRIPTION_STATUS_LABELS[status]}</Badge>
+  );
 }

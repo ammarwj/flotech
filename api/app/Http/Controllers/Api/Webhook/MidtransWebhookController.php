@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api\Webhook;
 
-use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Controller;
 use App\Models\Subscription;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
 use App\Services\RegistrationService;
+use App\Services\SubscriptionService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +19,7 @@ class MidtransWebhookController extends Controller
 {
     public function __construct(
         protected MidtransService $midtrans,
-        protected SubscriptionController $subscriptions,
+        protected SubscriptionService $subscriptions,
         protected TicketService $tickets,
         protected RegistrationService $registration,
     ) {}
@@ -32,6 +32,7 @@ class MidtransWebhookController extends Controller
     public function handle(Request $request): JsonResponse
     {
         $orderId = (string) $request->input('order_id');
+        $paymentType = $request->input('payment_type');
         $statusCode = (string) $request->input('status_code');
         $grossAmount = (string) $request->input('gross_amount');
         $signature = (string) $request->input('signature_key');
@@ -44,11 +45,11 @@ class MidtransWebhookController extends Controller
         return match (true) {
             Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus),
             Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus),
-            default => $this->handleSubscription($orderId, $transactionStatus),
+            default => $this->handleSubscription($orderId, $transactionStatus, $paymentType),
         };
     }
 
-    protected function handleSubscription(string $orderId, string $status): JsonResponse
+    protected function handleSubscription(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
         $subscription = Subscription::where('midtrans_order_id', $orderId)->first();
         if (! $subscription) {
@@ -56,7 +57,7 @@ class MidtransWebhookController extends Controller
         }
 
         match ($status) {
-            'capture', 'settlement' => $this->subscriptions->activate($subscription),
+            'capture', 'settlement' => $this->subscriptions->activate($subscription, $paymentType),
             'pending' => $subscription->update(['status' => 'past_due']),
             'deny', 'cancel', 'expire' => $subscription->update(['status' => 'cancelled']),
             default => null,

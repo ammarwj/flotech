@@ -4,13 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Check } from "lucide-react";
+import { Building2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { getPublicPlans } from "@/lib/api/plans";
 import { checkoutSubscription } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
-import { getActiveEventLimit } from "@/lib/plan";
+import { formatPlanFeature, getActiveEventLimit } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,11 +47,12 @@ export default function UpgradePage() {
       }
       // Dev/mock: subscription auto-activated and the plan switched.
       qc.invalidateQueries({ queryKey: ["organizations"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
       toast.success("Paket berhasil diperbarui", {
         description: "Kapasitas event aktifmu kini bertambah.",
         action: { label: "Buat event", onClick: () => router.push("/organizer/events/new") },
       });
-      router.push("/organizer/events");
+      router.push("/organizer/subscription");
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses upgrade.").message),
     onSettled: () => setPendingPlanId(null),
@@ -60,7 +61,7 @@ export default function UpgradePage() {
   if (orgLoading) {
     return (
       <div>
-        <PageHeader title="Upgrade paket" backHref="/organizer/events" backLabel="Daftar event" />
+        <PageHeader title="Upgrade paket" backHref="/organizer/subscription" backLabel="Langganan" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full rounded-xl" />
@@ -73,7 +74,7 @@ export default function UpgradePage() {
   if (hasNoOrg) {
     return (
       <div>
-        <PageHeader title="Upgrade paket" backHref="/organizer/events" backLabel="Daftar event" />
+        <PageHeader title="Upgrade paket" backHref="/organizer/subscription" backLabel="Langganan" />
         <EmptyState
           icon={Building2}
           title="Belum punya organisasi"
@@ -102,8 +103,8 @@ export default function UpgradePage() {
               }.`
             : "Pilih paket yang sesuai dengan skala turnamenmu."
         }
-        backHref="/organizer/events"
-        backLabel="Daftar event"
+        backHref="/organizer/subscription"
+        backLabel="Langganan"
       />
 
       <div className="mb-5 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
@@ -170,6 +171,29 @@ export default function UpgradePage() {
                 )}
               </div>
               <p className="mt-1 min-h-[36px] text-xs text-muted-foreground">{plan.description}</p>
+
+              <ul className="mt-4 flex-1 space-y-1.5 text-xs">
+                {plan.feature_details?.map((feature) => (
+                  <li
+                    key={feature.key}
+                    title={feature.description ?? undefined}
+                    className={cn(
+                      "flex items-start gap-1.5",
+                      !feature.included && "text-muted-foreground/60"
+                    )}
+                  >
+                    {feature.included ? (
+                      <Check className="mt-px h-3.5 w-3.5 shrink-0" style={{ color }} />
+                    ) : (
+                      <X className="mt-px h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className={cn(!feature.included && "line-through")}>
+                      {formatPlanFeature(feature)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
               <Button
                 className="mt-4"
                 variant={isCurrent ? "outline" : featured ? "default" : "outline"}

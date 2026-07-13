@@ -33,6 +33,18 @@ export interface Plan {
   is_public: boolean;
   sort_order: number;
   features?: Record<string, string>;
+  feature_details?: PlanFeatureDetail[];
+}
+
+/** One feature definition resolved against a plan; `value` is null when the plan lacks it. */
+export interface PlanFeatureDetail {
+  key: string;
+  label: string;
+  group: string | null;
+  type: "boolean" | "numeric" | "text";
+  description: string | null;
+  value: string | null;
+  included: boolean;
 }
 
 export interface FeatureDefinition {
@@ -60,16 +72,23 @@ export interface Organization {
   plan?: Plan;
 }
 
+export type SubscriptionStatus = "active" | "past_due" | "cancelled" | "expired";
+
 export interface Subscription {
   id: string;
   organization_id: string;
   plan_id: string | null;
+  /** Issued at checkout — every subscription has one, paid or not. */
+  invoice_number: string | null;
+  /** Issued on payment — only paid subscriptions have one. */
+  receipt_number: string | null;
   billing_cycle: "monthly" | "yearly";
   amount: number;
-  status: "active" | "past_due" | "cancelled" | "expired";
+  status: SubscriptionStatus;
   starts_at: string | null;
   expires_at: string | null;
   midtrans_order_id: string | null;
+  payment_type: string | null;
   paid_at: string | null;
   plan?: Plan;
 }

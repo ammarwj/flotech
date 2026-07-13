@@ -8,16 +8,25 @@ use App\Http\Resources\SubscriptionResource;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Subscription;
-use App\Services\MidtransService;
+use App\Services\BillingDocumentService;
+use App\Services\SubscriptionService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * These routes sit under `organizations/{organization}/...`, so every action
+ * that also binds a {subscription} has to declare `$organization` positionally
+ * ahead of it — unused in the body, but dropping it shifts the bindings and
+ * Laravel resolves the wrong model.
+ */
 class SubscriptionController extends Controller
 {
-    public function __construct(protected MidtransService $midtrans) {}
+    public function __construct(
+        protected SubscriptionService $subscriptions,
+        protected BillingDocumentService $documents,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -31,63 +40,76 @@ class SubscriptionController extends Controller
 
     /**
      * Start a subscription checkout: create a pending subscription and a
-     * Midtrans Snap transaction. Without Midtrans credentials the subscription
-     * is auto-activated (dev convenience).
+     * Midtrans Snap transaction.
      */
     public function checkout(CheckoutRequest $request): JsonResponse
     {
         /** @var Organization $org */
         $org = $request->attributes->get('organization');
         $plan = Plan::findOrFail($request->input('plan_id'));
-        $cycle = $request->string('billing_cycle')->value();
 
-        $amount = $cycle === 'yearly' ? (float) $plan->price_yearly : (float) $plan->price_monthly;
-        $startsAt = Carbon::now();
-        $expiresAt = $cycle === 'yearly' ? $startsAt->copy()->addYear() : $startsAt->copy()->addMonth();
-        $orderId = 'SUB-'.Str::upper(Str::random(10));
+        $result = $this->subscriptions->checkout($org, $plan, $request->string('billing_cycle')->value());
 
-        $subscription = $org->subscriptions()->create([
-            'plan_id' => $plan->id,
-            'billing_cycle' => $cycle,
-            'amount' => $amount,
-            'status' => 'past_due', // awaiting payment; flips to active on settlement
-            'starts_at' => $startsAt,
-            'expires_at' => $expiresAt,
-            'midtrans_order_id' => $orderId,
-        ]);
-
-        $snap = $this->midtrans->createSnapTransaction(
-            ['order_id' => $orderId, 'gross_amount' => (int) round($amount)],
-            ['first_name' => $org->name, 'email' => $org->contact_email],
-            rtrim((string) config('app.frontend_url'), '/').'/organizer/upgrade?status=success',
-        );
-
-        if ($snap['mock']) {
-            // No payment gateway configured — activate immediately for dev.
-            $this->activate($subscription);
-        }
-
-        return ApiResponse::success([
-            'subscription' => new SubscriptionResource($subscription->load('plan')),
-            'snap_token' => $snap['token'],
-            'redirect_url' => $snap['redirect_url'],
-            'mock' => $snap['mock'],
-        ], 'Checkout dibuat', 201);
+        return ApiResponse::success($this->checkoutPayload($result), 'Checkout dibuat', 201);
     }
 
     /**
-     * Apply a paid subscription to its organization.
+     * Reopen payment for an unpaid invoice.
      */
-    public function activate(Subscription $subscription): void
+    public function pay(Request $request, string $organization, Subscription $subscription): JsonResponse
     {
-        $subscription->update([
-            'status' => 'active',
-            'paid_at' => Carbon::now(),
-        ]);
+        $subscription = $this->authorizeSubscription($request, $subscription);
 
-        $subscription->organization->update([
-            'plan_id' => $subscription->plan_id,
-            'plan_expires_at' => $subscription->expires_at,
-        ]);
+        if ($subscription->status !== 'past_due') {
+            return ApiResponse::error('Tagihan ini tidak menunggu pembayaran.', null, 422);
+        }
+
+        $result = $this->subscriptions->pay($subscription);
+
+        return ApiResponse::success($this->checkoutPayload($result), 'Pembayaran dibuka');
+    }
+
+    public function invoice(Request $request, string $organization, Subscription $subscription): Response
+    {
+        return $this->documents->invoice($this->authorizeSubscription($request, $subscription));
+    }
+
+    public function receipt(Request $request, string $organization, Subscription $subscription): Response
+    {
+        $subscription = $this->authorizeSubscription($request, $subscription);
+
+        if (! $subscription->paid_at) {
+            return ApiResponse::error('Kwitansi baru tersedia setelah pembayaran lunas.', null, 403);
+        }
+
+        return $this->documents->receipt($subscription);
+    }
+
+    /**
+     * A subscription id in the URL is not proof of ownership — the tenant
+     * middleware only vouches for the organization, not for this row.
+     */
+    protected function authorizeSubscription(Request $request, Subscription $subscription): Subscription
+    {
+        /** @var Organization $org */
+        $org = $request->attributes->get('organization');
+
+        abort_if($subscription->organization_id !== $org->id, 404);
+
+        return $subscription;
+    }
+
+    /**
+     * @param  array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool}  $result
+     * @return array<string, mixed>
+     */
+    protected function checkoutPayload(array $result): array
+    {
+        return [
+            'subscription' => new SubscriptionResource($result['subscription']),
+            'snap_token' => $result['snap_token'],
+            'redirect_url' => $result['redirect_url'],
+            'mock' => $result['mock'],
+        ];
     }
 }

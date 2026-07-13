@@ -149,12 +149,20 @@ export default function EventTicketsPage() {
         backHref="/organizer/events"
         backLabel="Daftar event"
         actions={
-          <Button asChild variant="outline">
-            <Link href={`/organizer/events/${eventId}/scan`}>
-              <ScanLine className="h-4 w-4" />
-              Scan check-in
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/tickets/buyers`}>
+                <Users className="h-4 w-4" />
+                Pembeli
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/scan`}>
+                <ScanLine className="h-4 w-4" />
+                Scan check-in
+              </Link>
+            </Button>
+          </>
         }
       />
 

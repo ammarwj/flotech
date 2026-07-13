@@ -2,12 +2,16 @@
 
 namespace App\Services;
 
+use App\Mail\TicketPurchasedMail;
 use App\Models\Organization;
 use App\Models\TicketCategory;
 use App\Models\TicketOrder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Ticket order lifecycle: platform-fee calculation, purchase (reserving quota
@@ -74,8 +78,10 @@ class TicketService
     }
 
     /**
-     * Settle a paid order and credit the organizer's wallet. Idempotent —
-     * re-delivered webhooks are no-ops, and the wallet guards itself besides.
+     * Settle a paid order, credit the organizer's wallet and email the buyer
+     * their e-ticket link. Idempotent — re-delivered webhooks are no-ops (the
+     * early return is also what keeps the buyer from getting a second mail),
+     * and the wallet guards itself besides.
      */
     public function markPaid(TicketOrder $order): void
     {
@@ -87,6 +93,27 @@ class TicketService
             $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
             $this->wallet->creditTicketOrder($order->load('event.organization'));
         });
+
+        $this->sendPurchaseConfirmation($order);
+    }
+
+    /**
+     * Queue the buyer's confirmation mail. Deliberately swallows its own
+     * errors: the payment is already settled, so a mail/queue hiccup must not
+     * bubble up into the Midtrans webhook and provoke a retry.
+     */
+    protected function sendPurchaseConfirmation(TicketOrder $order): void
+    {
+        try {
+            Mail::to($order->buyer_email)->queue(
+                new TicketPurchasedMail($order->load(['event', 'category']))
+            );
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim email konfirmasi tiket', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

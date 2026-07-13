@@ -41,6 +41,7 @@ export const ORGANIZER_NAV: NavItem[] = [
   { href: "/organizer/tickets", label: "Tiket", icon: Ticket },
   { href: "/organizer/wallet", label: "Dompet", icon: Wallet },
   { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
+  { href: "/organizer/subscription", label: "Langganan", icon: CreditCard },
   { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
 ];
 

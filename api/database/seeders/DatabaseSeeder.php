@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             // The catalog first: events can't validate without it.
             CatalogSeeder::class,
+            FeatureDefinitionSeeder::class,
             PlanSeeder::class,
             UserSeeder::class,
             DemoEventSeeder::class,
