@@ -3,6 +3,8 @@
 namespace App\Mail;
 
 use App\Models\Certificate;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
@@ -12,12 +14,13 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Delivers one issued certificate to its recipient, PDF attached.
  *
- * Not queued itself — SendCertificateJob wraps it, so the job can record
- * `sent_at` only once the mail has actually gone out.
+ * ShouldQueue like every other Mailable. It's still dispatched from inside
+ * SendCertificateJob, which sends it with `sendNow()` on purpose — so the job
+ * can record `sent_at` only once the mail has actually gone out.
  */
-class CertificateIssuedMail extends Mailable
+class CertificateIssuedMail extends Mailable implements ShouldQueue
 {
-    use SerializesModels;
+    use Queueable, SerializesModels;
 
     public function __construct(public Certificate $certificate) {}
 
