@@ -25,7 +25,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const ready = !!accessToken;
 
   useEffect(() => {
-    if (accessToken) return;
+    // Read the token off the store instead of depending on it. `setAccessToken`
+    // below changes that very value, so with it in the dependency list React
+    // tears this effect down mid-flight — cleanup sets `active = false` and the
+    // profile that is still being fetched is thrown away. The user then stays
+    // null forever, which left a reloaded /admin page spinning behind
+    // AdminLayout's `user.role === "super_admin"` check.
+    if (useAuthStore.getState().accessToken) return;
 
     let active = true;
 
@@ -52,7 +58,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [accessToken, router, setAuth, setAccessToken]);
+    // setAuth/setAccessToken are stable zustand setters, so this runs once.
+  }, [router, setAuth, setAccessToken]);
 
   if (!ready) {
     return (

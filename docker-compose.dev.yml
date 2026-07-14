@@ -16,6 +16,12 @@ services:
       - APP_DEBUG=true
       - DB_HOST=db
       - REDIS_HOST=redis
+      # `artisan serve` wraps PHP's built-in server, which handles ONE request at
+      # a time unless it's told to fork. A single page of the dashboard fires
+      # several queries at once, and the e2e suite drives several pages at once —
+      # without workers those requests queue behind each other until the server
+      # wedges. Dev only; production runs php-fpm.
+      - PHP_CLI_SERVER_WORKERS=8
     volumes:
       - ./api:/var/www/html
       - api_vendor:/var/www/html/vendor

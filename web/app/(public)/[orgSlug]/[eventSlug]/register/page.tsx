@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import {
   ImagePlus,
 } from "lucide-react";
 
+import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { registerTeam, signUpload, uploadImage, type RegisterTeamPayload } from "@/lib/api/events";
 import { compressToWebp } from "@/lib/image";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,11 @@ type DocRow = { file_name: string; file_url: string };
 function RegisterTeamPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   const searchParams = useSearchParams();
+
+  // Public route, so nothing has restored the session: without this the request
+  // goes out unauthenticated even for a signed-in visitor, the team is stored
+  // with no manager, and it never shows up under "Tim Saya".
+  const { ready: sessionReady } = useOptionalSession();
 
   // Returned from Midtrans after a successful payment (finish redirect URL).
   const paidStatus = searchParams.get("transaction_status");
@@ -348,7 +354,11 @@ function RegisterTeamPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button type="submit" size="lg" disabled={mutation.isPending || uploading || logoUploading}>
+          <Button
+            type="submit"
+            size="lg"
+            disabled={!sessionReady || mutation.isPending || uploading || logoUploading}
+          >
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
           </Button>
         </div>
@@ -368,13 +378,17 @@ function Field({
   onChange: (v: string) => void;
   required?: boolean;
 }) {
+  // Without an id the label points at nothing: clicking it doesn't focus the
+  // input and assistive tech reads the field unnamed.
+  const id = useId();
+
   return (
     <div className="grid gap-2">
-      <Label className="font-semibold">
+      <Label htmlFor={id} className="font-semibold">
         {label}
         {required && <span className="text-[var(--danger)]"> *</span>}
       </Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} required={required} />
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} />
     </div>
   );
 }

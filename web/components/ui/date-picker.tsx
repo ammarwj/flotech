@@ -160,6 +160,11 @@ export function DatePicker({
                   key={d.toISOString()}
                   type="button"
                   disabled={disabledDay}
+                  // The visible label is just the day number, which is ambiguous
+                  // on its own (and repeats for the trailing days of the
+                  // neighbouring months).
+                  aria-label={format(d, "d MMMM yyyy", { locale: idLocale })}
+                  aria-current={isToday(d) ? "date" : undefined}
                   onClick={() => pick(d)}
                   className={cn(
                     "grid h-8 w-8 place-items-center justify-self-center rounded-md text-sm transition-colors",
