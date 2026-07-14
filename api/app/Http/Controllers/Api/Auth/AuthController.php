@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\UpdatePreferencesRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Notifications\VerifyEmailNotification;
@@ -88,6 +89,19 @@ class AuthController extends Controller
     public function me(): JsonResponse
     {
         return ApiResponse::success(new UserResource(auth('api')->user()));
+    }
+
+    /**
+     * Remembers which dashboard hat the user wears, so the next login lands
+     * there. The web app writes this every time the mode switcher is used.
+     */
+    public function updatePreferences(UpdatePreferencesRequest $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth('api')->user();
+        $user->update(['default_mode' => $request->string('default_mode')]);
+
+        return ApiResponse::success(new UserResource($user), 'Preferensi disimpan');
     }
 
     /**

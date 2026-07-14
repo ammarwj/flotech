@@ -59,6 +59,13 @@ function LoginForm() {
         return;
       }
 
+      // Whichever hat they wore last (the mode switcher writes this). A
+      // participant owns no organization, so onboarding is not their problem.
+      if (user.default_mode === "participant") {
+        router.push("/participant");
+        return;
+      }
+
       // A user who never finished onboarding owns no organization; the organizer
       // dashboard is useless to them, so route them back into the flow.
       const orgs = await getOrganizations();

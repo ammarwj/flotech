@@ -11,6 +11,8 @@ export interface AuthUser {
   phone: string | null;
   avatar_url: string | null;
   role: "super_admin" | "user";
+  /** Which dashboard the next login opens in. */
+  default_mode: "organizer" | "participant";
   is_verified: boolean;
   email_verified_at: string | null;
 }

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  ArrowUpRight,
   Award,
   Building2,
   Download,
@@ -34,7 +35,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
-import { FeatureLockedNotice } from "@/components/shared/feature-locked-notice";
 import { cn } from "@/lib/utils";
 
 const fmtDate = (iso: string | null) =>
@@ -140,10 +140,18 @@ function CertificatesPage() {
     return (
       <div>
         <PageHeader title="Sertifikat" description="Terbitkan sertifikat dari desainmu sendiri." />
-        <FeatureLockedNotice
-          title="Generator sertifikat belum aktif"
-          description="Upload desainmu, atur posisi setiap field, lalu terbitkan ratusan sertifikat sekaligus."
-          planName={org?.plan?.name}
+        <EmptyState
+          icon={Award}
+          title="Generator sertifikat belum aktif di paketmu"
+          description="Upgrade paketmu untuk mengunggah desain sertifikat, mengatur posisi setiap field, dan menerbitkan ratusan sertifikat sekaligus."
+          action={
+            <Button asChild>
+              <Link href="/organizer/upgrade">
+                <ArrowUpRight className="h-4 w-4" />
+                Upgrade paket
+              </Link>
+            </Button>
+          }
         />
       </div>
     );

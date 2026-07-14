@@ -31,6 +31,16 @@ export async function me(): Promise<AuthUser> {
   return data.data;
 }
 
+/** Remembers the dashboard the next login should open in. */
+export async function updateDefaultMode(
+  default_mode: AuthUser["default_mode"]
+): Promise<AuthUser> {
+  const { data } = await apiClient.patch<ApiEnvelope<AuthUser>>("/auth/preferences", {
+    default_mode,
+  });
+  return data.data;
+}
+
 export async function forgotPassword(email: string): Promise<string> {
   const { data } = await apiClient.post<ApiEnvelope<null>>("/auth/forgot-password", { email });
   return data.message;

@@ -117,9 +117,10 @@ body {
     margin: 0;
     color: var(--text);
   }
+
+  p { margin: 0; }
 }
 
-p { margin: 0; }
 img { max-width: 100%; display: block; }
 
 /* Keep the link reset in the base layer so Tailwind utilities (e.g. text-white
