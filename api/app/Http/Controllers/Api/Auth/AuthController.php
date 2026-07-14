@@ -29,6 +29,9 @@ class AuthController extends Controller
             'phone' => $request->input('phone'),
             'password' => $request->string('password'),
             'role' => 'user',
+            // Which dashboard they asked for on the form. Someone who came to join
+            // an event must not be dropped into onboarding, which builds an *org*.
+            'default_mode' => $request->input('default_mode', 'organizer'),
         ]);
 
         $user->notify(new VerifyEmailNotification);

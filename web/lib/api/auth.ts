@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { DashboardMode } from "@/lib/hooks/use-dashboard-mode";
 import type { ApiEnvelope, AuthTokenResponse, AuthUser } from "@/types/api";
 
 export interface RegisterPayload {
@@ -7,6 +8,8 @@ export interface RegisterPayload {
   phone?: string;
   password: string;
   password_confirmation: string;
+  /** Which dashboard the account starts (and keeps landing) in. */
+  default_mode?: DashboardMode;
 }
 
 export async function register(payload: RegisterPayload): Promise<AuthTokenResponse> {

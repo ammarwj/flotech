@@ -23,6 +23,32 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
     await expect(page.getByRole("heading", { name: "Buat organisasi" })).toBeVisible();
   });
 
+  test("daftar sebagai peserta melewati onboarding, dan pilihannya bertahan", async ({ page }) => {
+    const email = `${unique("peserta")}@e2e.test`;
+
+    await page.goto("/register");
+    await page.getByRole("radio", { name: "Peserta" }).click();
+    await page.getByLabel("Nama lengkap").fill("Peserta Baru");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+    await page.getByLabel("Konfirmasi password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Daftar" }).click();
+
+    // Onboarding builds an organization. Someone who only wants to join events
+    // has no use for one, and its layout has no way out but finishing it.
+    await expect(page).toHaveURL(/\/participant/);
+    await expect(page.getByRole("heading", { name: "Buat organisasi" })).toHaveCount(0);
+
+    // The choice is stored (users.default_mode), not just acted on once: the next
+    // login must not drag them back into the onboarding they never wanted.
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Masuk" }).click();
+
+    await expect(page).toHaveURL(/\/participant/);
+  });
+
   test("password lemah ditolak sebelum request dikirim", async ({ page }) => {
     await page.goto("/register");
     await page.getByLabel("Nama lengkap").fill("Organizer Baru");

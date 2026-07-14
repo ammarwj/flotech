@@ -6,10 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Trophy, Users } from "lucide-react";
 
 import { register as registerUser } from "@/lib/api/auth";
 import { parseApiError } from "@/lib/api/errors";
+import {
+  DASHBOARD_MODES,
+  MODE_HOME,
+  MODE_SHORT_LABEL,
+  type DashboardMode,
+} from "@/lib/hooks/use-dashboard-mode";
 import { safeNext } from "@/lib/next-param";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +42,12 @@ const schema = fields.refine((d) => d.password === d.password_confirmation, {
 
 type FormValues = z.infer<typeof schema>;
 
+/** Register-page copy for each hat; the names themselves live in MODE_SHORT_LABEL. */
+const MODE_PITCH: Record<DashboardMode, { icon: typeof Trophy; blurb: string }> = {
+  organizer: { icon: Trophy, blurb: "Bikin & kelola turnamen" },
+  participant: { icon: Users, blurb: "Daftarkan tim ke event" },
+};
+
 function RegisterForm() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -41,6 +55,11 @@ function RegisterForm() {
 
   // Sent here mid-flow (e.g. from team registration) — go back there after.
   const next = safeNext(useSearchParams().get("next"));
+
+  // The one thing that decides what the whole app looks like to them. Only the
+  // public team-registration page links here with ?next=, so that arrival is
+  // unambiguously a participant and asking again would be pure friction.
+  const [mode, setMode] = useState<DashboardMode>(next ? "participant" : "organizer");
 
   const {
     register,
@@ -52,12 +71,13 @@ function RegisterForm() {
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
     try {
-      const res = await registerUser(values);
+      const res = await registerUser({ ...values, default_mode: mode });
       setAuth(res.access_token, res.user);
 
       // Onboarding builds an *organization*; someone who came to sign a team up
-      // for someone else's tournament doesn't need one.
-      router.push(next ?? "/onboarding");
+      // for someone else's tournament doesn't need one. Organizers land there
+      // rather than MODE_HOME.organizer because a fresh account owns no org yet.
+      router.push(next ?? (mode === "participant" ? MODE_HOME.participant : "/onboarding"));
     } catch (err) {
       const { message, fieldErrors } = parseApiError(err, "Registrasi gagal");
       const entries = Object.entries(fieldErrors);
@@ -85,6 +105,40 @@ function RegisterForm() {
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 grid gap-4">
+        {!next && (
+          <div className="grid gap-2">
+            <Label id="mode-label">Saya ingin…</Label>
+            <div role="radiogroup" aria-labelledby="mode-label" className="grid grid-cols-2 gap-3">
+              {DASHBOARD_MODES.map((m) => {
+                const { icon: Icon, blurb } = MODE_PITCH[m];
+                const active = m === mode;
+
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      "grid gap-1 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                      active
+                        ? "border-primary bg-[var(--tint)]"
+                        : "border-border hover:border-muted-foreground/40"
+                    )}
+                  >
+                    <Icon
+                      className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")}
+                    />
+                    <span className="text-sm font-semibold">{MODE_SHORT_LABEL[m]}</span>
+                    <span className="text-xs text-muted-foreground">{blurb}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-2">
           <Label htmlFor="full_name">Nama lengkap</Label>
           <Input id="full_name" {...register("full_name")} />
