@@ -94,7 +94,11 @@ Route::prefix('v1')->group(function () {
 
     Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
         Route::get('/', [PublicEventController::class, 'show']);
-        Route::post('register', [PublicEventController::class, 'register']);
+
+        // Signing up needs an account: the team is tied to the manager who filed
+        // it, and that link is the only way they reach it in "Tim Saya" later.
+        // A team registered anonymously would belong to nobody.
+        Route::post('register', [PublicEventController::class, 'register'])->middleware('auth:api');
         Route::get('matches', [PublicEventController::class, 'matches']);
         Route::get('standings', [PublicEventController::class, 'standings']);
         Route::get('leaderboard', [PublicEventController::class, 'leaderboard']);
@@ -143,6 +147,9 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('events', EventController::class);
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
+            // Offline registration: teams that signed up on paper or over chat.
+            Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);
+            Route::put('events/{event}/registrations/{team}', [RegistrationController::class, 'update']);
             Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
 
             // Photo albums & sponsor logos.

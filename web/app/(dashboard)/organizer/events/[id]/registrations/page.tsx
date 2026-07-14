@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   X,
+  Plus,
+  Pencil,
   Users,
   Phone,
   FileText,
@@ -19,7 +21,15 @@ import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
 import { toast } from "sonner";
 
-import { getRegistrations, updateRegistrationStatus } from "@/lib/api/events";
+import {
+  createRegistration,
+  getEvent,
+  getRegistrations,
+  updateRegistration,
+  updateRegistrationStatus,
+  type RegisterTeamPayload,
+} from "@/lib/api/events";
+import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { cn } from "@/lib/utils";
@@ -30,6 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
+import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
 import type { Team, TeamStatus } from "@/types/api";
 
 function initials(name: string) {
@@ -60,10 +71,39 @@ export default function RegistrationsPage() {
   const { orgId } = useActiveOrg();
   const [filter, setFilter] = useState<Filter>("all");
 
+  // null = closed, "new" = adding, a Team = editing that team.
+  const [manual, setManual] = useState<Team | "new" | null>(null);
+  const [manualErrors, setManualErrors] = useState<Record<string, string>>({});
+
   const query = useQuery({
     queryKey: ["registrations", orgId, eventId],
     queryFn: () => getRegistrations(orgId!, eventId),
     enabled: !!orgId,
+  });
+
+  // Only for the position suggestions in the roster editor.
+  const eventQuery = useQuery({
+    queryKey: ["event", orgId, eventId],
+    queryFn: () => getEvent(orgId!, eventId),
+    enabled: !!orgId,
+  });
+
+  const saveManual = useMutation({
+    mutationFn: (payload: RegisterTeamPayload) =>
+      manual && manual !== "new"
+        ? updateRegistration(orgId!, eventId, manual.id, payload)
+        : createRegistration(orgId!, eventId, payload),
+    onSuccess: () => {
+      toast.success(manual === "new" ? "Tim berhasil ditambahkan." : "Data tim diperbarui.");
+      qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
+      setManual(null);
+      setManualErrors({});
+    },
+    onError: (err) => {
+      const { message, fieldErrors } = parseApiError(err, "Gagal menyimpan tim.");
+      setManualErrors(fieldErrors);
+      if (Object.keys(fieldErrors).length === 0) toast.error(message);
+    },
   });
 
   const mutate = useMutation({
@@ -100,6 +140,12 @@ export default function RegistrationsPage() {
         }
         backHref="/organizer/events"
         backLabel="Daftar event"
+        actions={
+          <Button onClick={() => setManual("new")} disabled={!orgId}>
+            <Plus className="h-4 w-4" />
+            Tambah Tim
+          </Button>
+        }
       />
 
       {query.isLoading && (
@@ -153,12 +199,28 @@ export default function RegistrationsPage() {
                   team={team}
                   pending={mutate.isPending}
                   onUpdate={(status) => mutate.mutate({ teamId: team.id, status })}
+                  onEdit={() => setManual(team)}
                 />
               ))}
             </div>
           )}
         </>
       )}
+
+      <ManualTeamDialog
+        // Remount per team (and per open) so the form is seeded fresh.
+        key={manual === "new" ? "new" : (manual?.id ?? "closed")}
+        open={!!manual}
+        team={manual !== "new" ? manual : null}
+        sport={eventQuery.data?.sport_type}
+        pending={saveManual.isPending}
+        fieldErrors={manualErrors}
+        onClose={() => {
+          setManual(null);
+          setManualErrors({});
+        }}
+        onSubmit={(payload) => saveManual.mutate(payload)}
+      />
     </div>
   );
 }
@@ -167,10 +229,12 @@ function RegistrationCard({
   team,
   pending,
   onUpdate,
+  onEdit,
 }: {
   team: Team;
   pending: boolean;
   onUpdate: (status: TeamStatus) => void;
+  onEdit: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const logo = team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null;
@@ -234,6 +298,10 @@ function RegistrationCard({
           </div>
         </button>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onEdit} aria-label={`Ubah tim ${team.name}`}>
+            <Pencil className="h-4 w-4" />
+            Ubah
+          </Button>
           <Button size="sm" onClick={() => onUpdate("approved")} disabled={pending || team.status === "approved"}>
             <Check className="h-4 w-4" />
             Setujui

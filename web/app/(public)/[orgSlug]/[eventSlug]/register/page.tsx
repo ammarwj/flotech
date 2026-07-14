@@ -3,29 +3,35 @@
 import { Suspense, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ChevronLeft,
-  Plus,
   X,
   Upload,
   FileText,
   CheckCircle2,
   AlertCircle,
   Loader2,
+  LogIn,
   ImagePlus,
 } from "lucide-react";
 
 import { useOptionalSession } from "@/components/auth/use-optional-session";
-import { registerTeam, signUpload, uploadImage, type RegisterTeamPayload } from "@/lib/api/events";
+import {
+  getPublicEvent,
+  registerTeam,
+  signUpload,
+  uploadImage,
+  type RegisterTeamPayload,
+} from "@/lib/api/events";
 import { compressToWebp } from "@/lib/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
-type PlayerRow = { full_name: string; jersey_number: string; position: string };
 type DocRow = { file_name: string; file_url: string };
 
 function RegisterTeamPage() {
@@ -35,7 +41,13 @@ function RegisterTeamPage() {
   // Public route, so nothing has restored the session: without this the request
   // goes out unauthenticated even for a signed-in visitor, the team is stored
   // with no manager, and it never shows up under "Tim Saya".
-  const { ready: sessionReady } = useOptionalSession();
+  const { ready: sessionReady, isAuthenticated } = useOptionalSession();
+
+  // The sport drives the position suggestions in the roster editor.
+  const { data: event } = useQuery({
+    queryKey: ["public-event", params.orgSlug, params.eventSlug],
+    queryFn: () => getPublicEvent(params.orgSlug, params.eventSlug),
+  });
 
   // Returned from Midtrans after a successful payment (finish redirect URL).
   const paidStatus = searchParams.get("transaction_status");
@@ -44,7 +56,7 @@ function RegisterTeamPage() {
     (paidStatus === "settlement" || paidStatus === "capture" || searchParams.get("status") === "success");
 
   const [team, setTeam] = useState({ name: "", city: "", jersey_color: "", logo_url: "", contact_name: "", contact_phone: "" });
-  const [players, setPlayers] = useState<PlayerRow[]>([{ full_name: "", jersey_number: "", position: "" }]);
+  const [players, setPlayers] = useState<PlayerRow[]>([emptyPlayer()]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -178,6 +190,39 @@ function RegisterTeamPage() {
     );
   }
 
+  // Registration needs an account: the team is tied to whoever files it, and
+  // that link is what puts it in their "Tim Saya" afterwards — where the roster
+  // gets completed, documents uploaded and the fee paid. Sending them off with
+  // `next` brings them straight back to this form.
+  if (sessionReady && !isAuthenticated) {
+    const next = encodeURIComponent(`/${params.orgSlug}/${params.eventSlug}/register`);
+
+    return (
+      <div className="container" style={{ paddingBlock: 80, maxWidth: 520 }}>
+        <Card className="p-8 text-center sm:p-10">
+          <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-full bg-[var(--tint)] text-[var(--brand-600)]">
+            <LogIn className="h-7 w-7" />
+          </div>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            Masuk dulu untuk mendaftar
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Tim yang kamu daftarkan tersimpan di akunmu — dari sana kamu bisa melengkapi roster,
+            mengunggah dokumen, dan memantau status persetujuan.
+          </p>
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            <Button asChild size="lg">
+              <Link href={`/login?next=${next}`}>Masuk</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href={`/register?next=${next}`}>Daftar akun</Link>
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="container" style={{ paddingBlock: 48, maxWidth: 720 }}>
       <Link
@@ -263,58 +308,27 @@ function RegisterTeamPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle>Daftar Pemain</CardTitle>
-              <CardDescription>Tambahkan minimal satu pemain.</CardDescription>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setPlayers([...players, { full_name: "", jersey_number: "", position: "" }])}
-            >
-              <Plus className="h-4 w-4" />
-              Pemain
-            </Button>
+          <CardHeader>
+            <CardTitle>
+              Daftar Pemain <span className="font-normal text-muted-foreground">(opsional)</span>
+            </CardTitle>
+            <CardDescription>
+              Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Tim Saya.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2">
-            {players.map((p, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--bg-soft)] text-xs font-semibold text-muted-foreground">
-                  {i + 1}
-                </span>
-                <Input
-                  placeholder="Nama pemain"
-                  value={p.full_name}
-                  onChange={(e) => setPlayers(players.map((x, j) => (j === i ? { ...x, full_name: e.target.value } : x)))}
-                />
-                <Input
-                  className="w-20"
-                  placeholder="No."
-                  value={p.jersey_number}
-                  onChange={(e) => setPlayers(players.map((x, j) => (j === i ? { ...x, jersey_number: e.target.value } : x)))}
-                />
-                {players.length > 1 && (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="shrink-0 text-muted-foreground"
-                    onClick={() => setPlayers(players.filter((_, j) => j !== i))}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
+          <CardContent>
+            <RosterEditor players={players} onChange={setPlayers} sport={event?.sport_type} />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Dokumen</CardTitle>
-            <CardDescription>Opsional — unggah berkas pendukung (KTP, surat, dll).</CardDescription>
+            <CardTitle>
+              Dokumen <span className="font-normal text-muted-foreground">(opsional)</span>
+            </CardTitle>
+            <CardDescription>
+              Berkas pendukung (KTP, surat, dll). Bisa menyusul lewat dashboard Tim Saya.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-alt)] px-6 py-8 text-center transition-colors hover:border-[var(--brand-500)]">

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { register as registerUser } from "@/lib/api/auth";
 import { parseApiError } from "@/lib/api/errors";
+import { safeNext } from "@/lib/next-param";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,10 +34,13 @@ const schema = fields.refine((d) => d.password === d.password_confirmation, {
 
 type FormValues = z.infer<typeof schema>;
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Sent here mid-flow (e.g. from team registration) — go back there after.
+  const next = safeNext(useSearchParams().get("next"));
 
   const {
     register,
@@ -50,7 +54,10 @@ export default function RegisterPage() {
     try {
       const res = await registerUser(values);
       setAuth(res.access_token, res.user);
-      router.push("/onboarding");
+
+      // Onboarding builds an *organization*; someone who came to sign a team up
+      // for someone else's tournament doesn't need one.
+      router.push(next ?? "/onboarding");
     } catch (err) {
       const { message, fieldErrors } = parseApiError(err, "Registrasi gagal");
       const entries = Object.entries(fieldErrors);
@@ -72,7 +79,7 @@ export default function RegisterPage() {
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Sudah punya akun?{" "}
-        <Link href="/login" className="text-primary font-medium hover:underline">
+        <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="text-primary font-medium hover:underline">
           Masuk
         </Link>
       </p>
@@ -112,5 +119,15 @@ export default function RegisterPage() {
         </Button>
       </form>
     </div>
+  );
+}
+
+// useSearchParams needs a Suspense boundary to keep the page statically
+// renderable (same shape as /login).
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   );
 }

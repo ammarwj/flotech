@@ -113,15 +113,17 @@ class WalletTest extends TestCase
         $event = $this->event($org);
         $event->update(['registration_fee' => 150000]);
 
-        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
-            'name' => 'Garuda FC',
-            'contact_name' => 'Budi',
-            'contact_phone' => '08123456789',
-            'players' => [
-                ['full_name' => 'Player 1', 'jersey_number' => '1'],
-                ['full_name' => 'Player 2', 'jersey_number' => '2'],
-            ],
-        ])->assertCreated();
+        // Registration needs an account behind the team (see RegistrationTest).
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'name' => 'Garuda FC',
+                'contact_name' => 'Budi',
+                'contact_phone' => '08123456789',
+                'players' => [
+                    ['full_name' => 'Player 1', 'jersey_number' => '1'],
+                    ['full_name' => 'Player 2', 'jersey_number' => '2'],
+                ],
+            ])->assertCreated();
 
         // 150.000 gross − 10% = 135.000 net.
         $this->assertDatabaseHas('wallet_transactions', [

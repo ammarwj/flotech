@@ -86,6 +86,37 @@ export async function getRegistrations(orgId: string, eventId: string): Promise<
   return data.data;
 }
 
+/**
+ * Enter a team the organizer collected outside the app (WhatsApp, paper, cash).
+ * The API approves it on arrival and settles it as paid — see
+ * RegistrationController::store.
+ */
+export async function createRegistration(
+  orgId: string,
+  eventId: string,
+  payload: RegisterTeamPayload
+): Promise<Team> {
+  const { data } = await apiClient.post<ApiEnvelope<Team>>(
+    `/organizations/${orgId}/events/${eventId}/registrations`,
+    payload
+  );
+  return data.data;
+}
+
+/** Edit a team's details and roster from the organizer side (typos, late players). */
+export async function updateRegistration(
+  orgId: string,
+  eventId: string,
+  teamId: string,
+  payload: RegisterTeamPayload
+): Promise<Team> {
+  const { data } = await apiClient.put<ApiEnvelope<Team>>(
+    `/organizations/${orgId}/events/${eventId}/registrations/${teamId}`,
+    payload
+  );
+  return data.data;
+}
+
 export async function updateRegistrationStatus(
   orgId: string,
   eventId: string,
@@ -141,8 +172,9 @@ export interface RegisterTeamPayload {
   logo_url?: string | null;
   contact_name: string;
   contact_phone: string;
-  players: { full_name: string; jersey_number?: string; position?: string }[];
-  documents?: { file_url: string; file_name?: string; document_type?: string }[];
+  /** Optional at registration — the roster can be completed later. `id` marks an existing player when editing. */
+  players?: { id?: string; full_name: string; jersey_number?: string; position?: string }[];
+  documents?: { id?: string; file_url: string; file_name?: string; document_type?: string }[];
 }
 
 export async function registerTeam(
@@ -201,7 +233,9 @@ export interface UpdateMyTeamPayload {
   logo_url?: string | null;
   contact_name?: string;
   contact_phone?: string;
+  /** Both lists are a full replacement: rows with an id are kept, omitted rows are deleted. */
   players?: { id?: string; full_name: string; jersey_number?: string; position?: string }[];
+  documents?: { id?: string; file_url: string; file_name?: string | null; document_type?: string | null }[];
 }
 
 export async function updateMyTeam(teamId: string, payload: UpdateMyTeamPayload): Promise<Team> {

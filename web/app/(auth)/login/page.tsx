@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { getOrganizations } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
+import { safeNext } from "@/lib/next-param";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,11 +25,14 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const qc = useQueryClient();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Set when the visitor was sent here mid-flow (e.g. from team registration).
+  const next = safeNext(useSearchParams().get("next"));
 
   const {
     register,
@@ -42,6 +46,13 @@ export default function LoginPage() {
       const { data } = await apiClient.post("/auth/login", values);
       const user = data.data.user as AuthUser;
       setAuth(data.data.access_token, user);
+
+      // Came here to finish something else — go back to it. A participant
+      // registering a team has no organization and no business in onboarding.
+      if (next) {
+        router.push(next);
+        return;
+      }
 
       if (user.role === "super_admin") {
         router.push("/admin");
@@ -65,7 +76,7 @@ export default function LoginPage() {
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Belum punya akun?{" "}
-        <Link href="/register" className="text-primary font-medium hover:underline">
+        <Link href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"} className="text-primary font-medium hover:underline">
           Daftar gratis
         </Link>
       </p>
@@ -104,5 +115,15 @@ export default function LoginPage() {
         </Button>
       </form>
     </div>
+  );
+}
+
+// useSearchParams needs a Suspense boundary to keep the page statically
+// renderable (same shape as /reset-password).
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

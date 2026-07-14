@@ -62,18 +62,38 @@ class RegistrationTest extends TestCase
         $this->getJson("/api/v1/public/events/{$org->slug}/{$event->slug}")->assertStatus(404);
     }
 
-    public function test_public_can_register_team(): void
+    public function test_guest_cannot_register_team(): void
     {
         $event = $this->openEvent();
         $org = $event->organization;
 
+        // A team belongs to the manager who filed it — that link is what puts it
+        // in their "Tim Saya". Registering with no account would orphan it.
         $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->assertStatus(401);
+
+        $this->assertDatabaseCount('teams', 0);
+    }
+
+    public function test_participant_can_register_team(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+        $manager = User::factory()->create();
+
+        $this->actingAs($manager, 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
             ->assertCreated()
             ->assertJsonPath('data.team.status', 'pending')
             ->assertJsonPath('data.team.name', 'Garuda FC')
             ->assertJsonPath('data.team.payment_status', 'paid'); // free event settles immediately
 
-        $this->assertDatabaseHas('teams', ['event_id' => $event->id, 'name' => 'Garuda FC', 'status' => 'pending']);
+        $this->assertDatabaseHas('teams', [
+            'event_id' => $event->id,
+            'name' => 'Garuda FC',
+            'status' => 'pending',
+            'manager_user_id' => $manager->id,
+        ]);
         $this->assertDatabaseCount('players', 2);
     }
 
@@ -85,7 +105,8 @@ class RegistrationTest extends TestCase
 
         // No Midtrans credentials in tests → gateway is mocked and the fee
         // settles immediately (dev convenience), so the team is marked paid.
-        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
             ->assertCreated()
             ->assertJsonPath('data.team.payment_amount', 150000)
             ->assertJsonPath('data.team.payment_status', 'paid')
@@ -97,10 +118,14 @@ class RegistrationTest extends TestCase
         $event = $this->openEvent('10', maxTeams: 1);
         $org = $event->organization;
 
-        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+        $manager = User::factory()->create();
+
+        $this->actingAs($manager, 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
             ->assertCreated();
 
-        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload(['name' => 'Other']))
+        $this->actingAs($manager, 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload(['name' => 'Other']))
             ->assertStatus(422);
     }
 
@@ -109,7 +134,8 @@ class RegistrationTest extends TestCase
         $event = $this->openEvent();
         $org = $event->organization;
 
-        $teamId = $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+        $teamId = $this->actingAs(User::factory()->create(), 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
             ->json('data.team.id');
 
         $this->actingAs($org->owner, 'api')
@@ -121,5 +147,57 @@ class RegistrationTest extends TestCase
             ->assertJsonPath('data.status', 'approved');
 
         $this->assertDatabaseHas('teams', ['id' => $teamId, 'status' => 'approved', 'group_name' => 'A']);
+    }
+
+    public function test_team_can_be_registered_without_roster(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+
+        // A manager without the squad list yet still gets a slot; the roster is
+        // completed later from the participant dashboard.
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'name' => 'Tanpa Roster',
+                'contact_name' => 'Andi',
+                'contact_phone' => '08123456789',
+            ])
+            ->assertCreated();
+
+        $this->assertDatabaseCount('players', 0);
+    }
+
+    public function test_organizer_can_enter_team_manually(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+
+        $this->actingAs($org->owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload([
+                'name' => 'Tim Offline',
+            ]))
+            ->assertCreated()
+            // The organizer entering it is the verification — no approval queue.
+            ->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.payment_status', 'paid');
+
+        // The fee was settled outside the platform, so the platform holds none of
+        // it: a wallet credit here would let the organizer withdraw money we
+        // never received.
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_manual_team_respects_event_quota(): void
+    {
+        $event = $this->openEvent('10', maxTeams: 1);
+        $org = $event->organization;
+
+        $this->actingAs($org->owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload())
+            ->assertCreated();
+
+        $this->actingAs($org->owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload(['name' => 'Other']))
+            ->assertStatus(422);
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
 use App\Services\RegistrationService;
+use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,10 @@ use Illuminate\Support\Facades\DB;
 
 class MyTeamController extends Controller
 {
-    public function __construct(protected RegistrationService $registration) {}
+    public function __construct(
+        protected RegistrationService $registration,
+        protected TeamRosterService $roster,
+    ) {}
 
     /**
      * Teams the authenticated participant manages (registered).
@@ -58,11 +62,20 @@ class MyTeamController extends Controller
             'contact_name' => ['sometimes', 'required', 'string', 'max:255'],
             'contact_phone' => ['sometimes', 'required', 'string', 'max:20'],
 
-            'players' => ['sometimes', 'array', 'min:1'],
+            // Registration lets both of these be skipped, so this is where they
+            // get completed. An empty array is a legitimate value (it clears the
+            // list), which is why there is no `min:1`.
+            'players' => ['sometimes', 'array'],
             'players.*.id' => ['nullable', 'string'],
             'players.*.full_name' => ['required', 'string', 'max:255'],
             'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:50'],
+
+            'documents' => ['sometimes', 'array'],
+            'documents.*.id' => ['nullable', 'string'],
+            'documents.*.file_url' => ['required', 'string'],
+            'documents.*.file_name' => ['nullable', 'string', 'max:255'],
+            'documents.*.document_type' => ['nullable', 'string', 'max:100'],
         ]);
 
         DB::transaction(function () use ($model, $data) {
@@ -71,7 +84,11 @@ class MyTeamController extends Controller
             ])));
 
             if (array_key_exists('players', $data)) {
-                $this->syncPlayers($model, $data['players']);
+                $this->roster->syncPlayers($model, $data['players']);
+            }
+
+            if (array_key_exists('documents', $data)) {
+                $this->roster->syncDocuments($model, $data['documents']);
             }
         });
 
@@ -116,37 +133,6 @@ class MyTeamController extends Controller
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
         ], 'Pembayaran dimulai');
-    }
-
-    /**
-     * Create / update / delete players to match the submitted roster.
-     *
-     * @param  array<int, array<string, mixed>>  $players
-     */
-    protected function syncPlayers(Team $team, array $players): void
-    {
-        $keepIds = [];
-
-        foreach ($players as $row) {
-            $attrs = [
-                'full_name' => $row['full_name'],
-                'jersey_number' => $row['jersey_number'] ?? null,
-                'position' => $row['position'] ?? null,
-            ];
-
-            $existing = ! empty($row['id'])
-                ? $team->players()->whereKey($row['id'])->first()
-                : null;
-
-            if ($existing) {
-                $existing->update($attrs);
-                $keepIds[] = $existing->id;
-            } else {
-                $keepIds[] = $team->players()->create($attrs)->id;
-            }
-        }
-
-        $team->players()->whereKeyNot($keepIds)->delete();
     }
 
     protected function isEditable(Team $team): bool

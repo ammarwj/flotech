@@ -18,14 +18,18 @@
         </include>
     </source>
     <php>
+        <!-- HEADS UP: a <env> entry here does NOT win over a variable that
+             already exists in the process environment, and the api container
+             exports most of these for real (DB_CONNECTION=pgsql,
+             QUEUE_CONNECTION=redis, CACHE_STORE=redis…). The values that must
+             hold are therefore pinned in tests/bootstrap.php, before the app
+             boots. Adding a driver here alone is not enough — put it there too,
+             or it will silently keep the container's value. -->
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <!-- The test database is pinned in tests/bootstrap.php: the container's
-             real DB_* env vars would otherwise win over these entries and the
-             suite would run against (and wipe) the dev database. -->
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="DB_URL" value=""/>

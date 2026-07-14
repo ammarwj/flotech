@@ -24,7 +24,11 @@ class RegisterTeamRequest extends FormRequest
             'contact_name' => ['required', 'string', 'max:255'],
             'contact_phone' => ['required', 'string', 'max:20'],
 
-            'players' => ['required', 'array', 'min:1'],
+            // Roster and documents may be left for later and completed from the
+            // participant dashboard — a manager who doesn't have the squad list
+            // in hand yet should still be able to claim a slot. A player row that
+            // *is* sent still needs a name.
+            'players' => ['nullable', 'array'],
             'players.*.full_name' => ['required', 'string', 'max:255'],
             'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:50'],

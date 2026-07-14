@@ -163,7 +163,7 @@ class PublicEventController extends Controller
             'manager_user_id' => auth('api')->user()?->id,
         ]);
 
-        foreach ($data['players'] as $player) {
+        foreach ($data['players'] ?? [] as $player) {
             $team->players()->create($player);
         }
 

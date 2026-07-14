@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Plus, X, Loader2, CreditCard, LogOut, Users } from "lucide-react";
+import { ChevronLeft, X, Loader2, CreditCard, LogOut, Users, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   getMyTeam,
+  signUpload,
   updateMyTeam,
   withdrawMyTeam,
   payRegistration,
@@ -22,8 +23,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
+import { RosterEditor, type PlayerRow } from "@/components/team/roster-editor";
 
-type PlayerRow = { id?: string; full_name: string; jersey_number: string; position: string };
+type DocRow = { id?: string; file_name: string; file_url: string };
 
 const LOCKED = ["rejected", "disqualified", "withdrawn"];
 
@@ -38,6 +40,8 @@ export default function ManageTeamPage() {
 
   const [info, setInfo] = useState({ name: "", city: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [docs, setDocs] = useState<DocRow[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   // Seed the form once the team loads.
   useEffect(() => {
@@ -56,11 +60,38 @@ export default function ManageTeamPage() {
         position: p.position ?? "",
       }))
     );
+    setDocs(
+      (team.documents ?? []).map((d) => ({
+        id: d.id,
+        file_name: d.file_name ?? "Dokumen",
+        file_url: d.file_url,
+      }))
+    );
   }, [team]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["my-team", params.id] });
     qc.invalidateQueries({ queryKey: ["my-teams"] });
+  };
+
+  // Files land in storage as they're picked; only their metadata is saved with
+  // the rest of the form, so an upload that is never saved leaves no row behind.
+  const handleFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const signed = await signUpload(file.name, file.type);
+        if (signed.upload_url) {
+          await fetch(signed.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+        }
+        setDocs((d) => [...d, { file_name: file.name, file_url: signed.file_url }]);
+      }
+    } catch {
+      toast.error("Gagal mengunggah dokumen. Coba lagi.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const save = useMutation({
@@ -75,6 +106,7 @@ export default function ManageTeamPage() {
             jersey_number: p.jersey_number,
             position: p.position,
           })),
+        documents: docs.map((d) => ({ id: d.id, file_url: d.file_url, file_name: d.file_name })),
       };
       return updateMyTeam(params.id, payload);
     },
@@ -213,50 +245,88 @@ export default function ManageTeamPage() {
                 <Users className="h-4 w-4" /> Daftar Pemain
               </CardTitle>
               <CardDescription>Tambah, ubah, atau hapus pemain di roster.</CardDescription>
+              {players.length === 0 && (
+                <p className="mt-1 text-sm text-[var(--warning)]">
+                  Roster masih kosong — lengkapi sebelum turnamen dimulai.
+                </p>
+              )}
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!editable}
-              onClick={() => setPlayers([...players, { full_name: "", jersey_number: "", position: "" }])}
-            >
-              <Plus className="h-4 w-4" />
-              Pemain
-            </Button>
           </CardHeader>
-          <CardContent className="grid gap-2">
-            {players.map((p, i) => (
-              <div key={p.id ?? `new-${i}`} className="flex items-center gap-2">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--bg-soft)] text-xs font-semibold text-muted-foreground">
-                  {i + 1}
-                </span>
-                <Input
-                  placeholder="Nama pemain"
-                  value={p.full_name}
-                  disabled={!editable}
-                  onChange={(e) => setPlayers(players.map((x, j) => (j === i ? { ...x, full_name: e.target.value } : x)))}
-                />
-                <Input
-                  className="w-20"
-                  placeholder="No."
-                  value={p.jersey_number}
-                  disabled={!editable}
-                  onChange={(e) => setPlayers(players.map((x, j) => (j === i ? { ...x, jersey_number: e.target.value } : x)))}
-                />
-                {editable && players.length > 1 && (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="shrink-0 text-muted-foreground"
-                    onClick={() => setPlayers(players.filter((_, j) => j !== i))}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+          <CardContent>
+            <RosterEditor
+              players={players}
+              onChange={setPlayers}
+              sport={team.event?.sport_type}
+              disabled={!editable}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Dokumen
+            </CardTitle>
+            <CardDescription>
+              Berkas pendukung (KTP, surat, dll) yang bisa dilewati saat mendaftar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {editable && (
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-alt)] px-6 py-8 text-center transition-colors hover:border-[var(--brand-500)]">
+                {uploading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                ) : (
+                  <Upload className="h-6 w-6 text-muted-foreground" />
                 )}
-              </div>
-            ))}
+                <span className="text-sm font-medium">
+                  {uploading ? "Mengunggah…" : "Klik untuk mengunggah berkas"}
+                </span>
+                <span className="text-xs text-muted-foreground">PDF, JPG, atau PNG</span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => handleFiles(e.target.files)}
+                />
+              </label>
+            )}
+
+            {docs.length > 0 ? (
+              <ul className="mt-3 grid gap-2">
+                {docs.map((d, i) => (
+                  <li
+                    key={d.id ?? `new-${i}`}
+                    className="flex items-center gap-2 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <a
+                      href={d.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate hover:underline"
+                    >
+                      {d.file_name}
+                    </a>
+                    {editable && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="ml-auto shrink-0 text-muted-foreground"
+                        aria-label={`Hapus dokumen ${d.file_name}`}
+                        onClick={() => setDocs(docs.filter((_, j) => j !== i))}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              !editable && <p className="text-sm text-muted-foreground">Tidak ada dokumen.</p>
+            )}
           </CardContent>
         </Card>
 

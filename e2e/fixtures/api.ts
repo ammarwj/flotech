@@ -159,14 +159,19 @@ export class Api {
 
   // ---- Teams (§5.2) ----
 
+  /**
+   * `managerToken` is not optional: registration requires an account, because
+   * the team belongs to whoever filed it and that link is what puts it in their
+   * "Tim Saya". An anonymous POST here is a 401.
+   */
   async registerTeam(
     orgSlug: string,
     eventSlug: string,
+    managerToken: string,
     name = unique("Tim"),
-    managerToken?: string,
   ): Promise<Team> {
     const res = await this.request.post(`${API_URL}/public/events/${orgSlug}/${eventSlug}/register`, {
-      headers: managerToken ? this.auth(managerToken) : { Accept: "application/json" },
+      headers: this.auth(managerToken),
       data: {
         name,
         city: "Jakarta",
@@ -198,15 +203,39 @@ export class Api {
     await this.unwrap(res, `Set status tim ${status}`);
   }
 
-  /** N approved teams — the precondition for generating a schedule (§5.3). */
+  /**
+   * N approved teams — the precondition for generating a schedule (§5.3).
+   *
+   * Entered through the organizer's own offline-registration endpoint: it lands
+   * teams straight in `approved`, which is all these tests need, and it skips the
+   * participant account each team would otherwise have to be filed under.
+   */
   async approvedTeams(token: string, org: Org, event: Event, count: number): Promise<Team[]> {
     const teams: Team[] = [];
     for (let i = 0; i < count; i++) {
-      const team = await this.registerTeam(org.slug, event.slug, `Tim ${String.fromCharCode(65 + i)} ${unique("")}`);
-      await this.setTeamStatus(token, org.id, event.id, team.id, "approved");
-      teams.push(team);
+      teams.push(await this.addTeamManually(token, org.id, event.id, `Tim ${String.fromCharCode(65 + i)}`));
     }
     return teams;
+  }
+
+  /** Offline registration (organizer types the team in): approved + settled on arrival. */
+  async addTeamManually(
+    token: string,
+    orgId: string,
+    eventId: string,
+    name = unique("Tim Offline"),
+  ): Promise<Team> {
+    const res = await this.request.post(`${API_URL}/organizations/${orgId}/events/${eventId}/registrations`, {
+      headers: this.auth(token),
+      data: {
+        name,
+        city: "Solo",
+        contact_name: "Kontak Offline",
+        contact_phone: "081200000000",
+        players: [{ full_name: "Pemain Offline", jersey_number: "1", position: "Kiper" }],
+      },
+    });
+    return this.unwrap<Team>(res, `Tambah tim manual ${name}`);
   }
 
   // ---- Wallet (§5.7) ----

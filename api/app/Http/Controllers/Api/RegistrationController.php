@@ -3,17 +3,26 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Services\PlanGate;
+use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RegistrationController extends Controller
 {
+    public function __construct(
+        protected PlanGate $gate,
+        protected TeamRosterService $roster,
+    ) {}
+
     /**
      * List all team registrations for an event (organizer view).
      */
@@ -26,6 +35,110 @@ class RegistrationController extends Controller
             ->get();
 
         return ApiResponse::success(TeamResource::collection($teams));
+    }
+
+    /**
+     * Enter a team by hand (offline registration).
+     *
+     * Not every tournament is filled through this app: teams still sign up over
+     * WhatsApp, on paper, or by paying the organizer directly. Such a team is
+     * approved on arrival — the organizer entering it *is* the verification —
+     * and its fee is settled outside the platform.
+     *
+     * That last part is why nothing is credited to the wallet: the money never
+     * passed through us, so inventing a ledger entry for it would make the
+     * organizer's balance claim funds the platform is not holding.
+     */
+    public function store(RegisterTeamRequest $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+        /** @var Organization $org */
+        $org = $request->attributes->get('organization');
+
+        // The same two ceilings the public form respects — an offline entry may
+        // not be a way around the event's quota or the plan's team limit.
+        $activeTeams = $eventModel->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+
+        if ($eventModel->max_teams !== null && $activeTeams >= $eventModel->max_teams) {
+            return ApiResponse::error('Kuota tim untuk event ini sudah penuh.', null, 422);
+        }
+
+        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $activeTeams)) {
+            return ApiResponse::error(
+                'Batas jumlah tim per event untuk paketmu sudah tercapai.',
+                ['feature' => 'max_teams_per_event'],
+                403,
+            );
+        }
+
+        $data = $request->validated();
+
+        $team = DB::transaction(function () use ($eventModel, $data) {
+            $team = $eventModel->teams()->create([
+                'name' => $data['name'],
+                'city' => $data['city'] ?? null,
+                'jersey_color' => $data['jersey_color'] ?? null,
+                'logo_url' => $data['logo_url'] ?? null,
+                'contact_name' => $data['contact_name'],
+                'contact_phone' => $data['contact_phone'],
+                'status' => 'approved',
+                'registered_at' => Carbon::now(),
+                'approved_at' => Carbon::now(),
+                // Settled offline: paid as far as the tournament is concerned,
+                // but zero rupiah of it belongs to the platform.
+                'payment_status' => 'paid',
+                'payment_amount' => 0,
+                'platform_fee' => 0,
+            ]);
+
+            $this->roster->syncPlayers($team, $data['players'] ?? []);
+            $this->roster->syncDocuments($team, $data['documents'] ?? []);
+
+            return $team;
+        });
+
+        return ApiResponse::success(
+            new TeamResource($team->fresh()->load(['players', 'documents'])),
+            'Tim berhasil ditambahkan.',
+            201,
+        );
+    }
+
+    /**
+     * Edit a team's details and roster from the organizer side.
+     *
+     * Manually entered teams have no participant account behind them, so without
+     * this there would be no way to fix a typo or add a player who turned up
+     * late — the participant dashboard is not reachable for them.
+     */
+    public function update(RegisterTeamRequest $request, string $organization, string $event, string $team): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+        $teamModel = $eventModel->teams()->findOrFail($team);
+
+        $data = $request->validated();
+
+        DB::transaction(function () use ($teamModel, $data) {
+            $teamModel->update([
+                'name' => $data['name'],
+                'city' => $data['city'] ?? null,
+                'jersey_color' => $data['jersey_color'] ?? null,
+                'logo_url' => $data['logo_url'] ?? null,
+                'contact_name' => $data['contact_name'],
+                'contact_phone' => $data['contact_phone'],
+            ]);
+
+            $this->roster->syncPlayers($teamModel, $data['players'] ?? []);
+
+            if (array_key_exists('documents', $data)) {
+                $this->roster->syncDocuments($teamModel, $data['documents']);
+            }
+        });
+
+        return ApiResponse::success(
+            new TeamResource($teamModel->fresh()->load(['players', 'documents'])),
+            'Data tim diperbarui',
+        );
     }
 
     /**
