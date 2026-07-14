@@ -133,6 +133,12 @@ export interface SportStatDef {
   fair_play_weight: number;
 }
 
+/** A position a player of this sport can hold. The key is what a roster stores. */
+export interface SportPositionDef {
+  key: string;
+  label: string;
+}
+
 export interface SportDef {
   slug: string;
   name: string;
@@ -141,6 +147,7 @@ export interface SportDef {
   scoring: "goal" | "set";
   default_match_minutes: number;
   stats: SportStatDef[];
+  positions: SportPositionDef[];
 }
 
 /** A reference option: a format, tiebreaker, draw method, round, sponsor tier. */

@@ -232,7 +232,8 @@ export class Api {
         city: "Solo",
         contact_name: "Kontak Offline",
         contact_phone: "081200000000",
-        players: [{ full_name: "Pemain Offline", jersey_number: "1", position: "Kiper" }],
+        // A position is a key from the sport's master (sport_positions), not free text.
+        players: [{ full_name: "Pemain Offline", jersey_number: "1", position: "goalkeeper" }],
       },
     });
     return this.unwrap<Team>(res, `Tambah tim manual ${name}`);

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SportRequest;
 use App\Http\Resources\SportResource;
 use App\Models\Event;
+use App\Models\Player;
 use App\Models\Sport;
 use App\Models\SportStat;
 use App\Services\Catalog;
@@ -22,7 +23,7 @@ class SportController extends Controller
 {
     public function index(): JsonResponse
     {
-        $sports = Sport::with('stats')->orderBy('sort_order')->get();
+        $sports = Sport::with(['stats', 'positions'])->orderBy('sort_order')->get();
 
         return ApiResponse::success(SportResource::collection($sports));
     }
@@ -32,7 +33,7 @@ class SportController extends Controller
         $sport = Sport::create($request->validated());
         Catalog::flush();
 
-        return ApiResponse::success(new SportResource($sport->load('stats')), 'Cabang olahraga dibuat', 201);
+        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions'])), 'Cabang olahraga dibuat', 201);
     }
 
     public function update(SportRequest $request, Sport $sport): JsonResponse
@@ -52,7 +53,7 @@ class SportController extends Controller
         $sport->update($data);
         Catalog::flush();
 
-        return ApiResponse::success(new SportResource($sport->load('stats')), 'Cabang olahraga diperbarui');
+        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions'])), 'Cabang olahraga diperbarui');
     }
 
     public function destroy(Sport $sport): JsonResponse
@@ -108,13 +109,75 @@ class SportController extends Controller
         Catalog::flush();
 
         return ApiResponse::success(
-            new SportResource($sport->load('stats')),
+            new SportResource($sport->load(['stats', 'positions'])),
             'Kolom statistik diperbarui',
+        );
+    }
+
+    /**
+     * Replace a sport's positions the same way. Renaming a label is the whole
+     * point — rosters store the key, so the new name reaches every team that
+     * ever entered. Dropping a key that rosters still point at is not: it would
+     * leave players holding a position nobody can name.
+     */
+    public function syncPositions(Request $request, Sport $sport): JsonResponse
+    {
+        $data = $request->validate([
+            'positions' => ['present', 'array', 'max:20'],
+            'positions.*.position_key' => ['required', 'string', 'max:30', 'alpha_dash'],
+            'positions.*.label' => ['required', 'string', 'max:60'],
+        ]);
+
+        $keys = array_column($data['positions'], 'position_key');
+
+        $dropped = $sport->positions()->whereNotIn('position_key', $keys)->pluck('position_key');
+        $used = $this->positionsInUse($sport, $dropped->all());
+
+        if ($used !== []) {
+            return ApiResponse::error(
+                'Posisi '.implode(', ', $used).' masih dipakai pemain — ganti namanya saja, jangan dihapus.',
+                ['positions' => ['Masih dipakai pemain.']],
+                422,
+            );
+        }
+
+        foreach ($data['positions'] as $order => $position) {
+            $sport->positions()->updateOrCreate(
+                ['position_key' => $position['position_key']],
+                ['label' => $position['label'], 'sort_order' => $order],
+            );
+        }
+
+        $sport->positions()->whereNotIn('position_key', $keys)->delete();
+        Catalog::flush();
+
+        return ApiResponse::success(
+            new SportResource($sport->load(['stats', 'positions'])),
+            'Posisi diperbarui',
         );
     }
 
     protected function inUse(Sport $sport): bool
     {
         return Event::where('sport_type', $sport->slug)->exists();
+    }
+
+    /**
+     * Which of these position keys any player of this sport still holds.
+     *
+     * @param  array<int, string>  $keys
+     * @return array<int, string>
+     */
+    protected function positionsInUse(Sport $sport, array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+
+        return Player::whereIn('position', $keys)
+            ->whereHas('team.event', fn ($q) => $q->where('sport_type', $sport->slug))
+            ->distinct()
+            ->pluck('position')
+            ->all();
     }
 }

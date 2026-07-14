@@ -40,7 +40,7 @@ class Catalog
         }
 
         return self::$memo = Cache::rememberForever(self::KEY, function () {
-            $sports = Sport::with('stats')
+            $sports = Sport::with(['stats', 'positions'])
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->get()
@@ -57,6 +57,10 @@ class Catalog
                         'short' => $stat->short,
                         'role' => $stat->role,
                         'fair_play_weight' => $stat->fair_play_weight,
+                    ])->values()->all(),
+                    'positions' => $s->positions->map(fn ($position) => [
+                        'key' => $position->position_key,
+                        'label' => $position->label,
                     ])->values()->all(),
                 ])
                 ->values()
@@ -143,6 +147,26 @@ class Catalog
         }
 
         return $out;
+    }
+
+    /**
+     * The positions a player of this sport can hold. Empty for an unknown sport
+     * — and for one the admin hasn't given any, which means no position may be
+     * set on its rosters at all.
+     *
+     * @return array<int, array{key: string, label: string}>
+     */
+    public static function positions(?string $slug): array
+    {
+        return self::sport($slug)['positions'] ?? [];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function positionKeys(?string $slug): array
+    {
+        return array_column(self::positions($slug), 'key');
     }
 
     public static function isSetBased(?string $slug): bool

@@ -236,6 +236,7 @@ Route::prefix('v1')->group(function () {
             // Catalog administration.
             Route::get('engines', [ConfigOptionController::class, 'engines']);
             Route::put('sports/{sport}/stats', [SportController::class, 'syncStats']);
+            Route::put('sports/{sport}/positions', [SportController::class, 'syncPositions']);
             Route::apiResource('sports', SportController::class)->except(['show']);
             Route::apiResource('config-options', ConfigOptionController::class)
                 ->parameters(['config-options' => 'config_option'])

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Team;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Roster and document lists, kept in sync from two places: the participant
@@ -21,6 +22,8 @@ class TeamRosterService
      */
     public function syncPlayers(Team $team, array $players): void
     {
+        $this->assertPositionsExist($team, $players);
+
         $keepIds = [];
 
         foreach ($players as $row) {
@@ -43,6 +46,34 @@ class TeamRosterService
         }
 
         $team->players()->whereKeyNot($keepIds)->delete();
+    }
+
+    /**
+     * A position must be one the admin defined for this event's sport (see
+     * sport_positions). Guarded here rather than in the FormRequests because
+     * this is the one write path all three roster flows share, and none of them
+     * knows the sport without resolving the event from its own shape of route.
+     *
+     * @param  array<int, array<string, mixed>>  $players
+     *
+     * @throws ValidationException
+     */
+    private function assertPositionsExist(Team $team, array $players): void
+    {
+        $allowed = Catalog::positionKeys($team->event?->sport_type);
+        $errors = [];
+
+        foreach ($players as $i => $row) {
+            $position = $row['position'] ?? null;
+
+            if ($position !== null && $position !== '' && ! in_array($position, $allowed, true)) {
+                $errors["players.{$i}.position"] = 'Posisi tidak dikenali untuk cabang olahraga ini.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**

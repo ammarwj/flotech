@@ -4,9 +4,21 @@ import { useEffect } from "react";
 import { MapPin, Users, X } from "lucide-react";
 
 import { crestGradient } from "@/lib/bracket";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { PublicTeam } from "@/types/api";
 
-export function TeamRosterDialog({ team, onClose }: { team: PublicTeam; onClose: () => void }) {
+export function TeamRosterDialog({
+  team,
+  sport,
+  onClose,
+}: {
+  team: PublicTeam;
+  /** Sport slug — a roster stores position keys, not the words to show. */
+  sport?: string | null;
+  onClose: () => void;
+}) {
+  const { positionLabel } = useCatalog();
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -94,7 +106,9 @@ export function TeamRosterDialog({ team, onClose }: { team: PublicTeam; onClose:
                     {p.jersey_number ?? "–"}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.full_name}</span>
-                  {p.position && <span className="pill shrink-0">{p.position}</span>}
+                  {p.position && (
+                    <span className="pill shrink-0">{positionLabel(sport, p.position)}</span>
+                  )}
                 </li>
               ))}
             </ul>

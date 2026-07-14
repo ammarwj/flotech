@@ -35,6 +35,12 @@ class SportResource extends JsonResource
                 'fair_play_weight' => (int) $s->fair_play_weight,
                 'sort_order' => (int) $s->sort_order,
             ])),
+            'positions' => $this->whenLoaded('positions', fn () => $this->positions->map(fn ($p) => [
+                'id' => $p->id,
+                'position_key' => $p->position_key,
+                'label' => $p->label,
+                'sort_order' => (int) $p->sort_order,
+            ])),
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Sport;
+use App\Models\SportPosition;
 use App\Models\SportStat;
 use App\Services\Catalog;
 use Illuminate\Database\Seeder;
@@ -22,18 +23,43 @@ class SportSeeder extends Seeder
             ['stat_key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM', 'fair_play_weight' => 3],
         ];
 
+        // The key is what a roster stores; the label is only what it's shown as.
+        $goalPositions = [
+            ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
+            ['position_key' => 'defender', 'label' => 'Bek'],
+            ['position_key' => 'midfielder', 'label' => 'Gelandang'],
+            ['position_key' => 'winger', 'label' => 'Sayap'],
+            ['position_key' => 'forward', 'label' => 'Penyerang'],
+        ];
+
         $sports = [
             [
                 'slug' => 'football', 'name' => 'Sepak Bola', 'color' => '#1E6FFF', 'icon' => '⚽',
                 'scoring' => 'goal', 'default_match_minutes' => 90, 'stats' => $goalStats,
+                'positions' => [
+                    ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
+                    ['position_key' => 'defender', 'label' => 'Bek'],
+                    ['position_key' => 'wing_back', 'label' => 'Bek Sayap'],
+                    ['position_key' => 'midfielder', 'label' => 'Gelandang'],
+                    ['position_key' => 'attacking_midfielder', 'label' => 'Gelandang Serang'],
+                    ['position_key' => 'winger', 'label' => 'Sayap'],
+                    ['position_key' => 'forward', 'label' => 'Penyerang'],
+                ],
             ],
             [
                 'slug' => 'mini_soccer', 'name' => 'Mini Soccer', 'color' => '#0EA5E9', 'icon' => '🥅',
                 'scoring' => 'goal', 'default_match_minutes' => 50, 'stats' => $goalStats,
+                'positions' => $goalPositions,
             ],
             [
                 'slug' => 'futsal', 'name' => 'Futsal', 'color' => '#7C3AED', 'icon' => '🏟️',
                 'scoring' => 'goal', 'default_match_minutes' => 40, 'stats' => $goalStats,
+                'positions' => [
+                    ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
+                    ['position_key' => 'anchor', 'label' => 'Anchor'],
+                    ['position_key' => 'flank', 'label' => 'Flank'],
+                    ['position_key' => 'pivot', 'label' => 'Pivot'],
+                ],
             ],
             [
                 'slug' => 'badminton', 'name' => 'Badminton', 'color' => '#DB2777', 'icon' => '🏸',
@@ -41,6 +67,10 @@ class SportSeeder extends Seeder
                 'stats' => [
                     ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS'],
                     ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
+                ],
+                'positions' => [
+                    ['position_key' => 'singles', 'label' => 'Tunggal'],
+                    ['position_key' => 'doubles', 'label' => 'Ganda'],
                 ],
             ],
             [
@@ -51,6 +81,10 @@ class SportSeeder extends Seeder
                     ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
                     ['stat_key' => 'winners', 'label' => 'Winner', 'short' => 'WIN'],
                 ],
+                'positions' => [
+                    ['position_key' => 'drive', 'label' => 'Drive'],
+                    ['position_key' => 'reves', 'label' => 'Reves'],
+                ],
             ],
             [
                 'slug' => 'volleyball', 'name' => 'Voli', 'color' => '#059669', 'icon' => '🏐',
@@ -60,12 +94,20 @@ class SportSeeder extends Seeder
                     ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
                     ['stat_key' => 'blocks', 'label' => 'Blok', 'short' => 'BLK'],
                 ],
+                'positions' => [
+                    ['position_key' => 'setter', 'label' => 'Setter'],
+                    ['position_key' => 'outside_hitter', 'label' => 'Outside Hitter'],
+                    ['position_key' => 'middle_blocker', 'label' => 'Middle Blocker'],
+                    ['position_key' => 'opposite', 'label' => 'Opposite'],
+                    ['position_key' => 'libero', 'label' => 'Libero'],
+                ],
             ],
         ];
 
         foreach ($sports as $order => $data) {
             $stats = $data['stats'];
-            unset($data['stats']);
+            $positions = $data['positions'];
+            unset($data['stats'], $data['positions']);
 
             $sport = Sport::updateOrCreate(
                 ['slug' => $data['slug']],
@@ -82,6 +124,13 @@ class SportSeeder extends Seeder
                         'fair_play_weight' => $stat['fair_play_weight'] ?? 0,
                         'sort_order' => $statOrder,
                     ],
+                );
+            }
+
+            foreach ($positions as $posOrder => $position) {
+                SportPosition::updateOrCreate(
+                    ['sport_id' => $sport->id, 'position_key' => $position['position_key']],
+                    ['label' => $position['label'], 'sort_order' => $posOrder],
                 );
             }
         }

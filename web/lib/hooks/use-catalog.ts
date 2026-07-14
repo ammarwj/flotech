@@ -46,6 +46,16 @@ export function useCatalog() {
     sportColor: (slug: string | null | undefined) => sport(slug)?.color ?? "var(--brand-600)",
     sportDuration: (slug: string | null | undefined) => sport(slug)?.default_match_minutes ?? 60,
 
+    /** The positions a roster of this sport may pick from. Empty = none defined. */
+    positionsFor: (slug: string | null | undefined) => sport(slug)?.positions ?? [],
+
+    /**
+     * A stored position key as a person reads it. Falls back to the key so a
+     * roster never renders blank while the catalog is still loading.
+     */
+    positionLabel: (slug: string | null | undefined, key: string | null | undefined) =>
+      sport(slug)?.positions.find((p) => p.key === key)?.label ?? key ?? "",
+
     formatLabel: (key: string | null | undefined) => label(catalog.tournament_formats, key),
     tiebreakerLabel: (key: string | null | undefined) => label(catalog.tiebreakers, key),
     drawMethodLabel: (key: string | null | undefined) => label(catalog.draw_methods, key),

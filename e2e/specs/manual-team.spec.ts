@@ -21,7 +21,9 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     await page.getByLabel("No. HP kontak").fill("081200000000");
     await page.getByLabel("Nama pemain 1").fill("Joko");
     await page.getByLabel("Nomor punggung pemain 1").fill("1");
-    await page.getByLabel("Posisi pemain 1").fill("Kiper");
+    // Positions come from the sport's master (sport_positions), so this is a
+    // dropdown of futsal's positions — not a box you can type anything into.
+    await page.getByLabel("Posisi pemain 1").selectOption({ label: "Kiper" });
     await page.getByRole("button", { name: "Tambah tim", exact: true }).click();
 
     await expect(toast(page, /tim berhasil ditambahkan/i)).toBeVisible();
@@ -48,10 +50,14 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     await page.getByRole("button", { name: `Ubah tim ${team.name}` }).click();
     await page.getByRole("button", { name: "Pemain", exact: true }).click();
     await page.getByLabel("Nama pemain 2").fill("Pemain Susulan");
-    await page.getByLabel("Posisi pemain 2").fill("Flank");
+    await page.getByLabel("Posisi pemain 2").selectOption({ label: "Flank" });
     await page.getByRole("button", { name: /simpan perubahan/i }).click();
 
     await expect(toast(page, /data tim diperbarui/i)).toBeVisible();
+
+    // The roster stores the key ('flank'); the card must show the master's label.
+    await page.getByText(team.name, { exact: true }).click();
+    await expect(page.getByText("Flank")).toBeVisible();
   });
 
   test("uang tim manual tidak masuk dompet — dibayar di luar platform", async ({

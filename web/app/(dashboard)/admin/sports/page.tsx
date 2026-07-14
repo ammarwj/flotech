@@ -9,9 +9,11 @@ import {
   createSport,
   deleteSport,
   getAdminSports,
+  syncSportPositions,
   syncSportStats,
   updateSport,
   type AdminSport,
+  type AdminSportPosition,
   type AdminSportStat,
 } from "@/lib/api/catalog";
 import { parseApiError } from "@/lib/api/errors";
@@ -52,10 +54,13 @@ const EMPTY_STAT: AdminSportStat = {
   fair_play_weight: 0,
 };
 
+const EMPTY_POSITION: AdminSportPosition = { position_key: "", label: "" };
+
 /**
- * Sports and their stat columns. Adding one here is all it takes for organizers
- * to run events in it — the sport list, scoring style, match length, colour and
- * the statistics tracked all come from these rows.
+ * Sports, their stat columns and their positions. Adding one here is all it
+ * takes for organizers to run events in it — the sport list, scoring style,
+ * match length, colour, the statistics tracked and the positions a roster may
+ * pick from all come from these rows.
  */
 export default function AdminSportsPage() {
   const qc = useQueryClient();
@@ -65,6 +70,8 @@ export default function AdminSportsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [statsFor, setStatsFor] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminSportStat[]>([]);
+  const [positionsFor, setPositionsFor] = useState<string | null>(null);
+  const [positions, setPositions] = useState<AdminSportPosition[]>([]);
 
   const reset = () => {
     setForm(EMPTY);
@@ -103,6 +110,21 @@ export default function AdminSportsPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan statistik.").message),
   });
 
+  const savePositions = useMutation({
+    mutationFn: () =>
+      syncSportPositions(
+        positionsFor!,
+        positions.filter((p) => p.position_key.trim() !== "")
+      ),
+    onSuccess: () => {
+      toast.success("Posisi disimpan");
+      setPositionsFor(null);
+      qc.invalidateQueries({ queryKey: ["admin-sports"] });
+      qc.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan posisi.").message),
+  });
+
   const edit = (sport: AdminSport) => {
     setEditingId(sport.id);
     setForm({
@@ -117,13 +139,24 @@ export default function AdminSportsPage() {
     });
   };
 
+  // Only one editor at a time — two open lists under one sport read as one list.
   const openStats = (sport: AdminSport) => {
+    setPositionsFor(null);
     setStatsFor(sport.id);
     setStats(sport.stats.length > 0 ? sport.stats : [{ ...EMPTY_STAT }]);
   };
 
+  const openPositions = (sport: AdminSport) => {
+    setStatsFor(null);
+    setPositionsFor(sport.id);
+    setPositions(sport.positions.length > 0 ? sport.positions : [{ ...EMPTY_POSITION }]);
+  };
+
   const setStat = (i: number, patch: Partial<AdminSportStat>) =>
     setStats((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const setPosition = (i: number, patch: Partial<AdminSportPosition>) =>
+    setPositions((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const sports = query.data ?? [];
 
@@ -286,11 +319,18 @@ export default function AdminSportsPage() {
                     {sport.default_match_minutes} menit ·{" "}
                     {sport.stats.length > 0
                       ? sport.stats.map((s) => s.short).join(" / ")
-                      : "belum ada statistik"}
+                      : "belum ada statistik"}{" "}
+                    ·{" "}
+                    {sport.positions.length > 0
+                      ? `${sport.positions.length} posisi`
+                      : "belum ada posisi"}
                   </p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => openStats(sport)}>
                   Kolom statistik
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => openPositions(sport)}>
+                  Posisi
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => edit(sport)}>
                   Edit
@@ -382,6 +422,66 @@ export default function AdminSportsPage() {
                       {saveStats.isPending ? "Menyimpan…" : "Simpan statistik"}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setStatsFor(null)}>
+                      Tutup
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ---- Positions editor ---- */}
+              {positionsFor === sport.id && (
+                <div className="mt-4 grid gap-3 border-t border-border pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Posisi yang bisa dipilih saat mendaftarkan pemain. Urutan baris = urutan di
+                    dropdown. Kunci adalah yang tersimpan di roster — mengganti <em>label</em> aman
+                    dan langsung berlaku di semua tim, tapi kunci yang masih dipakai pemain tidak
+                    bisa dihapus.
+                  </p>
+
+                  {positions.map((position, i) => (
+                    <div key={i} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                      <Input
+                        value={position.position_key}
+                        onChange={(e) => setPosition(i, { position_key: e.target.value })}
+                        placeholder="goalkeeper"
+                        aria-label="Kunci posisi"
+                      />
+                      <Input
+                        value={position.label}
+                        onChange={(e) => setPosition(i, { label: e.target.value })}
+                        placeholder="Kiper"
+                        aria-label="Label posisi"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPositions((rows) => rows.filter((_, idx) => idx !== i))}
+                        aria-label="Hapus posisi"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPositions((rows) => [...rows, { ...EMPTY_POSITION }])}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Tambah posisi
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => savePositions.mutate()}
+                      disabled={savePositions.isPending}
+                    >
+                      {savePositions.isPending ? "Menyimpan…" : "Simpan posisi"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setPositionsFor(null)}>
                       Tutup
                     </Button>
                   </div>

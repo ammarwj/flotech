@@ -32,6 +32,7 @@ import {
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -197,6 +198,7 @@ export default function RegistrationsPage() {
                 <RegistrationCard
                   key={team.id}
                   team={team}
+                  sport={eventQuery.data?.sport_type}
                   pending={mutate.isPending}
                   onUpdate={(status) => mutate.mutate({ teamId: team.id, status })}
                   onEdit={() => setManual(team)}
@@ -227,15 +229,19 @@ export default function RegistrationsPage() {
 
 function RegistrationCard({
   team,
+  sport,
   pending,
   onUpdate,
   onEdit,
 }: {
   team: Team;
+  /** Sport slug — a roster stores position keys, not the words to show. */
+  sport?: string | null;
   pending: boolean;
   onUpdate: (status: TeamStatus) => void;
   onEdit: () => void;
 }) {
+  const { positionLabel } = useCatalog();
   const [open, setOpen] = useState(false);
   const logo = team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null;
   const paid = team.payment_amount > 0;
@@ -367,7 +373,11 @@ function RegistrationCard({
                       {p.jersey_number || "–"}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium">{p.full_name}</span>
-                    {p.position && <span className="shrink-0 text-xs text-muted-foreground">{p.position}</span>}
+                    {p.position && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {positionLabel(sport, p.position)}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useId } from "react";
 import { Plus, X } from "lucide-react";
 
-import { positionsFor } from "@/lib/positions";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
 export type PlayerRow = {
   id?: string;
@@ -30,24 +30,22 @@ export function RosterEditor({
 }: {
   players: PlayerRow[];
   onChange: (players: PlayerRow[]) => void;
-  /** Sport slug — drives the position suggestions. */
+  /** Sport slug — decides which positions may be picked. */
   sport?: string | null;
   disabled?: boolean;
 }) {
-  const listId = useId();
-  const suggestions = positionsFor(sport);
+  const { positionsFor } = useCatalog();
+
+  // The admin defines these per sport (sport_positions). A sport with none has
+  // nothing to offer, and the API rejects any position on its rosters — so the
+  // column disappears rather than showing an empty dropdown.
+  const positions = positionsFor(sport);
 
   const set = (i: number, patch: Partial<PlayerRow>) =>
     onChange(players.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
   return (
     <div className="grid gap-2">
-      <datalist id={listId}>
-        {suggestions.map((p) => (
-          <option key={p} value={p} />
-        ))}
-      </datalist>
-
       {players.map((p, i) => (
         <div key={p.id ?? `new-${i}`} className="flex items-center gap-2">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--bg-soft)] text-xs font-semibold text-muted-foreground">
@@ -68,15 +66,22 @@ export function RosterEditor({
             disabled={disabled}
             onChange={(e) => set(i, { jersey_number: e.target.value })}
           />
-          <Input
-            className="w-36 shrink-0"
-            placeholder="Posisi"
-            aria-label={`Posisi pemain ${i + 1}`}
-            list={listId}
-            value={p.position}
-            disabled={disabled}
-            onChange={(e) => set(i, { position: e.target.value })}
-          />
+          {positions.length > 0 && (
+            <Select
+              className="w-36 shrink-0"
+              aria-label={`Posisi pemain ${i + 1}`}
+              value={p.position}
+              disabled={disabled}
+              onChange={(e) => set(i, { position: e.target.value })}
+            >
+              <option value="">Posisi</option>
+              {positions.map((pos) => (
+                <option key={pos.key} value={pos.key}>
+                  {pos.label}
+                </option>
+              ))}
+            </Select>
+          )}
           {!disabled && (
             <Button
               type="button"

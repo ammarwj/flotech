@@ -178,6 +178,84 @@ class CatalogTest extends TestCase
             ->assertJsonPath('data.name', 'Futsal Indoor');
     }
 
+    public function test_a_roster_only_accepts_positions_the_sport_defines(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
+            'tournament_format' => 'league', 'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+        ]);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/registrations";
+        $team = [
+            'name' => 'Garuda FC',
+            'contact_name' => 'Budi',
+            'contact_phone' => '08123456789',
+        ];
+
+        // 'pivot' is one of futsal's positions (SportSeeder); 'sweeper' is not.
+        $this->actingAs($owner, 'api')
+            ->postJson($url, [...$team, 'players' => [['full_name' => 'Andi', 'position' => 'pivot']]])
+            ->assertCreated();
+
+        $this->actingAs($owner, 'api')
+            ->postJson($url, [...$team, 'name' => 'Rajawali FC', 'players' => [
+                ['full_name' => 'Budi', 'position' => 'sweeper'],
+            ]])
+            ->assertStatus(422)
+            ->assertJsonStructure(['errors' => ['players.0.position']]);
+    }
+
+    public function test_renaming_a_position_reaches_every_roster_and_deleting_a_used_one_does_not(): void
+    {
+        $admin = User::factory()->create(['role' => 'super_admin']);
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
+            'tournament_format' => 'league', 'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+        ]);
+
+        $this->actingAs($owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", [
+                'name' => 'Garuda FC',
+                'contact_name' => 'Budi',
+                'contact_phone' => '08123456789',
+                'players' => [['full_name' => 'Andi', 'position' => 'pivot']],
+            ])
+            ->assertCreated();
+
+        $futsal = Sport::where('slug', 'futsal')->firstOrFail();
+        $keep = [
+            ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
+            ['position_key' => 'anchor', 'label' => 'Anchor'],
+            ['position_key' => 'flank', 'label' => 'Flank'],
+        ];
+
+        // Dropping 'pivot' would leave Andi holding a position nobody can name.
+        $this->actingAs($admin, 'api')
+            ->putJson("/api/v1/admin/sports/{$futsal->id}/positions", ['positions' => $keep])
+            ->assertStatus(422);
+
+        // Renaming it is the whole point — the roster stores the key, not the word.
+        $this->actingAs($admin, 'api')
+            ->putJson("/api/v1/admin/sports/{$futsal->id}/positions", [
+                'positions' => [...$keep, ['position_key' => 'pivot', 'label' => 'Target Man']],
+            ])
+            ->assertOk();
+
+        $futsal = collect($this->getJson('/api/v1/catalog')->json('data.sports'))
+            ->firstWhere('slug', 'futsal');
+
+        $this->assertSame(
+            'Target Man',
+            collect($futsal['positions'])->firstWhere('key', 'pivot')['label'],
+        );
+    }
+
     public function test_only_super_admin_can_manage_the_catalog(): void
     {
         $user = User::factory()->create();

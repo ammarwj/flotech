@@ -10,11 +10,12 @@ export async function getCatalog(): Promise<Catalog> {
 // ---- Super admin ----
 
 /** A sport as the admin edits it: the public shape plus its editable fields. */
-export interface AdminSport extends Omit<SportDef, "stats"> {
+export interface AdminSport extends Omit<SportDef, "stats" | "positions"> {
   id: string;
   is_active: boolean;
   sort_order: number;
   stats: AdminSportStat[];
+  positions: AdminSportPosition[];
 }
 
 export interface AdminSportStat {
@@ -27,7 +28,14 @@ export interface AdminSportStat {
   sort_order?: number;
 }
 
-export type SportInput = Omit<AdminSport, "id" | "stats">;
+export interface AdminSportPosition {
+  id?: string;
+  position_key: string;
+  label: string;
+  sort_order?: number;
+}
+
+export type SportInput = Omit<AdminSport, "id" | "stats" | "positions">;
 
 export async function getAdminSports(): Promise<AdminSport[]> {
   const { data } = await apiClient.get<ApiEnvelope<AdminSport[]>>("/admin/sports");
@@ -52,6 +60,17 @@ export async function deleteSport(id: string): Promise<void> {
 export async function syncSportStats(id: string, stats: AdminSportStat[]): Promise<AdminSport> {
   const { data } = await apiClient.put<ApiEnvelope<AdminSport>>(`/admin/sports/${id}/stats`, {
     stats,
+  });
+  return data.data;
+}
+
+/** Replace a sport's positions; order = the order the roster dropdown offers them. */
+export async function syncSportPositions(
+  id: string,
+  positions: AdminSportPosition[]
+): Promise<AdminSport> {
+  const { data } = await apiClient.put<ApiEnvelope<AdminSport>>(`/admin/sports/${id}/positions`, {
+    positions,
   });
   return data.data;
 }

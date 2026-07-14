@@ -9,6 +9,7 @@ use App\Models\Player;
 use App\Models\PlayerMatchStat;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Catalog;
 use App\Services\ScheduleService;
 use App\Support\MatchScoring;
 use Illuminate\Database\Seeder;
@@ -215,13 +216,16 @@ class DemoEventSeeder extends Seeder
 
     private function makePlayers(Team $team, string $sport): void
     {
-        [$count, $positions] = match ($sport) {
-            'football' => [16, ['GK', 'Bek', 'Gelandang', 'Sayap', 'Striker']],
-            'futsal' => [10, ['Kiper', 'Anchor', 'Flank', 'Pivot']],
-            'badminton' => [6, ['Tunggal', 'Ganda']],
-            'volleyball' => [12, ['Setter', 'Spiker', 'Blocker', 'Libero']],
-            default => [12, ['Pemain']],
+        $count = match ($sport) {
+            'football' => 16,
+            'futsal' => 10,
+            'badminton' => 6,
+            default => 12,
         };
+
+        // The sport's own positions (SportSeeder) — the demo must not invent a
+        // second vocabulary the roster dropdown would then reject.
+        $positions = Catalog::positionKeys($sport);
 
         $rows = [];
         for ($n = 1; $n <= $count; $n++) {
@@ -230,7 +234,7 @@ class DemoEventSeeder extends Seeder
                 'team_id' => $team->id,
                 'full_name' => $this->randomPerson(),
                 'jersey_number' => (string) $n,
-                'position' => $positions[array_rand($positions)],
+                'position' => $positions === [] ? null : $positions[array_rand($positions)],
                 'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),

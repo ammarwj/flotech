@@ -372,7 +372,13 @@ export default function PublicEventPage() {
         </section>
       )}
 
-      {openTeam && <TeamRosterDialog team={openTeam} onClose={() => setOpenTeam(null)} />}
+      {openTeam && (
+        <TeamRosterDialog
+          team={openTeam}
+          sport={ev.sport_type}
+          onClose={() => setOpenTeam(null)}
+        />
+      )}
 
       {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
       {tab !== "info" && tab !== "teams" && (
