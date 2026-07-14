@@ -83,22 +83,9 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
   }
 
   return (
-    <>
-      <span className="hidden text-sm font-medium text-muted-foreground lg:inline">
-        {user?.full_name}
-      </span>
-      <Link href={dashboardHref(user?.role)} className="btn btn-primary btn-sm">
-        Dashboard
-      </Link>
-      <button
-        type="button"
-        onClick={handleLogout}
-        disabled={pending}
-        className="btn btn-secondary btn-sm hidden sm:inline-flex"
-      >
-        {pending ? "Keluar…" : "Keluar"}
-      </button>
-    </>
+    <Link href={dashboardHref(user?.role)} className="btn btn-primary btn-sm">
+      Dashboard
+    </Link>
   );
 }
 

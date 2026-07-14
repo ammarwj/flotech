@@ -49,7 +49,9 @@ export default function ForgotPasswordPage() {
       </p>
 
       {message ? (
-        <p className="mt-6 rounded-md bg-accent p-4 text-sm text-accent-foreground">{message}</p>
+        <p className="mt-6 rounded-lg border border-border bg-accent px-4 py-3.5 text-sm leading-relaxed text-accent-foreground">
+          {message}
+        </p>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 grid gap-4">
           <div className="grid gap-2">
@@ -64,7 +66,7 @@ export default function ForgotPasswordPage() {
         </form>
       )}
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
         <Link href="/login" className="text-primary font-medium hover:underline">
           Kembali ke login
         </Link>

@@ -99,7 +99,7 @@ function ResetForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
+      <p className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
         <Link href="/login" className="text-primary font-medium hover:underline">
           Kembali ke login
         </Link>
