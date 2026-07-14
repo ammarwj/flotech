@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AxiosError } from "axios";
-
 import { forgotPassword } from "@/lib/api/auth";
+import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +21,7 @@ export default function ForgotPasswordPage() {
   const {
     register,
     handleSubmit,
+    setError: setFieldError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -32,7 +32,10 @@ export default function ForgotPasswordPage() {
       const msg = await forgotPassword(values.email);
       setMessage(msg);
     } catch (err) {
-      setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal") : "Gagal");
+      const { message, fieldErrors } = parseApiError(err, "Gagal mengirim tautan reset");
+
+      if (fieldErrors.email) setFieldError("email", { message: fieldErrors.email });
+      else setError(message);
     }
   };
 

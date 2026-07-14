@@ -78,7 +78,15 @@ export default function LoginPage() {
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="password">Password</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password">Password</Label>
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-muted-foreground hover:text-primary hover:underline"
+            >
+              Lupa password?
+            </Link>
+          </div>
           <PasswordInput
             id="password"
             autoComplete="current-password"

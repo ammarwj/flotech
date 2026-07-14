@@ -6,22 +6,28 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AxiosError } from "axios";
+import { toast } from "sonner";
 
 import { resetPassword } from "@/lib/api/auth";
+import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 
-const schema = z
-  .object({
-    password: z.string().min(8, "Minimal 8 karakter"),
-    password_confirmation: z.string(),
-  })
-  .refine((d) => d.password === d.password_confirmation, {
-    message: "Konfirmasi password tidak cocok",
-    path: ["password_confirmation"],
-  });
+// Mirrors ResetPasswordRequest: Password::min(8)->letters()->numbers().
+const fields = z.object({
+  password: z
+    .string()
+    .min(8, "Minimal 8 karakter")
+    .regex(/\p{L}/u, "Harus mengandung minimal satu huruf")
+    .regex(/\d/, "Harus mengandung minimal satu angka"),
+  password_confirmation: z.string(),
+});
+
+const schema = fields.refine((d) => d.password === d.password_confirmation, {
+  message: "Konfirmasi password tidak cocok",
+  path: ["password_confirmation"],
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -35,6 +41,7 @@ function ResetForm() {
   const {
     register,
     handleSubmit,
+    setError: setFieldError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
@@ -42,9 +49,23 @@ function ResetForm() {
     setError(null);
     try {
       await resetPassword({ token, email, ...values });
-      router.push("/login?reset=1");
+      toast.success("Password berhasil direset. Silakan masuk dengan password barumu.");
+      router.push("/login");
     } catch (err) {
-      setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal") : "Gagal");
+      const { message, fieldErrors } = parseApiError(err, "Gagal mereset password");
+      const entries = Object.entries(fieldErrors);
+
+      for (const [field, msg] of entries) {
+        if (field in fields.shape) {
+          setFieldError(field as keyof FormValues, { message: msg });
+        }
+      }
+
+      // An expired or already-used token comes back on `token`/`email`, neither of
+      // which is a field on this form — surface it as the form-level error.
+      if (entries.length === 0 || !entries.some(([f]) => f in fields.shape)) {
+        setError(message);
+      }
     }
   };
 
