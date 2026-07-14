@@ -1,7 +1,7 @@
 import { AuthGate } from "@/components/auth/auth-gate";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
-import { HeaderLabel } from "@/components/dashboard/header-label";
+import { ModeSwitcher } from "@/components/dashboard/mode-switcher";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 
@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="md:hidden">
             <Logo />
           </div>
-          <HeaderLabel />
+          <ModeSwitcher />
           <div className="ml-auto flex items-center gap-3">
             <ThemeToggleButton />
             <UserMenu />

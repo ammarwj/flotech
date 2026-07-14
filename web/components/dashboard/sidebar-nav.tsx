@@ -6,8 +6,7 @@ import {
   LayoutDashboard,
   Trophy,
   Users,
-  CalendarDays,
-  ListOrdered,
+  Compass,
   Ticket,
   Award,
   Settings,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDashboardMode } from "@/lib/hooks/use-dashboard-mode";
 import { useAuthStore } from "@/stores/auth-store";
 
 export type NavItem = {
@@ -31,18 +31,31 @@ export type NavItem = {
   mobile?: boolean;
 };
 
-/** Organizer (regular user) navigation. */
+/**
+ * Organizer navigation.
+ *
+ * Jadwal & klasemen are deliberately absent: they only exist per event, and live
+ * at /organizer/events/[id]/schedule. A global menu entry for them would have to
+ * invent a cross-event view that has no meaning.
+ */
 export const ORGANIZER_NAV: NavItem[] = [
   { href: "/organizer", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
   { href: "/organizer/events", label: "Event", icon: Trophy, mobile: true },
-  { href: "/participant", label: "Tim Saya", icon: Users, mobile: true },
-  { href: "/organizer/schedule", label: "Jadwal", icon: CalendarDays, mobile: true },
-  { href: "/organizer/standings", label: "Klasemen", icon: ListOrdered },
-  { href: "/organizer/tickets", label: "Tiket", icon: Ticket },
-  { href: "/organizer/wallet", label: "Dompet", icon: Wallet },
+  { href: "/organizer/tickets", label: "Tiket", icon: Ticket, mobile: true },
+  { href: "/organizer/wallet", label: "Dompet", icon: Wallet, mobile: true },
   { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
   { href: "/organizer/subscription", label: "Langganan", icon: CreditCard },
   { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
+];
+
+/**
+ * Participant navigation. The same account can wear both hats, so this is a
+ * separate mode reachable from the header switcher rather than an item mixed
+ * into the organizer menu.
+ */
+export const PARTICIPANT_NAV: NavItem[] = [
+  { href: "/participant", label: "Tim Saya", icon: Users, mobile: true },
+  { href: "/event", label: "Jelajahi Event", icon: Compass, mobile: true },
 ];
 
 /** SaaS super-admin navigation. */
@@ -57,10 +70,13 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/settings", label: "Pengaturan Platform", icon: Settings },
 ];
 
-/** Pick the navigation set for the signed-in user's role. */
+/** Pick the navigation set for the signed-in user's role and current mode. */
 function useNav(): NavItem[] {
   const role = useAuthStore((s) => s.user?.role);
-  return role === "super_admin" ? ADMIN_NAV : ORGANIZER_NAV;
+  const mode = useDashboardMode();
+
+  if (role === "super_admin") return ADMIN_NAV;
+  return mode === "participant" ? PARTICIPANT_NAV : ORGANIZER_NAV;
 }
 
 function isActive(pathname: string, href: string) {
