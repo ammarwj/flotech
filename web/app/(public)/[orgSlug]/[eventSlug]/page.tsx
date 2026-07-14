@@ -357,7 +357,6 @@ export default function PublicEventPage() {
                       <div className="match-team" style={{ gap: 0 }}>
                         <span className="truncate">{t.name}</span>
                       </div>
-                      {t.city && <small style={{ color: "var(--text-muted)", fontSize: 12.5 }}>{t.city}</small>}
                     </div>
                     <span className="pill shrink-0">{t.players?.length ?? 0} pemain</span>
                   </button>

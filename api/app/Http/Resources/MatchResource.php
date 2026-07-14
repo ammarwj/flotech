@@ -53,7 +53,6 @@ class MatchResource extends JsonResource
         return [
             'id' => $team->id,
             'name' => $team->name,
-            'city' => $team->city,
             'logo_url' => $team->logo_url,
         ];
     }

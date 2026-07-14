@@ -164,12 +164,12 @@ class StandingService
         $teams = $event->teams()
             ->where('status', 'approved')
             ->orderBy('name')
-            ->get(['id', 'name', 'city', 'logo_url', 'group_name']);
+            ->get(['id', 'name', 'logo_url', 'group_name']);
 
         $rows = [];
         foreach ($teams as $team) {
             $rows[$team->id] = [
-                'team' => ['id' => $team->id, 'name' => $team->name, 'city' => $team->city, 'logo_url' => $team->logo_url],
+                'team' => ['id' => $team->id, 'name' => $team->name, 'logo_url' => $team->logo_url],
                 'group_name' => $team->group_name,
                 'played' => 0,
                 'won' => 0,

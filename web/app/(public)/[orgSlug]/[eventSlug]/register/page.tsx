@@ -55,7 +55,7 @@ function RegisterTeamPage() {
     !!searchParams.get("order_id") &&
     (paidStatus === "settlement" || paidStatus === "capture" || searchParams.get("status") === "success");
 
-  const [team, setTeam] = useState({ name: "", city: "", jersey_color: "", logo_url: "", contact_name: "", contact_phone: "" });
+  const [team, setTeam] = useState({ name: "", logo_url: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([emptyPlayer()]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -301,7 +301,6 @@ function RegisterTeamPage() {
               </div>
             </div>
             <Field label="Nama tim" required value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
-            <Field label="Kota" value={team.city} onChange={(v) => setTeam({ ...team, city: v })} />
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
           </CardContent>

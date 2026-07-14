@@ -12,7 +12,6 @@ import {
   Phone,
   FileText,
   Inbox,
-  MapPin,
   ChevronDown,
   ExternalLink,
   CalendarClock,
@@ -280,12 +279,6 @@ function RegistrationCard({
               )}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              {team.city && (
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {team.city}
-                </span>
-              )}
               <span className="inline-flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5" />
                 {players.length} pemain
@@ -333,8 +326,6 @@ function RegistrationCard({
                 {team.contact_name ?? "—"} · {team.contact_phone ?? "—"}
               </span>
             </Info>
-            <Info label="Kota" value={team.city || "—"} />
-            <Info label="Warna jersey" value={team.jersey_color || "—"} />
             <Info label="Tanggal daftar">
               <span className="inline-flex items-center gap-1.5 text-sm font-medium">
                 <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />

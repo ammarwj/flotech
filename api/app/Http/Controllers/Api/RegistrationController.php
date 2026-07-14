@@ -80,8 +80,6 @@ class RegistrationController extends Controller
         $team = DB::transaction(function () use ($eventModel, $data) {
             $team = $eventModel->teams()->create([
                 'name' => $data['name'],
-                'city' => $data['city'] ?? null,
-                'jersey_color' => $data['jersey_color'] ?? null,
                 'logo_url' => $data['logo_url'] ?? null,
                 'contact_name' => $data['contact_name'],
                 'contact_phone' => $data['contact_phone'],
@@ -125,8 +123,6 @@ class RegistrationController extends Controller
         DB::transaction(function () use ($teamModel, $data) {
             $teamModel->update([
                 'name' => $data['name'],
-                'city' => $data['city'] ?? null,
-                'jersey_color' => $data['jersey_color'] ?? null,
                 'logo_url' => $data['logo_url'] ?? null,
                 'contact_name' => $data['contact_name'],
                 'contact_phone' => $data['contact_phone'],

@@ -56,8 +56,6 @@ class MyTeamController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:100'],
-            'jersey_color' => ['nullable', 'string', 'max:20'],
             'logo_url' => ['nullable', 'string'],
             'contact_name' => ['sometimes', 'required', 'string', 'max:255'],
             'contact_phone' => ['sometimes', 'required', 'string', 'max:20'],
@@ -80,7 +78,7 @@ class MyTeamController extends Controller
 
         DB::transaction(function () use ($model, $data) {
             $model->update(array_intersect_key($data, array_flip([
-                'name', 'city', 'jersey_color', 'logo_url', 'contact_name', 'contact_phone',
+                'name', 'logo_url', 'contact_name', 'contact_phone',
             ])));
 
             if (array_key_exists('players', $data)) {

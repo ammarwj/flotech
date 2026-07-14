@@ -21,8 +21,6 @@ class TeamResource extends JsonResource
             'event_id' => $this->event_id,
             'name' => $this->name,
             'logo_url' => $this->logo_url,
-            'city' => $this->city,
-            'jersey_color' => $this->jersey_color,
             'contact_name' => $this->contact_name,
             'contact_phone' => $this->contact_phone,
             'status' => $this->status,

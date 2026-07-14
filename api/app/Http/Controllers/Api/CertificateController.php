@@ -48,7 +48,6 @@ class CertificateController extends Controller
             'teams' => $pool['teams']->map(fn ($team) => [
                 'id' => $team->id,
                 'name' => $team->name,
-                'city' => $team->city,
                 'email' => $team->manager?->email,
                 'players_count' => $team->players->count(),
             ])->values(),

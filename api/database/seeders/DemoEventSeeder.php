@@ -44,15 +44,6 @@ class DemoEventSeeder extends Seeder
         'Banteng Merah', 'Gajah Perkasa', 'Camar Putih', 'Kuda Liar', 'Serigala Hitam', 'Phoenix United',
     ];
 
-    /** @var list<string> */
-    private array $cities = [
-        'Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Yogyakarta',
-        'Bekasi', 'Depok', 'Tangerang', 'Bogor', 'Malang',
-    ];
-
-    /** @var list<string> */
-    private array $colors = ['Merah', 'Biru', 'Putih', 'Hijau', 'Kuning', 'Hitam', 'Oranye'];
-
     public function run(): void
     {
         $org = Organization::where('slug', 'demo-organizer')->first();
@@ -199,8 +190,6 @@ class DemoEventSeeder extends Seeder
         return Team::create([
             'event_id' => $event->id,
             'name' => $name,
-            'city' => $this->cities[array_rand($this->cities)],
-            'jersey_color' => $this->colors[array_rand($this->colors)],
             'contact_name' => $this->randomPerson(),
             'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
             'status' => $pending ? 'pending' : 'approved',

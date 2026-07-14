@@ -18,8 +18,6 @@ class RegisterTeamRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:100'],
-            'jersey_color' => ['nullable', 'string', 'max:20'],
             'logo_url' => ['nullable', 'string'],
             'contact_name' => ['required', 'string', 'max:255'],
             'contact_phone' => ['required', 'string', 'max:20'],

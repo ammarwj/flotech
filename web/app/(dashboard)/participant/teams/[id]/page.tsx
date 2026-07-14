@@ -38,7 +38,7 @@ export default function ManageTeamPage() {
   const team = query.data;
   const editable = team ? !LOCKED.includes(team.status) : false;
 
-  const [info, setInfo] = useState({ name: "", city: "", contact_name: "", contact_phone: "" });
+  const [info, setInfo] = useState({ name: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -48,7 +48,6 @@ export default function ManageTeamPage() {
     if (!team) return;
     setInfo({
       name: team.name,
-      city: team.city ?? "",
       contact_name: team.contact_name ?? "",
       contact_phone: team.contact_phone ?? "",
     });
@@ -222,10 +221,6 @@ export default function ManageTeamPage() {
             <div className="grid gap-2">
               <Label>Nama tim</Label>
               <Input value={info.name} onChange={(e) => setInfo({ ...info, name: e.target.value })} disabled={!editable} required />
-            </div>
-            <div className="grid gap-2">
-              <Label>Kota</Label>
-              <Input value={info.city} onChange={(e) => setInfo({ ...info, city: e.target.value })} disabled={!editable} />
             </div>
             <div className="grid gap-2">
               <Label>Nama kontak</Label>

@@ -62,7 +62,6 @@ class PublicEventResource extends JsonResource
             'approved_teams' => $this->whenLoaded('teams', fn () => $this->teams->map(fn ($t) => [
                 'id' => $t->id,
                 'name' => $t->name,
-                'city' => $t->city,
                 'logo_url' => $t->logo_url,
                 // Roster is public, but only the on-pitch fields — no birth dates
                 // or contact details.

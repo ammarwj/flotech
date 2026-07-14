@@ -167,8 +167,6 @@ export async function getPublicEvent(orgSlug: string, eventSlug: string): Promis
 
 export interface RegisterTeamPayload {
   name: string;
-  city?: string;
-  jersey_color?: string;
   logo_url?: string | null;
   contact_name: string;
   contact_phone: string;
@@ -228,8 +226,6 @@ export async function getMyTeam(teamId: string): Promise<Team> {
 
 export interface UpdateMyTeamPayload {
   name?: string;
-  city?: string | null;
-  jersey_color?: string | null;
   logo_url?: string | null;
   contact_name?: string;
   contact_phone?: string;

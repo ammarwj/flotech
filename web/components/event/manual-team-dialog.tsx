@@ -40,7 +40,6 @@ export function ManualTeamDialog({
   // resetting a stale one — no chance of showing the previous team's roster.
   const [info, setInfo] = useState({
     name: team?.name ?? "",
-    city: team?.city ?? "",
     contact_name: team?.contact_name ?? "",
     contact_phone: team?.contact_phone ?? "",
   });
@@ -98,13 +97,6 @@ export function ManualTeamDialog({
               value={info.name}
               error={fieldErrors?.name}
               onChange={(v) => setInfo({ ...info, name: v })}
-            />
-            <Field
-              id="manual-city"
-              label="Kota"
-              value={info.city}
-              error={fieldErrors?.city}
-              onChange={(v) => setInfo({ ...info, city: v })}
             />
             <Field
               id="manual-contact"

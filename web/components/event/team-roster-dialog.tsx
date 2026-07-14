@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { MapPin, Users, X } from "lucide-react";
+import { Users, X } from "lucide-react";
 
 import { crestGradient } from "@/lib/bracket";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -60,12 +60,6 @@ export function TeamRosterDialog({
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-bold">{team.name}</h3>
             <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
-              {team.city && (
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {team.city}
-                </span>
-              )}
               <span className="inline-flex items-center gap-1">
                 <Users className="h-3.5 w-3.5" />
                 {players.length} pemain

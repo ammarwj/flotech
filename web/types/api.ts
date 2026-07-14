@@ -202,7 +202,6 @@ export type MatchStatus = "scheduled" | "ongoing" | "finished" | "cancelled";
 export interface MatchTeamRef {
   id: string;
   name: string;
-  city: string | null;
   logo_url: string | null;
 }
 
@@ -386,8 +385,6 @@ export interface Team {
   event_id: string;
   name: string;
   logo_url: string | null;
-  city: string | null;
-  jersey_color: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   status: TeamStatus;
@@ -489,7 +486,6 @@ export interface PublicEventListItem {
 export interface PublicTeam {
   id: string;
   name: string;
-  city: string | null;
   logo_url: string | null;
   players?: (Player & { photo_url?: string | null })[] | null;
 }
@@ -779,7 +775,6 @@ export interface Certificate {
 export interface CertificateRecipientTeam {
   id: string;
   name: string;
-  city: string | null;
   email: string | null;
   players_count: number;
 }

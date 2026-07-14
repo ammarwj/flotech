@@ -15,8 +15,6 @@ class Team extends Model
         'event_id',
         'name',
         'logo_url',
-        'city',
-        'jersey_color',
         'contact_name',
         'contact_phone',
         'status',

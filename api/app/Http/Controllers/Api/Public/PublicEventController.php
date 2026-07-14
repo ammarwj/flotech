@@ -160,8 +160,6 @@ class PublicEventController extends Controller
 
         $team = $event->teams()->create([
             'name' => $data['name'],
-            'city' => $data['city'] ?? null,
-            'jersey_color' => $data['jersey_color'] ?? null,
             'logo_url' => $data['logo_url'] ?? null,
             'contact_name' => $data['contact_name'],
             'contact_phone' => $data['contact_phone'],

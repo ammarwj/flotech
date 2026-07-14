@@ -78,7 +78,7 @@ export default function GenerateCertificatesPage() {
   const players = recipientsQuery.data?.players ?? [];
   const options =
     mode === "team"
-      ? teams.map((t) => ({ id: t.id, name: t.name, hint: t.city ?? "" }))
+      ? teams.map((t) => ({ id: t.id, name: t.name, hint: "" }))
       : players.map((p) => ({
           id: p.id,
           name: p.name,
