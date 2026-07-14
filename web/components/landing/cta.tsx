@@ -1,6 +1,12 @@
+"use client";
+
 import Link from "next/link";
 
+import { usePublicCta } from "@/components/auth/public-auth-actions";
+
 export function Cta() {
+  const cta = usePublicCta();
+
   return (
     <section className="section cta-band">
       <div className="container">
@@ -11,8 +17,8 @@ export function Cta() {
             turnamen pertamamu dalam 10 menit.
           </p>
           <div className="hero-cta">
-            <Link href="/register" className="btn btn-primary btn-lg">
-              Mulai Gratis Sekarang
+            <Link href={cta.href} className="btn btn-primary btn-lg">
+              {cta.href === "/register" ? "Mulai Gratis Sekarang" : cta.label}
             </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">
               Jelajahi Event

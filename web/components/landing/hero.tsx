@@ -1,7 +1,13 @@
+"use client";
+
 import Link from "next/link";
+
+import { usePublicCta } from "@/components/auth/public-auth-actions";
 import { ArrowRight, CheckIcon, StarIcon } from "./icons";
 
 export function Hero() {
+  const cta = usePublicCta();
+
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -20,8 +26,8 @@ export function Hero() {
             kelola seluruh siklus turnamen olahraga dalam satu platform. Mulai gratis dalam 10 menit.
           </p>
           <div className="hero-cta">
-            <Link href="/register" className="btn btn-primary btn-lg">
-              Mulai Gratis
+            <Link href={cta.href} className="btn btn-primary btn-lg">
+              {cta.label}
               <ArrowRight />
             </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">

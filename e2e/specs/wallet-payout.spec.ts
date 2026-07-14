@@ -70,12 +70,16 @@ test.describe("§5.7 & §5.8 Dompet & penarikan dana", () => {
     await expect(page.getByText("Menunggu Diproses").first()).toBeVisible();
 
     // ---- §5.8 Super admin memproses antrian ----
+    // The queue is a tab per status, opening on "Menunggu".
     await adminPage.goto("/admin/withdrawals");
     await payoutRow(adminPage, organizer.org.name, "Proses")
       .getByRole("button", { name: "Proses", exact: true })
       .click();
     await expect(toast(adminPage, /sedang diproses/i)).toBeVisible();
 
+    // Marking it processing moves it out of "Menunggu" — follow it to its tab
+    // instead of racing the refetch for a row that is on its way out.
+    await adminPage.getByRole("button", { name: "Diproses", exact: true }).click();
     await payoutRow(adminPage, organizer.org.name, "Tandai Selesai")
       .getByRole("button", { name: "Tandai Selesai", exact: true })
       .click();

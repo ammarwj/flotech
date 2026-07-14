@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+
+import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { LogoMark } from "./icons";
 
 // Anchors are absolute so they still reach the landing sections when the nav is
@@ -72,12 +74,7 @@ export function Nav() {
               />
             </svg>
           </button>
-          <Link href="/login" className="btn btn-secondary btn-sm hidden sm:inline-flex">
-            Masuk
-          </Link>
-          <Link href="/register" className="btn btn-primary btn-sm">
-            Mulai Gratis
-          </Link>
+          <PublicAuthActions />
           <button
             className="hamburger"
             onClick={() => setMenuOpen((o) => !o)}
@@ -96,12 +93,7 @@ export function Nav() {
             {l.label}
           </Link>
         ))}
-        <Link href="/login" onClick={() => setMenuOpen(false)}>
-          Masuk
-        </Link>
-        <Link href="/register" onClick={() => setMenuOpen(false)}>
-          Mulai Gratis
-        </Link>
+        <PublicAuthActions variant="menu" />
       </div>
     </header>
   );

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
+import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
@@ -94,7 +95,10 @@ export default function PublicEventPage() {
               <ArrowLeft />
               Didukung flo-event
             </Link>
-            <ThemeToggleButton />
+            <div className="flex items-center gap-2">
+              <PublicAuthActions />
+              <ThemeToggleButton />
+            </div>
           </div>
 
           <div className="ehero-grid">

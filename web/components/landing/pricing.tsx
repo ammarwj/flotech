@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePlanCtaHref } from "@/components/auth/public-auth-actions";
 import { CheckIcon, CrossIcon } from "./icons";
 
 type Feature = { label: string; off?: boolean };
@@ -156,15 +157,7 @@ export function Pricing() {
                 {p.per && <span className="per">{p.per}</span>}
               </div>
               <p className="plan-note">{p.note}</p>
-              {p.href.startsWith("/") ? (
-                <Link href={p.href} className={`btn ${p.featured ? "btn-primary" : "btn-secondary"} btn-block`}>
-                  {p.cta}
-                </Link>
-              ) : (
-                <a href={p.href} className={`btn ${p.featured ? "btn-primary" : "btn-secondary"} btn-block`}>
-                  {p.cta}
-                </a>
-              )}
+              <PlanCta plan={p} />
               <ul className="plan-feats">
                 {p.features.map((f) => (
                   <li key={f.label} className={f.off ? "off" : undefined}>
@@ -180,5 +173,24 @@ export function Pricing() {
         </p>
       </div>
     </section>
+  );
+}
+
+/**
+ * A signed-in organizer picking a plan wants the checkout page, not the sign-up
+ * form. The Enterprise card points at a mailto and is left alone.
+ */
+function PlanCta({ plan }: { plan: Plan }) {
+  const href = usePlanCtaHref(plan.href);
+  const className = `btn ${plan.featured ? "btn-primary" : "btn-secondary"} btn-block`;
+
+  return href.startsWith("/") ? (
+    <Link href={href} className={className}>
+      {plan.cta}
+    </Link>
+  ) : (
+    <a href={href} className={className}>
+      {plan.cta}
+    </a>
   );
 }
