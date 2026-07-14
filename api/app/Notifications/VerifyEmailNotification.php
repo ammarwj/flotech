@@ -3,12 +3,13 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
 
-class VerifyEmailNotification extends Notification
+class VerifyEmailNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -32,10 +33,10 @@ class VerifyEmailNotification extends Notification
         );
 
         return (new MailMessage)
-            ->subject('Verifikasi alamat email — flo-event')
-            ->greeting('Halo '.$notifiable->full_name.'!')
-            ->line('Terima kasih telah mendaftar di flo-event. Klik tombol di bawah untuk memverifikasi email kamu.')
-            ->action('Verifikasi Email', $signedUrl)
-            ->line('Tautan ini berlaku 60 menit. Abaikan email ini jika kamu tidak mendaftar.');
+            ->subject('Verifikasi alamat email — '.config('brand.name'))
+            ->markdown('mail.verify-email', [
+                'name' => $notifiable->full_name,
+                'url' => $signedUrl,
+            ]);
     }
 }

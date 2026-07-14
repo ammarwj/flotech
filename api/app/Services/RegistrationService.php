@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\Team;
+use App\Notifications\RegistrationPaid;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Registration-fee payment lifecycle for a team. Mirrors TicketService:
@@ -93,5 +96,26 @@ class RegistrationService
             $team->update(['payment_status' => 'paid', 'paid_at' => Carbon::now()]);
             $this->wallet->creditRegistration($team->load('event.organization'));
         });
+
+        $this->sendPaymentConfirmation($team);
+    }
+
+    /**
+     * Receipt for the manager, sent after the money is banked — never inside the
+     * transaction. Swallows its own errors for the same reason TicketService does:
+     * the payment is settled, and a queue hiccup must not bubble into the Midtrans
+     * webhook and provoke a retry. A team entered offline has no manager account
+     * and gets nothing; the teams table holds a phone number, not an email.
+     */
+    protected function sendPaymentConfirmation(Team $team): void
+    {
+        try {
+            $team->manager?->notify(new RegistrationPaid($team->load('event')));
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim email pembayaran pendaftaran', [
+                'team_id' => $team->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -7,6 +7,8 @@ use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\Team;
+use App\Notifications\TeamStatusChanged;
 use App\Services\PlanGate;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
@@ -14,7 +16,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class RegistrationController extends Controller
 {
@@ -154,13 +158,45 @@ class RegistrationController extends Controller
             'group_name' => ['nullable', 'string', 'max:10'],
         ]);
 
+        $previous = $teamModel->status;
+
         $teamModel->update([
             'status' => $validated['status'],
             'group_name' => $validated['group_name'] ?? $teamModel->group_name,
             'approved_at' => $validated['status'] === 'approved' ? Carbon::now() : null,
         ]);
 
+        // Only on a real transition: re-saving "approved" (to set a group, say)
+        // must not mail the manager the same verdict twice.
+        if ($previous !== $validated['status']) {
+            $this->announceStatus($teamModel, $validated['status']);
+        }
+
         return ApiResponse::success(new TeamResource($teamModel->load(['players', 'documents'])), 'Status pendaftaran diperbarui');
+    }
+
+    /**
+     * Mail the manager the organizer's verdict.
+     *
+     * A team the organizer typed in themselves (offline entry) has no manager
+     * account and gets nothing — teams carry a phone number, not an email. The
+     * verdict is already saved, so a queue hiccup must not turn it into a 500.
+     */
+    protected function announceStatus(Team $team, string $status): void
+    {
+        if (! in_array($status, TeamStatusChanged::NOTIFIABLE, true)) {
+            return;
+        }
+
+        try {
+            $team->manager?->notify(new TeamStatusChanged($team->load('event'), $status));
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim notifikasi status tim', [
+                'team_id' => $team->id,
+                'status' => $status,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

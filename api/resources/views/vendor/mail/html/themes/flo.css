@@ -1,0 +1,392 @@
+/*
+ | flo-event mail theme
+ |
+ | The web app's tokens (web/app/globals.css) reduced to what an email client
+ | will actually honour: no CSS variables, no flex, no grid — inlined by
+ | premailer onto table cells. Palette is the same one the billing PDFs use, so
+ | an invoice in the inbox and the same invoice as a PDF look like one product.
+ |
+ | brand #0C54D0 · brand-700 #093F9E · tint #E7F0FF
+ | text #1F2430 · muted #6B7280 · border #E5E7EB
+ | success #16A34A · warning #D97706 · danger #DC2626
+ */
+
+/* Base */
+
+body,
+body *:not(html):not(style):not(br):not(tr):not(code) {
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    position: relative;
+}
+
+body {
+    -webkit-text-size-adjust: none;
+    background-color: #f4f6fb;
+    color: #1f2430;
+    height: 100%;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    width: 100% !important;
+}
+
+p,
+ul,
+ol,
+blockquote {
+    line-height: 1.6;
+    text-align: start;
+}
+
+a {
+    color: #0c54d0;
+}
+
+a img {
+    border: none;
+}
+
+/* Typography */
+
+h1 {
+    color: #1f2430;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    margin-top: 0;
+    margin-bottom: 16px;
+    text-align: start;
+}
+
+h2 {
+    color: #1f2430;
+    font-size: 17px;
+    font-weight: 700;
+    margin-top: 0;
+    text-align: start;
+}
+
+h3 {
+    color: #1f2430;
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 0;
+    text-align: left;
+}
+
+p {
+    color: #4b5563;
+    font-size: 15px;
+    line-height: 1.65em;
+    margin-top: 0;
+    margin-bottom: 14px;
+    text-align: left;
+}
+
+p.sub {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+img {
+    max-width: 100%;
+}
+
+/* Layout */
+
+.wrapper {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    background-color: #f4f6fb;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.content {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+/* Header — a text wordmark, never a remote image: blocked images read as broken. */
+
+.header {
+    padding: 28px 0 20px;
+    text-align: center;
+}
+
+.header a {
+    color: #1f2430;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    text-decoration: none;
+}
+
+.brand-accent {
+    color: #0c54d0;
+}
+
+/* Body */
+
+.body {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    background-color: #f4f6fb;
+    border-bottom: 1px solid #f4f6fb;
+    border-top: 1px solid #f4f6fb;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.inner-body {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    background-color: #ffffff;
+    border-color: #e5e7eb;
+    border-radius: 14px;
+    border-style: solid;
+    border-width: 1px;
+    margin: 0 auto;
+    padding: 0;
+    width: 570px;
+}
+
+.inner-body a {
+    word-break: break-all;
+}
+
+/* Subcopy */
+
+.subcopy {
+    border-top: 1px solid #e5e7eb;
+    margin-top: 28px;
+    padding-top: 20px;
+}
+
+.subcopy p {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+/* Footer */
+
+.footer {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 570px;
+    margin: 0 auto;
+    padding: 0;
+    text-align: center;
+    width: 570px;
+}
+
+.footer p {
+    color: #9ca3af;
+    font-size: 12px;
+    line-height: 1.6em;
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.footer a {
+    color: #6b7280;
+    text-decoration: underline;
+}
+
+/* Tables — the detail block of a ticket, invoice or roster. */
+
+.table table {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 24px auto;
+    width: 100%;
+}
+
+.table th {
+    border-bottom: 1px solid #e5e7eb;
+    color: #6b7280;
+    font-size: 12px;
+    letter-spacing: 0.4px;
+    margin: 0;
+    padding-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.table td {
+    border-bottom: 1px solid #f3f4f6;
+    color: #1f2430;
+    font-size: 14px;
+    line-height: 20px;
+    margin: 0;
+    padding: 11px 0;
+}
+
+.content-cell {
+    max-width: 100vw;
+    padding: 32px;
+}
+
+/* Buttons */
+
+.action {
+    -premailer-cellpadding: 0;
+    -premailer-cellspacing: 0;
+    -premailer-width: 100%;
+    margin: 28px auto;
+    padding: 0;
+    text-align: center;
+    width: 100%;
+    float: unset;
+}
+
+.button {
+    -webkit-text-size-adjust: none;
+    border-radius: 10px;
+    color: #fff;
+    display: inline-block;
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-decoration: none;
+}
+
+.button-blue,
+.button-primary {
+    background-color: #0c54d0;
+    border-bottom: 11px solid #0c54d0;
+    border-left: 22px solid #0c54d0;
+    border-right: 22px solid #0c54d0;
+    border-top: 11px solid #0c54d0;
+}
+
+.button-green,
+.button-success {
+    background-color: #16a34a;
+    border-bottom: 11px solid #16a34a;
+    border-left: 22px solid #16a34a;
+    border-right: 22px solid #16a34a;
+    border-top: 11px solid #16a34a;
+}
+
+.button-red,
+.button-error {
+    background-color: #dc2626;
+    border-bottom: 11px solid #dc2626;
+    border-left: 22px solid #dc2626;
+    border-right: 22px solid #dc2626;
+    border-top: 11px solid #dc2626;
+}
+
+/* Panels */
+
+.panel {
+    border-left: #0c54d0 solid 4px;
+    border-radius: 0 8px 8px 0;
+    margin: 22px 0;
+}
+
+.panel-content {
+    background-color: #ebf2ff;
+    color: #1f2430;
+    padding: 16px 18px;
+}
+
+.panel-content p {
+    color: #1f2430;
+}
+
+.panel-item {
+    padding: 0;
+}
+
+.panel-item p:last-of-type {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* Status callout — the verdict of the mail, readable before any prose. */
+
+.status {
+    border-radius: 10px;
+    margin: 4px 0 24px;
+    width: 100%;
+}
+
+.status-cell {
+    border-radius: 10px;
+    padding: 16px 18px;
+}
+
+.status-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 4px;
+}
+
+.status-body {
+    font-size: 14px;
+    line-height: 1.55em;
+    margin: 0;
+}
+
+.status-success .status-cell {
+    background-color: #ecfdf3;
+    border-left: 4px solid #16a34a;
+}
+.status-success .status-title {
+    color: #14532d;
+}
+.status-success .status-body {
+    color: #256b45;
+}
+
+.status-error .status-cell {
+    background-color: #fef2f2;
+    border-left: 4px solid #dc2626;
+}
+.status-error .status-title {
+    color: #7f1d1d;
+}
+.status-error .status-body {
+    color: #a04141;
+}
+
+.status-warning .status-cell {
+    background-color: #fffbeb;
+    border-left: 4px solid #d97706;
+}
+.status-warning .status-title {
+    color: #78350f;
+}
+.status-warning .status-body {
+    color: #92610f;
+}
+
+.status-info .status-cell {
+    background-color: #ebf2ff;
+    border-left: 4px solid #0c54d0;
+}
+.status-info .status-title {
+    color: #093f9e;
+}
+.status-info .status-body {
+    color: #2f5595;
+}
+
+/* Utilities */
+
+.break-all {
+    word-break: break-all;
+}

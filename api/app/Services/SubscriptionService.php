@@ -5,9 +5,14 @@ namespace App\Services;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Subscription;
+use App\Notifications\SubscriptionActivated;
+use App\Notifications\SubscriptionInvoiceIssued;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Owns the lifecycle of a plan subscription: checkout, retrying an unpaid
@@ -46,7 +51,16 @@ class SubscriptionService
             'expires_at' => $expiresAt,
         ]);
 
-        return $this->openSnap($subscription);
+        $result = $this->openSnap($subscription);
+
+        // Only when the bill is genuinely outstanding. Without a payment gateway
+        // configured openSnap() activates on the spot, and mailing "please pay"
+        // about an already-paid plan would be a lie.
+        if ($subscription->refresh()->status === 'past_due') {
+            $this->mail($subscription, fn (Subscription $s) => new SubscriptionInvoiceIssued($s));
+        }
+
+        return $result;
     }
 
     /**
@@ -105,6 +119,11 @@ class SubscriptionService
      */
     public function activate(Subscription $subscription, ?string $paymentType = null): void
     {
+        // A receipt is only issued once, and so is the email carrying it. Without
+        // this, a re-delivered webhook lands a second "you paid" in the inbox for
+        // one payment.
+        $alreadyActive = $subscription->status === 'active';
+
         $subscription->update([
             'status' => 'active',
             'paid_at' => $subscription->paid_at ?? Carbon::now(),
@@ -116,6 +135,31 @@ class SubscriptionService
             'plan_id' => $subscription->plan_id,
             'plan_expires_at' => $subscription->expires_at,
         ]);
+
+        if (! $alreadyActive) {
+            $this->mail($subscription, fn (Subscription $s) => new SubscriptionActivated($s));
+        }
+    }
+
+    /**
+     * Mail the organization's owner. Swallows its own errors: the money has moved
+     * and the plan is applied, so a PDF render or queue hiccup must not bubble
+     * into the Midtrans webhook and provoke a retry.
+     *
+     * @param  callable(Subscription): Notification  $make
+     */
+    protected function mail(Subscription $subscription, callable $make): void
+    {
+        try {
+            $subscription->organization->owner?->notify(
+                $make($subscription->load(['plan', 'organization']))
+            );
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim email langganan', [
+                'subscription_id' => $subscription->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

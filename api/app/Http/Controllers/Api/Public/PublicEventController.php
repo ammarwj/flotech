@@ -10,20 +10,27 @@ use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\Team;
+use App\Notifications\NewTeamRegistered;
+use App\Notifications\TeamRegistrationSubmitted;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
 use App\Services\RegistrationService;
 use App\Services\StandingService;
+use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class PublicEventController extends Controller
 {
     public function __construct(
         protected PlanGate $gate,
         protected RegistrationService $registration,
+        protected TeamRosterService $roster,
     ) {}
 
     /**
@@ -163,17 +170,17 @@ class PublicEventController extends Controller
             'manager_user_id' => auth('api')->user()?->id,
         ]);
 
-        foreach ($data['players'] ?? [] as $player) {
-            $team->players()->create($player);
-        }
-
-        foreach ($data['documents'] ?? [] as $doc) {
-            $team->documents()->create($doc + ['uploaded_at' => Carbon::now()]);
-        }
+        // Through the roster service, not straight into the tables: it is what
+        // validates a player's position against the sport's master list, and a
+        // public form is exactly where an unknown one would arrive.
+        $this->roster->syncPlayers($team, $data['players'] ?? []);
+        $this->roster->syncDocuments($team, $data['documents'] ?? []);
 
         // Charge the registration fee when the event has one; free events are
         // settled immediately inside startPayment().
         $payment = $this->registration->startPayment($team, $org);
+
+        $this->announce($team, $org);
 
         $message = $team->fresh()->payment_status === 'paid'
             ? 'Pendaftaran tim berhasil dikirim. Menunggu persetujuan penyelenggara.'
@@ -185,6 +192,28 @@ class PublicEventController extends Controller
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
         ], $message, 201);
+    }
+
+    /**
+     * Tell both sides a registration landed: the manager that it arrived, the
+     * organizer that someone is waiting on their verdict.
+     *
+     * A team registered by a guest has no manager account and gets no mail — the
+     * teams table holds a phone number, not an email address. Swallows its own
+     * errors: the registration is already saved, and a queue hiccup must not turn
+     * a successful signup into a 500.
+     */
+    protected function announce(Team $team, Organization $org): void
+    {
+        try {
+            $team->manager?->notify(new TeamRegistrationSubmitted($team));
+            $org->owner?->notify(new NewTeamRegistered($team));
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim notifikasi pendaftaran tim', [
+                'team_id' => $team->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

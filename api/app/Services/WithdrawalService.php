@@ -7,9 +7,14 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
+use App\Notifications\WithdrawalCompleted;
+use App\Notifications\WithdrawalRejected;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Payout requests. Funds are debited the moment a request is created, so the
@@ -120,7 +125,10 @@ class WithdrawalService
             $this->wallet->settleWithdrawal($withdrawal);
         });
 
-        return $withdrawal->fresh();
+        $fresh = $withdrawal->fresh();
+        $this->mail($fresh, new WithdrawalCompleted($fresh));
+
+        return $fresh;
     }
 
     /** Refuse the payout and give the held funds back. */
@@ -139,7 +147,31 @@ class WithdrawalService
             $this->wallet->reverseWithdrawal($withdrawal);
         });
 
-        return $withdrawal->fresh();
+        $fresh = $withdrawal->fresh();
+        $this->mail($fresh, new WithdrawalRejected($fresh, $reason));
+
+        return $fresh;
+    }
+
+    /**
+     * Tell the organizer's owner what happened to their money. Sent after the
+     * ledger has committed, and swallows its own errors — the transfer is already
+     * done, so a queue hiccup must not fail the admin's request and tempt them
+     * into pressing the button twice.
+     *
+     * ensureOpen() already refuses a withdrawal that isn't open, so neither of
+     * these can be sent twice for one payout.
+     */
+    protected function mail(Withdrawal $withdrawal, Notification $notification): void
+    {
+        try {
+            $withdrawal->organization->owner?->notify($notification);
+        } catch (Throwable $e) {
+            Log::error('Gagal mengirim email penarikan dana', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /** The organizer changed their mind — only while nobody has picked it up. */

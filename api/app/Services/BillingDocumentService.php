@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Subscription;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\PDF as DomPdf;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,7 +29,46 @@ class BillingDocumentService
         return $this->render('receipt', $subscription, $subscription->receipt_number);
     }
 
+    /**
+     * The same document as raw bytes, for mail attachments.
+     *
+     * @param  'invoice'|'receipt'  $kind
+     */
+    public function bytes(string $kind, Subscription $subscription): string
+    {
+        return $this->pdf($kind, $subscription)->output();
+    }
+
+    /**
+     * Filename the recipient sees: "Kwitansi-KW-2026-07-0002.pdf".
+     *
+     * @param  'invoice'|'receipt'  $kind
+     */
+    public function filename(string $kind, Subscription $subscription): string
+    {
+        $number = $kind === 'receipt' ? $subscription->receipt_number : $subscription->invoice_number;
+
+        return $this->label($kind).'-'.$this->slug($number, $subscription).'.pdf';
+    }
+
     protected function render(string $view, Subscription $subscription, ?string $number): Response
+    {
+        return $this->pdf($view, $subscription)
+            ->download($this->label($view).'-'.$this->slug($number, $subscription).'.pdf');
+    }
+
+    protected function label(string $view): string
+    {
+        return $view === 'receipt' ? 'Kwitansi' : 'Invoice';
+    }
+
+    /** INV/2026/07/0002 → INV-2026-07-0002; slashes are not filename-safe. */
+    protected function slug(?string $number, Subscription $subscription): string
+    {
+        return str_replace('/', '-', (string) ($number ?? $subscription->id));
+    }
+
+    protected function pdf(string $view, Subscription $subscription): DomPdf
     {
         $subscription->loadMissing('plan', 'organization');
 
@@ -44,10 +84,6 @@ class BillingDocumentService
                 : '—',
         ])->setPaper('a4');
 
-        $label = $view === 'receipt' ? 'Kwitansi' : 'Invoice';
-        // INV/2026/07/0002 → INV-2026-07-0002; slashes are not filename-safe.
-        $slug = str_replace('/', '-', (string) ($number ?? $subscription->id));
-
-        return $pdf->download("{$label}-{$slug}.pdf");
+        return $pdf;
     }
 }
