@@ -13,12 +13,13 @@ test.describe("Header publik sadar-login", () => {
     await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toBeHidden();
   });
 
-  test("user yang sudah login melihat namanya, bukan ajakan mendaftar", async ({ page, organizer }) => {
+  test("user yang sudah login melihat pintasan dashboard, bukan ajakan mendaftar", async ({ page, organizer }) => {
     await signIn(page, organizer.account.email);
     await page.goto("/");
 
+    // Signed in, the header drops the guest "Masuk"/"Mulai Gratis" for a single
+    // shortcut into the app.
     await expect(page.getByRole("link", { name: "Dashboard", exact: true }).first()).toBeVisible();
-    await expect(page.getByText(organizer.account.fullName).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Masuk", exact: true })).toBeHidden();
 
     // The CTA no longer asks someone with an account to sign up again.
@@ -38,14 +39,20 @@ test.describe("Header publik sadar-login", () => {
   });
 
   test("keluar dari halaman publik tetap di halaman itu", async ({ page, organizer }) => {
+    // Signing out of a public page is offered only inside the mobile menu, so
+    // drive it at a phone width where the hamburger (and its "Keluar") is shown.
+    await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page, organizer.account.email);
     await page.goto("/event");
-    await expect(page.getByRole("link", { name: "Dashboard", exact: true }).first()).toBeVisible();
 
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(page.getByRole("link", { name: "Dashboard", exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Keluar" }).click();
 
-    // A guest is a legitimate visitor here — no bounce to /login.
+    // A guest is a legitimate visitor here — no bounce to /login. Logging out
+    // swaps the dashboard shortcut back for the guest CTA, in place.
+    await expect(page.getByRole("link", { name: "Mulai Gratis" }).first()).toBeVisible();
     await expect(page).toHaveURL(/\/event$/);
-    await expect(page.getByRole("link", { name: "Masuk", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0);
   });
 });

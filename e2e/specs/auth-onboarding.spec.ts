@@ -103,7 +103,10 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
     await page.goto("/organizer/events/new");
     await page.getByLabel("Nama event").fill(name);
     await page.getByLabel("Cabang olahraga").selectOption("futsal");
-    await page.getByLabel("Format", { exact: true }).selectOption("league");
+    // Format, fee & cap now live on each category; the form opens with one blank
+    // category whose format defaults to the catalog's first entry, so only its
+    // name needs filling. The label has no htmlFor, hence the placeholder locator.
+    await page.getByPlaceholder("U-17 / Woman / Senior").fill("Umum");
     await pickDate(page, "Tanggal mulai", daysAhead(10));
     await pickDate(page, "Tanggal selesai", daysAhead(11));
     await page.getByRole("button", { name: /simpan|buat event/i }).click();

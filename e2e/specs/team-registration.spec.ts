@@ -19,7 +19,6 @@ test.describe("§5.2 Peserta — daftar tim", () => {
 
     await page.goto(`/${organizer.org.slug}/${event.slug}/register`);
     await page.getByLabel("Nama tim").fill(teamName);
-    await page.getByLabel("Kota").fill("Bandung");
     await page.getByLabel("Nama kontak").fill("Budi");
     await page.getByLabel("No. HP kontak").fill("081234567890");
     await page.getByPlaceholder("Nama pemain").first().fill("Pemain Satu");
@@ -41,7 +40,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     const event = await api.liveEvent(organizer.account.token, organizer.org.id);
     const participant = await api.registerUser("peserta");
     const teamName = unique("Tim Rajawali");
-    await api.registerTeam(organizer.org.slug, event.slug, participant.token, teamName);
+    await api.registerTeam(organizer.org.slug, event, participant.token, teamName);
 
     await signIn(page, organizer.account.email);
     await page.goto(`/organizer/events/${event.id}/registrations`);
@@ -61,7 +60,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     const event = await api.liveEvent(organizer.account.token, organizer.org.id);
     const teamName = unique("Tim Ditolak");
     const manager = await api.registerUser("peserta");
-    await api.registerTeam(organizer.org.slug, event.slug, manager.token, teamName);
+    await api.registerTeam(organizer.org.slug, event, manager.token, teamName);
 
     await signIn(page, organizer.account.email);
     await page.goto(`/organizer/events/${event.id}/registrations`);
@@ -135,11 +134,11 @@ test.describe("§5.2 Peserta — daftar tim", () => {
   });
 
   test("pendaftaran ditutup saat kuota tim penuh", async ({ page, api, organizer }) => {
-    // max_teams=2, both taken: the form must refuse rather than overfill (§4.2).
+    // Category cap=2, both taken: the form must refuse rather than overfill (§4.2).
     const event = await api.liveEvent(organizer.account.token, organizer.org.id, { max_teams: 2 });
     const other = await api.registerUser("peserta");
-    await api.registerTeam(organizer.org.slug, event.slug, other.token);
-    await api.registerTeam(organizer.org.slug, event.slug, other.token);
+    await api.registerTeam(organizer.org.slug, event, other.token);
+    await api.registerTeam(organizer.org.slug, event, other.token);
 
     await signIn(page, other.email);
     await page.goto(`/${organizer.org.slug}/${event.slug}/register`);
@@ -149,6 +148,6 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     await page.getByPlaceholder("Nama pemain").first().fill("Pemain Satu");
     await page.getByRole("button", { name: "Kirim Pendaftaran" }).click();
 
-    await expect(page.getByText(/kuota tim untuk event ini sudah penuh/i)).toBeVisible();
+    await expect(page.getByText(/kuota tim untuk kategori ini sudah penuh/i)).toBeVisible();
   });
 });

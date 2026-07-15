@@ -16,7 +16,6 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
 
     await page.getByRole("button", { name: "Tambah Tim" }).click();
     await page.getByLabel("Nama tim").fill(teamName);
-    await page.getByLabel("Kota").fill("Solo");
     await page.getByLabel("Nama kontak").fill("Pak RT");
     await page.getByLabel("No. HP kontak").fill("081200000000");
     await page.getByLabel("Nama pemain 1").fill("Joko");
@@ -38,7 +37,7 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     const team = await api.addTeamManually(
       organizer.account.token,
       organizer.org.id,
-      event.id,
+      event,
       unique("Tim Typo"),
     );
 
@@ -68,7 +67,7 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     const event = await api.liveEvent(organizer.account.token, organizer.org.id, {
       registration_fee: 150_000,
     });
-    await api.addTeamManually(organizer.account.token, organizer.org.id, event.id);
+    await api.addTeamManually(organizer.account.token, organizer.org.id, event);
 
     await signIn(page, organizer.account.email);
     await page.goto("/organizer/wallet");

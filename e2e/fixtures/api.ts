@@ -27,6 +27,8 @@ export interface Event {
   id: string;
   slug: string;
   name: string;
+  /** Each event runs one-or-more competition categories; every team joins one. */
+  categories: Array<{ id: string; slug: string; name: string }>;
 }
 
 export interface Team {
@@ -122,6 +124,10 @@ export class Api {
    * Registration is open by default: every flow downstream of §5.2 needs a team
    * to be able to sign up, and an event whose window is shut fails in a way that
    * looks like a UI bug rather than a fixture bug.
+   *
+   * Format, fee and team cap live on each category now, so a fixture event runs a
+   * single default category. `overrides` merge into *that category* (the only
+   * overrides any spec uses — `max_teams`, `registration_fee` — are category-level).
    */
   async createEvent(token: string, orgId: string, overrides: Record<string, unknown> = {}): Promise<Event> {
     const res = await this.request.post(`${API_URL}/organizations/${orgId}/events`, {
@@ -129,15 +135,20 @@ export class Api {
       data: {
         name: unique("Turnamen"),
         sport_type: "futsal",
-        tournament_format: "league",
         start_date: daysFromNow(7),
         end_date: daysFromNow(8),
         registration_open: daysFromNow(-1),
         registration_close: daysFromNow(6),
         location_name: "GBK Arena",
-        max_teams: 8,
-        registration_fee: 0,
-        ...overrides,
+        categories: [
+          {
+            name: "Umum",
+            tournament_format: "league",
+            registration_fee: 0,
+            max_teams: 8,
+            ...overrides,
+          },
+        ],
       },
     });
     return this.unwrap<Event>(res, "Buat event");
@@ -166,15 +177,16 @@ export class Api {
    */
   async registerTeam(
     orgSlug: string,
-    eventSlug: string,
+    event: Event,
     managerToken: string,
     name = unique("Tim"),
   ): Promise<Team> {
-    const res = await this.request.post(`${API_URL}/public/events/${orgSlug}/${eventSlug}/register`, {
+    const res = await this.request.post(`${API_URL}/public/events/${orgSlug}/${event.slug}/register`, {
       headers: this.auth(managerToken),
       data: {
+        // Every team joins a category; the fixture event has exactly one.
+        category_id: event.categories[0].id,
         name,
-        city: "Jakarta",
         contact_name: "Kontak E2E",
         contact_phone: "081234567890",
         players: [
@@ -213,7 +225,7 @@ export class Api {
   async approvedTeams(token: string, org: Org, event: Event, count: number): Promise<Team[]> {
     const teams: Team[] = [];
     for (let i = 0; i < count; i++) {
-      teams.push(await this.addTeamManually(token, org.id, event.id, `Tim ${String.fromCharCode(65 + i)}`));
+      teams.push(await this.addTeamManually(token, org.id, event, `Tim ${String.fromCharCode(65 + i)}`));
     }
     return teams;
   }
@@ -222,14 +234,15 @@ export class Api {
   async addTeamManually(
     token: string,
     orgId: string,
-    eventId: string,
+    event: Event,
     name = unique("Tim Offline"),
   ): Promise<Team> {
-    const res = await this.request.post(`${API_URL}/organizations/${orgId}/events/${eventId}/registrations`, {
+    const res = await this.request.post(`${API_URL}/organizations/${orgId}/events/${event.id}/registrations`, {
       headers: this.auth(token),
       data: {
+        // Offline entries pick a category too; the fixture event has exactly one.
+        category_id: event.categories[0].id,
         name,
-        city: "Solo",
         contact_name: "Kontak Offline",
         contact_phone: "081200000000",
         // A position is a key from the sport's master (sport_positions), not free text.
