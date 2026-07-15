@@ -110,7 +110,8 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 #### FR-03: Manajemen Event
 - Organizer dapat membuat event sesuai kuota paket
-- Mendukung format: Liga, Knockout (single/double elimination), Hybrid
+- **Setiap event berisi satu atau lebih kategori kompetisi** (mis. U-17, Putri, Open) — masing-masing dengan format, konfigurasi bracket, biaya registrasi, dan batas tim sendiri (FR-22 / §4.22)
+- Mendukung format Liga, Knockout (single/double elimination), Hybrid — **dipilih per kategori**
 - Landing page publik per event dengan URL `flo-event.id/[org-slug]/[event-slug]`
 - **Katalog event publik** di `flo-event.id/event` (pencarian, filter cabang/status, paginasi — semuanya di server) agar event bisa **ditemukan**, bukan hanya diakses lewat tautan langsung
 - **Profil penyelenggara publik** di `flo-event.id/[org-slug]`, berisi profil organizer + seluruh event yang ia publikasikan
@@ -120,7 +121,8 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Upload dokumen peserta ke Cloudflare R2
 - Approval manual / otomatis oleh organizer
 - Payment gateway terintegrasi untuk biaya pendaftaran
-- **Entri offline oleh organizer**: tim yang mendaftar via kertas/chat bisa dimasukkan manual dari dashboard (tanpa akun manager), tetap menghormati batas `max_teams` dan cap paket
+- **Peserta memilih kategori** saat mendaftar; biaya registrasi mengikuti kategori yang dipilih
+- **Entri offline oleh organizer**: tim yang mendaftar via kertas/chat bisa dimasukkan manual dari dashboard (tanpa akun manager) ke kategori pilihan, tetap menghormati batas tim per kategori (`event_categories.max_teams`) dan cap paket
 
 #### FR-05: Manajemen Tim & Pemain
 - Profil tim dengan logo dan data lengkap
@@ -203,6 +205,12 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Satu akun user bisa berperan sebagai **organizer** (kelola event sendiri) sekaligus **peserta** (tim yang ia daftarkan di event lain)
 - Mode aktif diturunkan dari URL (`/organizer` vs `/participant`); **mode default saat login** disimpan di `users.default_mode` dan ditulis ulang tiap kali switcher dipakai
 - Saat registrasi, user memilih peran awal; peserta baru diarahkan langsung ke area peserta, organizer baru ke onboarding pembuatan organisasi
+
+#### FR-22: Kategori Kompetisi (Multi-Format per Event)
+- **Satu event menampung banyak kompetisi paralel** (mis. U-17, Putri, Open) di bawah cabang olahraga yang sama; setiap kategori berdiri sendiri
+- Tiap kategori punya **format turnamen, konfigurasi bracket, biaya registrasi, dan batas tim (`max_teams`)** masing-masing — jadwal, klasemen, bracket, dan leaderboard dihitung **per kategori**
+- Setiap tim dan setiap pertandingan **milik satu kategori** (`teams.category_id`, `matches.category_id`); pendaftaran wajib menyebut kategori
+- Batas tim per kategori berlaku terpisah dari **cap tim per event** milik paket (FR-02); keduanya dicek saat registrasi
 
 ### 2.2 Non-Functional Requirements
 
@@ -332,14 +340,15 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 ### 4.2 Registrasi Tim / Peserta
 
 **Alur:**
-1. Peserta buka landing page → klik "Daftar"
-2. Isi form registrasi (field dikonfigurasi organizer)
-3. Input data tim + roster pemain + upload dokumen (langsung ke R2 via signed URL)
-4. Generate invoice → peserta bayar (jika berbayar)
-5. Organizer approve/reject
-6. Email konfirmasi + akses dashboard tim
+1. Peserta buka landing page → klik "Daftar" (bisa langsung ke kategori tertentu via `?category=slug`)
+2. **Pilih kategori kompetisi** (§4.22) — biaya registrasi mengikuti kategori; jika event hanya punya satu kategori, ia terpilih otomatis
+3. Isi form registrasi (field dikonfigurasi organizer)
+4. Input data tim + roster pemain + upload dokumen (langsung ke R2 via signed URL)
+5. Generate invoice → peserta bayar (jika berbayar)
+6. Organizer approve/reject
+7. Email konfirmasi + akses dashboard tim
 
-**Entri offline:** organizer bisa memasukkan tim yang mendaftar via kertas/chat langsung dari halaman registrasi event. Tim seperti ini tak punya akun manager (data kontak berupa nomor telepon), boleh langsung ditandai lunas, dan tetap dihitung terhadap `max_teams` serta cap paket seperti pendaftaran publik.
+**Entri offline:** organizer bisa memasukkan tim yang mendaftar via kertas/chat langsung dari halaman registrasi event. Tim seperti ini tak punya akun manager (data kontak berupa nomor telepon), dimasukkan ke kategori pilihan, boleh langsung ditandai lunas, dan tetap dihitung terhadap batas tim kategori serta cap paket seperti pendaftaran publik.
 
 ---
 
@@ -355,9 +364,10 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 
 ### 4.4 Jadwal Pertandingan
 
+- **Jadwal dibuat per kategori** (§4.22): format & bracket diambil dari kategori yang dipilih, dan hanya tim di kategori itu yang diundi
 - Generate otomatis: round-robin, knockout, hybrid
 - Edit manual: tanggal, waktu, lapangan/venue
-- Tampilan publik: list view + kalender view, filter per hari/grup/babak
+- Tampilan publik: list view + kalender view, filter per hari/grup/babak; event multi-kategori menampilkan pemilih kategori
 - Status: Upcoming / Live / Selesai / Ditunda
 
 ---
@@ -384,7 +394,7 @@ Operator Input → [Pending Konfirmasi] → Admin Review → [Dikonfirmasi]
 
 ### 4.6 Klasemen
 
-Aturan default per cabang, semua dapat dikonfigurasi organizer per event.
+Klasemen, leaderboard, dan bracket dihitung **per kategori** (§4.22). Aturan default per cabang, semua dapat dikonfigurasi organizer per event.
 
 | Cabang | Menang | Seri | Kalah | Tiebreaker |
 |--------|--------|------|-------|-----------|
@@ -560,7 +570,7 @@ Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yan
 
 Master **posisi** menjadi sumber tunggal validasi roster: label boleh diganti kapan saja tanpa memindahkan data karena `position_key` yang tersimpan, dan posisi yang **masih dipakai pemain tidak bisa dihapus**.
 
-**Format adalah preset di atas engine.** Engine (`league`, `knockout`, `hybrid`) hidup di kode; admin bisa membuat preset "Liga 2 Putaran" (engine `league`, default `legs: 2`) tanpa deploy — tapi **tidak bisa** mengarang engine yang tidak ada implementasinya.
+**Format adalah preset di atas engine.** Engine (`league`, `knockout`, `hybrid`) hidup di kode; admin bisa membuat preset "Liga 2 Putaran" (engine `league`, default `legs: 2`) tanpa deploy — tapi **tidak bisa** mengarang engine yang tidak ada implementasinya. Preset ini dipilih **per kategori kompetisi** (§4.22), bukan per event, sehingga satu event bisa menjalankan beberapa format sekaligus.
 
 ---
 
@@ -631,6 +641,20 @@ Satu akun bisa memakai dua "topi": **Organizer** (mengelola event miliknya) dan 
 
 ---
 
+### 4.22 Kategori Kompetisi (Multi-Format per Event)
+
+Sebuah event nyata jarang berupa satu turnamen tunggal — satu penyelenggara sering menjalankan **U-17, Putri, dan Open sekaligus** di bawah satu acara. flo-event memodelkannya sebagai **kategori kompetisi**: setiap event punya satu atau lebih kategori, dan hampir semua yang dulu melekat di event kini melekat di kategori.
+
+- **Yang pindah ke kategori:** `tournament_format`, `bracket_config`, `registration_fee`, dan `max_teams`. Yang tetap di event: cabang olahraga, tanggal, lokasi, jendela registrasi, dan banner — semua kategori berbagi ini.
+- **Event baru selalu punya minimal satu kategori.** Form buat/edit event mengelola daftar kategori (tambah/hapus); event yang tak jadi multi-kategori cukup memakai satu kategori dan pengalamannya nyaris tak berubah bagi organizer maupun peserta (kategori tunggal terpilih otomatis, tanpa dropdown).
+- **Registrasi menyebut kategori.** `teams.category_id` wajib; biaya yang ditagih adalah biaya kategori tersebut. Batas tim dicek berlapis: **cap kategori** (`event_categories.max_teams`) lalu **cap paket per event** (FR-02).
+- **Kompetisi berjalan per kategori.** Jadwal, undian grup, bracket, klasemen, dan leaderboard semuanya di-scope ke satu kategori — endpoint schedule/standings/leaderboard menerima slug kategori. Dashboard organizer dan halaman publik menampilkan **pemilih kategori** saat event punya lebih dari satu.
+- **Menghapus kategori** ikut menghapus tim dan pertandingannya (cascade), jadi UI mengonfirmasi sebelum menyimpan penghapusan.
+
+> **Migrasi data lama:** event yang sudah ada sebelum fitur ini otomatis mendapat satu kategori berisi format/biaya/cap lamanya, dan seluruh tim & pertandingannya dipetakan ke kategori itu — tidak ada event tanpa kategori.
+
+---
+
 ## 5. User Flow
 
 ### 5.1 Organizer — Onboarding & Buat Event
@@ -641,7 +665,8 @@ Satu akun bisa memakai dua "topi": **Organizer** (mengelola event miliknya) dan 
   → [Dashboard Organizer — Welcome]
   → Pilih Paket → [Bayar Subscription] (jika berbayar)
   → [Buat Event Baru]
-      → Detail event, cabang, format, konfigurasi registrasi
+      → Detail event & cabang
+      → Tambah kategori (format, biaya, batas tim per kategori)
       → Setup tiket (opsional)
       → Publish Event
   → [Landing Page Aktif]
@@ -657,6 +682,7 @@ Satu akun bisa memakai dua "topi": **Organizer** (mengelola event miliknya) dan 
 ```
 [Buka Landing Page Event]
   → "Daftar Sekarang" → [Buat Akun (peran "Peserta") / Login]
+  → Pilih kategori kompetisi (otomatis jika hanya satu)
   → Isi Form Registrasi (nama tim, logo, data pemain + posisi dari master cabang)
   → Upload dokumen → Submit → [Email: Pendaftaran diterima]
   → [Bayar] (jika berbayar) → Konfirmasi → [Email: Pembayaran lunas]
@@ -1185,7 +1211,6 @@ events (
   name                VARCHAR(255) NOT NULL,
   slug                VARCHAR(100) NOT NULL,
   sport_type          ENUM('football','futsal','badminton','padel','volleyball'),
-  tournament_format   ENUM('league','knockout_single','knockout_double','hybrid'),
   status              ENUM('draft','open','registration_closed','ongoing','finished','cancelled') DEFAULT 'draft',
   start_date          DATE NOT NULL,
   end_date            DATE NOT NULL,
@@ -1195,19 +1220,34 @@ events (
   location_address    TEXT,
   description         TEXT,
   banner_url          TEXT,
-  max_teams           INT,
-  registration_fee    DECIMAL(12,2) DEFAULT 0,
   rules_config        JSONB,                         -- custom scoring rules
-  bracket_config      JSONB,
   created_at          TIMESTAMP DEFAULT NOW(),
   updated_at          TIMESTAMP DEFAULT NOW(),
   UNIQUE(organization_id, slug)
+  -- format, bracket_config, registration_fee, max_teams pindah ke event_categories
+)
+
+-- EVENT CATEGORIES  (kompetisi paralel dalam satu event; §4.22)
+event_categories (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id          UUID REFERENCES events(id) ON DELETE CASCADE,
+  name              VARCHAR(255) NOT NULL,           -- "U-17" | "Putri" | "Open"
+  slug              VARCHAR(100) NOT NULL,
+  tournament_format VARCHAR(20),                     -- league | knockout_single | knockout_double | hybrid
+  bracket_config    JSONB,
+  registration_fee  DECIMAL(12,2) DEFAULT 0,
+  max_teams         INT,
+  sort_order        SMALLINT DEFAULT 0,
+  created_at        TIMESTAMP DEFAULT NOW(),
+  updated_at        TIMESTAMP DEFAULT NOW(),
+  UNIQUE(event_id, slug)
 )
 
 -- TEAMS
 teams (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id          UUID REFERENCES events(id),
+  category_id       UUID REFERENCES event_categories(id) ON DELETE CASCADE,
   name              VARCHAR(255) NOT NULL,
   logo_url          TEXT,
   contact_name      VARCHAR(255),
@@ -1247,6 +1287,7 @@ registration_documents (
 matches (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id          UUID REFERENCES events(id),
+  category_id       UUID REFERENCES event_categories(id) ON DELETE CASCADE,
   team_home_id      UUID REFERENCES teams(id),
   team_away_id      UUID REFERENCES teams(id),
   match_date        TIMESTAMP,
@@ -1630,8 +1671,11 @@ certificates (
 CREATE INDEX idx_events_org_id        ON events(organization_id);
 CREATE INDEX idx_events_slug          ON events(slug);
 CREATE INDEX idx_events_status        ON events(status);
+CREATE INDEX idx_event_cats_event_id  ON event_categories(event_id);
 CREATE INDEX idx_teams_event_id       ON teams(event_id);
+CREATE INDEX idx_teams_category_id    ON teams(category_id);
 CREATE INDEX idx_matches_event_id     ON matches(event_id);
+CREATE INDEX idx_matches_category_id  ON matches(category_id);
 CREATE INDEX idx_matches_date         ON matches(match_date);
 CREATE INDEX idx_standings_event_id   ON standings(event_id);
 CREATE INDEX idx_player_stats_event   ON player_stats(event_id);
