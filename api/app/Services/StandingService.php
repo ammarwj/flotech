@@ -2,41 +2,41 @@
 
 namespace App\Services;
 
-use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Support\HybridConfig;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Computes the table for an event from its confirmed results.
+ * Computes the table for a category from its confirmed results.
  *
- * Points and tiebreakers come from the event's format config (`bracket_config`),
+ * Points and tiebreakers come from the category's format config (`bracket_config`),
  * defaulting to 3/1/0 and the usual head-to-head → goal difference → goals
- * scored → fair play → drawing lots order. Hybrid events are ranked inside each
- * group; every other format is one table.
+ * scored → fair play → drawing lots order. Hybrid categories are ranked inside
+ * each group; every other format is one table.
  */
 class StandingService
 {
     /**
      * All approved teams, ranked. Rows carry `group_name` so the client can
-     * split a hybrid event into one table per group.
+     * split a hybrid category into one table per group.
      *
      * @return array<int, array<string, mixed>>
      */
-    public function compute(Event $event): array
+    public function compute(EventCategory $category): array
     {
-        $config = HybridConfig::fromEvent($event);
-        $rows = $this->rows($event, $config);
+        $config = HybridConfig::fromCategory($category);
+        $rows = $this->rows($category, $config);
 
-        if ($event->engine() !== 'hybrid') {
-            return $this->rank(array_values($rows), $event, $config);
+        if ($category->engine() !== 'hybrid') {
+            return $this->rank(array_values($rows), $category, $config);
         }
 
         // Rank inside each group, then concatenate A, B, C, …
         $out = [];
         foreach ($this->byGroup($rows) as $groupRows) {
-            foreach ($this->rank($groupRows, $event, $config) as $row) {
+            foreach ($this->rank($groupRows, $category, $config) as $row) {
                 $out[] = $row;
             }
         }
@@ -60,15 +60,15 @@ class StandingService
      *
      * @return array<int, array{label: string, group: string|null, place: int, team: array<string, mixed>|null}>
      */
-    public function qualifierSlots(Event $event): array
+    public function qualifierSlots(EventCategory $category): array
     {
-        $config = HybridConfig::fromEvent($event);
-        $groups = $this->byGroup($this->rows($event, $config));
+        $config = HybridConfig::fromCategory($category);
+        $groups = $this->byGroup($this->rows($category, $config));
 
         // group => rows, ranked
         $ranked = [];
         foreach ($groups as $name => $groupRows) {
-            $ranked[$name] = $this->rank($groupRows, $event, $config);
+            $ranked[$name] = $this->rank($groupRows, $category, $config);
         }
 
         $slots = [];
@@ -101,7 +101,7 @@ class StandingService
                     $pool[] = $rows[$place - 1];
                 }
             }
-            $best = array_slice($this->crossGroupOrder($pool, $event, $config), 0, $extra['take']);
+            $best = array_slice($this->crossGroupOrder($pool, $category, $config), 0, $extra['take']);
 
             for ($i = 0; $i < $extra['take']; $i++) {
                 $row = $best[$i] ?? null;
@@ -122,11 +122,11 @@ class StandingService
      *
      * @return array<int, string> team ids
      */
-    public function qualifiers(Event $event): array
+    public function qualifiers(EventCategory $category): array
     {
         return array_values(array_filter(array_map(
             fn ($slot) => $slot['team']['id'] ?? null,
-            $this->qualifierSlots($event),
+            $this->qualifierSlots($category),
         )));
     }
 
@@ -147,11 +147,11 @@ class StandingService
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
-    protected function crossGroupOrder(array $rows, Event $event, HybridConfig $config): array
+    protected function crossGroupOrder(array $rows, EventCategory $category, HybridConfig $config): array
     {
         $tiebreakers = array_values(array_diff($config->tiebreakers, ['head_to_head']));
 
-        return $this->rank($rows, $event, $config, $tiebreakers);
+        return $this->rank($rows, $category, $config, $tiebreakers);
     }
 
     /**
@@ -159,9 +159,9 @@ class StandingService
      *
      * @return array<string, array<string, mixed>> keyed by team id
      */
-    protected function rows(Event $event, HybridConfig $config): array
+    protected function rows(EventCategory $category, HybridConfig $config): array
     {
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
             ->get(['id', 'name', 'logo_url', 'group_name']);
@@ -183,7 +183,7 @@ class StandingService
             ];
         }
 
-        foreach ($this->countingMatches($event) as $m) {
+        foreach ($this->countingMatches($category) as $m) {
             if (! isset($rows[$m->home_team_id], $rows[$m->away_team_id])) {
                 continue;
             }
@@ -192,7 +192,7 @@ class StandingService
             $this->applyResult($rows[$m->away_team_id], $m->away_score, $m->home_score, $config);
         }
 
-        foreach ($this->fairPlayPoints($event) as $teamId => $points) {
+        foreach ($this->fairPlayPoints($category) as $teamId => $points) {
             if (isset($rows[$teamId])) {
                 $rows[$teamId]['fair_play'] = $points;
             }
@@ -203,13 +203,13 @@ class StandingService
 
     /**
      * Confirmed, played matches that count toward the table. The knockout stage
-     * of a hybrid event never does.
+     * of a hybrid category never does.
      *
      * @return Collection<int, GameMatch>
      */
-    protected function countingMatches(Event $event): Collection
+    protected function countingMatches(EventCategory $category): Collection
     {
-        return $event->matches()
+        return $category->matches()
             ->where('status', 'finished')
             ->whereNotNull('confirmed_at')
             ->whereNotNull('home_score')
@@ -224,12 +224,12 @@ class StandingService
      *
      * @return array<string, int> team id => points
      */
-    protected function fairPlayPoints(Event $event): array
+    protected function fairPlayPoints(EventCategory $category): array
     {
         // Which stats count as misconduct, and how heavily, is per-sport data
         // (football: yellow 1, red 3). A sport with no weighted stat simply has
         // no fair-play score.
-        $weights = Catalog::fairPlayWeights($event->sport_type);
+        $weights = Catalog::fairPlayWeights($category->sport_type);
 
         if ($weights === []) {
             return [];
@@ -237,7 +237,7 @@ class StandingService
 
         $rows = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
-            ->where('matches.event_id', $event->id)
+            ->where('matches.category_id', $category->id)
             ->whereIn('player_match_stats.stat_key', array_keys($weights))
             ->groupBy('player_match_stats.team_id', 'player_match_stats.stat_key')
             ->select(
@@ -275,21 +275,21 @@ class StandingService
      * the resulting rank.
      *
      * @param  array<int, array<string, mixed>>  $rows
-     * @param  array<int, string>|null  $tiebreakers  overrides the event config
+     * @param  array<int, string>|null  $tiebreakers  overrides the category config
      * @return array<int, array<string, mixed>>
      */
-    protected function rank(array $rows, Event $event, HybridConfig $config, ?array $tiebreakers = null): array
+    protected function rank(array $rows, EventCategory $category, HybridConfig $config, ?array $tiebreakers = null): array
     {
         $order = $tiebreakers ?? $config->tiebreakers;
-        $h2h = in_array('head_to_head', $order, true) ? $this->headToHead($event) : [];
+        $h2h = in_array('head_to_head', $order, true) ? $this->headToHead($category) : [];
 
-        usort($rows, function ($a, $b) use ($order, $h2h, $event) {
+        usort($rows, function ($a, $b) use ($order, $h2h, $category) {
             if ($a['points'] !== $b['points']) {
                 return $b['points'] <=> $a['points'];
             }
 
             foreach ($order as $rule) {
-                $cmp = $this->compareBy($rule, $a, $b, $h2h, $event);
+                $cmp = $this->compareBy($rule, $a, $b, $h2h, $category);
                 if ($cmp !== 0) {
                     return $cmp;
                 }
@@ -313,7 +313,7 @@ class StandingService
      * @param  array<string, mixed>  $b
      * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
      */
-    protected function compareBy(string $rule, array $a, array $b, array $h2h, Event $event): int
+    protected function compareBy(string $rule, array $a, array $b, array $h2h, EventCategory $category): int
     {
         $idA = $a['team']['id'];
         $idB = $b['team']['id'];
@@ -333,7 +333,7 @@ class StandingService
             // Fewer disciplinary points ranks higher.
             'fair_play' => $a['fair_play'] <=> $b['fair_play'],
             // A stable "draw": random-looking but the same every time it's shown.
-            'drawing_lots' => $this->lot($event, $idA) <=> $this->lot($event, $idB),
+            'drawing_lots' => $this->lot($category, $idA) <=> $this->lot($category, $idB),
             default => 0,
         };
     }
@@ -343,12 +343,12 @@ class StandingService
      *
      * @return array<string, array<string, array{points: int, diff: int}>>
      */
-    protected function headToHead(Event $event): array
+    protected function headToHead(EventCategory $category): array
     {
-        $config = HybridConfig::fromEvent($event);
+        $config = HybridConfig::fromCategory($category);
         $out = [];
 
-        foreach ($this->countingMatches($event) as $m) {
+        foreach ($this->countingMatches($category) as $m) {
             $home = $m->home_team_id;
             $away = $m->away_team_id;
             if (! $home || ! $away) {
@@ -368,10 +368,10 @@ class StandingService
         return $out;
     }
 
-    /** Deterministic lot for a team within an event. */
-    protected function lot(Event $event, string $teamId): int
+    /** Deterministic lot for a team within a category. */
+    protected function lot(EventCategory $category, string $teamId): int
     {
-        return crc32($event->id.$teamId);
+        return crc32($category->id.$teamId);
     }
 
     /**

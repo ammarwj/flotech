@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\Team;
 use App\Support\HybridConfig;
 use Illuminate\Support\Collection;
 
 /**
- * Assigns approved teams to groups (A, B, C, …) for a hybrid event.
+ * Assigns approved teams to groups (A, B, C, …) for a hybrid category.
  *
  * Three ways to draw:
  *  - random: shuffle, then deal round-robin into the groups
@@ -23,12 +23,12 @@ class GroupDrawService
      * @param  array<string, int>  $pots  team_id => pot number (pot draw)
      * @return Collection<int, Team> the drawn teams, ordered by group then name
      */
-    public function draw(Event $event, string $method, array $assignments = [], array $pots = []): Collection
+    public function draw(EventCategory $category, string $method, array $assignments = [], array $pots = []): Collection
     {
-        $config = HybridConfig::fromEvent($event);
+        $config = HybridConfig::fromCategory($category);
         $groups = $config->groupNames();
 
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
             ->get();
@@ -57,7 +57,7 @@ class GroupDrawService
             }
         }
 
-        return $event->teams()
+        return $category->teams()
             ->where('status', 'approved')
             ->orderBy('group_name')
             ->orderBy('name')

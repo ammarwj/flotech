@@ -44,13 +44,16 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
 export function PublicResults({
   orgSlug,
   eventSlug,
+  categorySlug,
   engine,
   bracketConfig,
   activeTab,
 }: {
   orgSlug: string;
   eventSlug: string;
-  /** The engine the event's format runs on — decides which panels make sense. */
+  /** The competition category whose schedule/standings this panel shows. */
+  categorySlug: string;
+  /** The engine the category's format runs on — decides which panels make sense. */
   engine: FormatEngine | null;
   bracketConfig?: BracketConfig | null;
   activeTab: ResultsTab;
@@ -66,19 +69,19 @@ export function PublicResults({
   const [dateKey, setDateKey] = useState<string | null>(null);
 
   const matchesQuery = useQuery({
-    queryKey: ["public-matches", orgSlug, eventSlug],
-    queryFn: () => getPublicMatches(orgSlug, eventSlug),
+    queryKey: ["public-matches", orgSlug, eventSlug, categorySlug],
+    queryFn: () => getPublicMatches(orgSlug, eventSlug, categorySlug),
     retry: false,
   });
   const standingsQuery = useQuery({
-    queryKey: ["public-standings", orgSlug, eventSlug],
-    queryFn: () => getPublicStandings(orgSlug, eventSlug),
+    queryKey: ["public-standings", orgSlug, eventSlug, categorySlug],
+    queryFn: () => getPublicStandings(orgSlug, eventSlug, categorySlug),
     retry: false,
     enabled: !isKnockout,
   });
   const leaderboardQuery = useQuery({
-    queryKey: ["public-leaderboard", orgSlug, eventSlug],
-    queryFn: () => getPublicLeaderboard(orgSlug, eventSlug),
+    queryKey: ["public-leaderboard", orgSlug, eventSlug, categorySlug],
+    queryFn: () => getPublicLeaderboard(orgSlug, eventSlug, categorySlug),
     retry: false,
   });
 

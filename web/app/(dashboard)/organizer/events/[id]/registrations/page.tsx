@@ -213,6 +213,7 @@ export default function RegistrationsPage() {
         key={manual === "new" ? "new" : (manual?.id ?? "closed")}
         open={!!manual}
         team={manual !== "new" ? manual : null}
+        categories={eventQuery.data?.categories ?? []}
         sport={eventQuery.data?.sport_type}
         pending={saveManual.isPending}
         fieldErrors={manualErrors}
@@ -271,6 +272,7 @@ function RegistrationCard({
               <span className="font-semibold" style={{ fontFamily: "var(--font-display)" }}>
                 {team.name}
               </span>
+              {team.category && <Badge variant="neutral">{team.category.name}</Badge>}
               <TeamStatusBadge status={team.status} />
               {paid && (
                 <Badge variant={team.payment_status === "paid" ? "success" : "warning"}>

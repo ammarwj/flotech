@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  BracketConfig,
   EventStatus,
   Paginated,
   PayRegistrationResult,
@@ -10,15 +11,27 @@ import type {
   SportEvent,
   Team,
   TeamStatus,
+  TournamentFormat,
   UploadSignResult,
 } from "@/types/api";
+
+/** One category row in the event create/update payload. */
+export interface EventCategoryInput {
+  /** Present when editing an existing category; omitted for a new one. */
+  id?: string;
+  name: string;
+  slug?: string;
+  tournament_format: TournamentFormat;
+  registration_fee?: number;
+  max_teams?: number | null;
+  bracket_config?: BracketConfig | null;
+}
 
 export type EventInput = Partial<
   Pick<
     SportEvent,
     | "name"
     | "sport_type"
-    | "tournament_format"
     | "status"
     | "start_date"
     | "end_date"
@@ -28,11 +41,12 @@ export type EventInput = Partial<
     | "location_address"
     | "description"
     | "banner_url"
-    | "max_teams"
-    | "registration_fee"
-    | "bracket_config"
   >
->;
+> & {
+  slug?: string;
+  /** The competitions inside the event; the backend full-replaces this list. */
+  categories?: EventCategoryInput[];
+};
 
 // ---- Organizer (tenant-scoped) ----
 
@@ -166,6 +180,8 @@ export async function getPublicEvent(orgSlug: string, eventSlug: string): Promis
 }
 
 export interface RegisterTeamPayload {
+  /** Which competition category inside the event the team is entering. */
+  category_id: string;
   name: string;
   logo_url?: string | null;
   contact_name: string;

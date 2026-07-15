@@ -16,7 +16,7 @@ import { EventStatusBadge } from "@/components/shared/status-badge";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 
 export default function EventsPage() {
-  const { sportLabel, sportColor, formatLabel } = useCatalog();
+  const { sportLabel, sportColor } = useCatalog();
   const { org, orgId, isLoading: orgLoading } = useActiveOrg();
 
   const eventsQuery = useQuery({
@@ -121,7 +121,7 @@ export default function EventsPage() {
                     <span className="inline-flex items-center gap-1.5" style={{ color }}>
                       {sportLabel(ev.sport_type)}
                     </span>
-                    <span>{formatLabel(ev.tournament_format)}</span>
+                    <span>{ev.categories.length} kategori</span>
                     <span className="inline-flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" />
                       {ev.teams_count ?? 0} tim

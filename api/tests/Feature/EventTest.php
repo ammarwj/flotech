@@ -29,10 +29,11 @@ class EventTest extends TestCase
         return array_merge([
             'name' => 'Jakarta Cup 2026',
             'sport_type' => 'football',
-            'tournament_format' => 'league',
             'start_date' => '2026-08-01',
             'end_date' => '2026-08-10',
-            'registration_fee' => 1500000,
+            'categories' => [
+                ['name' => 'Umum', 'tournament_format' => 'league', 'registration_fee' => 1500000],
+            ],
         ], $overrides);
     }
 

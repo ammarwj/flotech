@@ -17,7 +17,6 @@ class Event extends Model
         'name',
         'slug',
         'sport_type',
-        'tournament_format',
         'status',
         'start_date',
         'end_date',
@@ -27,10 +26,7 @@ class Event extends Model
         'location_address',
         'description',
         'banner_url',
-        'max_teams',
-        'registration_fee',
         'rules_config',
-        'bracket_config',
     ];
 
     protected function casts(): array
@@ -40,16 +36,22 @@ class Event extends Model
             'end_date' => 'date',
             'registration_open' => 'datetime',
             'registration_close' => 'datetime',
-            'registration_fee' => 'decimal:2',
-            'max_teams' => 'integer',
             'rules_config' => 'array',
-            'bracket_config' => 'array',
         ];
     }
 
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * The competitions inside this event (U17, U19, Woman, …). Every event has
+     * at least one; format, bracket config and fee live on each.
+     */
+    public function categories(): HasMany
+    {
+        return $this->hasMany(EventCategory::class)->orderBy('sort_order')->orderBy('created_at');
     }
 
     public function teams(): HasMany
@@ -85,16 +87,6 @@ class Event extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
-    }
-
-    /**
-     * The engine that runs this event's format. A format is a preset — several
-     * may share one engine ("Liga" and "Liga 2 Putaran" are both `league`), so
-     * scheduling and standings branch on this, never on `tournament_format`.
-     */
-    public function engine(): ?string
-    {
-        return Catalog::engineOf($this->tournament_format);
     }
 
     /** Catalog entry for this event's sport (name, colour, scoring, stats). */

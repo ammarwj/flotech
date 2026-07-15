@@ -317,6 +317,25 @@ export interface MatchStatsData {
   stats: Record<string, Record<string, number>>;
 }
 
+/**
+ * One competition inside an event (U17, U19, Woman, …). Format, bracket config,
+ * fee and team cap live here — an event may run several at once, each different.
+ */
+export interface EventCategory {
+  id: string;
+  event_id: string;
+  name: string;
+  slug: string;
+  tournament_format: TournamentFormat;
+  /** The engine the format runs on — branch on this, not the format key. */
+  engine: FormatEngine | null;
+  registration_fee: number;
+  max_teams: number | null;
+  bracket_config: BracketConfig | null;
+  sort_order: number;
+  teams_count?: number;
+}
+
 export interface SportEvent {
   id: string;
   organization_id: string;
@@ -325,9 +344,6 @@ export interface SportEvent {
   sport_type: SportType;
   /** The sport itself, embedded so the UI needn't look it up. */
   sport: SportDef | null;
-  tournament_format: TournamentFormat;
-  /** The engine the format runs on — branch on this, not the format key. */
-  engine: FormatEngine | null;
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
@@ -337,9 +353,8 @@ export interface SportEvent {
   location_address: string | null;
   description: string | null;
   banner_url: string | null;
-  max_teams: number | null;
-  registration_fee: number;
-  bracket_config: BracketConfig | null;
+  /** The competitions inside this event; each carries its own format & fee. */
+  categories: EventCategory[];
   teams_count?: number;
 }
 
@@ -383,6 +398,8 @@ export type PaymentStatus = "unpaid" | "paid";
 export interface Team {
   id: string;
   event_id: string;
+  /** The competition category this team is entered in. */
+  category_id: string;
   name: string;
   logo_url: string | null;
   contact_name: string | null;
@@ -401,6 +418,7 @@ export interface Team {
   players?: Player[];
   documents?: TeamDocument[];
   event?: SportEvent;
+  category?: EventCategory;
 }
 
 export interface RegisterTeamResult {
@@ -424,9 +442,6 @@ export interface PublicEvent {
   sport_type: SportType;
   /** The sport itself, embedded so the UI needn't look it up. */
   sport: SportDef | null;
-  tournament_format: TournamentFormat;
-  /** The engine the format runs on — branch on this, not the format key. */
-  engine: FormatEngine | null;
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
@@ -437,9 +452,8 @@ export interface PublicEvent {
   location_address: string | null;
   description: string | null;
   banner_url: string | null;
-  max_teams: number | null;
-  registration_fee: number;
-  bracket_config: BracketConfig | null;
+  /** The competitions inside this event; each carries its own format & fee. */
+  categories: EventCategory[];
   tickets_on_sale: boolean;
   organization: { name: string | null; slug: string | null; logo_url: string | null };
   sponsors?: EventSponsor[];
@@ -469,15 +483,17 @@ export interface PublicEventListItem {
   slug: string;
   sport_type: SportType;
   sport: SportDef | null;
-  tournament_format: TournamentFormat;
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
   location_name: string | null;
   banner_url: string | null;
-  registration_fee: number;
+  /** How many competitions run inside this event. */
+  categories_count?: number;
+  /** Cheapest / dearest category fee, for the "mulai Rp …" card label. */
+  registration_fee_min?: number;
+  registration_fee_max?: number;
   registration_is_open: boolean;
-  max_teams: number | null;
   approved_teams_count: number;
   tickets_on_sale: boolean;
   organization: { name: string | null; slug: string | null; logo_url: string | null };

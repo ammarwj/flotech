@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { RosterEditor, type PlayerRow } from "@/components/team/roster-editor";
 
@@ -174,6 +175,7 @@ export default function ManageTeamPage() {
           {team.name}
         </h1>
         <TeamStatusBadge status={team.status} />
+        {team.category && <Badge variant="neutral">{team.category.name}</Badge>}
       </div>
       <p className="mb-6 text-sm text-muted-foreground">{team.event?.name}</p>
 

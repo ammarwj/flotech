@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
-use App\Support\HybridConfig;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +21,6 @@ class UpdateEventRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:255'],
             'sport_type' => ['sometimes', Rule::in(Catalog::sportSlugs())],
-            'tournament_format' => ['sometimes', Rule::in(Catalog::keys('tournament_format'))],
             'status' => ['sometimes', Rule::in(['draft', 'open', 'registration_closed', 'ongoing', 'finished', 'cancelled'])],
             'start_date' => ['sometimes', 'date'],
             'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
@@ -32,9 +30,9 @@ class UpdateEventRequest extends FormRequest
             'location_address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
-            'max_teams' => ['nullable', 'integer', 'min:2'],
-            'registration_fee' => ['nullable', 'numeric', 'min:0'],
-            ...HybridConfig::validationRules(),
+            // Categories are only touched when the client sends them; the
+            // controller full-replaces the list when present.
+            ...EventCategoryRules::make('sometimes'),
         ];
     }
 }

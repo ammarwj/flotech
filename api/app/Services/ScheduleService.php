@@ -2,30 +2,34 @@
 
 namespace App\Services;
 
-use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Support\HybridConfig;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
- * Generates fixtures for an event: round-robin (league and hybrid group stage),
+ * Generates fixtures for a category: round-robin (league and hybrid group stage),
  * single/double elimination brackets, and the knockout stage of a hybrid event.
+ *
+ * Everything is scoped to one {@see EventCategory} — a single event may run
+ * several categories (U17, Woman, …), each with its own format, so their
+ * fixtures never share a table.
  */
 class ScheduleService
 {
     /**
-     * (Re)generate a round-robin schedule for the event's approved teams.
+     * (Re)generate a round-robin schedule for the category's approved teams.
      * Existing matches are cleared first. A double-leg (home & away) config
      * plays every pairing twice, with the venue reversed in the second leg.
      *
      * @return int number of matches created
      */
-    public function generateRoundRobin(Event $event): int
+    public function generateRoundRobin(EventCategory $category): int
     {
-        $config = HybridConfig::fromEvent($event);
+        $config = HybridConfig::fromCategory($category);
 
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
             ->pluck('id')
@@ -35,9 +39,9 @@ class ScheduleService
             return 0;
         }
 
-        $start = $event->start_date ? Carbon::parse($event->start_date) : Carbon::now()->startOfDay();
+        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
 
-        $event->matches()->delete();
+        $category->matches()->delete();
 
         $created = 0;
         $rounds = $this->roundRobinRounds($teams);
@@ -46,7 +50,8 @@ class ScheduleService
             $order = 0;
             foreach ($pairs as [$home, $away, $leg]) {
                 GameMatch::create([
-                    'event_id' => $event->id,
+                    'event_id' => $category->event_id,
+                    'category_id' => $category->id,
                     'round' => $roundIndex + 1,
                     'leg' => $leg,
                     'order' => $order++,
@@ -63,17 +68,17 @@ class ScheduleService
     }
 
     /**
-     * (Re)generate the group stage of a hybrid event: a round-robin inside every
+     * (Re)generate the group stage of a hybrid category: a round-robin inside every
      * group, with round N of each group played on the same matchday. Teams must
      * already be drawn into groups.
      *
      * @return int number of matches created
      */
-    public function generateGroupStage(Event $event): int
+    public function generateGroupStage(EventCategory $category): int
     {
-        $config = HybridConfig::fromEvent($event);
+        $config = HybridConfig::fromCategory($category);
 
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->whereNotNull('group_name')
             ->orderBy('name')
@@ -83,9 +88,9 @@ class ScheduleService
             return 0;
         }
 
-        $start = $event->start_date ? Carbon::parse($event->start_date) : Carbon::now()->startOfDay();
+        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
 
-        $event->matches()->delete();
+        $category->matches()->delete();
 
         $created = 0;
         /** @var array<int, int> $orders next slot number per matchday */
@@ -105,7 +110,8 @@ class ScheduleService
                     $orders[$round] ??= 0;
 
                     GameMatch::create([
-                        'event_id' => $event->id,
+                        'event_id' => $category->event_id,
+                        'category_id' => $category->id,
                         'stage' => 'group',
                         'group_name' => $groupName,
                         'round' => $round,
@@ -125,7 +131,7 @@ class ScheduleService
     }
 
     /**
-     * (Re)generate the knockout stage of a hybrid event from the teams that
+     * (Re)generate the knockout stage of a hybrid category from the teams that
      * qualified out of the groups (seeded best-first). The bracket is sized from
      * the config (or the next power of two above the field); unfilled slots
      * become BYEs and their opponent walks over into the next round.
@@ -135,9 +141,9 @@ class ScheduleService
      * @param  array<int, string>  $qualifiers  team ids, best seed first
      * @return int matches created
      */
-    public function generateHybridKnockout(Event $event, array $qualifiers): int
+    public function generateHybridKnockout(EventCategory $category, array $qualifiers): int
     {
-        $config = HybridConfig::fromEvent($event);
+        $config = HybridConfig::fromCategory($category);
         $size = $config->bracketSize();
 
         $qualifiers = array_slice(array_values($qualifiers), 0, $size);
@@ -145,12 +151,12 @@ class ScheduleService
             return 0;
         }
 
-        $event->matches()->where('stage', 'knockout')->delete();
+        $category->matches()->where('stage', 'knockout')->delete();
 
         $totalRounds = (int) log($size, 2);
-        $start = $this->knockoutStart($event);
+        $start = $this->knockoutStart($category);
 
-        $groupOf = $event->teams()->pluck('group_name', 'id')->all();
+        $groupOf = $category->teams()->pluck('group_name', 'id')->all();
         $pairs = $this->firstRoundPairs($size, $qualifiers, fn (string $id) => $groupOf[$id] ?? null);
 
         $round1 = [];
@@ -160,7 +166,8 @@ class ScheduleService
             $bye = $home !== null && $away === null;
 
             $round1[] = GameMatch::create([
-                'event_id' => $event->id,
+                'event_id' => $category->event_id,
+                'category_id' => $category->id,
                 'stage' => 'knockout',
                 'round' => 1,
                 'order' => $o,
@@ -175,7 +182,8 @@ class ScheduleService
         for ($r = 2; $r <= $totalRounds; $r++) {
             for ($o = 0; $o < intdiv($size, 2 ** $r); $o++) {
                 GameMatch::create([
-                    'event_id' => $event->id,
+                    'event_id' => $category->event_id,
+                    'category_id' => $category->id,
                     'stage' => 'knockout',
                     'round' => $r,
                     'order' => $o,
@@ -191,7 +199,7 @@ class ScheduleService
             }
         }
 
-        return $event->matches()->where('stage', 'knockout')->count();
+        return $category->matches()->where('stage', 'knockout')->count();
     }
 
     /**
@@ -268,15 +276,15 @@ class ScheduleService
      * The knockout stage starts the day after the last group fixture (or on the
      * event start date when there are none yet).
      */
-    protected function knockoutStart(Event $event): Carbon
+    protected function knockoutStart(EventCategory $category): Carbon
     {
-        $lastGroup = $event->matches()->where('stage', 'group')->max('scheduled_at');
+        $lastGroup = $category->matches()->where('stage', 'group')->max('scheduled_at');
 
         if ($lastGroup) {
             return Carbon::parse($lastGroup)->startOfDay()->addDay();
         }
 
-        return $event->start_date ? Carbon::parse($event->start_date) : Carbon::now()->startOfDay();
+        return $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
     }
 
     /**
@@ -381,9 +389,9 @@ class ScheduleService
      *
      * @return int total matches created (bracketSize - 1)
      */
-    public function generateKnockout(Event $event): int
+    public function generateKnockout(EventCategory $category): int
     {
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
             ->pluck('id')
@@ -401,9 +409,9 @@ class ScheduleService
         $totalRounds = (int) log($bracketSize, 2);
         $byes = $bracketSize - $n;
 
-        $start = $event->start_date ? Carbon::parse($event->start_date) : Carbon::now()->startOfDay();
+        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
 
-        $event->matches()->delete();
+        $category->matches()->delete();
 
         // Round 1: first `byes` matches get a bye (home only, walkover).
         $matchesR1 = intdiv($bracketSize, 2);
@@ -415,7 +423,8 @@ class ScheduleService
             $away = $o < $byes ? null : array_shift($queue);
 
             $round1[] = GameMatch::create([
-                'event_id' => $event->id,
+                'event_id' => $category->event_id,
+                'category_id' => $category->id,
                 'round' => 1,
                 'order' => $o,
                 'home_team_id' => $home,
@@ -431,7 +440,8 @@ class ScheduleService
             $cnt = intdiv($bracketSize, 2 ** $r);
             for ($o = 0; $o < $cnt; $o++) {
                 GameMatch::create([
-                    'event_id' => $event->id,
+                    'event_id' => $category->event_id,
+                    'category_id' => $category->id,
                     'round' => $r,
                     'order' => $o,
                     'scheduled_at' => $start->copy()->addDays($r - 1),
@@ -454,7 +464,7 @@ class ScheduleService
      * Propagate the winner of a finished knockout match into the next round's
      * slot. No-op for the final, draws, or undecided matches.
      *
-     * Scoped to the match's own stage, so a hybrid event's knockout rounds never
+     * Scoped to the match's own stage, so a hybrid category's knockout rounds never
      * collide with the group rounds sharing the same round numbers.
      */
     public function advanceWinner(GameMatch $match): void
@@ -488,13 +498,13 @@ class ScheduleService
     }
 
     /**
-     * Query over the other matches of the same event *and* stage.
+     * Query over the other matches of the same category *and* stage.
      *
      * @return HasMany<GameMatch>
      */
     protected function sameStage(GameMatch $match)
     {
-        $query = $match->event->matches();
+        $query = $match->category->matches();
 
         return $match->stage === null
             ? $query->whereNull('stage')
@@ -536,9 +546,9 @@ class ScheduleService
      *
      * @return int total matches, or -1 when the team count is unsupported
      */
-    public function generateDoubleElim(Event $event): int
+    public function generateDoubleElim(EventCategory $category): int
     {
-        $teams = $event->teams()
+        $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
             ->pluck('id')
@@ -551,17 +561,17 @@ class ScheduleService
 
         $bracketSize = $n;
         $k = (int) log($bracketSize, 2);
-        $start = $event->start_date ? Carbon::parse($event->start_date) : Carbon::now()->startOfDay();
+        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
 
-        $event->matches()->delete();
+        $category->matches()->delete();
 
         // Winners bracket round 1 (seeded), then empty later rounds.
         for ($o = 0; $o < intdiv($bracketSize, 2); $o++) {
-            $this->makeMatch($event, 'winners', 1, $o, $start, $teams[2 * $o], $teams[2 * $o + 1]);
+            $this->makeMatch($category, 'winners', 1, $o, $start, $teams[2 * $o], $teams[2 * $o + 1]);
         }
         for ($r = 2; $r <= $k; $r++) {
             for ($o = 0; $o < intdiv($bracketSize, 2 ** $r); $o++) {
-                $this->makeMatch($event, 'winners', $r, $o, $start->copy()->addDays($r - 1));
+                $this->makeMatch($category, 'winners', $r, $o, $start->copy()->addDays($r - 1));
             }
         }
 
@@ -569,15 +579,15 @@ class ScheduleService
         $lbRounds = 2 * ($k - 1);
         for ($l = 1; $l <= $lbRounds; $l++) {
             for ($o = 0; $o < $this->lbMatchCount($bracketSize, $l); $o++) {
-                $this->makeMatch($event, 'losers', $l, $o, $start->copy()->addDays($k + $l));
+                $this->makeMatch($category, 'losers', $l, $o, $start->copy()->addDays($k + $l));
             }
         }
 
         // Grand final + potential reset.
-        $this->makeMatch($event, 'grand_final', 1, 0, $start->copy()->addDays($k + $lbRounds + 1));
-        $this->makeMatch($event, 'grand_final', 2, 0, $start->copy()->addDays($k + $lbRounds + 2));
+        $this->makeMatch($category, 'grand_final', 1, 0, $start->copy()->addDays($k + $lbRounds + 1));
+        $this->makeMatch($category, 'grand_final', 2, 0, $start->copy()->addDays($k + $lbRounds + 2));
 
-        return $event->matches()->count();
+        return $category->matches()->count();
     }
 
     /**
@@ -592,11 +602,11 @@ class ScheduleService
         }
         $loser = $winner === $match->home_team_id ? $match->away_team_id : $match->home_team_id;
 
-        $k = (int) $match->event->matches()->where('bracket', 'winners')->max('round');
+        $k = (int) $match->category->matches()->where('bracket', 'winners')->max('round');
 
         if ($match->bracket === 'grand_final') {
             if ($match->round === 1) {
-                $reset = $this->findMatch($match->event, 'grand_final', 2, 0);
+                $reset = $this->findMatch($match->category, 'grand_final', 2, 0);
                 if ($reset && $winner === $match->away_team_id) {
                     // Losers-bracket side forced a decider.
                     $reset->update([
@@ -616,16 +626,16 @@ class ScheduleService
 
         if ($match->bracket === 'winners') {
             if ($match->round < $k) {
-                $this->place($match->event, 'winners', $match->round + 1, intdiv($match->order, 2), $match->order % 2 === 0, $winner);
+                $this->place($match->category, 'winners', $match->round + 1, intdiv($match->order, 2), $match->order % 2 === 0, $winner);
             } else {
-                $this->place($match->event, 'grand_final', 1, 0, true, $winner);
+                $this->place($match->category, 'grand_final', 1, 0, true, $winner);
             }
 
             if ($loser !== null) {
                 if ($match->round === 1) {
-                    $this->place($match->event, 'losers', 1, intdiv($match->order, 2), $match->order % 2 === 0, $loser);
+                    $this->place($match->category, 'losers', 1, intdiv($match->order, 2), $match->order % 2 === 0, $loser);
                 } else {
-                    $this->place($match->event, 'losers', 2 * ($match->round - 1), $match->order, false, $loser);
+                    $this->place($match->category, 'losers', 2 * ($match->round - 1), $match->order, false, $loser);
                 }
             }
 
@@ -635,13 +645,13 @@ class ScheduleService
         if ($match->bracket === 'losers') {
             $lbRounds = 2 * ($k - 1);
             if ($match->round >= $lbRounds) {
-                $this->place($match->event, 'grand_final', 1, 0, false, $winner);
+                $this->place($match->category, 'grand_final', 1, 0, false, $winner);
             } elseif ($match->round % 2 === 1) {
                 // minor → next (major) round, home slot
-                $this->place($match->event, 'losers', $match->round + 1, $match->order, true, $winner);
+                $this->place($match->category, 'losers', $match->round + 1, $match->order, true, $winner);
             } else {
                 // major → next (minor) round, paired
-                $this->place($match->event, 'losers', $match->round + 1, intdiv($match->order, 2), $match->order % 2 === 0, $winner);
+                $this->place($match->category, 'losers', $match->round + 1, intdiv($match->order, 2), $match->order % 2 === 0, $winner);
             }
         }
     }
@@ -654,10 +664,11 @@ class ScheduleService
         return intdiv($base, 2 ** ($group - 1));
     }
 
-    protected function makeMatch(Event $event, string $bracket, int $round, int $order, Carbon $when, ?string $home = null, ?string $away = null): GameMatch
+    protected function makeMatch(EventCategory $category, string $bracket, int $round, int $order, Carbon $when, ?string $home = null, ?string $away = null): GameMatch
     {
         return GameMatch::create([
-            'event_id' => $event->id,
+            'event_id' => $category->event_id,
+            'category_id' => $category->id,
             'bracket' => $bracket,
             'round' => $round,
             'order' => $order,
@@ -668,18 +679,18 @@ class ScheduleService
         ]);
     }
 
-    protected function findMatch(Event $event, string $bracket, int $round, int $order): ?GameMatch
+    protected function findMatch(EventCategory $category, string $bracket, int $round, int $order): ?GameMatch
     {
-        return $event->matches()
+        return $category->matches()
             ->where('bracket', $bracket)
             ->where('round', $round)
             ->where('order', $order)
             ->first();
     }
 
-    protected function place(Event $event, string $bracket, int $round, int $order, bool $home, string $teamId): void
+    protected function place(EventCategory $category, string $bracket, int $round, int $order, bool $home, string $teamId): void
     {
-        $target = $this->findMatch($event, $bracket, $round, $order);
+        $target = $this->findMatch($category, $bracket, $round, $order);
         if (! $target) {
             return;
         }
@@ -698,16 +709,16 @@ class ScheduleService
      * match_minutes, break_minutes, venues, max_per_day, spread (bool).
      *
      * @param  array<string, mixed>  $opts
-     * @param  string|null  $stage  limit to one stage of a hybrid event
+     * @param  string|null  $stage  limit to one stage of a hybrid category
      */
-    public function applySchedule(Event $event, array $opts = [], ?string $stage = null): void
+    public function applySchedule(EventCategory $category, array $opts = [], ?string $stage = null): void
     {
-        $query = $event->matches();
+        $query = $category->matches();
         if ($stage !== null) {
             $query->where('stage', $stage);
         }
 
-        // Group stage before knockout; single-stage events have a null stage.
+        // Group stage before knockout; single-stage categories have a null stage.
         $matches = $query
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
@@ -721,9 +732,9 @@ class ScheduleService
         $startDate = ! empty($opts['start_date'])
             ? Carbon::parse($opts['start_date'])->startOfDay()
             : ($stage === 'knockout'
-                ? $this->knockoutStart($event)->startOfDay()
-                : ($event->start_date ? Carbon::parse($event->start_date)->startOfDay() : Carbon::now()->startOfDay()));
-        $endDate = $event->end_date ? Carbon::parse($event->end_date)->startOfDay() : null;
+                ? $this->knockoutStart($category)->startOfDay()
+                : ($category->start_date ? Carbon::parse($category->start_date)->startOfDay() : Carbon::now()->startOfDay()));
+        $endDate = $category->end_date ? Carbon::parse($category->end_date)->startOfDay() : null;
 
         $startMin = $this->minutesOfDay($opts['daily_start'] ?? '15:00');
         $endMin = $this->minutesOfDay($opts['daily_end'] ?? '21:00');
@@ -750,7 +761,7 @@ class ScheduleService
 
         // One round per day (a round never repeats a team), overflowing to extra
         // days only when a round has more matches than a day can hold. A hybrid
-        // event's group and knockout rounds share round numbers, so the stage is
+        // category's group and knockout rounds share round numbers, so the stage is
         // part of the key.
         $rounds = $matches->groupBy(fn (GameMatch $m) => ($m->stage ?? '').'#'.$m->round);
         $daysNeeded = 0;

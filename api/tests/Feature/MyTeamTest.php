@@ -21,12 +21,18 @@ class MyTeamTest extends TestCase
         $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => '10']);
         $org = Organization::create(['name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id]);
 
-        return $org->events()->create([
-            'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'football', 'tournament_format' => 'league',
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'football',
             'status' => 'open', 'start_date' => '2026-08-01', 'end_date' => '2026-08-10',
             'registration_open' => Carbon::now()->subDay(), 'registration_close' => Carbon::now()->addDays(10),
-            'registration_fee' => $fee,
         ]);
+
+        $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => $fee, 'sort_order' => 0,
+        ]);
+
+        return $event->load('categories');
     }
 
     private function register(Event $event, User $user): string
@@ -35,6 +41,7 @@ class MyTeamTest extends TestCase
 
         return $this->actingAs($user, 'api')
             ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'category_id' => $event->categories->first()->id,
                 'name' => 'Garuda FC',
                 'contact_name' => 'Andi',
                 'contact_phone' => '08123456789',

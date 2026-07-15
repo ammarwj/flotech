@@ -26,9 +26,11 @@ import {
   type RegisterTeamPayload,
 } from "@/lib/api/events";
 import { compressToWebp } from "@/lib/image";
+import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
@@ -56,6 +58,18 @@ function RegisterTeamPage() {
     (paidStatus === "settlement" || paidStatus === "capture" || searchParams.get("status") === "success");
 
   const [team, setTeam] = useState({ name: "", logo_url: "", contact_name: "", contact_phone: "" });
+  // Which competition category the team is entering. Preselect from ?category=slug
+  // (used by the "Daftar" buttons on the event page), else the first category.
+  const categories = event?.categories ?? [];
+  const querySlug = searchParams.get("category");
+  const [categoryId, setCategoryId] = useState<string>("");
+  const resolvedCategoryId =
+    categoryId ||
+    categories.find((c) => c.slug === querySlug)?.id ||
+    categories[0]?.id ||
+    "";
+  const selectedCategory = categories.find((c) => c.id === resolvedCategoryId) ?? null;
+
   const [players, setPlayers] = useState<PlayerRow[]>([emptyPlayer()]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -101,6 +115,7 @@ function RegisterTeamPage() {
   const mutation = useMutation({
     mutationFn: () => {
       const payload: RegisterTeamPayload = {
+        category_id: resolvedCategoryId,
         ...team,
         players: players
           .filter((p) => p.full_name.trim())
@@ -300,6 +315,36 @@ function RegisterTeamPage() {
                 <span className="text-xs text-muted-foreground">PNG / JPG, maks 2 MB.</span>
               </div>
             </div>
+            {categories.length > 0 && (
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="category" className="font-semibold">
+                  Kategori<span className="text-[var(--danger)]"> *</span>
+                </Label>
+                {categories.length > 1 ? (
+                  <Select
+                    id="category"
+                    value={resolvedCategoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <p className="text-sm text-foreground">{selectedCategory?.name}</p>
+                )}
+                {selectedCategory && (
+                  <p className="text-xs text-muted-foreground">
+                    Biaya registrasi:{" "}
+                    {selectedCategory.registration_fee > 0
+                      ? rupiah(selectedCategory.registration_fee)
+                      : "Gratis"}
+                  </p>
+                )}
+              </div>
+            )}
             <Field label="Nama tim" required value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
@@ -370,7 +415,7 @@ function RegisterTeamPage() {
           <Button
             type="submit"
             size="lg"
-            disabled={!sessionReady || mutation.isPending || uploading || logoUploading}
+            disabled={!sessionReady || !resolvedCategoryId || mutation.isPending || uploading || logoUploading}
           >
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
           </Button>

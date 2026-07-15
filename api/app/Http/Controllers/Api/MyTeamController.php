@@ -25,7 +25,7 @@ class MyTeamController extends Controller
     public function index(): JsonResponse
     {
         $teams = $this->scope()
-            ->with(['event', 'players', 'documents'])
+            ->with(['event', 'category', 'players', 'documents'])
             ->latest('registered_at')
             ->get();
 
@@ -37,7 +37,7 @@ class MyTeamController extends Controller
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'players', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with(['event', 'category', 'players', 'documents'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -91,7 +91,7 @@ class MyTeamController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'players', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
             'Data tim diperbarui',
         );
     }
@@ -117,7 +117,7 @@ class MyTeamController extends Controller
      */
     public function pay(string $team): JsonResponse
     {
-        $model = $this->scope()->with('event')->findOrFail($team);
+        $model = $this->scope()->with(['event', 'category'])->findOrFail($team);
 
         if ($model->payment_status === 'paid') {
             return ApiResponse::error('Pendaftaran ini sudah dibayar.', null, 422);
@@ -126,7 +126,7 @@ class MyTeamController extends Controller
         $payment = $this->registration->startPayment($model, $model->event->organization);
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event', 'players', 'documents'])),
+            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],

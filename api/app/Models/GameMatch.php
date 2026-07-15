@@ -19,6 +19,7 @@ class GameMatch extends Model
 
     protected $fillable = [
         'event_id',
+        'category_id',
         'stage',
         'round',
         'group_name',
@@ -57,6 +58,11 @@ class GameMatch extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(EventCategory::class, 'category_id');
     }
 
     public function homeTeam(): BelongsTo

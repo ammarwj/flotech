@@ -7,12 +7,12 @@ import {
   CalendarDays,
   FileText,
   ImagePlus,
+  Layers,
   Loader2,
   MapPin,
-  Network,
+  Plus,
+  Trash2,
   Trophy,
-  Users,
-  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -29,11 +29,22 @@ import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
-import { hybridConfig, qualifierCount } from "@/lib/hybrid";
 import { compressToWebp } from "@/lib/image";
-import { uploadImage, type EventInput } from "@/lib/api/events";
+import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SportEvent } from "@/types/api";
+
+/** A category being edited; `_key` is a stable local id for React lists only. */
+type CategoryDraft = EventCategoryInput & { _key: string };
+
+const newCategory = (tournament_format = ""): CategoryDraft => ({
+  _key: crypto.randomUUID(),
+  name: "",
+  tournament_format,
+  registration_fee: 0,
+  max_teams: undefined,
+  bracket_config: undefined,
+});
 
 /** Inline validation message shown under a field. */
 function FieldError({ message }: { message?: string }) {
@@ -84,21 +95,18 @@ function SummaryRow({ icon: Icon, children }: { icon: typeof Trophy; children: R
  */
 function EventSummary({
   v,
+  categories,
   banner,
   days,
-  isHybrid,
 }: {
   v: EventInput;
+  categories: CategoryDraft[];
   banner: string | null;
   days: number | null;
-  /** The chosen format runs on the hybrid engine. */
-  isHybrid: boolean;
 }) {
   const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
   const sport = v.sport_type ?? "";
   const sportColor = colorOf(sport);
-  const isFree = !v.registration_fee || v.registration_fee <= 0;
-  const hybrid = isHybrid ? hybridConfig(v.bracket_config) : null;
 
   return (
     <Card className="overflow-hidden">
@@ -120,15 +128,12 @@ function EventSummary({
         </div>
       </div>
       <CardContent className="space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-          <span
-            className="rounded-full px-2 py-0.5"
-            style={{ color: sportColor, background: `${sportColor}1f` }}
-          >
-            {sportLabel(sport)}
-          </span>
-          <span className="text-muted-foreground">{formatLabel(v.tournament_format)}</span>
-        </div>
+        <span
+          className="inline-block rounded-full px-2 py-0.5 text-xs font-semibold"
+          style={{ color: sportColor, background: `${sportColor}1f` }}
+        >
+          {sportLabel(sport)}
+        </span>
         <h3 className="text-lg font-bold leading-snug" style={{ fontFamily: "var(--font-display)" }}>
           {v.name?.trim() || "Nama event"}
         </h3>
@@ -140,21 +145,149 @@ function EventSummary({
           <SummaryRow icon={MapPin}>
             {v.location_name?.trim() || <span className="text-muted-foreground">Lokasi belum diatur</span>}
           </SummaryRow>
-          <SummaryRow icon={Wallet}>
-            {isFree ? "Gratis untuk peserta" : rupiah(v.registration_fee ?? 0)}
-          </SummaryRow>
-          <SummaryRow icon={Users}>
-            {v.max_teams ? `Maks. ${v.max_teams} tim` : "Tim tak terbatas"}
-          </SummaryRow>
-          {hybrid && (
-            <SummaryRow icon={Network}>
-              {hybrid.groups} grup × {hybrid.teams_per_group} tim ·{" "}
-              {qualifierCount(hybrid)} lolos ke knockout
-            </SummaryRow>
-          )}
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {categories.length} kategori
+          </p>
+          {categories.map((c) => {
+            const free = !c.registration_fee || c.registration_fee <= 0;
+            return (
+              <div key={c._key} className="rounded-md bg-[var(--bg-soft)] px-2.5 py-2 text-sm">
+                <p className="font-semibold">{c.name?.trim() || "Kategori tanpa nama"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatLabel(c.tournament_format)} · {free ? "Gratis" : rupiah(c.registration_fee ?? 0)}
+                  {c.max_teams ? ` · maks. ${c.max_teams} tim` : ""}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** A single category's inline editor: name, format, optional hybrid config, cap & fee. */
+function CategoryEditor({
+  cat,
+  index,
+  canRemove,
+  isHybrid,
+  nameError,
+  onChange,
+  onRemove,
+}: {
+  cat: CategoryDraft;
+  index: number;
+  canRemove: boolean;
+  isHybrid: boolean;
+  nameError?: string;
+  onChange: (patch: Partial<CategoryDraft>) => void;
+  onRemove: () => void;
+}) {
+  const { tournament_formats } = useCatalog();
+  const free = !cat.registration_fee || cat.registration_fee <= 0;
+
+  return (
+    <div className="grid gap-4 rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-muted-foreground">Kategori {index + 1}</p>
+        {canRemove && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1.5 px-2 text-muted-foreground hover:text-destructive"
+            onClick={onRemove}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Hapus
+          </Button>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <Label className="font-semibold">Nama kategori</Label>
+          <Input
+            value={cat.name ?? ""}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="U-17 / Woman / Senior"
+            aria-invalid={!!nameError}
+            className={nameError ? "border-destructive focus-visible:ring-destructive" : ""}
+          />
+          {nameError ? (
+            <FieldError message={nameError} />
+          ) : (
+            <FieldHint>Mis. kelompok umur atau divisi.</FieldHint>
+          )}
+        </div>
+        <div className="grid gap-2">
+          <Label className="font-semibold">Format</Label>
+          <Select
+            value={cat.tournament_format}
+            onChange={(e) => onChange({ tournament_format: e.target.value })}
+          >
+            {tournament_formats.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {isHybrid && (
+        <HybridConfigCard
+          value={cat.bracket_config}
+          onChange={(config) => onChange({ bracket_config: config })}
+        />
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-2">
+          <Label className="font-semibold">Maks. tim</Label>
+          <Input
+            type="number"
+            min={2}
+            value={cat.max_teams ?? ""}
+            onChange={(e) => onChange({ max_teams: e.target.value ? Number(e.target.value) : undefined })}
+            placeholder="Tidak dibatasi"
+          />
+          <FieldHint>Kosongkan untuk peserta tak terbatas.</FieldHint>
+        </div>
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="font-semibold">Biaya registrasi</Label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-[var(--brand-600)]"
+                checked={free}
+                onChange={(e) => onChange({ registration_fee: e.target.checked ? 0 : 1 })}
+              />
+              Gratis
+            </label>
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              Rp
+            </span>
+            <Input
+              type="number"
+              min={0}
+              value={free ? "" : cat.registration_fee}
+              disabled={free}
+              placeholder="0"
+              onChange={(e) => onChange({ registration_fee: e.target.value ? Number(e.target.value) : 0 })}
+              className="pl-9"
+            />
+          </div>
+          <FieldHint>{free ? "Gratis untuk peserta." : rupiah(cat.registration_fee ?? 0)}</FieldHint>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -179,20 +312,31 @@ export function EventForm({
 
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
-    // Empty until the catalog arrives; the first sport/format then becomes the
-    // default, so the form works no matter what the admin has configured.
+    // Empty until the catalog arrives; the first sport then becomes the default,
+    // so the form works no matter what the admin has configured.
     sport_type: initial?.sport_type ?? "",
-    tournament_format: initial?.tournament_format ?? "",
     start_date: initial?.start_date ?? "",
     end_date: initial?.end_date ?? "",
     location_name: initial?.location_name ?? "",
     location_address: initial?.location_address ?? "",
     description: initial?.description ?? "",
     banner_url: initial?.banner_url ?? "",
-    max_teams: initial?.max_teams ?? undefined,
-    registration_fee: initial?.registration_fee ?? 0,
-    bracket_config: initial?.bracket_config ?? undefined,
   });
+
+  // Each event runs one-or-more categories; a new event starts with one blank.
+  const [categories, setCategories] = useState<CategoryDraft[]>(() =>
+    initial?.categories?.length
+      ? initial.categories.map((c) => ({
+          _key: c.id,
+          id: c.id,
+          name: c.name,
+          tournament_format: c.tournament_format,
+          registration_fee: c.registration_fee,
+          max_teams: c.max_teams ?? undefined,
+          bracket_config: c.bracket_config ?? undefined,
+        }))
+      : [newCategory()]
+  );
 
   // Local object URL for instant preview; in dev R2 returns a non-renderable
   // `mock://` URL, so we keep the local blob to show the image either way.
@@ -204,6 +348,8 @@ export function EventForm({
   // that field (`undefined`/"" = no error). Lets us validate instantly and
   // clear a stale server error the moment the user edits the field.
   const [clientErrors, setClientErrors] = useState<Record<string, string | undefined>>({});
+  // Per-category name errors, keyed by the category's local `_key`.
+  const [catErrors, setCatErrors] = useState<Record<string, string | undefined>>({});
 
   const errorFor = (k: keyof EventInput): string | undefined =>
     (k in clientErrors ? clientErrors[k as string] : fieldErrors?.[k as string]) || undefined;
@@ -212,6 +358,20 @@ export function EventForm({
     setV((s) => ({ ...s, [k]: val }));
     setClientErrors((e) => ({ ...e, [k as string]: undefined }));
   };
+
+  // The engine a format runs on — the hybrid card belongs to any format on the
+  // hybrid engine, whatever the admin named it.
+  const engineOf = (key?: string) =>
+    tournament_formats.find((f) => f.key === key)?.meta?.engine as string | undefined;
+
+  const updateCat = (key: string, patch: Partial<CategoryDraft>) => {
+    setCategories((cs) => cs.map((c) => (c._key === key ? { ...c, ...patch } : c)));
+    if ("name" in patch) setCatErrors((e) => ({ ...e, [key]: undefined }));
+  };
+  const addCat = () =>
+    setCategories((cs) => [...cs, newCategory(tournament_formats[0]?.key ?? "")]);
+  const removeCat = (key: string) =>
+    setCategories((cs) => (cs.length > 1 ? cs.filter((c) => c._key !== key) : cs));
 
   // Red border + ring for an invalid field.
   const invalidCls = (k: keyof EventInput) =>
@@ -251,6 +411,10 @@ export function EventForm({
     if (bannerInputRef.current) bannerInputRef.current.value = "";
   };
 
+  // Fall back to the first catalog entry until the user picks one.
+  const sportValue = v.sport_type || sports[0]?.slug || "";
+  const fallbackFormat = tournament_formats[0]?.key ?? "";
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -263,29 +427,35 @@ export function EventForm({
           ? "Tanggal selesai harus sama dengan atau setelah tanggal mulai."
           : undefined,
     };
-
     setClientErrors(next);
 
-    if (next.name || next.start_date || next.end_date) {
-      // Surface the first error to the user.
+    const catNext: Record<string, string | undefined> = {};
+    for (const c of categories) {
+      if (!c.name?.trim()) catNext[c._key] = "Nama kategori wajib diisi.";
+    }
+    setCatErrors(catNext);
+
+    if (next.name || next.start_date || next.end_date || Object.keys(catNext).length > 0) {
+      if (Object.keys(catNext).length > 0 && !next.name && !next.start_date && !next.end_date) {
+        toast.error("Lengkapi nama setiap kategori.");
+      }
       document.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
       return;
     }
 
-    onSubmit({ ...v, sport_type: sportValue, tournament_format: formatValue });
+    const cleanedCategories: EventCategoryInput[] = categories.map((c) => ({
+      id: c.id,
+      name: c.name!.trim(),
+      tournament_format: c.tournament_format || fallbackFormat,
+      registration_fee: c.registration_fee ?? 0,
+      max_teams: c.max_teams ?? null,
+      bracket_config: c.bracket_config ?? null,
+    }));
+
+    onSubmit({ ...v, sport_type: sportValue, categories: cleanedCategories });
   };
 
-  // Fall back to the first catalog entry until the user picks one.
-  const sportValue = v.sport_type || sports[0]?.slug || "";
-  const formatValue = v.tournament_format || tournament_formats[0]?.key || "";
-
-  // A format is a preset over an engine — the hybrid card belongs to any format
-  // that runs on the hybrid engine, whatever the admin named it.
-  const isHybrid =
-    tournament_formats.find((f) => f.key === formatValue)?.meta?.engine === "hybrid";
-
   const days = durationDays(v.start_date, v.end_date);
-  const isFree = !v.registration_fee || v.registration_fee <= 0;
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-6">
@@ -317,39 +487,22 @@ export function EventForm({
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="sport" className="font-semibold">
-                Cabang olahraga
-              </Label>
-              <Select
-                id="sport"
-                value={sportValue}
-                onChange={(e) => set("sport_type", e.target.value as EventInput["sport_type"])}
-              >
-                {sports.map((s) => (
-                  <option key={s.slug} value={s.slug}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="format" className="font-semibold">
-                Format
-              </Label>
-              <Select
-                id="format"
-                value={formatValue}
-                onChange={(e) => set("tournament_format", e.target.value as EventInput["tournament_format"])}
-              >
-                {tournament_formats.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="grid gap-2 sm:max-w-[50%] sm:pr-2">
+            <Label htmlFor="sport" className="font-semibold">
+              Cabang olahraga
+            </Label>
+            <Select
+              id="sport"
+              value={sportValue}
+              onChange={(e) => set("sport_type", e.target.value as EventInput["sport_type"])}
+            >
+              {sports.map((s) => (
+                <option key={s.slug} value={s.slug}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <FieldHint>Semua kategori memakai cabang olahraga yang sama.</FieldHint>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -388,18 +541,37 @@ export function EventForm({
         </CardContent>
       </Card>
 
-      {isHybrid && (
-        <HybridConfigCard
-          value={v.bracket_config}
-          onChange={(config) => set("bracket_config", config)}
+      <Card>
+        <SectionHeader
+          icon={Layers}
+          title="Kategori Kompetisi"
+          description="Tiap kategori (mis. U-17, Woman) punya format & biaya registrasi sendiri."
         />
-      )}
+        <CardContent className="grid gap-4">
+          {categories.map((c, i) => (
+            <CategoryEditor
+              key={c._key}
+              cat={c}
+              index={i}
+              canRemove={categories.length > 1}
+              isHybrid={engineOf(c.tournament_format) === "hybrid"}
+              nameError={catErrors[c._key]}
+              onChange={(patch) => updateCat(c._key, patch)}
+              onRemove={() => removeCat(c._key)}
+            />
+          ))}
+          <Button type="button" variant="outline" className="gap-2" onClick={addCat}>
+            <Plus className="h-4 w-4" />
+            Tambah kategori
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <SectionHeader
           icon={MapPin}
-          title="Lokasi & Pendaftaran"
-          description="Tempat berlangsung dan ketentuan pendaftaran tim."
+          title="Lokasi"
+          description="Tempat turnamen berlangsung."
         />
         <CardContent className="grid gap-4">
           <div className="grid gap-2">
@@ -415,68 +587,6 @@ export function EventForm({
               className={invalidCls("location_name")}
             />
             <FieldError message={errorFor("location_name")} />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="max" className="font-semibold">
-                Maks. tim
-              </Label>
-              <Input
-                id="max"
-                type="number"
-                min={2}
-                value={v.max_teams ?? ""}
-                onChange={(e) => set("max_teams", e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="Tidak dibatasi"
-                aria-invalid={!!errorFor("max_teams")}
-                className={invalidCls("max_teams")}
-              />
-              {errorFor("max_teams") ? (
-                <FieldError message={errorFor("max_teams")} />
-              ) : (
-                <FieldHint>Kosongkan untuk peserta tak terbatas.</FieldHint>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="fee" className="font-semibold">
-                  Biaya registrasi
-                </Label>
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 accent-[var(--brand-600)]"
-                    checked={isFree}
-                    onChange={(e) => set("registration_fee", e.target.checked ? 0 : 1)}
-                  />
-                  Gratis
-                </label>
-              </div>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  Rp
-                </span>
-                <Input
-                  id="fee"
-                  type="number"
-                  min={0}
-                  value={isFree ? "" : v.registration_fee}
-                  disabled={isFree}
-                  placeholder="0"
-                  onChange={(e) => set("registration_fee", e.target.value ? Number(e.target.value) : 0)}
-                  aria-invalid={!!errorFor("registration_fee")}
-                  className={`pl-9 ${invalidCls("registration_fee")}`}
-                />
-              </div>
-              {errorFor("registration_fee") ? (
-                <FieldError message={errorFor("registration_fee")} />
-              ) : (
-                <FieldHint>
-                  {isFree ? "Gratis untuk peserta." : rupiah(v.registration_fee ?? 0)}
-                </FieldHint>
-              )}
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -578,7 +688,7 @@ export function EventForm({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Pratinjau
           </p>
-          <EventSummary v={v} banner={bannerShown} days={days} isHybrid={isHybrid} />
+          <EventSummary v={v} categories={categories} banner={bannerShown} days={days} />
         </aside>
       </div>
 

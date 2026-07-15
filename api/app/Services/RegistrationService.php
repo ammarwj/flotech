@@ -43,7 +43,7 @@ class RegistrationService
      */
     public function startPayment(Team $team, Organization $org): array
     {
-        $amount = (float) $team->event->registration_fee;
+        $amount = (float) $team->category->registration_fee;
 
         if ($amount <= 0) {
             $this->markPaid($team);

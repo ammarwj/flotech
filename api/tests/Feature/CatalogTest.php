@@ -80,9 +80,11 @@ class CatalogTest extends TestCase
             ->postJson("/api/v1/organizations/{$org->id}/events", [
                 'name' => 'Jogja Basket Open',
                 'sport_type' => 'basketball',
-                'tournament_format' => 'league',
                 'start_date' => '2026-09-01',
                 'end_date' => '2026-09-10',
+                'categories' => [
+                    ['name' => 'Umum', 'tournament_format' => 'league'],
+                ],
             ])
             ->assertCreated()
             ->assertJsonPath('data.sport.name', 'Basket')
@@ -110,23 +112,26 @@ class CatalogTest extends TestCase
             ->postJson("/api/v1/organizations/{$org->id}/events", [
                 'name' => 'Liga Jogja',
                 'sport_type' => 'futsal',
-                'tournament_format' => 'league_double',
                 'start_date' => '2026-09-01',
                 'end_date' => '2026-10-30',
+                'categories' => [
+                    ['name' => 'Umum', 'tournament_format' => 'league_double'],
+                ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.engine', 'league')            // runs on the league engine
-            ->assertJsonPath('data.bracket_config.legs', 2)      // preset defaults applied
+            ->assertJsonPath('data.categories.0.engine', 'league')       // runs on the league engine
+            ->assertJsonPath('data.categories.0.bracket_config.legs', 2) // preset defaults applied
             ->json('data');
 
         // Four teams, double round robin → 12 fixtures, purely from the preset.
         $eventModel = Event::findOrFail($event['id']);
+        $category = $eventModel->categories()->firstOrFail();
         foreach (range(1, 4) as $i) {
-            $eventModel->teams()->create(['name' => "Team {$i}", 'status' => 'approved']);
+            $eventModel->teams()->create(['category_id' => $category->id, 'name' => "Team {$i}", 'status' => 'approved']);
         }
 
         $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$eventModel->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$eventModel->id}/categories/{$category->id}/schedule")
             ->assertCreated()
             ->assertJsonCount(12, 'data');
     }
@@ -185,11 +190,15 @@ class CatalogTest extends TestCase
 
         $event = $org->events()->create([
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
-            'tournament_format' => 'league', 'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+            'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+        ]);
+        $category = $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league', 'registration_fee' => 0, 'sort_order' => 0,
         ]);
 
         $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/registrations";
         $team = [
+            'category_id' => $category->id,
             'name' => 'Garuda FC',
             'contact_name' => 'Budi',
             'contact_phone' => '08123456789',
@@ -216,11 +225,15 @@ class CatalogTest extends TestCase
 
         $event = $org->events()->create([
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
-            'tournament_format' => 'league', 'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+            'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
+        ]);
+        $category = $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league', 'registration_fee' => 0, 'sort_order' => 0,
         ]);
 
         $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", [
+                'category_id' => $category->id,
                 'name' => 'Garuda FC',
                 'contact_name' => 'Budi',
                 'contact_phone' => '08123456789',

@@ -9,6 +9,7 @@ use App\Http\Resources\PublicEventListResource;
 use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Notifications\NewTeamRegistered;
@@ -40,7 +41,7 @@ class PublicEventController extends Controller
     {
         $page = Event::query()
             ->where('status', '!=', 'draft')
-            ->with('organization')
+            ->with(['organization', 'categories'])
             ->withCount(['teams as approved_teams_count' => fn ($q) => $q->where('status', 'approved')])
             ->withExists(['ticketCategories as tickets_on_sale' => fn ($q) => $q->where('is_active', true)])
             ->when($request->query('org'), fn ($q, $slug) => $q->whereHas(
@@ -82,6 +83,7 @@ class PublicEventController extends Controller
 
         $event->load([
             'organization',
+            'categories',
             'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
             // jersey_number is free text, so sort numerically when it looks like a
             // number and push the rest (blank / "GK-2") to the bottom.
@@ -97,13 +99,13 @@ class PublicEventController extends Controller
     }
 
     /**
-     * Public schedule (fixtures) for an event.
+     * Public schedule (fixtures) for one competition category.
      */
-    public function matches(string $orgSlug, string $eventSlug): JsonResponse
+    public function matches(string $orgSlug, string $eventSlug, string $categorySlug): JsonResponse
     {
-        $event = $this->resolve($orgSlug, $eventSlug);
+        $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
-        $matches = $event->matches()
+        $matches = $category->matches()
             ->with(['homeTeam', 'awayTeam'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
@@ -114,23 +116,23 @@ class PublicEventController extends Controller
     }
 
     /**
-     * Public league standings for an event.
+     * Public league standings for one competition category.
      */
-    public function standings(StandingService $standings, string $orgSlug, string $eventSlug): JsonResponse
+    public function standings(StandingService $standings, string $orgSlug, string $eventSlug, string $categorySlug): JsonResponse
     {
-        $event = $this->resolve($orgSlug, $eventSlug);
+        $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
-        return ApiResponse::success($standings->compute($event));
+        return ApiResponse::success($standings->compute($category));
     }
 
     /**
-     * Public player leaderboard for an event.
+     * Public player leaderboard for one competition category.
      */
-    public function leaderboard(PlayerStatService $stats, string $orgSlug, string $eventSlug): JsonResponse
+    public function leaderboard(PlayerStatService $stats, string $orgSlug, string $eventSlug, string $categorySlug): JsonResponse
     {
-        $event = $this->resolve($orgSlug, $eventSlug);
+        $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
-        return ApiResponse::success($stats->leaderboard($event));
+        return ApiResponse::success($stats->leaderboard($category));
     }
 
     /**
@@ -146,19 +148,27 @@ class PublicEventController extends Controller
         }
 
         $org = $event->organization;
-        $activeTeams = $event->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        $data = $request->validated();
 
-        if ($event->max_teams !== null && $activeTeams >= $event->max_teams) {
-            return ApiResponse::error('Kuota tim untuk event ini sudah penuh.', null, 422);
+        $category = $event->categories()->find($data['category_id']);
+        if (! $category) {
+            return ApiResponse::error('Kategori tidak ditemukan.', ['category_id' => ['Kategori tidak valid.']], 422);
+        }
+        $category->setRelation('event', $event);
+
+        // Each category runs its own team cap; the plan limit is event-wide.
+        $categoryTeams = $category->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        if ($category->max_teams !== null && $categoryTeams >= $category->max_teams) {
+            return ApiResponse::error('Kuota tim untuk kategori ini sudah penuh.', null, 422);
         }
 
-        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $activeTeams)) {
+        $eventTeams = $event->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $eventTeams)) {
             return ApiResponse::error('Kuota tim paket penyelenggara sudah tercapai.', null, 422);
         }
 
-        $data = $request->validated();
-
         $team = $event->teams()->create([
+            'category_id' => $category->id,
             'name' => $data['name'],
             'logo_url' => $data['logo_url'] ?? null,
             'contact_name' => $data['contact_name'],
@@ -167,6 +177,8 @@ class PublicEventController extends Controller
             'registered_at' => Carbon::now(),
             'manager_user_id' => auth('api')->user()?->id,
         ]);
+        // startPayment charges this category's fee — attach it so it doesn't re-query.
+        $team->setRelation('category', $category);
 
         // Through the roster service, not straight into the tables: it is what
         // validates a player's position against the sport's master list, and a
@@ -185,7 +197,7 @@ class PublicEventController extends Controller
             : 'Pendaftaran dibuat. Selesaikan pembayaran biaya pendaftaran untuk mengirim ke penyelenggara.';
 
         return ApiResponse::success([
-            'team' => new TeamResource($team->fresh()->load(['players', 'documents', 'event'])),
+            'team' => new TeamResource($team->fresh()->load(['players', 'documents', 'event', 'category'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -225,5 +237,18 @@ class PublicEventController extends Controller
             ->where('slug', $eventSlug)
             ->where('status', '!=', 'draft')
             ->firstOrFail();
+    }
+
+    /**
+     * Resolve a competition category by slug within an event (404 otherwise).
+     * The parent event is attached so the category's sport/date accessors don't
+     * re-query.
+     */
+    protected function category(Event $event, string $categorySlug): EventCategory
+    {
+        $category = $event->categories()->where('slug', $categorySlug)->firstOrFail();
+        $category->setRelation('event', $event);
+
+        return $category;
     }
 }

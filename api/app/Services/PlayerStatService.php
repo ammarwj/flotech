@@ -2,20 +2,20 @@
 
 namespace App\Services;
 
-use App\Models\Event;
+use App\Models\EventCategory;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Aggregates player statistics for an event into a sport-aware leaderboard.
+ * Aggregates player statistics for a category into a sport-aware leaderboard.
  */
 class PlayerStatService
 {
     /**
      * @return array{columns: array<int, array{key: string, label: string, short: string}>, primary: string, rows: array<int, array<string, mixed>>}
      */
-    public function leaderboard(Event $event, int $limit = 100): array
+    public function leaderboard(EventCategory $category, int $limit = 100): array
     {
-        $columns = Catalog::statColumns($event->sport_type);
+        $columns = Catalog::statColumns($category->sport_type);
         $keys = array_column($columns, 'key');
         $primary = $keys[0] ?? '';
 
@@ -23,7 +23,7 @@ class PlayerStatService
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
             ->join('players', 'players.id', '=', 'player_match_stats.player_id')
             ->join('teams', 'teams.id', '=', 'player_match_stats.team_id')
-            ->where('matches.event_id', $event->id)
+            ->where('matches.category_id', $category->id)
             ->whereIn('player_match_stats.stat_key', $keys)
             ->groupBy('players.id', 'players.full_name', 'teams.id', 'teams.name', 'player_match_stats.stat_key')
             ->select(

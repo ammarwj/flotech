@@ -38,6 +38,8 @@ export default function PublicEventPage() {
   const base = `/${params.orgSlug}/${params.eventSlug}`;
   const [tab, setTab] = useState<TabKey>("info");
   const [openTeam, setOpenTeam] = useState<PublicTeam | null>(null);
+  // Which category's schedule/standings/bracket the competition tabs show.
+  const [categoryId, setCategoryId] = useState<string>("");
 
   const query = useQuery({
     queryKey: ["public-event", params.orgSlug, params.eventSlug],
@@ -68,15 +70,24 @@ export default function PublicEventPage() {
   const ev = query.data;
   const sportColor = colorOf(ev.sport_type);
 
-  // Top-level tabs: Info + the format-appropriate match panels. A hybrid event
-  // has both a group table and a bracket.
+  const categories = ev.categories ?? [];
+  const selectedCategory =
+    categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  const selectedEngine = selectedCategory?.engine ?? null;
+  // Preselect the viewed category on the registration form.
+  const registerHref = selectedCategory
+    ? `${base}/register?category=${selectedCategory.slug}`
+    : `${base}/register`;
+
+  // Top-level tabs: Info + the match panels appropriate to the selected
+  // category's format. A hybrid category has both a group table and a bracket.
   const tabs: [TabKey, string, typeof Info][] = [
     ["info", "Info", Info],
     ["teams", "Tim Peserta", Users],
     ["schedule", "Jadwal", CalendarClock],
-    ...(isKnockoutFormat(ev.engine)
+    ...(isKnockoutFormat(selectedEngine)
       ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
-      : isHybridFormat(ev.engine)
+      : isHybridFormat(selectedEngine)
         ? ([
             ["standings", "Klasemen", ListOrdered],
             ["bracket", "Bracket", Network],
@@ -107,7 +118,9 @@ export default function PublicEventPage() {
                 <span className="ehero-badge sport" style={{ color: sportColor }}>
                   {sportLabel(ev.sport_type)}
                 </span>
-                <span className="ehero-badge">{formatLabel(ev.tournament_format)}</span>
+                <span className="ehero-badge">
+                  {categories.length} kategori
+                </span>
                 <span className="ehero-badge">
                   <span
                     style={{
@@ -143,7 +156,7 @@ export default function PublicEventPage() {
 
               <div className="ehero-cta">
                 {ev.registration_is_open ? (
-                  <Link href={`${base}/register`} className="btn btn-primary btn-lg">
+                  <Link href={registerHref} className="btn btn-primary btn-lg">
                     Daftar Tim Sekarang
                   </Link>
                 ) : (
@@ -258,22 +271,31 @@ export default function PublicEventPage() {
                   </div>
                   <div className="price-tier">
                     <div>
-                      <b>Kuota</b>
-                      <small>Tim</small>
+                      <b>Tim</b>
+                      <small>Disetujui</small>
                     </div>
                     <span className="amt" style={{ fontSize: 14 }}>
-                      {ev.approved_teams_count} / {ev.max_teams ?? "∞"}
+                      {ev.approved_teams_count} tim
                     </span>
                   </div>
-                  <div className="price-tier">
-                    <div>
-                      <b>Biaya</b>
-                      <small>Per tim</small>
+                </div>
+
+                <div className="card scard">
+                  <h3>
+                    <Trophy />
+                    Kategori & Biaya
+                  </h3>
+                  {categories.map((c) => (
+                    <div className="price-tier" key={c.id}>
+                      <div>
+                        <b>{c.name}</b>
+                        <small>{formatLabel(c.tournament_format)}</small>
+                      </div>
+                      <span className="amt" style={{ fontSize: 14 }}>
+                        {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                      </span>
                     </div>
-                    <span className="amt">
-                      {ev.registration_fee > 0 ? rupiah(ev.registration_fee) : "Gratis"}
-                    </span>
-                  </div>
+                  ))}
                 </div>
 
                 <div className="card scard">
@@ -286,7 +308,7 @@ export default function PublicEventPage() {
                       <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
                         Pendaftaran tim sedang dibuka. Amankan slot timmu sekarang.
                       </p>
-                      <Link href={`${base}/register`} className="btn btn-primary btn-block">
+                      <Link href={registerHref} className="btn btn-primary btn-block">
                         <Trophy className="h-4 w-4" />
                         Daftar Tim
                       </Link>
@@ -380,14 +402,40 @@ export default function PublicEventPage() {
       )}
 
       {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
-      {tab !== "info" && tab !== "teams" && (
-        <PublicResults
-          orgSlug={params.orgSlug}
-          eventSlug={params.eventSlug}
-          engine={ev.engine}
-          bracketConfig={ev.bracket_config}
-          activeTab={tab}
-        />
+      {tab !== "info" && tab !== "teams" && selectedCategory && (
+        <>
+          {categories.length > 1 && (
+            <section className="section" style={{ paddingBottom: 0 }}>
+              <div className="container">
+                <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium">
+                  {categories.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setCategoryId(c.id)}
+                      className={cn(
+                        "rounded-full px-3.5 py-1.5 transition-colors",
+                        c.id === selectedCategory.id
+                          ? "bg-[var(--tint)] text-[var(--brand-700)]"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+          <PublicResults
+            key={selectedCategory.id}
+            orgSlug={params.orgSlug}
+            eventSlug={params.eventSlug}
+            categorySlug={selectedCategory.slug}
+            engine={selectedCategory.engine}
+            bracketConfig={selectedCategory.bracket_config}
+            activeTab={tab}
+          />
+        </>
       )}
 
       {/* ===== REGISTER CTA ===== */}
@@ -398,7 +446,7 @@ export default function PublicEventPage() {
               <h2>Siap bertanding di {ev.name}?</h2>
               <p>Daftarkan timmu, lengkapi data pemain, dan ikuti keseruan turnamennya.</p>
               <div className="ehero-cta">
-                <Link href={`${base}/register`} className="btn btn-primary btn-lg">
+                <Link href={registerHref} className="btn btn-primary btn-lg">
                   Daftar Tim Sekarang
                 </Link>
               </div>

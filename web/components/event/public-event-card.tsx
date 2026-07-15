@@ -21,13 +21,22 @@ function dateRange(start: string | null, end: string | null) {
 }
 
 export function PublicEventCard({ event }: { event: PublicEventListItem }) {
-  const { sportLabel, sportColor, formatLabel } = useCatalog();
+  const { sportLabel, sportColor } = useCatalog();
 
   const color = sportColor(event.sport_type);
   const when = dateRange(event.start_date, event.end_date);
-  const teams = event.max_teams
-    ? `${event.approved_teams_count}/${event.max_teams} tim`
-    : `${event.approved_teams_count} tim`;
+  const teams = `${event.approved_teams_count} tim`;
+  const categoriesCount = event.categories_count ?? 1;
+
+  // Fee spans the event's categories: "Gratis", one price, or a min–max range.
+  const feeMin = event.registration_fee_min ?? 0;
+  const feeMax = event.registration_fee_max ?? 0;
+  const feeLabel =
+    feeMax <= 0
+      ? "Gratis"
+      : feeMin === feeMax
+        ? rupiah(feeMin)
+        : `${feeMin > 0 ? rupiah(feeMin) : "Gratis"} – ${rupiah(feeMax)}`;
 
   return (
     <Card className="group overflow-hidden transition-colors hover:border-[var(--border-strong)]">
@@ -69,7 +78,9 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
               {sportLabel(event.sport_type)}
             </span>
             <span className="text-muted-foreground">·</span>
-            <span className="text-muted-foreground">{formatLabel(event.tournament_format)}</span>
+            <span className="text-muted-foreground">
+              {categoriesCount} kategori
+            </span>
           </div>
 
           <h3
@@ -103,9 +114,7 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
           </div>
 
           <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-sm">
-            <span className="font-semibold">
-              {event.registration_fee > 0 ? rupiah(event.registration_fee) : "Gratis"}
-            </span>
+            <span className="font-semibold">{feeLabel}</span>
             {event.registration_is_open && (
               <span className="text-xs font-medium text-[var(--brand-600)]">
                 Pendaftaran dibuka

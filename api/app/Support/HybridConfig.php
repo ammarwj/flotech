@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\Event;
+use App\Models\EventCategory;
 use App\Services\Catalog;
 
 /**
@@ -38,9 +38,9 @@ class HybridConfig
         public readonly array $tiebreakers = ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'drawing_lots'],
     ) {}
 
-    public static function fromEvent(Event $event): self
+    public static function fromCategory(EventCategory $category): self
     {
-        return self::fromArray(is_array($event->bracket_config) ? $event->bracket_config : []);
+        return self::fromArray(is_array($category->bracket_config) ? $category->bracket_config : []);
     }
 
     /**

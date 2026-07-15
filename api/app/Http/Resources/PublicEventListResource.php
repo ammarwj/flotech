@@ -27,15 +27,17 @@ class PublicEventListResource extends JsonResource
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,
             'sport' => $this->sportDefinition(),
-            'tournament_format' => $this->tournament_format,
             'status' => $this->status,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
             'location_name' => $this->location_name,
             'banner_url' => $this->banner_url,
-            'registration_fee' => (float) $this->registration_fee,
+            // One event may run several categories at different prices; the card
+            // shows the count and the fee range.
+            'categories_count' => $this->whenLoaded('categories', fn () => $this->categories->count()),
+            'registration_fee_min' => $this->whenLoaded('categories', fn () => (float) $this->categories->min('registration_fee')),
+            'registration_fee_max' => $this->whenLoaded('categories', fn () => (float) $this->categories->max('registration_fee')),
             'registration_is_open' => $this->isRegistrationOpen(),
-            'max_teams' => $this->max_teams,
             'approved_teams_count' => (int) $this->approved_teams_count,
             'tickets_on_sale' => (bool) $this->tickets_on_sale,
             'organization' => [

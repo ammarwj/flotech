@@ -18,6 +18,7 @@ class MatchResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'category_id' => $this->category_id,
             'stage' => $this->stage,
             'round' => $this->round,
             'group_name' => $this->group_name,

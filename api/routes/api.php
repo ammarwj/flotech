@@ -100,9 +100,10 @@ Route::prefix('v1')->group(function () {
         // it, and that link is the only way they reach it in "Tim Saya" later.
         // A team registered anonymously would belong to nobody.
         Route::post('register', [PublicEventController::class, 'register'])->middleware('auth:api');
-        Route::get('matches', [PublicEventController::class, 'matches']);
-        Route::get('standings', [PublicEventController::class, 'standings']);
-        Route::get('leaderboard', [PublicEventController::class, 'leaderboard']);
+        // Schedule, standings & leaderboard are per competition category.
+        Route::get('categories/{categorySlug}/matches', [PublicEventController::class, 'matches']);
+        Route::get('categories/{categorySlug}/standings', [PublicEventController::class, 'standings']);
+        Route::get('categories/{categorySlug}/leaderboard', [PublicEventController::class, 'leaderboard']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
         Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
     });
@@ -163,14 +164,15 @@ Route::prefix('v1')->group(function () {
             Route::patch('sponsors/{sponsor}', [EventMediaController::class, 'updateSponsor']);
             Route::delete('sponsors/{sponsor}', [EventMediaController::class, 'destroySponsor']);
 
-            // Schedule, results & standings (Sprint 2B).
-            Route::post('events/{event}/schedule', [MatchController::class, 'generate']);
-            Route::post('events/{event}/draw', [MatchController::class, 'drawGroups']);
-            Route::get('events/{event}/knockout-plan', [MatchController::class, 'knockoutPlan']);
-            Route::post('events/{event}/knockout', [MatchController::class, 'generateKnockout']);
-            Route::get('events/{event}/matches', [MatchController::class, 'index']);
-            Route::get('events/{event}/standings', [MatchController::class, 'standings']);
-            Route::get('events/{event}/leaderboard', [MatchController::class, 'leaderboard']);
+            // Schedule, results & standings — scoped to a competition category,
+            // since each category (U17, Woman, …) runs its own format.
+            Route::post('events/{event}/categories/{category}/schedule', [MatchController::class, 'generate']);
+            Route::post('events/{event}/categories/{category}/draw', [MatchController::class, 'drawGroups']);
+            Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
+            Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
+            Route::get('events/{event}/categories/{category}/matches', [MatchController::class, 'index']);
+            Route::get('events/{event}/categories/{category}/standings', [MatchController::class, 'standings']);
+            Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);

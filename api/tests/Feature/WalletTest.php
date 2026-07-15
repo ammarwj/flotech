@@ -34,11 +34,17 @@ class WalletTest extends TestCase
 
     private function event(Organization $org): Event
     {
-        return $org->events()->create([
-            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
-            'tournament_format' => 'league', 'status' => 'open',
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',
         ]);
+
+        $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => 0, 'sort_order' => 0,
+        ]);
+
+        return $event->load('categories');
     }
 
     private function buy(Organization $org, Event $event, string $categoryId, int $qty = 2): string
@@ -111,11 +117,12 @@ class WalletTest extends TestCase
         $user = User::factory()->create();
         $org = $this->orgWithPlan($user, ['registration_fee_percent' => '10']);
         $event = $this->event($org);
-        $event->update(['registration_fee' => 150000]);
+        $event->categories->first()->update(['registration_fee' => 150000]);
 
         // Registration needs an account behind the team (see RegistrationTest).
         $this->actingAs(User::factory()->create(), 'api')
             ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'category_id' => $event->categories->first()->id,
                 'name' => 'Garuda FC',
                 'contact_name' => 'Budi',
                 'contact_phone' => '08123456789',

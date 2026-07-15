@@ -34,7 +34,7 @@ class RegistrationController extends Controller
     {
         $teams = $this->event($request, $event)
             ->teams()
-            ->with(['players', 'documents'])
+            ->with(['players', 'documents', 'category'])
             ->latest('registered_at')
             ->get();
 
@@ -59,15 +59,18 @@ class RegistrationController extends Controller
         /** @var Organization $org */
         $org = $request->attributes->get('organization');
 
-        // The same two ceilings the public form respects — an offline entry may
-        // not be a way around the event's quota or the plan's team limit.
-        $activeTeams = $eventModel->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        $data = $request->validated();
+        $category = $eventModel->categories()->findOrFail($data['category_id']);
 
-        if ($eventModel->max_teams !== null && $activeTeams >= $eventModel->max_teams) {
-            return ApiResponse::error('Kuota tim untuk event ini sudah penuh.', null, 422);
+        // The same two ceilings the public form respects — an offline entry may
+        // not be a way around the category's quota or the plan's team limit.
+        $categoryTeams = $category->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        if ($category->max_teams !== null && $categoryTeams >= $category->max_teams) {
+            return ApiResponse::error('Kuota tim untuk kategori ini sudah penuh.', null, 422);
         }
 
-        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $activeTeams)) {
+        $eventTeams = $eventModel->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $eventTeams)) {
             return ApiResponse::error(
                 'Batas jumlah tim per event untuk paketmu sudah tercapai.',
                 ['feature' => 'max_teams_per_event'],
@@ -75,10 +78,9 @@ class RegistrationController extends Controller
             );
         }
 
-        $data = $request->validated();
-
-        $team = DB::transaction(function () use ($eventModel, $data) {
+        $team = DB::transaction(function () use ($eventModel, $category, $data) {
             $team = $eventModel->teams()->create([
+                'category_id' => $category->id,
                 'name' => $data['name'],
                 'logo_url' => $data['logo_url'] ?? null,
                 'contact_name' => $data['contact_name'],
@@ -100,7 +102,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($team->fresh()->load(['players', 'documents'])),
+            new TeamResource($team->fresh()->load(['players', 'documents', 'category'])),
             'Tim berhasil ditambahkan.',
             201,
         );
@@ -119,9 +121,11 @@ class RegistrationController extends Controller
         $teamModel = $eventModel->teams()->findOrFail($team);
 
         $data = $request->validated();
+        $category = $eventModel->categories()->findOrFail($data['category_id']);
 
-        DB::transaction(function () use ($teamModel, $data) {
+        DB::transaction(function () use ($teamModel, $category, $data) {
             $teamModel->update([
+                'category_id' => $category->id,
                 'name' => $data['name'],
                 'logo_url' => $data['logo_url'] ?? null,
                 'contact_name' => $data['contact_name'],
@@ -136,7 +140,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($teamModel->fresh()->load(['players', 'documents'])),
+            new TeamResource($teamModel->fresh()->load(['players', 'documents', 'category'])),
             'Data tim diperbarui',
         );
     }

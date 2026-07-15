@@ -69,6 +69,7 @@ export default function SchedulePage() {
   const { orgId } = useActiveOrg();
   const { id: eventId } = useParams<{ id: string }>();
   const [tab, setTab] = useState<Tab | null>(null);
+  const [categoryId, setCategoryId] = useState<string>("");
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
@@ -79,38 +80,45 @@ export default function SchedulePage() {
     queryFn: () => getEvent(orgId!, eventId),
     enabled: !!orgId,
   });
+
+  // Each category runs its own format, so the schedule/standings/bracket below
+  // are all scoped to the one the organizer has selected.
+  const categories = eventQuery.data?.categories ?? [];
+  const selectedCategory = categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  const catId = selectedCategory?.id;
+
   const matchesQuery = useQuery({
-    queryKey: ["matches", orgId, eventId],
-    queryFn: () => getMatches(orgId!, eventId),
-    enabled: !!orgId,
+    queryKey: ["matches", orgId, eventId, catId],
+    queryFn: () => getMatches(orgId!, eventId, catId!),
+    enabled: !!orgId && !!catId,
   });
   const standingsQuery = useQuery({
-    queryKey: ["standings", orgId, eventId],
-    queryFn: () => getStandings(orgId!, eventId),
-    enabled: !!orgId,
+    queryKey: ["standings", orgId, eventId, catId],
+    queryFn: () => getStandings(orgId!, eventId, catId!),
+    enabled: !!orgId && !!catId,
   });
   const leaderboardQuery = useQuery({
-    queryKey: ["leaderboard", orgId, eventId],
-    queryFn: () => getLeaderboard(orgId!, eventId),
-    enabled: !!orgId,
+    queryKey: ["leaderboard", orgId, eventId, catId],
+    queryFn: () => getLeaderboard(orgId!, eventId, catId!),
+    enabled: !!orgId && !!catId,
   });
 
   const qc = useQueryClient();
   const catalog = useCatalog();
   const matches = matchesQuery.data ?? [];
   // Branch on the engine, not the format key: a preset can be named anything.
-  const engine = eventQuery.data?.engine ?? null;
+  const engine = selectedCategory?.engine ?? null;
   const isKnockout = isKnockoutFormat(engine);
   const isDouble = isDoubleElim(engine);
   const isHybrid = isHybridFormat(engine);
   const setBased = isSetBased(eventQuery.data);
   const config = hybridConfig(
-    eventQuery.data?.bracket_config,
+    selectedCategory?.bracket_config,
     catalog.tiebreakers.map((t) => t.key),
   );
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
-  // Only a hybrid event needs the roster, for the group draw.
+  // Registrations are event-wide; the group draw only needs this category's teams.
   const teamsQuery = useQuery({
     queryKey: ["registrations", orgId, eventId],
     queryFn: () => getRegistrations(orgId!, eventId),
@@ -118,11 +126,13 @@ export default function SchedulePage() {
   });
   // The planned bracket, shown until the real one is built.
   const planQuery = useQuery({
-    queryKey: ["knockout-plan", orgId, eventId],
-    queryFn: () => getKnockoutPlan(orgId!, eventId),
-    enabled: !!orgId && isHybrid,
+    queryKey: ["knockout-plan", orgId, eventId, catId],
+    queryFn: () => getKnockoutPlan(orgId!, eventId, catId!),
+    enabled: !!orgId && isHybrid && !!catId,
   });
-  const approvedTeams = (teamsQuery.data ?? []).filter((t) => t.status === "approved");
+  const approvedTeams = (teamsQuery.data ?? []).filter(
+    (t) => t.status === "approved" && t.category_id === catId,
+  );
 
   const refreshEventData = () => {
     qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
@@ -132,7 +142,7 @@ export default function SchedulePage() {
   };
 
   const generate = useMutation({
-    mutationFn: (options: ScheduleOptions) => generateSchedule(orgId!, eventId, options),
+    mutationFn: (options: ScheduleOptions) => generateSchedule(orgId!, eventId, catId!, options),
     onSuccess: (created) => {
       toast.success(`Jadwal dibuat: ${created.length} pertandingan`);
       setScheduleDialog(false);
@@ -142,7 +152,7 @@ export default function SchedulePage() {
   });
 
   const draw = useMutation({
-    mutationFn: (payload: DrawPayload) => drawGroups(orgId!, eventId, payload),
+    mutationFn: (payload: DrawPayload) => drawGroups(orgId!, eventId, catId!, payload),
     onSuccess: () => {
       toast.success("Undian grup selesai", {
         description: "Buat ulang jadwal agar cocok dengan isi grup yang baru.",
@@ -154,7 +164,7 @@ export default function SchedulePage() {
   });
 
   const knockout = useMutation({
-    mutationFn: () => generateKnockout(orgId!, eventId),
+    mutationFn: () => generateKnockout(orgId!, eventId, catId!),
     onSuccess: () => {
       toast.success("Bracket knockout dibuat dari tim yang lolos fase grup");
       setTab("bracket");
@@ -227,6 +237,35 @@ export default function SchedulePage() {
           </div>
         }
       />
+
+      {categories.length > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Kategori
+          </span>
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setCategoryId(c.id);
+                  // Tabs and matchday differ per category — recompute defaults.
+                  setTab(null);
+                  setDateKey(null);
+                }}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 transition-colors",
+                  c.id === selectedCategory?.id
+                    ? "bg-[var(--tint)] text-[var(--brand-700)]"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
         {tabs.map(([key, label, Icon]) => (

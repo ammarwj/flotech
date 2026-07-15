@@ -17,6 +17,11 @@ class RegisterTeamRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Which competition inside the event this team is entering. Ownership
+            // (does it belong to this event?) is checked in the controller, where
+            // the event is already resolved from the route.
+            'category_id' => ['required', 'uuid'],
+
             'name' => ['required', 'string', 'max:255'],
             'logo_url' => ['nullable', 'string'],
             'contact_name' => ['required', 'string', 'max:255'],

@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
-use App\Support\HybridConfig;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,7 +22,6 @@ class StoreEventRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],
             'sport_type' => ['required', Rule::in(Catalog::sportSlugs())],
-            'tournament_format' => ['required', Rule::in(Catalog::keys('tournament_format'))],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'registration_open' => ['nullable', 'date'],
@@ -32,9 +30,8 @@ class StoreEventRequest extends FormRequest
             'location_address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
-            'max_teams' => ['nullable', 'integer', 'min:2'],
-            'registration_fee' => ['nullable', 'numeric', 'min:0'],
-            ...HybridConfig::validationRules(),
+            // Format, bracket config, fee and team cap live on each category.
+            ...EventCategoryRules::make('required'),
         ];
     }
 }

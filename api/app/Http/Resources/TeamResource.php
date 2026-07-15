@@ -19,6 +19,7 @@ class TeamResource extends JsonResource
         return [
             'id' => $this->id,
             'event_id' => $this->event_id,
+            'category_id' => $this->category_id,
             'name' => $this->name,
             'logo_url' => $this->logo_url,
             'contact_name' => $this->contact_name,
@@ -35,6 +36,7 @@ class TeamResource extends JsonResource
             'paid_at' => $this->paid_at,
             'midtrans_token' => $this->midtrans_token,
             'event' => new EventResource($this->whenLoaded('event')),
+            'category' => new EventCategoryResource($this->whenLoaded('category')),
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [
                 'id' => $p->id,
                 'full_name' => $p->full_name,

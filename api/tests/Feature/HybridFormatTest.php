@@ -37,10 +37,17 @@ class HybridFormatTest extends TestCase
             'name' => 'Hybrid Cup',
             'slug' => 'hybrid-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',
-            'tournament_format' => 'hybrid',
             'status' => 'open',
             'start_date' => '2026-08-01',
             'end_date' => '2026-08-30',
+        ]);
+
+        $category = $event->categories()->create([
+            'name' => 'Umum',
+            'slug' => 'umum',
+            'tournament_format' => 'hybrid',
+            'registration_fee' => 0,
+            'sort_order' => 0,
             'bracket_config' => array_merge([
                 'groups' => 2,
                 'teams_per_group' => 4,
@@ -53,6 +60,7 @@ class HybridFormatTest extends TestCase
 
         foreach (range(1, $teams) as $i) {
             $event->teams()->create([
+                'category_id' => $category->id,
                 'name' => 'Team '.$i,
                 'status' => 'approved',
                 'contact_name' => 'PIC',
@@ -60,7 +68,7 @@ class HybridFormatTest extends TestCase
             ]);
         }
 
-        return $event;
+        return $event->load('categories');
     }
 
     /** Play every group fixture: home team wins, then confirm. */
@@ -84,7 +92,7 @@ class HybridFormatTest extends TestCase
 
         // 2 groups × 4 teams → 6 fixtures per group, 12 total.
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated()
             ->assertJsonCount(12, 'data');
 
@@ -106,7 +114,7 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org, ['home_away' => true]);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated()
             ->assertJsonCount(24, 'data');
 
@@ -126,7 +134,7 @@ class HybridFormatTest extends TestCase
         }
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/draw", [
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/draw", [
                 'method' => 'manual',
                 'assignments' => $assignments,
             ])
@@ -143,13 +151,13 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org, ['points' => ['win' => 2, 'draw' => 1, 'lose' => 0]]);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         $this->finishGroupStage($event);
 
         $rows = $this->actingAs($user, 'api')
-            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/standings")
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/standings")
             ->assertOk()
             ->json('data');
 
@@ -170,11 +178,11 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout")
             ->assertStatus(422)
             ->assertJsonPath('errors.feature', 'group_stage_incomplete');
     }
@@ -186,12 +194,12 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         // Not a single result yet — the plan still knows who meets whom.
         $plan = $this->actingAs($user, 'api')
-            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout-plan")
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout-plan")
             ->assertOk()
             ->json('data');
 
@@ -216,12 +224,12 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
         $this->finishGroupStage($event);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout")
             ->assertCreated();
 
         // 2 groups × top 2 = 4 qualifiers → semifinals + final.
@@ -253,12 +261,12 @@ class HybridFormatTest extends TestCase
         ], teams: 9);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
         $this->finishGroupStage($event);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout")
             ->assertCreated();
 
         $bye = $event->matches()
@@ -283,11 +291,11 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
         $this->finishGroupStage($event);
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout")
             ->assertCreated();
 
         /** @var GameMatch $semi */
@@ -321,11 +329,11 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
         $this->finishGroupStage($event);
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/knockout")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout")
             ->assertCreated();
 
         /** @var GameMatch $semi */
@@ -371,7 +379,7 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         // Group games never go to penalties, even if a shootout is sent.
@@ -393,7 +401,7 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         /** @var GameMatch $match */
@@ -430,7 +438,7 @@ class HybridFormatTest extends TestCase
         $event = $this->hybridEvent($org);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/schedule")
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
         $match = $event->matches()->where('stage', 'group')->first();

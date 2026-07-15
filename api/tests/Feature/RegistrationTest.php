@@ -21,17 +21,24 @@ class RegistrationTest extends TestCase
         $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => $maxTeamsFeature]);
         $org = Organization::create(['name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id]);
 
-        return $org->events()->create([
-            'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'football', 'tournament_format' => 'league',
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'football',
             'status' => 'open', 'start_date' => '2026-08-01', 'end_date' => '2026-08-10',
             'registration_open' => Carbon::now()->subDay(), 'registration_close' => Carbon::now()->addDays(10),
-            'max_teams' => $maxTeams,
         ]);
+
+        $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => 0, 'max_teams' => $maxTeams, 'sort_order' => 0,
+        ]);
+
+        return $event->load('categories');
     }
 
-    private function teamPayload(array $overrides = []): array
+    private function teamPayload(Event $event, array $overrides = []): array
     {
         return array_merge([
+            'category_id' => $event->categories->first()->id,
             'name' => 'Garuda FC',
             'contact_name' => 'Andi',
             'contact_phone' => '08123456789',
@@ -69,7 +76,7 @@ class RegistrationTest extends TestCase
 
         // A team belongs to the manager who filed it — that link is what puts it
         // in their "Tim Saya". Registering with no account would orphan it.
-        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+        $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
             ->assertStatus(401);
 
         $this->assertDatabaseCount('teams', 0);
@@ -82,7 +89,7 @@ class RegistrationTest extends TestCase
         $manager = User::factory()->create();
 
         $this->actingAs($manager, 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
             ->assertCreated()
             ->assertJsonPath('data.team.status', 'pending')
             ->assertJsonPath('data.team.name', 'Garuda FC')
@@ -100,13 +107,13 @@ class RegistrationTest extends TestCase
     public function test_paid_event_registration_awaits_payment(): void
     {
         $event = $this->openEvent();
-        $event->update(['registration_fee' => 150000]);
+        $event->categories->first()->update(['registration_fee' => 150000]);
         $org = $event->organization;
 
         // No Midtrans credentials in tests → gateway is mocked and the fee
         // settles immediately (dev convenience), so the team is marked paid.
         $this->actingAs(User::factory()->create(), 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
             ->assertCreated()
             ->assertJsonPath('data.team.payment_amount', 150000)
             ->assertJsonPath('data.team.payment_status', 'paid')
@@ -121,11 +128,11 @@ class RegistrationTest extends TestCase
         $manager = User::factory()->create();
 
         $this->actingAs($manager, 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
             ->assertCreated();
 
         $this->actingAs($manager, 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload(['name' => 'Other']))
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event, ['name' => 'Other']))
             ->assertStatus(422);
     }
 
@@ -135,7 +142,7 @@ class RegistrationTest extends TestCase
         $org = $event->organization;
 
         $teamId = $this->actingAs(User::factory()->create(), 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload())
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
             ->json('data.team.id');
 
         $this->actingAs($org->owner, 'api')
@@ -158,6 +165,7 @@ class RegistrationTest extends TestCase
         // completed later from the participant dashboard.
         $this->actingAs(User::factory()->create(), 'api')
             ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'category_id' => $event->categories->first()->id,
                 'name' => 'Tanpa Roster',
                 'contact_name' => 'Andi',
                 'contact_phone' => '08123456789',
@@ -173,7 +181,7 @@ class RegistrationTest extends TestCase
         $org = $event->organization;
 
         $this->actingAs($org->owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload([
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload($event, [
                 'name' => 'Tim Offline',
             ]))
             ->assertCreated()
@@ -193,11 +201,11 @@ class RegistrationTest extends TestCase
         $org = $event->organization;
 
         $this->actingAs($org->owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload())
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload($event))
             ->assertCreated();
 
         $this->actingAs($org->owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload(['name' => 'Other']))
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload($event, ['name' => 'Other']))
             ->assertStatus(422);
     }
 }

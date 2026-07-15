@@ -13,9 +13,13 @@ import type {
 
 // ---- Organizer (tenant-scoped) ----
 
-export async function getMatches(orgId: string, eventId: string): Promise<Match[]> {
+export async function getMatches(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Match[]> {
   const { data } = await apiClient.get<ApiEnvelope<Match[]>>(
-    `/organizations/${orgId}/events/${eventId}/matches`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/matches`
   );
   return data.data;
 }
@@ -40,10 +44,11 @@ export interface ScheduleOptions {
 export async function generateSchedule(
   orgId: string,
   eventId: string,
+  categoryId: string,
   options?: ScheduleOptions
 ): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
-    `/organizations/${orgId}/events/${eventId}/schedule`,
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/schedule`,
     options ?? {}
   );
   return data.data;
@@ -61,27 +66,36 @@ export interface DrawPayload {
 export async function drawGroups(
   orgId: string,
   eventId: string,
+  categoryId: string,
   payload: DrawPayload
 ): Promise<Team[]> {
   const { data } = await apiClient.post<ApiEnvelope<Team[]>>(
-    `/organizations/${orgId}/events/${eventId}/draw`,
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/draw`,
     payload
   );
   return data.data;
 }
 
 /** The planned knockout bracket ("Juara Grup A" v "Runner-up Grup D"). */
-export async function getKnockoutPlan(orgId: string, eventId: string): Promise<KnockoutPlan> {
+export async function getKnockoutPlan(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<KnockoutPlan> {
   const { data } = await apiClient.get<ApiEnvelope<KnockoutPlan>>(
-    `/organizations/${orgId}/events/${eventId}/knockout-plan`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout-plan`
   );
   return data.data;
 }
 
-/** Build the knockout bracket of a hybrid event from the group qualifiers. */
-export async function generateKnockout(orgId: string, eventId: string): Promise<Match[]> {
+/** Build the knockout bracket of a hybrid category from the group qualifiers. */
+export async function generateKnockout(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
-    `/organizations/${orgId}/events/${eventId}/knockout`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout`
   );
   return data.data;
 }
@@ -98,9 +112,13 @@ export async function confirmResult(
   return data.data;
 }
 
-export async function getStandings(orgId: string, eventId: string): Promise<Standing[]> {
+export async function getStandings(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Standing[]> {
   const { data } = await apiClient.get<ApiEnvelope<Standing[]>>(
-    `/organizations/${orgId}/events/${eventId}/standings`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/standings`
   );
   return data.data;
 }
@@ -130,9 +148,13 @@ export async function updateMatchResult(
   return data.data;
 }
 
-export async function getLeaderboard(orgId: string, eventId: string): Promise<Leaderboard> {
+export async function getLeaderboard(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Leaderboard> {
   const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
-    `/organizations/${orgId}/events/${eventId}/leaderboard`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/leaderboard`
   );
   return data.data;
 }
@@ -182,23 +204,35 @@ export async function saveMatchStats(
 
 // ---- Public ----
 
-export async function getPublicMatches(orgSlug: string, eventSlug: string): Promise<Match[]> {
+export async function getPublicMatches(
+  orgSlug: string,
+  eventSlug: string,
+  categorySlug: string
+): Promise<Match[]> {
   const { data } = await apiClient.get<ApiEnvelope<Match[]>>(
-    `/public/events/${orgSlug}/${eventSlug}/matches`
+    `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/matches`
   );
   return data.data;
 }
 
-export async function getPublicStandings(orgSlug: string, eventSlug: string): Promise<Standing[]> {
+export async function getPublicStandings(
+  orgSlug: string,
+  eventSlug: string,
+  categorySlug: string
+): Promise<Standing[]> {
   const { data } = await apiClient.get<ApiEnvelope<Standing[]>>(
-    `/public/events/${orgSlug}/${eventSlug}/standings`
+    `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/standings`
   );
   return data.data;
 }
 
-export async function getPublicLeaderboard(orgSlug: string, eventSlug: string): Promise<Leaderboard> {
+export async function getPublicLeaderboard(
+  orgSlug: string,
+  eventSlug: string,
+  categorySlug: string
+): Promise<Leaderboard> {
   const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
-    `/public/events/${orgSlug}/${eventSlug}/leaderboard`
+    `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/leaderboard`
   );
   return data.data;
 }

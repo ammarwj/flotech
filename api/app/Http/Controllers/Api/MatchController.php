@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Team;
@@ -37,13 +38,13 @@ class MatchController extends Controller
     ) {}
 
     /**
-     * (Re)generate the round-robin schedule for the event's approved teams.
+     * (Re)generate the round-robin schedule for the category's approved teams.
      */
-    public function generate(Request $request, string $organization, string $event): JsonResponse
+    public function generate(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
         // A format is a preset; the engine is what actually schedules.
-        $engine = $eventModel->engine();
+        $engine = $categoryModel->engine();
 
         $options = $request->validate([
             'start_date' => ['nullable', 'date'],
@@ -65,17 +66,17 @@ class MatchController extends Controller
 
         if ($engine === 'hybrid') {
             // Nobody drawn yet → draw first, so "Generate" alone is enough to get going.
-            if (! $eventModel->teams()->where('status', 'approved')->whereNotNull('group_name')->exists()) {
-                $this->draw->draw($eventModel, HybridConfig::fromEvent($eventModel)->drawMethod);
+            if (! $categoryModel->teams()->where('status', 'approved')->whereNotNull('group_name')->exists()) {
+                $this->draw->draw($categoryModel, HybridConfig::fromCategory($categoryModel)->drawMethod);
             }
 
-            $count = $this->schedule->generateGroupStage($eventModel);
+            $count = $this->schedule->generateGroupStage($categoryModel);
         } elseif ($engine === 'league') {
-            $count = $this->schedule->generateRoundRobin($eventModel);
+            $count = $this->schedule->generateRoundRobin($categoryModel);
         } elseif ($engine === 'knockout_single') {
-            $count = $this->schedule->generateKnockout($eventModel);
+            $count = $this->schedule->generateKnockout($categoryModel);
         } elseif ($engine === 'knockout_double') {
-            $count = $this->schedule->generateDoubleElim($eventModel);
+            $count = $this->schedule->generateDoubleElim($categoryModel);
             if ($count === -1) {
                 return ApiResponse::error('Double elimination butuh jumlah tim kelipatan dua (4, 8, 16, …).', ['feature' => 'schedule_format'], 422);
             }
@@ -88,24 +89,24 @@ class MatchController extends Controller
         }
 
         // Assign concrete date/time (and venue lane) to each fixture.
-        $this->schedule->applySchedule($eventModel, $options);
+        $this->schedule->applySchedule($categoryModel, $options);
 
         return ApiResponse::success(
-            MatchResource::collection($this->orderedMatches($eventModel)),
+            MatchResource::collection($this->orderedMatches($categoryModel)),
             "Jadwal dibuat: {$count} pertandingan",
             201,
         );
     }
 
     /**
-     * Draw the approved teams of a hybrid event into groups (random, seeding
+     * Draw the approved teams of a hybrid category into groups (random, seeding
      * pots, or the organizer's own assignment).
      */
-    public function drawGroups(Request $request, string $organization, string $event): JsonResponse
+    public function drawGroups(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        if ($eventModel->engine() !== 'hybrid') {
+        if ($categoryModel->engine() !== 'hybrid') {
             return ApiResponse::error('Undian grup hanya untuk format Grup + Knockout.', null, 422);
         }
 
@@ -118,7 +119,7 @@ class MatchController extends Controller
         ]);
 
         $teams = $this->draw->draw(
-            $eventModel,
+            $categoryModel,
             $validated['method'],
             $validated['assignments'] ?? [],
             $validated['pots'] ?? [],
@@ -136,16 +137,16 @@ class MatchController extends Controller
      * v "Runner-up Grup D"), with whoever currently holds each slot. Available
      * from the moment the groups are drawn, long before they finish.
      */
-    public function knockoutPlan(Request $request, string $organization, string $event): JsonResponse
+    public function knockoutPlan(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        if ($eventModel->engine() !== 'hybrid') {
+        if ($categoryModel->engine() !== 'hybrid') {
             return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
         }
 
-        $config = HybridConfig::fromEvent($eventModel);
-        $slots = $this->standings->qualifierSlots($eventModel);
+        $config = HybridConfig::fromCategory($categoryModel);
+        $slots = $this->standings->qualifierSlots($categoryModel);
 
         $pairs = $this->schedule->firstRoundPairs(
             $config->bracketSize(),
@@ -153,7 +154,7 @@ class MatchController extends Controller
             fn (array $slot) => $slot['group'],
         );
 
-        $pending = $eventModel->matches()
+        $pending = $categoryModel->matches()
             ->where('stage', 'group')
             ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
             ->count();
@@ -175,17 +176,17 @@ class MatchController extends Controller
      * Build the knockout bracket of a hybrid event from the teams that came
      * through the groups. Group fixtures and results are left untouched.
      */
-    public function generateKnockout(Request $request, string $organization, string $event): JsonResponse
+    public function generateKnockout(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        if ($eventModel->engine() !== 'hybrid') {
+        if ($categoryModel->engine() !== 'hybrid') {
             return ApiResponse::error('Bracket knockout otomatis hanya untuk format Grup + Knockout.', null, 422);
         }
 
-        $config = HybridConfig::fromEvent($eventModel);
+        $config = HybridConfig::fromCategory($categoryModel);
 
-        $pending = $eventModel->matches()
+        $pending = $categoryModel->matches()
             ->where('stage', 'group')
             ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
             ->count();
@@ -198,7 +199,7 @@ class MatchController extends Controller
             );
         }
 
-        $qualifiers = $this->standings->qualifiers($eventModel);
+        $qualifiers = $this->standings->qualifiers($categoryModel);
 
         if (count($qualifiers) > $config->bracketSize()) {
             return ApiResponse::error(
@@ -208,47 +209,47 @@ class MatchController extends Controller
             );
         }
 
-        if ($this->schedule->generateHybridKnockout($eventModel, $qualifiers) === 0) {
+        if ($this->schedule->generateHybridKnockout($categoryModel, $qualifiers) === 0) {
             return ApiResponse::error('Butuh minimal 2 tim lolos untuk membuat bracket.', null, 422);
         }
 
-        $this->schedule->applySchedule($eventModel, [], 'knockout');
+        $this->schedule->applySchedule($categoryModel, [], 'knockout');
 
         return ApiResponse::success(
-            MatchResource::collection($this->orderedMatches($eventModel)),
+            MatchResource::collection($this->orderedMatches($categoryModel)),
             'Bracket knockout dibuat: '.count($qualifiers).' tim lolos',
             201,
         );
     }
 
     /**
-     * List all matches for an event (organizer view).
+     * List all matches for a category (organizer view).
      */
-    public function index(Request $request, string $organization, string $event): JsonResponse
+    public function index(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        return ApiResponse::success(MatchResource::collection($this->orderedMatches($eventModel)));
+        return ApiResponse::success(MatchResource::collection($this->orderedMatches($categoryModel)));
     }
 
     /**
-     * Current league standings for an event.
+     * Current league standings for a category.
      */
-    public function standings(Request $request, string $organization, string $event): JsonResponse
+    public function standings(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        return ApiResponse::success($this->standings->compute($eventModel));
+        return ApiResponse::success($this->standings->compute($categoryModel));
     }
 
     /**
-     * Sport-aware player leaderboard for an event.
+     * Sport-aware player leaderboard for a category.
      */
-    public function leaderboard(Request $request, string $organization, string $event): JsonResponse
+    public function leaderboard(Request $request, string $organization, string $event, string $category): JsonResponse
     {
-        $eventModel = $this->event($request, $event);
+        $categoryModel = $this->category($request, $event, $category);
 
-        return ApiResponse::success($this->stats->leaderboard($eventModel));
+        return ApiResponse::success($this->stats->leaderboard($categoryModel));
     }
 
     /**
@@ -440,7 +441,6 @@ class MatchController extends Controller
     public function confirmResult(Request $request, string $organization, string $match): JsonResponse
     {
         $matchModel = $this->match($request, $match);
-        $eventModel = $matchModel->event;
 
         $validated = $request->validate(['confirmed' => ['required', 'boolean']]);
 
@@ -459,7 +459,7 @@ class MatchController extends Controller
 
         $matchModel->update(['confirmed_at' => now()]);
 
-        $engine = $eventModel->engine();
+        $engine = $matchModel->category->engine();
         if ($engine === 'knockout_single' || $matchModel->stage === 'knockout') {
             $this->schedule->advanceWinner($matchModel->fresh());
         } elseif ($engine === 'knockout_double') {
@@ -529,16 +529,16 @@ class MatchController extends Controller
             return false;
         }
 
-        return in_array($match->event->engine(), ['knockout_single', 'knockout_double'], true)
+        return in_array($match->category->engine(), ['knockout_single', 'knockout_double'], true)
             || $match->stage === 'knockout';
     }
 
     /**
      * @return Collection<int, GameMatch>
      */
-    protected function orderedMatches(Event $event)
+    protected function orderedMatches(EventCategory $category)
     {
-        return $event->matches()
+        return $category->matches()
             ->with(['homeTeam', 'awayTeam'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
@@ -578,6 +578,20 @@ class MatchController extends Controller
     protected function event(Request $request, string $eventId): Event
     {
         return $this->org($request)->events()->findOrFail($eventId);
+    }
+
+    /**
+     * Resolve a category scoped to an event owned by the current organization.
+     * The parent event is attached so the category's sport/date accessors don't
+     * re-query.
+     */
+    protected function category(Request $request, string $eventId, string $categoryId): EventCategory
+    {
+        $event = $this->event($request, $eventId);
+        $category = $event->categories()->findOrFail($categoryId);
+        $category->setRelation('event', $event);
+
+        return $category;
     }
 
     /**

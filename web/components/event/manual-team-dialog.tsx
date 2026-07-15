@@ -3,10 +3,12 @@
 import { useState } from "react";
 
 import type { RegisterTeamPayload } from "@/lib/api/events";
-import type { Team } from "@/types/api";
+import type { EventCategory, Team } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { rupiah } from "@/lib/labels";
 import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
 /**
@@ -20,6 +22,7 @@ import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/ros
 export function ManualTeamDialog({
   open,
   team,
+  categories,
   sport,
   pending,
   fieldErrors,
@@ -29,6 +32,8 @@ export function ManualTeamDialog({
   open: boolean;
   /** Editing an existing team, or null to add a new one. */
   team?: Team | null;
+  /** The event's competition categories the team can be entered in. */
+  categories: EventCategory[];
   sport?: string | null;
   pending?: boolean;
   fieldErrors?: Record<string, string>;
@@ -43,6 +48,8 @@ export function ManualTeamDialog({
     contact_name: team?.contact_name ?? "",
     contact_phone: team?.contact_phone ?? "",
   });
+  const [categoryId, setCategoryId] = useState<string>(team?.category_id ?? "");
+  const resolvedCategoryId = categoryId || categories[0]?.id || "";
   const [players, setPlayers] = useState<PlayerRow[]>(() =>
     team?.players?.length
       ? team.players.map((p) => ({
@@ -58,6 +65,7 @@ export function ManualTeamDialog({
 
   const submit = () =>
     onSubmit({
+      category_id: resolvedCategoryId,
       ...info,
       players: players
         .filter((p) => p.full_name.trim())
@@ -90,6 +98,24 @@ export function ManualTeamDialog({
 
         <div className="grid gap-4 p-4">
           <div className="grid gap-4 sm:grid-cols-2">
+            {categories.length > 0 && (
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="manual-category" className="font-semibold">
+                  Kategori<span className="text-[var(--danger)]"> *</span>
+                </Label>
+                <Select
+                  id="manual-category"
+                  value={resolvedCategoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
             <Field
               id="manual-name"
               label="Nama tim"
@@ -128,7 +154,10 @@ export function ManualTeamDialog({
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Batal
           </Button>
-          <Button onClick={submit} disabled={pending || !info.name.trim() || !info.contact_name.trim()}>
+          <Button
+            onClick={submit}
+            disabled={pending || !resolvedCategoryId || !info.name.trim() || !info.contact_name.trim()}
+          >
             {pending ? "Menyimpan…" : team ? "Simpan perubahan" : "Tambah tim"}
           </Button>
         </div>

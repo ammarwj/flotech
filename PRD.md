@@ -1,7 +1,7 @@
 # 📋 Product Requirements Document (PRD)
 ## flo-event — Sports Event Management SaaS Platform
-**Version:** 1.0.0
-**Tanggal:** Juni 2026
+**Version:** 1.1.0
+**Tanggal:** Juli 2026
 **Status:** Draft
 **Penulis:** Product Team
 
@@ -120,10 +120,11 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Upload dokumen peserta ke Cloudflare R2
 - Approval manual / otomatis oleh organizer
 - Payment gateway terintegrasi untuk biaya pendaftaran
+- **Entri offline oleh organizer**: tim yang mendaftar via kertas/chat bisa dimasukkan manual dari dashboard (tanpa akun manager), tetap menghormati batas `max_teams` dan cap paket
 
 #### FR-05: Manajemen Tim & Pemain
 - Profil tim dengan logo dan data lengkap
-- Roster pemain dengan foto dan data individu
+- Roster pemain dengan foto dan data individu; **posisi dipilih dari master posisi per cabang** (FR-18), bukan teks bebas
 - Lock roster setelah deadline organizer
 
 #### FR-06: Jadwal Pertandingan
@@ -187,11 +188,21 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Ledger immutable + audit otomatis; refund mengoreksi saldo organizer
 
 #### FR-18: Katalog & Pengaturan Platform
-- Cabang olahraga, format turnamen, kolom statistik, tiebreaker, metode undian, tier sponsor: dikelola Super Admin dari panel, tanpa deploy
+- Cabang olahraga, format turnamen, kolom statistik, **posisi pemain per cabang**, tiebreaker, metode undian, tier sponsor: dikelola Super Admin dari panel, tanpa deploy
 - Aturan pencairan (minimal penarikan, biaya admin, masa tahan) dapat diubah Super Admin dan berlaku instan untuk penarikan baru
 
 #### FR-19: Media Event (Galeri & Sponsor)
 - Album foto per event dan logo sponsor bertingkat (tier), tampil di landing page publik
+
+#### FR-20: Notifikasi Email Transaksional
+- Email untuk verifikasi akun, reset password, pendaftaran tim (submit & status disetujui/ditolak/didiskualifikasi), pembayaran pendaftaran, langganan (invoice & aktivasi), dan penarikan dana (selesai & ditolak)
+- **Seluruh email dikirim lewat queue** (Notification/Mailable `ShouldQueue`, diproses Horizon) — tidak pernah memblokir request atau webhook
+- Template berbasis komponen dengan tema merek **flo**; identitas pengirim dari `config/brand.php` (tidak hardcode)
+
+#### FR-21: Mode Dashboard Ganda (Organizer ↔ Peserta)
+- Satu akun user bisa berperan sebagai **organizer** (kelola event sendiri) sekaligus **peserta** (tim yang ia daftarkan di event lain)
+- Mode aktif diturunkan dari URL (`/organizer` vs `/participant`); **mode default saat login** disimpan di `users.default_mode` dan ditulis ulang tiap kali switcher dipakai
+- Saat registrasi, user memilih peran awal; peserta baru diarahkan langsung ke area peserta, organizer baru ke onboarding pembuatan organisasi
 
 ### 2.2 Non-Functional Requirements
 
@@ -328,13 +339,15 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 5. Organizer approve/reject
 6. Email konfirmasi + akses dashboard tim
 
+**Entri offline:** organizer bisa memasukkan tim yang mendaftar via kertas/chat langsung dari halaman registrasi event. Tim seperti ini tak punya akun manager (data kontak berupa nomor telepon), boleh langsung ditandai lunas, dan tetap dihitung terhadap `max_teams` serta cap paket seperti pendaftaran publik.
+
 ---
 
 ### 4.3 Data Tim & Pemain
 
-**Data Tim:** nama, logo (R2), warna kostum, kota asal, kontak kapten
+**Data Tim:** nama, logo (R2), kontak kapten (nama + telepon)
 
-**Data Pemain:** nama, nomor punggung, posisi, tanggal lahir, foto (R2)
+**Data Pemain:** nama, nomor punggung, posisi, tanggal lahir, foto (R2). **Posisi dipilih dari master posisi per cabang** (§4.16) — tersimpan sebagai `position_key`, bukan teks bebas.
 
 **Kontrol:** tim manager edit data hingga deadline, organizer dapat lock roster dan diskualifikasi tim
 
@@ -541,8 +554,11 @@ Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yan
 |----------|--------|
 | Cabang olahraga | Sepak Bola, Futsal, Badminton, Padel, Voli (+ warna, durasi match default, set-based atau tidak) |
 | Kolom statistik per cabang | gol, assist, kartu, ace, smash… |
+| Posisi pemain per cabang | Kiper/Bek/Gelandang/Penyerang (bola), Anchor/Flank/Pivot (futsal), Setter/Libero (voli)… disimpan sebagai `position_key` + label yang bisa diubah |
 | Format turnamen | Liga, Liga 2 Putaran, Knockout, Hybrid, Grup + Playoff |
 | Tiebreaker, metode undian, ronde knockout, tier sponsor | — |
+
+Master **posisi** menjadi sumber tunggal validasi roster: label boleh diganti kapan saja tanpa memindahkan data karena `position_key` yang tersimpan, dan posisi yang **masih dipakai pemain tidak bisa dihapus**.
 
 **Format adalah preset di atas engine.** Engine (`league`, `knockout`, `hybrid`) hidup di kode; admin bisa membuat preset "Liga 2 Putaran" (engine `league`, default `legs: 2`) tanpa deploy — tapi **tidak bisa** mengarang engine yang tidak ada implementasinya.
 
@@ -583,13 +599,46 @@ Halaman publik `flo-event.id/{org-slug}` — profil organizer beserta seluruh ev
 
 ---
 
+### 4.20 Notifikasi Email Transaksional
+
+Semua peristiwa penting mengirim email; daftarnya:
+
+| Pemicu | Penerima | Notifikasi |
+|--------|----------|------------|
+| Registrasi akun | User baru | Verifikasi email |
+| Lupa password | User | Reset password |
+| Tim mendaftar (publik) | Manager tim + owner organisasi | `TeamRegistrationSubmitted`, `NewTeamRegistered` |
+| Status tim berubah (approved/rejected/disqualified) | Manager tim | `TeamStatusChanged` |
+| Pembayaran pendaftaran lunas | Manager tim | `RegistrationPaid` |
+| Invoice & aktivasi langganan | Owner organisasi | `SubscriptionInvoiceIssued`, `SubscriptionActivated` |
+| Penarikan dana selesai/ditolak | Owner organisasi | `WithdrawalCompleted`, `WithdrawalRejected` |
+| Sertifikat terbit (opsional) | Penerima | `CertificateIssuedMail` (§4.10) |
+
+**Prinsip pengiriman:**
+- **Selalu lewat queue.** Setiap Notification/Mailable `implements ShouldQueue` dan diproses Horizon — pengiriman tidak pernah memblokir request atau webhook Midtrans.
+- **Selalu setelah commit.** Email dikirim di luar transaksi DB dan dibungkus try/catch yang menelan errornya, supaya kegagalan kirim tak pernah menggagalkan webhook yang sudah menerima uang.
+- **Template bertema merek.** Komponen Markdown-mail dengan tema **flo**; identitas & tautan pengirim dibaca dari `config/brand.php` dan `config/mail.php`, tidak hardcode.
+
+---
+
+### 4.21 Mode Dashboard Ganda (Organizer ↔ Peserta)
+
+Satu akun bisa memakai dua "topi": **Organizer** (mengelola event miliknya) dan **Peserta** (tim yang ia daftarkan di event orang lain).
+
+- **Mode aktif diturunkan dari URL** (`/organizer/*` vs `/participant/*`) — bukan state tersimpan, jadi deep-link/refresh selalu mendarat di mode yang benar.
+- **Mode default saat login** disimpan di `users.default_mode` (`organizer` | `participant`) dan ditulis ulang tiap kali switcher dipakai, lewat `PATCH /auth/preferences`.
+- **Onboarding**: saat registrasi user memilih peran awal. Peserta baru langsung diarahkan ke area peserta; organizer baru diarahkan ke alur onboarding pembuatan organisasi (akun baru belum punya organisasi).
+
+---
+
 ## 5. User Flow
 
 ### 5.1 Organizer — Onboarding & Buat Event
 
 ```
-[Daftar Akun] → [Verifikasi Email]
-  → [Dashboard — Welcome]
+[Daftar Akun — pilih peran "Organizer"] → [Verifikasi Email]
+  → [Onboarding: Buat Organisasi]
+  → [Dashboard Organizer — Welcome]
   → Pilih Paket → [Bayar Subscription] (jika berbayar)
   → [Buat Event Baru]
       → Detail event, cabang, format, konfigurasi registrasi
@@ -607,14 +656,16 @@ Halaman publik `flo-event.id/{org-slug}` — profil organizer beserta seluruh ev
 
 ```
 [Buka Landing Page Event]
-  → "Daftar Sekarang" → [Buat Akun / Login]
-  → Isi Form Registrasi (nama tim, logo, kota, data pemain)
-  → Upload dokumen → Submit
-  → [Bayar] (jika berbayar) → Konfirmasi
+  → "Daftar Sekarang" → [Buat Akun (peran "Peserta") / Login]
+  → Isi Form Registrasi (nama tim, logo, data pemain + posisi dari master cabang)
+  → Upload dokumen → Submit → [Email: Pendaftaran diterima]
+  → [Bayar] (jika berbayar) → Konfirmasi → [Email: Pembayaran lunas]
   → [Menunggu Approval]
   → [Email: Disetujui/Ditolak]
-  → Dashboard Tim → Lihat jadwal & update roster
+  → Area Peserta → Lihat jadwal & update roster
 ```
+
+> **Jalur offline:** organizer juga bisa memasukkan tim secara manual dari dashboard (§4.2) untuk peserta yang mendaftar via kertas/chat — tanpa akun peserta, langsung bisa ditandai lunas.
 
 ### 5.3 Operator — Input Hasil
 
@@ -912,9 +963,14 @@ api/
 │   │   ├── R2StorageService.php    # Cloudflare R2 operations
 │   │   └── PlanGate.php            # Feature flag & limit paket
 │   ├── Jobs/
-│   │   ├── SendCertificateJob.php  # Kirim 1 sertifikat; sent_at ditulis setelah terkirim
+│   │   ├── SendCertificateJob.php  # Kirim 1 sertifikat; sent_at ditulis setelah terkirim (sendNow)
 │   │   ├── ReleaseEventFundsJob.php
 │   │   └── RecalculateStandings.php
+│   ├── Notifications/              # Email transaksional, semua ShouldQueue (§4.20)
+│   │   ├── VerifyEmailNotification.php  ResetPasswordNotification.php
+│   │   ├── TeamRegistrationSubmitted.php  NewTeamRegistered.php  TeamStatusChanged.php
+│   │   ├── RegistrationPaid.php  SubscriptionInvoiceIssued.php  SubscriptionActivated.php
+│   │   └── WithdrawalCompleted.php  WithdrawalRejected.php
 │   └── Events/ + Listeners/
 ├── routes/
 │   ├── api.php                     # API routes (v1)
@@ -924,6 +980,8 @@ api/
 │   ├── r2.php
 │   ├── wallet.php                  # Aturan uang (minimum, fee, hold)
 │   ├── billing.php                 # Identitas penerbit invoice/kwitansi
+│   ├── brand.php                   # Identitas merek untuk template email (§4.20)
+│   ├── mail.php                    # Transport & tautan email
 │   └── certificate.php             # Prefix nomor, URL verifikasi, katalog field
 ├── Dockerfile
 └── artisan
@@ -1086,6 +1144,7 @@ users (
   phone             VARCHAR(20),
   avatar_url        TEXT,
   role              ENUM('super_admin','user') DEFAULT 'user',
+  default_mode      VARCHAR(20) DEFAULT 'organizer',  -- organizer | participant: mode dashboard saat login
   is_verified       BOOLEAN DEFAULT FALSE,
   email_verified_at TIMESTAMP,
   created_at        TIMESTAMP DEFAULT NOW(),
@@ -1151,8 +1210,6 @@ teams (
   event_id          UUID REFERENCES events(id),
   name              VARCHAR(255) NOT NULL,
   logo_url          TEXT,
-  city              VARCHAR(100),
-  jersey_color      VARCHAR(20),
   contact_name      VARCHAR(255),
   contact_phone     VARCHAR(20),
   status            ENUM('pending','approved','rejected','disqualified','withdrawn') DEFAULT 'pending',
@@ -1168,7 +1225,7 @@ players (
   team_id           UUID REFERENCES teams(id),
   full_name         VARCHAR(255) NOT NULL,
   jersey_number     VARCHAR(5),
-  position          VARCHAR(50),
+  position          VARCHAR(50),                     -- sport_positions.position_key untuk cabang tim ini
   date_of_birth     DATE,
   photo_url         TEXT,
   is_active         BOOLEAN DEFAULT TRUE,
@@ -1470,6 +1527,18 @@ sport_stats (
   key, label, sort_order
 )
 
+-- SPORT POSITIONS — master posisi pemain per cabang. Sumber tunggal validasi
+-- roster; players.position menyimpan position_key. Label bebas diubah.
+sport_positions (
+  id            UUID PK,
+  sport_id      UUID FK → sports ON DELETE CASCADE,
+  position_key  VARCHAR(30),          -- goalkeeper | pivot | libero | ...
+  label         VARCHAR,              -- teks tampil, boleh berubah
+  sort_order    SMALLINT,
+  created_at, updated_at,
+  UNIQUE(sport_id, position_key)
+)
+
 -- CONFIG OPTIONS — format turnamen, tiebreaker, metode undian, ronde
 -- knockout, tier sponsor. Format = PRESET di atas engine yang ada di kode.
 config_options (
@@ -1662,7 +1731,7 @@ CREATE INDEX idx_bank_accounts_org    ON bank_accounts(organization_id);
 | Service | Fungsi |
 |---------|--------|
 | **Midtrans** | Payment gateway — subscription, registrasi, tiket |
-| **Resend** | Transactional email — konfirmasi, notifikasi, sertifikat |
+| **Resend** | Transactional email — verifikasi, reset password, notifikasi tim/langganan/dompet, sertifikat. Semua template bertema **flo**, dikirim via queue (Horizon) — lihat §4.20 |
 | **Cloudflare R2** | File storage — semua aset & file generate |
 | **Cloudflare CDN** | Serve aset publik (logo, banner, foto) |
 | **Sentry** | Error monitoring frontend & backend |

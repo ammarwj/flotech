@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Player;
@@ -56,60 +57,51 @@ class DemoEventSeeder extends Seeder
 
         $participant = User::where('email', 'participant@flo-event.id')->first();
 
+        // Each event runs one-or-more categories. The football event carries two
+        // (Senior + U-17) at different formats and fees to exercise the feature.
         // 'play' controls how many rounds get results:
         //   none = fixtures only · early = first rounds · most = all but final · all = every round
         $events = [
             [
                 'name' => 'Liga Komunitas Jakarta 2026',
                 'sport_type' => 'football',
-                'tournament_format' => 'league',
                 'status' => 'ongoing',
                 'location_name' => 'GBK Soccer Field',
                 'location_address' => 'Jl. Pintu Satu Senayan, Jakarta Pusat',
-                'registration_fee' => 150000,
-                'max_teams' => 16,
-                'teams' => 10,
-                'pending' => 2,
-                'play' => 'early',
+                'categories' => [
+                    ['name' => 'Senior', 'tournament_format' => 'league', 'registration_fee' => 150000, 'max_teams' => 16, 'teams' => 10, 'pending' => 2, 'play' => 'early'],
+                    ['name' => 'U-17', 'tournament_format' => 'knockout_single', 'registration_fee' => 100000, 'max_teams' => 8, 'teams' => 6, 'pending' => 1, 'play' => 'none'],
+                ],
             ],
             [
                 'name' => 'Futsal Championship Cup',
                 'sport_type' => 'futsal',
-                'tournament_format' => 'knockout_single',
                 'status' => 'ongoing',
                 'location_name' => 'Sport Center Kuningan',
                 'location_address' => 'Jl. HR Rasuna Said, Jakarta Selatan',
-                'registration_fee' => 100000,
-                'max_teams' => 8,
-                'teams' => 8,
-                'pending' => 0,
-                'play' => 'most',
+                'categories' => [
+                    ['name' => 'Umum', 'tournament_format' => 'knockout_single', 'registration_fee' => 100000, 'max_teams' => 8, 'teams' => 8, 'pending' => 0, 'play' => 'most'],
+                ],
             ],
             [
                 'name' => 'Turnamen Badminton Antar Klub',
                 'sport_type' => 'badminton',
-                'tournament_format' => 'knockout_single',
                 'status' => 'open',
                 'location_name' => 'GOR Bulungan',
                 'location_address' => 'Jl. Bulungan, Jakarta Selatan',
-                'registration_fee' => 50000,
-                'max_teams' => 12,
-                'teams' => 6,
-                'pending' => 1,
-                'play' => 'none',
+                'categories' => [
+                    ['name' => 'Umum', 'tournament_format' => 'knockout_single', 'registration_fee' => 50000, 'max_teams' => 12, 'teams' => 6, 'pending' => 1, 'play' => 'none'],
+                ],
             ],
             [
                 'name' => 'Voli Antar Kecamatan Series',
                 'sport_type' => 'volleyball',
-                'tournament_format' => 'league',
                 'status' => 'finished',
                 'location_name' => 'GOR Ciracas',
                 'location_address' => 'Jl. Raya Centex, Jakarta Timur',
-                'registration_fee' => 75000,
-                'max_teams' => 6,
-                'teams' => 6,
-                'pending' => 0,
-                'play' => 'all',
+                'categories' => [
+                    ['name' => 'Umum', 'tournament_format' => 'league', 'registration_fee' => 75000, 'max_teams' => 6, 'teams' => 6, 'pending' => 0, 'play' => 'all'],
+                ],
             ],
         ];
 
@@ -118,29 +110,33 @@ class DemoEventSeeder extends Seeder
         foreach ($events as $i => $cfg) {
             $event = $this->makeEvent($org, $cfg);
 
-            if (! $event->teams()->exists()) {
-                // Distinct club names per event by shuffling the pool.
-                $names = $this->clubNames;
-                shuffle($names);
+            foreach (array_values($cfg['categories']) as $ci => $catCfg) {
+                $category = $this->makeCategory($event, $catCfg, $ci);
 
-                $total = $cfg['teams'] + $cfg['pending'];
-                for ($t = 0; $t < $total; $t++) {
-                    $isPending = $t >= $cfg['teams'];
-                    $manager = ($i === 0 && $t === 0) ? $participant : null;
+                if (! $category->teams()->exists()) {
+                    // Distinct club names per category by shuffling the pool.
+                    $names = $this->clubNames;
+                    shuffle($names);
 
-                    $team = $this->makeTeam($event, $names[$t % count($names)], $cfg, $isPending, $manager);
-                    $this->makePlayers($team, $cfg['sport_type']);
+                    $total = $catCfg['teams'] + $catCfg['pending'];
+                    for ($t = 0; $t < $total; $t++) {
+                        $isPending = $t >= $catCfg['teams'];
+                        $manager = ($i === 0 && $ci === 0 && $t === 0) ? $participant : null;
+
+                        $team = $this->makeTeam($event, $category, $names[$t % count($names)], $catCfg, $isPending, $manager);
+                        $this->makePlayers($team, $cfg['sport_type']);
+                    }
+
+                    $created++;
                 }
 
-                $created++;
+                // Fixtures + results (no-op when the category already has matches).
+                $this->seedMatches($category, $catCfg);
             }
-
-            // Fixtures + results (no-op when the event already has matches).
-            $this->seedMatches($event, $cfg);
         }
 
         $this->command?->info($created > 0
-            ? "Seeded {$created} event demo beserta klub, pemain, jadwal & hasil untuk \"{$org->name}\"."
+            ? "Seeded {$created} kategori demo beserta klub, pemain, jadwal & hasil untuk \"{$org->name}\"."
             : 'Event demo sudah ada — jadwal/hasil dilengkapi bila belum ada.');
     }
 
@@ -163,7 +159,6 @@ class DemoEventSeeder extends Seeder
             [
                 'name' => $cfg['name'],
                 'sport_type' => $cfg['sport_type'],
-                'tournament_format' => $cfg['tournament_format'],
                 'status' => $cfg['status'],
                 'start_date' => $start,
                 'end_date' => $end,
@@ -173,8 +168,6 @@ class DemoEventSeeder extends Seeder
                 'location_address' => $cfg['location_address'],
                 'description' => "Turnamen {$cfg['name']} terbuka untuk klub komunitas. "
                     .'Pendaftaran tim, jadwal pertandingan, dan klasemen dikelola lewat platform flo-event.',
-                'max_teams' => $cfg['max_teams'],
-                'registration_fee' => $cfg['registration_fee'],
             ],
         );
     }
@@ -182,13 +175,31 @@ class DemoEventSeeder extends Seeder
     /**
      * @param  array<string, mixed>  $cfg
      */
-    private function makeTeam(Event $event, string $name, array $cfg, bool $pending, ?User $manager): Team
+    private function makeCategory(Event $event, array $cfg, int $sort): EventCategory
+    {
+        return EventCategory::updateOrCreate(
+            ['event_id' => $event->id, 'slug' => Str::slug($cfg['name'])],
+            [
+                'name' => $cfg['name'],
+                'tournament_format' => $cfg['tournament_format'],
+                'registration_fee' => $cfg['registration_fee'],
+                'max_teams' => $cfg['max_teams'],
+                'sort_order' => $sort,
+            ],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $cfg
+     */
+    private function makeTeam(Event $event, EventCategory $category, string $name, array $cfg, bool $pending, ?User $manager): Team
     {
         $fee = (float) $cfg['registration_fee'];
         $registeredAt = Carbon::parse($event->registration_open)->addDays(random_int(1, 5));
 
         return Team::create([
             'event_id' => $event->id,
+            'category_id' => $category->id,
             'name' => $name,
             'contact_name' => $this->randomPerson(),
             'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
@@ -239,28 +250,29 @@ class DemoEventSeeder extends Seeder
      *
      * @param  array<string, mixed>  $cfg
      */
-    private function seedMatches(Event $event, array $cfg): void
+    private function seedMatches(EventCategory $category, array $cfg): void
     {
-        if ($event->matches()->exists()) {
+        if ($category->matches()->exists()) {
             return;
         }
-        if ($event->teams()->where('status', 'approved')->count() < 2) {
+        if ($category->teams()->where('status', 'approved')->count() < 2) {
             return;
         }
 
         $schedule = app(ScheduleService::class);
-        $format = $event->tournament_format;
+        $format = $category->tournament_format;
+        $sport = $category->sport_type;
         $isKnockout = str_starts_with($format, 'knockout');
 
         if (in_array($format, ['league', 'hybrid'], true)) {
-            $schedule->generateRoundRobin($event);
+            $schedule->generateRoundRobin($category);
         } elseif ($format === 'knockout_single') {
-            $schedule->generateKnockout($event);
+            $schedule->generateKnockout($category);
         } else {
             return; // double-elim demo not needed
         }
 
-        $maxRound = (int) $event->matches()->max('round');
+        $maxRound = (int) $category->matches()->max('round');
         $playUpTo = match ($cfg['play']) {
             'all' => $maxRound,
             'most' => max(1, $maxRound - 1),
@@ -270,14 +282,14 @@ class DemoEventSeeder extends Seeder
 
         for ($r = 1; $r <= $playUpTo; $r++) {
             // Re-read each round: knockout slots fill in as earlier rounds resolve.
-            $matches = $event->matches()->where('round', $r)->orderBy('order')->get();
+            $matches = $category->matches()->where('round', $r)->orderBy('order')->get();
 
             foreach ($matches as $m) {
                 if ($m->status === 'finished' || ! $m->home_team_id || ! $m->away_team_id) {
                     continue; // byes / not-yet-populated slots
                 }
 
-                $this->playMatch($m, $cfg['sport_type'], $isKnockout);
+                $this->playMatch($m, $sport, $isKnockout);
 
                 if ($isKnockout) {
                     $schedule->advanceWinner($m->fresh());

@@ -45,11 +45,18 @@ class MailNotificationTest extends TestCase
 
     private function openEvent(Organization $org)
     {
-        return $org->events()->create([
-            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal', 'tournament_format' => 'league',
+        $event = $org->events()->create([
+            'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'status' => 'open', 'start_date' => '2026-08-01', 'end_date' => '2026-08-10',
             'registration_open' => Carbon::now()->subDay(), 'registration_close' => Carbon::now()->addDays(10),
         ]);
+
+        $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => 0, 'sort_order' => 0,
+        ]);
+
+        return $event->load('categories');
     }
 
     public function test_registering_a_team_mails_the_manager_and_the_organizer(): void
@@ -63,6 +70,7 @@ class MailNotificationTest extends TestCase
 
         $this->actingAs($manager, 'api')
             ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                'category_id' => $event->categories->first()->id,
                 'name' => 'Garuda FC',
                 'contact_name' => 'Andi',
                 'contact_phone' => '08123456789',
@@ -85,6 +93,7 @@ class MailNotificationTest extends TestCase
         // account — and teams hold a phone number, not an email address.
         $teamId = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", [
+                'category_id' => $event->categories->first()->id,
                 'name' => 'Tim Kampung',
                 'contact_name' => 'Joko',
                 'contact_phone' => '08120000000',
@@ -112,6 +121,7 @@ class MailNotificationTest extends TestCase
         $manager = User::factory()->create();
 
         $team = $event->teams()->create([
+            'category_id' => $event->categories->first()->id,
             'name' => 'Garuda FC', 'contact_name' => 'Andi', 'contact_phone' => '08123456789',
             'status' => 'pending', 'manager_user_id' => $manager->id, 'registered_at' => Carbon::now(),
         ]);

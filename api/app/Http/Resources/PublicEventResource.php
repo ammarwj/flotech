@@ -24,8 +24,6 @@ class PublicEventResource extends JsonResource
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,
             'sport' => $this->sportDefinition(),
-            'tournament_format' => $this->tournament_format,
-            'engine' => $this->engine(),
             'status' => $this->status,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
@@ -36,9 +34,8 @@ class PublicEventResource extends JsonResource
             'location_address' => $this->location_address,
             'description' => $this->description,
             'banner_url' => $this->banner_url,
-            'max_teams' => $this->max_teams,
-            'registration_fee' => (float) $this->registration_fee,
-            'bracket_config' => $this->bracket_config,
+            // Each category runs its own format at its own price.
+            'categories' => EventCategoryResource::collection($this->whenLoaded('categories')),
             'tickets_on_sale' => $this->ticketCategories()->where('is_active', true)->exists(),
             'organization' => [
                 'name' => $this->organization?->name,

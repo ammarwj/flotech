@@ -13,6 +13,7 @@ class Team extends Model
 
     protected $fillable = [
         'event_id',
+        'category_id',
         'name',
         'logo_url',
         'contact_name',
@@ -45,6 +46,11 @@ class Team extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(EventCategory::class, 'category_id');
     }
 
     public function players(): HasMany
