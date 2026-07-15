@@ -31,6 +31,7 @@ class TeamRosterService
                 'full_name' => $row['full_name'],
                 'jersey_number' => $row['jersey_number'] ?? null,
                 'position' => $row['position'] ?? null,
+                'photo_url' => $row['photo_url'] ?? null,
             ];
 
             $existing = ! empty($row['id'])

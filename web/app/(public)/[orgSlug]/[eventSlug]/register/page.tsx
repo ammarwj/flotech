@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useId, useRef, useState } from "react";
+import { type ComponentProps, Suspense, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import {
   ImagePlus,
 } from "lucide-react";
 
+import { phoneInput } from "@/lib/phone";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import {
   getPublicEvent,
@@ -119,7 +120,12 @@ function RegisterTeamPage() {
         ...team,
         players: players
           .filter((p) => p.full_name.trim())
-          .map((p) => ({ full_name: p.full_name, jersey_number: p.jersey_number, position: p.position })),
+          .map((p) => ({
+            full_name: p.full_name,
+            jersey_number: p.jersey_number,
+            position: p.position,
+            photo_url: p.photo_url,
+          })),
         documents: docs.map((d) => ({ file_url: d.file_url, file_name: d.file_name })),
       };
       return registerTeam(params.orgSlug, params.eventSlug, payload);
@@ -189,17 +195,23 @@ function RegisterTeamPage() {
             {paidReturn ? (
               <>
                 Pembayaran biaya pendaftaran diterima. Pendaftaran tim sedang menunggu persetujuan penyelenggara.
+                Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Tim Saya</b>.
               </>
             ) : (
               <>
                 Tim <b className="text-foreground">{team.name}</b> berhasil didaftarkan dan menunggu persetujuan
-                penyelenggara.
+                penyelenggara. Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Tim Saya</b>.
               </>
             )}
           </p>
-          <Button asChild size="lg" className="mt-6">
-            <Link href={`/${params.orgSlug}/${params.eventSlug}`}>Kembali ke halaman event</Link>
-          </Button>
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            <Button asChild size="lg">
+              <Link href="/participant">Ke Tim Saya</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href={`/${params.orgSlug}/${params.eventSlug}`}>Ke halaman event</Link>
+            </Button>
+          </div>
         </Card>
       </div>
     );
@@ -347,7 +359,7 @@ function RegisterTeamPage() {
             )}
             <Field label="Nama tim" required value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
-            <Field label="No. HP kontak" required value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
+            <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
           </CardContent>
         </Card>
 
@@ -430,11 +442,17 @@ function Field({
   value,
   onChange,
   required,
+  inputMode,
+  sanitize,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
+  inputMode?: ComponentProps<typeof Input>["inputMode"];
+  // Runs on every keystroke to drop characters this field doesn't accept (e.g.
+  // letters in a phone number) before they ever land in state.
+  sanitize?: (v: string) => string;
 }) {
   // Without an id the label points at nothing: clicking it doesn't focus the
   // input and assistive tech reads the field unnamed.
@@ -446,7 +464,13 @@ function Field({
         {label}
         {required && <span className="text-[var(--danger)]"> *</span>}
       </Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} />
+      <Input
+        id={id}
+        value={value}
+        inputMode={inputMode}
+        onChange={(e) => onChange(sanitize ? sanitize(e.target.value) : e.target.value)}
+        required={required}
+      />
     </div>
   );
 }

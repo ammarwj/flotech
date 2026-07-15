@@ -384,6 +384,8 @@ export interface Player {
   full_name: string;
   jersey_number?: string | null;
   position?: string | null;
+  /** Optional profile photo (R2/local URL). */
+  photo_url?: string | null;
 }
 
 export interface TeamDocument {
@@ -503,7 +505,7 @@ export interface PublicTeam {
   id: string;
   name: string;
   logo_url: string | null;
-  players?: (Player & { photo_url?: string | null })[] | null;
+  players?: Player[] | null;
 }
 
 // ---- Tickets & payment (Phase 3) ----

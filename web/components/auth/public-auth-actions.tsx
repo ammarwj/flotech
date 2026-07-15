@@ -5,12 +5,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { logout as apiLogout } from "@/lib/api/auth";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
+import { MODE_HOME } from "@/lib/hooks/use-dashboard-mode";
 
-/** Where a signed-in visitor's dashboard lives (same rule as the login page). */
-function dashboardHref(role: string | undefined): string {
-  return role === "super_admin" ? "/admin" : "/organizer";
+/**
+ * Where a signed-in visitor's dashboard lives (same rule as the login page):
+ * super admin → admin, otherwise the hat they wore last (`default_mode`).
+ */
+function dashboardHref(user: AuthUser | null): string {
+  if (user?.role === "super_admin") return "/admin";
+  return MODE_HOME[user?.default_mode ?? "organizer"];
 }
 
 /**
@@ -57,11 +62,12 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
     </>
   );
 
-  // Until the refresh cookie has been exchanged we don't know who this is. Show
-  // the guest links but keep them invisible: rendering nothing would make the
-  // header jump once they appear, and rendering them visibly would flash "Masuk"
-  // at someone who is signed in.
-  if (!ready) {
+  // Until the refresh cookie has been exchanged we don't know who this is — and
+  // even once the token is set, `user` (with its `default_mode`) lands a beat
+  // later from /auth/me. Hold the invisible placeholder through both: rendering
+  // "Masuk" would flash at someone signed in, and rendering "Dashboard" before
+  // `user` exists would point it at the wrong dashboard (default /organizer).
+  if (!ready || (isAuthenticated && !user)) {
     return (
       <div className="contents" style={{ visibility: "hidden" }} aria-hidden>
         {guestLinks}
@@ -74,7 +80,7 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
   if (variant === "menu") {
     return (
       <>
-        <Link href={dashboardHref(user?.role)}>Dashboard</Link>
+        <Link href={dashboardHref(user)}>Dashboard</Link>
         <button type="button" onClick={handleLogout} disabled={pending} className="text-left">
           {pending ? "Keluar…" : "Keluar"}
         </button>
@@ -83,7 +89,7 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
   }
 
   return (
-    <Link href={dashboardHref(user?.role)} className="btn btn-primary btn-sm">
+    <Link href={dashboardHref(user)} className="btn btn-primary btn-sm">
       Dashboard
     </Link>
   );
@@ -95,10 +101,12 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
  */
 export function usePublicCta(): { href: string; label: string } {
   const { isAuthenticated } = useOptionalSession();
-  const role = useAuthStore((s) => s.user?.role);
+  const user = useAuthStore((s) => s.user);
 
-  return isAuthenticated
-    ? { href: dashboardHref(role), label: "Ke Dashboard" }
+  // Wait for `user` (its `default_mode`) before pointing at a dashboard — before
+  // it lands, isAuthenticated is already true but the destination is unknown.
+  return isAuthenticated && user
+    ? { href: dashboardHref(user), label: "Ke Dashboard" }
     : { href: "/register", label: "Mulai Gratis" };
 }
 

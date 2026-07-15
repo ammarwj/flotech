@@ -26,8 +26,12 @@ test.describe("§5.2 Peserta — daftar tim", () => {
 
     await expect(page.getByRole("heading", { name: /pendaftaran terkirim/i })).toBeVisible();
 
+    // The success card sends the manager straight into their team area to finish
+    // the roster & documents (§5.2), not just back to the event page.
+    await page.getByRole("link", { name: "Ke Tim Saya" }).click();
+    await expect(page).toHaveURL(/\/participant/);
+
     // A team is not in the tournament until the organizer says so (§4.2).
-    await page.goto("/participant");
     await expect(page.getByText(teamName)).toBeVisible();
     await expect(page.getByText("Menunggu", { exact: false }).first()).toBeVisible();
   });

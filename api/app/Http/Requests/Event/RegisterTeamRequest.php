@@ -35,6 +35,7 @@ class RegisterTeamRequest extends FormRequest
             'players.*.full_name' => ['required', 'string', 'max:255'],
             'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:50'],
+            'players.*.photo_url' => ['nullable', 'string'],
 
             'documents' => ['nullable', 'array'],
             'documents.*.file_url' => ['required', 'string'],

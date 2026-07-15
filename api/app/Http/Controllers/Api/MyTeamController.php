@@ -68,6 +68,7 @@ class MyTeamController extends Controller
             'players.*.full_name' => ['required', 'string', 'max:255'],
             'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:50'],
+            'players.*.photo_url' => ['nullable', 'string'],
 
             'documents' => ['sometimes', 'array'],
             'documents.*.id' => ['nullable', 'string'],

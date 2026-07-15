@@ -82,29 +82,49 @@ export function TeamRosterDialog({
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {players.map((p) => (
-                <li
-                  key={p.id ?? p.full_name}
-                  className="flex items-center gap-3 rounded-xl border border-border p-2.5"
-                >
-                  <span
-                    className="grid shrink-0 place-items-center text-sm font-bold"
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 9,
-                      background: "var(--surface-2)",
-                      color: "var(--text-muted)",
-                    }}
+              {players.map((p) => {
+                const photo = p.photo_url && /^https?:\/\//.test(p.photo_url) ? p.photo_url : null;
+                return (
+                  <li
+                    key={p.id ?? p.full_name}
+                    className="flex items-center gap-3 rounded-xl border border-border p-2.5"
                   >
-                    {p.jersey_number ?? "–"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.full_name}</span>
-                  {p.position && (
-                    <span className="pill shrink-0">{positionLabel(sport, p.position)}</span>
-                  )}
-                </li>
-              ))}
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={photo}
+                        alt={p.full_name}
+                        className="shrink-0 object-cover"
+                        style={{ width: 34, height: 34, borderRadius: 9, border: "1px solid var(--border)" }}
+                      />
+                    ) : (
+                      <span
+                        className="grid shrink-0 place-items-center text-sm font-bold"
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 9,
+                          background: "var(--surface-2)",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {p.jersey_number ?? "–"}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {p.full_name}
+                      {photo && p.jersey_number && (
+                        <span className="ml-1.5 font-normal" style={{ color: "var(--text-muted)" }}>
+                          #{p.jersey_number}
+                        </span>
+                      )}
+                    </span>
+                    {p.position && (
+                      <span className="pill shrink-0">{positionLabel(sport, p.position)}</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

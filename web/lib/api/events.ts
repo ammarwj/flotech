@@ -187,7 +187,7 @@ export interface RegisterTeamPayload {
   contact_name: string;
   contact_phone: string;
   /** Optional at registration — the roster can be completed later. `id` marks an existing player when editing. */
-  players?: { id?: string; full_name: string; jersey_number?: string; position?: string }[];
+  players?: { id?: string; full_name: string; jersey_number?: string; position?: string; photo_url?: string | null }[];
   documents?: { id?: string; file_url: string; file_name?: string; document_type?: string }[];
 }
 
@@ -246,7 +246,7 @@ export interface UpdateMyTeamPayload {
   contact_name?: string;
   contact_phone?: string;
   /** Both lists are a full replacement: rows with an id are kept, omitted rows are deleted. */
-  players?: { id?: string; full_name: string; jersey_number?: string; position?: string }[];
+  players?: { id?: string; full_name: string; jersey_number?: string; position?: string; photo_url?: string | null }[];
   documents?: { id?: string; file_url: string; file_name?: string | null; document_type?: string | null }[];
 }
 

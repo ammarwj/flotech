@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { phoneInput } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +59,7 @@ export default function ManageTeamPage() {
         full_name: p.full_name,
         jersey_number: p.jersey_number ?? "",
         position: p.position ?? "",
+        photo_url: p.photo_url ?? null,
       }))
     );
     setDocs(
@@ -105,6 +107,7 @@ export default function ManageTeamPage() {
             full_name: p.full_name,
             jersey_number: p.jersey_number,
             position: p.position,
+            photo_url: p.photo_url,
           })),
         documents: docs.map((d) => ({ id: d.id, file_url: d.file_url, file_name: d.file_name })),
       };
@@ -230,7 +233,12 @@ export default function ManageTeamPage() {
             </div>
             <div className="grid gap-2">
               <Label>No. HP kontak</Label>
-              <Input value={info.contact_phone} onChange={(e) => setInfo({ ...info, contact_phone: e.target.value })} disabled={!editable} />
+              <Input
+                value={info.contact_phone}
+                inputMode="tel"
+                onChange={(e) => setInfo({ ...info, contact_phone: phoneInput(e.target.value) })}
+                disabled={!editable}
+              />
             </div>
           </CardContent>
         </Card>

@@ -82,8 +82,9 @@ export class Api {
   /**
    * Registers a brand-new user. Signing in through the API rather than the login
    * form keeps each spec focused: only auth.spec.ts asserts the form itself.
+   * `defaultMode` seeds `users.default_mode` — which dashboard a login opens in.
    */
-  async registerUser(namePrefix = "e2e"): Promise<Account> {
+  async registerUser(namePrefix = "e2e", defaultMode?: "organizer" | "participant"): Promise<Account> {
     const email = `${unique(namePrefix)}@e2e.test`;
     const fullName = `E2E ${namePrefix}`;
 
@@ -93,6 +94,7 @@ export class Api {
         email,
         password: PASSWORD,
         password_confirmation: PASSWORD,
+        ...(defaultMode ? { default_mode: defaultMode } : {}),
       },
     });
 

@@ -1,5 +1,11 @@
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
 import { unique } from "../fixtures/api";
 import { expect, signIn, test, toast } from "../fixtures/test";
+
+// Any real image works; reuse the one the wallet spec already ships.
+const PLAYER_PHOTO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "transfer-proof.png");
 
 /**
  * Offline registration — teams that signed up over WhatsApp, on paper, or paid
@@ -75,5 +81,33 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     // Crediting the wallet here would let the organizer withdraw money the
     // platform never received.
     await expect(page.getByText("Belum ada mutasi")).toBeVisible();
+  });
+
+  test("foto pemain yang diunggah tampil di skuad halaman publik", async ({ page, api, organizer }) => {
+    const event = await api.liveEvent(organizer.account.token, organizer.org.id);
+    const teamName = unique("Foto FC");
+    const playerName = "Pemain Berfoto";
+
+    await signIn(page, organizer.account.email);
+    await page.goto(`/organizer/events/${event.id}/registrations`);
+
+    // A manual team lands approved on arrival, so it appears on the public page
+    // without an approval round-trip.
+    await page.getByRole("button", { name: "Tambah Tim" }).click();
+    await page.getByLabel("Nama tim").fill(teamName);
+    await page.getByLabel("Nama kontak").fill("Pak RT");
+    await page.getByLabel("No. HP kontak").fill("081200000000");
+    await page.getByLabel("Nama pemain 1").fill(playerName);
+    await page.getByLabel("Foto pemain 1").setInputFiles(PLAYER_PHOTO);
+    // The remove control only shows once the upload has stored a URL — wait on it.
+    await page.getByRole("button", { name: "Hapus foto pemain 1" }).waitFor();
+    await page.getByRole("button", { name: "Tambah tim", exact: true }).click();
+    await expect(toast(page, /tim berhasil ditambahkan/i)).toBeVisible();
+
+    // Public page: open the "Tim Peserta" tab, click the team, see the photo.
+    await page.goto(`/${organizer.org.slug}/${event.slug}`);
+    await page.getByRole("button", { name: "Tim Peserta" }).click();
+    await page.getByRole("button", { name: new RegExp(teamName) }).click();
+    await expect(page.getByRole("img", { name: playerName })).toBeVisible();
   });
 });

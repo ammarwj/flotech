@@ -42,6 +42,7 @@ class TeamResource extends JsonResource
                 'full_name' => $p->full_name,
                 'jersey_number' => $p->jersey_number,
                 'position' => $p->position,
+                'photo_url' => $p->photo_url,
             ])),
             'documents' => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($d) => [
                 'id' => $d->id,

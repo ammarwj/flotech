@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 
 import type { RegisterTeamPayload } from "@/lib/api/events";
 import type { EventCategory, Team } from "@/types/api";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { rupiah } from "@/lib/labels";
+import { phoneInput } from "@/lib/phone";
 import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
 /**
@@ -57,6 +58,7 @@ export function ManualTeamDialog({
           full_name: p.full_name,
           jersey_number: p.jersey_number ?? "",
           position: p.position ?? "",
+          photo_url: p.photo_url ?? null,
         }))
       : [emptyPlayer()]
   );
@@ -74,6 +76,7 @@ export function ManualTeamDialog({
           full_name: p.full_name,
           jersey_number: p.jersey_number,
           position: p.position,
+          photo_url: p.photo_url,
         })),
     });
 
@@ -136,6 +139,8 @@ export function ManualTeamDialog({
               id="manual-phone"
               label="No. HP kontak"
               required
+              inputMode="tel"
+              sanitize={phoneInput}
               value={info.contact_phone}
               error={fieldErrors?.contact_phone}
               onChange={(v) => setInfo({ ...info, contact_phone: v })}
@@ -173,6 +178,8 @@ function Field({
   onChange,
   required,
   error,
+  inputMode,
+  sanitize,
 }: {
   id: string;
   label: string;
@@ -180,6 +187,9 @@ function Field({
   onChange: (v: string) => void;
   required?: boolean;
   error?: string;
+  inputMode?: ComponentProps<typeof Input>["inputMode"];
+  // Runs on every keystroke to drop characters this field doesn't accept.
+  sanitize?: (v: string) => string;
 }) {
   return (
     <div className="grid gap-2">
@@ -187,7 +197,13 @@ function Field({
         {label}
         {required && <span className="text-[var(--danger)]"> *</span>}
       </Label>
-      <Input id={id} value={value} aria-invalid={!!error} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        id={id}
+        value={value}
+        inputMode={inputMode}
+        aria-invalid={!!error}
+        onChange={(e) => onChange(sanitize ? sanitize(e.target.value) : e.target.value)}
+      />
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
