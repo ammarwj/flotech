@@ -67,14 +67,6 @@ export function Footer() {
           <span>© 2026 flo-event. Seluruh hak cipta dilindungi.</span>
           <span className="mono">Dibuat untuk penyelenggara turnamen Indonesia 🇮🇩</span>
         </div>
-        <p style={{ color: "var(--text-muted)", fontSize: "13px", marginTop: 10 }}>
-          flo-event melarang segala bentuk perjudian, termasuk hadiah yang bersumber dari akumulasi biaya
-          pendaftaran peserta.{" "}
-          <Link href="/ketentuan" style={{ textDecoration: "underline" }}>
-            Baca Ketentuan Layanan
-          </Link>
-          .
-        </p>
       </div>
     </footer>
   );

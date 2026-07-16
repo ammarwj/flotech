@@ -25,6 +25,10 @@ const FAQS = [
     a: "Lewat Midtrans: Virtual Account semua bank besar, QRIS, e-wallet (GoPay/OVO/DANA/ShopeePay), serta kartu kredit/debit. Berlaku untuk langganan, biaya registrasi, dan pembelian tiket.",
   },
   {
+    q: "Apakah boleh mengadakan event perjudian atau hadiah dari uang pendaftaran?",
+    a: "Tidak. flo-event melarang segala bentuk perjudian, termasuk hadiah yang dikumpulkan (pooling) dari biaya pendaftaran peserta. Biaya pendaftaran hanya untuk operasional penyelenggaraan; hadiah harus bersumber dari sponsor atau dana penyelenggara. Pelanggaran dapat berujung penghapusan event dan penangguhan akun. Selengkapnya di halaman Ketentuan Layanan.",
+  },
+  {
     q: "Apakah data turnamen saya aman?",
     a: "Setiap organizer terisolasi sebagai tenant terpisah. Kami pakai HTTPS, enkripsi data, audit trail di setiap aksi penting, serta patuh UU PDP Indonesia. Uptime platform dijaga di 99,9%.",
   },
