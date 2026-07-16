@@ -18,8 +18,9 @@
           mask-image: radial-gradient(800px 500px at 80% 10%, #000, transparent 75%);
 }
 .ehero-inner { position: relative; padding-block: 40px 64px; }
-.ehero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.ehero-back { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.85); }
+.ehero-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ehero-back { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.85); white-space: nowrap; }
+.ehero-back svg { flex-shrink: 0; }
 .ehero-back:hover { color: #fff; }
 .ehero-back svg { width: 16px; height: 16px; }
 .ehero .theme-toggle { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); color: #fff; }
@@ -30,6 +31,14 @@
   display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 48px; align-items: end;
 }
 @media (max-width: 900px) { .ehero-grid { grid-template-columns: 1fr; gap: 36px; } }
+@media (max-width: 640px) {
+  .ehero-inner { padding-block: 26px 40px; }
+  .ehero-grid { margin-top: 28px; }
+  /* "Masuk" is redundant on mobile — "Mulai Gratis" (and the login page) cover it,
+     and the shared header already intends to hide it here. Keeps the top bar on
+     one line instead of crowding the back link. */
+  .ehero-top .btn-secondary { display: none; }
+}
 
 .ehero-badges { display: flex; flex-wrap: wrap; gap: 10px; }
 .ehero-badge {

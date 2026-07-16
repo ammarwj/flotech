@@ -104,9 +104,9 @@ export default function PublicEventPage() {
           <div className="ehero-top">
             <Link href="/" className="ehero-back">
               <ArrowLeft />
-              Didukung flo-event
+              <span className="min-w-0 truncate">Didukung flo-event</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <PublicAuthActions />
               <ThemeToggleButton />
             </div>
