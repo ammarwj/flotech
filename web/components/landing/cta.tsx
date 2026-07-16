@@ -13,12 +13,12 @@ export function Cta() {
         <div className="cta-card reveal">
           <h2>Siap menggelar turnamenmu?</h2>
           <p>
-            Bergabung dengan 1.200+ penyelenggara yang sudah meninggalkan spreadsheet. Mulai gratis hari ini — setup
-            turnamen pertamamu dalam 10 menit.
+            Bergabung dengan 1.200+ penyelenggara yang sudah meninggalkan spreadsheet. Mulai dari Rp 49.000/bulan —
+            setup turnamen pertamamu dalam 10 menit.
           </p>
           <div className="hero-cta">
             <Link href={cta.href} className="btn btn-primary btn-lg">
-              {cta.href === "/register" ? "Mulai Gratis Sekarang" : cta.label}
+              {cta.href === "/register" ? "Mulai Sekarang" : cta.label}
             </Link>
             <Link href="/event" className="btn btn-secondary btn-lg">
               Jelajahi Event

@@ -23,7 +23,7 @@ export function Hero() {
           </h1>
           <p className="hero-lede">
             Dari registrasi tim, jadwal otomatis, klasemen real-time, tiket QR, sampai sertifikat juara —
-            kelola seluruh siklus turnamen olahraga dalam satu platform. Mulai gratis dalam 10 menit.
+            kelola seluruh siklus turnamen olahraga dalam satu platform. Siap pakai dalam 10 menit.
           </p>
           <div className="hero-cta">
             <Link href={cta.href} className="btn btn-primary btn-lg">

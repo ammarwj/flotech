@@ -43,10 +43,18 @@ class PlanGate
 
     /**
      * Whether adding more would stay within the plan limit.
-     * Unlimited (-1) and undefined limits always pass.
+     * Unlimited (-1) and limits a plan leaves undefined always pass.
      */
     public function withinLimit(Organization $org, string $featureKey, int $currentCount): bool
     {
+        // No plan means no entitlements at all — an org has to check out before
+        // it can do anything. This case must be caught before consulting the
+        // limit: a planless org has no feature values, and an absent value is
+        // indistinguishable from "this plan sets no cap", which passes freely.
+        if (! $org->plan) {
+            return false;
+        }
+
         $limit = $this->limit($org, $featureKey);
 
         if ($limit === null || $limit === -1) {

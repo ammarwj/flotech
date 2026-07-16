@@ -5,8 +5,8 @@ import { ChevronDown } from "./icons";
 
 const FAQS = [
   {
-    q: "Apakah paket Free benar-benar gratis?",
-    a: "Ya, gratis selamanya tanpa kartu kredit. Kamu bisa menjalankan 1 event aktif dengan maksimal 8 tim, lengkap dengan jadwal, klasemen, dan bracket. Upgrade kapan saja saat butuh fitur tiket atau sertifikat.",
+    q: "Paket paling murah mulai dari berapa?",
+    a: "Paket Basic Rp 49.000/bulan — kamu bisa menjalankan 1 event aktif dengan maksimal 8 tim, lengkap dengan jadwal, klasemen, dan bracket. Upgrade kapan saja saat butuh fitur tiket atau sertifikat. Bayar tahunan untuk hemat 20%.",
   },
   {
     q: "Cabang olahraga apa saja yang didukung?",

@@ -32,7 +32,7 @@ class UserSeeder extends Seeder
         $this->makeUser('participant@flo-event.id', 'Demo Participant', 'user');
 
         // ---- Demo organization to give the org-level roles something real ----
-        $planId = Plan::where('slug', 'free')->value('id') ?? Plan::value('id');
+        $planId = Plan::where('slug', 'basic')->value('id') ?? Plan::value('id');
 
         $org = Organization::firstOrCreate(
             ['slug' => 'demo-organizer'],

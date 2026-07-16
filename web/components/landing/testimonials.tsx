@@ -46,7 +46,7 @@ const TESTIMONIALS: Testimonial[] = [
   },
   {
     quote:
-      "Naik dari Free ke Pro pas turnamen tahunan kami membesar. Upgrade-nya mulus, datanya aman semua. Worth it.",
+      "Naik dari Basic ke Pro pas turnamen tahunan kami membesar. Upgrade-nya mulus, datanya aman semua. Worth it.",
     initials: "HW",
     avatar: "linear-gradient(135deg,var(--plan-professional),#B45309)",
     name: "Hendra Wijaya",

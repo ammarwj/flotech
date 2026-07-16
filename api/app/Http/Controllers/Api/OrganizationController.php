@@ -7,7 +7,6 @@ use App\Http\Requests\Organization\StoreOrganizationRequest;
 use App\Http\Requests\Organization\UpdateOrganizationRequest;
 use App\Http\Resources\OrganizationResource;
 use App\Models\Organization;
-use App\Models\Plan;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,14 +30,17 @@ class OrganizationController extends Controller
     }
 
     /**
-     * Onboarding: create an organization owned by the current user and
-     * assign a plan (defaults to the free plan).
+     * Onboarding: create an organization owned by the current user.
+     *
+     * A new org starts with no plan and no entitlements (PlanGate denies
+     * everything until one is set) — there is no free tier to fall back on, so
+     * onboarding sends the owner straight to checkout after this.
      */
     public function store(StoreOrganizationRequest $request): JsonResponse
     {
         $user = auth('api')->user();
 
-        $planId = $request->input('plan_id') ?? Plan::where('slug', 'free')->value('id');
+        $planId = $request->input('plan_id');
 
         $org = Organization::create([
             'name' => $request->string('name'),

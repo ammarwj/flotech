@@ -2,10 +2,14 @@ import type { Organization, Plan, PlanFeatureDetail, SportEvent } from "@/types/
 
 /**
  * Active-event cap for an org's plan, mirroring the backend `max_active_events`
- * limit. Returns `null` when unlimited (`-1`) or undefined (no limit set).
+ * limit. Returns `null` when unlimited (`-1`), when the plan sets no cap, or
+ * when the org isn't loaded yet; `0` when the org has no plan at all.
  */
 export function getActiveEventLimit(org?: Organization | null): number | null {
-  const raw = org?.plan?.features?.max_active_events;
+  if (!org) return null; // not loaded yet — say nothing rather than block
+  if (!org.plan) return 0; // no plan = no entitlements (mirrors PlanGate)
+
+  const raw = org.plan.features?.max_active_events;
   if (raw === undefined || raw === null) return null;
 
   const limit = Number(raw);
@@ -14,7 +18,7 @@ export function getActiveEventLimit(org?: Organization | null): number | null {
 }
 
 const PLAN_COLORS: Record<string, string> = {
-  free: "var(--plan-free)",
+  basic: "var(--plan-basic)",
   starter: "var(--plan-starter)",
   pro: "var(--plan-pro)",
   professional: "var(--plan-professional)",
@@ -40,8 +44,9 @@ export function formatPlanFeature(feature: PlanFeatureDetail): string {
 }
 
 /**
- * Whole-percent yearly discount, or 0 when the plan is free / undiscounted.
- * Free plans are excluded so they never render a "save 20%" badge on Rp 0.
+ * Whole-percent yearly discount, or 0 when the plan is undiscounted. A zero-priced
+ * plan never reports a discount, so it can't render a "save 20%" badge on Rp 0 —
+ * no catalogue plan is free today, but super_admin can still price one at 0.
  */
 export function getYearlyDiscount(plan: Plan): number {
   if (plan.price_monthly <= 0) return 0;
@@ -107,10 +112,14 @@ export function isCertificateEmailEnabled(org?: Organization | null): boolean {
 
 /**
  * Total-tickets-per-event cap for an org's plan (`max_tickets_per_event`).
- * Returns `null` when unlimited (`-1`) or undefined.
+ * Returns `null` when unlimited (`-1`), when the plan sets no cap, or when the
+ * org isn't loaded yet; `0` when the org has no plan at all.
  */
 export function getTicketLimit(org?: Organization | null): number | null {
-  const raw = org?.plan?.features?.max_tickets_per_event;
+  if (!org) return null;
+  if (!org.plan) return 0;
+
+  const raw = org.plan.features?.max_tickets_per_event;
   if (raw === undefined || raw === null) return null;
 
   const limit = Number(raw);

@@ -29,7 +29,6 @@ const SALES_MAILTO =
  */
 function ctaFor(plan: Plan): { label: string; href: string } {
   if (plan.slug === "professional") return { label: "Hubungi Sales", href: SALES_MAILTO };
-  if (plan.price_monthly === 0) return { label: "Mulai Gratis", href: "/register" };
   return { label: `Pilih ${plan.name}`, href: "/register" };
 }
 
@@ -82,7 +81,7 @@ export function Pricing() {
       <div className="container">
         <div className="section-head center reveal">
           <span className="eyebrow">Harga</span>
-          <h2 className="section-title">Mulai gratis, upgrade saat turnamenmu membesar</h2>
+          <h2 className="section-title">Mulai kecil, upgrade saat turnamenmu membesar</h2>
           <p className="section-sub">
             Semua paket termasuk landing page event, registrasi tim, jadwal, klasemen, dan bracket. Tanpa biaya
             tersembunyi.

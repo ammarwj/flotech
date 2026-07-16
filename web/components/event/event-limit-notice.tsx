@@ -7,18 +7,52 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 /**
- * Shown when an org has hit its plan's active-event cap. Explains the limit and
- * gives two concrete next steps: upgrade the plan, or free a slot by managing
- * existing events.
+ * Shown when an org can't create another event. Two different reasons land here:
+ * the plan's active-event cap is full, or there is no plan at all (a new org
+ * whose owner never finished checkout) — which is not a "limit reached" problem
+ * and must not tell them to cancel events they don't have.
  */
 export function EventLimitNotice({
   planName,
   limit,
+  hasPlan = true,
 }: {
   planName?: string;
   /** Known active-event cap; null when the exact number isn't available. */
   limit: number | null;
+  /** False when the org has no plan yet — no entitlements at all. */
+  hasPlan?: boolean;
 }) {
+  if (!hasPlan) {
+    return (
+      <Card className="max-w-2xl border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--warning)_16%,transparent)] text-[var(--warning)]">
+            <TriangleAlert className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+              Organisasimu belum punya paket
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pilih paket dulu untuk mulai membuat event. Semua paket sudah termasuk jadwal,
+              klasemen, dan bracket.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <Button asChild>
+            <Link href="/organizer/upgrade">
+              <ArrowUpRight className="h-4 w-4" />
+              Pilih paket
+            </Link>
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="max-w-2xl border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] p-6">
       <div className="flex items-start gap-3">

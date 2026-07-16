@@ -68,7 +68,7 @@ export default function NewEventPage() {
       {deciding ? (
         <Skeleton className="h-48 w-full max-w-2xl rounded-xl" />
       ) : limitReached ? (
-        <EventLimitNotice planName={org?.plan?.name} limit={limit} />
+        <EventLimitNotice planName={org?.plan?.name} limit={limit} hasPlan={!!org?.plan} />
       ) : (
         <EventForm
           submitLabel="Buat Event"

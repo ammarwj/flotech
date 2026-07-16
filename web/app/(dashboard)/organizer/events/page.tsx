@@ -48,16 +48,18 @@ export default function EventsPage() {
       <PageHeader
         title="Event"
         description={
-          limit !== null
-            ? `Kelola semua turnamen organisasimu. ${activeCount}/${limit} slot event aktif terpakai.`
-            : "Kelola semua turnamen organisasimu."
+          org && !org.plan
+            ? "Kelola semua turnamen organisasimu. Pilih paket dulu untuk mulai membuat event."
+            : limit !== null
+              ? `Kelola semua turnamen organisasimu. ${activeCount}/${limit} slot event aktif terpakai.`
+              : "Kelola semua turnamen organisasimu."
         }
         actions={
           limitReached ? (
             <Button asChild variant="outline">
               <Link href="/organizer/upgrade">
                 <ArrowUpRight className="h-4 w-4" />
-                Upgrade paket
+                {org && !org.plan ? "Pilih paket" : "Upgrade paket"}
               </Link>
             </Button>
           ) : (

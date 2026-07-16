@@ -57,7 +57,7 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
         Masuk
       </Link>
       <Link href="/register" className={variant === "menu" ? undefined : "btn btn-primary btn-sm"}>
-        Mulai Gratis
+        Daftar
       </Link>
     </>
   );
@@ -96,8 +96,8 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
 }
 
 /**
- * The landing CTAs ("Mulai Gratis"). Inviting someone who already has an account
- * to sign up again is nonsense, so they point at the dashboard instead.
+ * The landing CTAs ("Mulai Sekarang"). Inviting someone who already has an
+ * account to sign up again is nonsense, so they point at the dashboard instead.
  */
 export function usePublicCta(): { href: string; label: string } {
   const { isAuthenticated } = useOptionalSession();
@@ -107,7 +107,7 @@ export function usePublicCta(): { href: string; label: string } {
   // it lands, isAuthenticated is already true but the destination is unknown.
   return isAuthenticated && user
     ? { href: dashboardHref(user), label: "Ke Dashboard" }
-    : { href: "/register", label: "Mulai Gratis" };
+    : { href: "/register", label: "Mulai Sekarang" };
 }
 
 /**

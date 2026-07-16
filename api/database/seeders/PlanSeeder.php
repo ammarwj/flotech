@@ -12,11 +12,11 @@ class PlanSeeder extends Seeder
     {
         $plans = [
             [
-                'name' => 'Free',
-                'slug' => 'free',
+                'name' => 'Basic',
+                'slug' => 'basic',
                 'description' => 'Untuk komunitas kecil yang baru mulai.',
-                'price_monthly' => 0,
-                'yearly_discount_percent' => 0,
+                'price_monthly' => 49000,
+                'yearly_discount_percent' => 20,
                 'sort_order' => 1,
                 'features' => [
                     'max_active_events' => '1',

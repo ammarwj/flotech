@@ -59,9 +59,8 @@ export default function OnboardingPage() {
   const qc = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  const [step, setStep] = useState<1 | 2>(1);
   const [orgName, setOrgName] = useState("");
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [createdOrgId, setCreatedOrgId] = useState<string | null>(null);
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
 
@@ -69,16 +68,21 @@ export default function OnboardingPage() {
     if (!isAuthenticated) router.replace("/login");
   }, [isAuthenticated, router]);
 
-  // Step 1 creates an organization, and nothing on the API side stops a second
-  // one — but useActiveOrg() only ever reads data[0], so a duplicate would be an
-  // invisible ghost. Bounce anyone who already has an org (back button, bookmark)
-  // before they can submit the form. Only guards step 1: once step 1 succeeds the
-  // org exists by design and the user must be allowed through to pick a plan.
   const { org } = useActiveOrg();
 
+  // An org without a plan is an abandoned checkout: it has no entitlements at
+  // all until one is bought, so resume at step 2 instead of bouncing the owner
+  // to a dashboard they can't use. Deriving the step (rather than storing it)
+  // keeps the freshly created org and the refetched one from disagreeing.
+  const pendingOrgId = createdOrgId ?? (org && !org.plan ? org.id : null);
+  const step: 1 | 2 = pendingOrgId ? 2 : 1;
+
+  // Step 1 creates an organization, and nothing on the API side stops a second
+  // one — but useActiveOrg() only ever reads data[0], so a duplicate would be an
+  // invisible ghost. Anyone already onboarded (org + plan) has no business here.
   useEffect(() => {
-    if (step === 1 && org) router.replace("/organizer");
-  }, [step, org, router]);
+    if (org?.plan) router.replace("/organizer");
+  }, [org, router]);
 
   const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
 
@@ -87,14 +91,13 @@ export default function OnboardingPage() {
     onSuccess: (org) => {
       toast.success("Organisasi berhasil dibuat!");
       qc.invalidateQueries({ queryKey: ["organizations"] });
-      setOrgId(org.id);
-      setStep(2);
+      setCreatedOrgId(org.id);
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat organisasi.").message),
   });
 
   const checkout = useMutation({
-    mutationFn: (plan: Plan) => checkoutSubscription(orgId!, plan.id, cycle),
+    mutationFn: (plan: Plan) => checkoutSubscription(pendingOrgId!, plan.id, cycle),
     onSuccess: (res) => {
       if (res.redirect_url) {
         window.location.assign(res.redirect_url);
@@ -118,7 +121,7 @@ export default function OnboardingPage() {
         description={
           step === 1
             ? "Organisasi adalah ruang kerja untuk semua turnamenmu."
-            : "Mulai dari Free, upgrade kapan saja sesuai kebutuhan."
+            : "Pilih paket untuk mengaktifkan organisasimu. Upgrade kapan saja sesuai kebutuhan."
         }
       />
 
