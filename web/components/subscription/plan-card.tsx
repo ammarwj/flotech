@@ -2,7 +2,7 @@
 
 import { Check, X } from "lucide-react";
 
-import { formatPlanFeature, getYearlyDiscount, getYearlyListPrice } from "@/lib/plan";
+import { formatPlanFeature, getMonthlyEquivalent, getPlanColor, getYearlyDiscount } from "@/lib/plan";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,13 +10,6 @@ import { cn } from "@/lib/utils";
 import type { Plan } from "@/types/api";
 
 export type BillingCycle = "monthly" | "yearly";
-
-const PLAN_COLORS: Record<string, string> = {
-  free: "var(--plan-free)",
-  starter: "var(--plan-starter)",
-  pro: "var(--plan-pro)",
-  professional: "var(--plan-professional)",
-};
 
 /** `discount` is the best saving across plans (see getMaxYearlyDiscount); 0 hides the badge. */
 export function BillingCycleToggle({
@@ -82,8 +75,10 @@ export function PlanCard({
   disabled?: boolean;
   onSelect: (plan: Plan) => void;
 }) {
-  const price = cycle === "yearly" ? plan.price_yearly : plan.price_monthly;
-  const color = PLAN_COLORS[plan.slug] ?? "var(--brand-600)";
+  // Always quoted per month so the cycles stay comparable; the yearly sum that
+  // actually gets charged is spelled out under the price.
+  const perMonth = cycle === "yearly" ? getMonthlyEquivalent(plan) : plan.price_monthly;
+  const color = getPlanColor(plan.slug);
   const featured = plan.slug === "pro";
 
   const discount = getYearlyDiscount(plan);
@@ -113,19 +108,17 @@ export function PlanCard({
 
       <div className="mt-3 min-h-[18px] text-xs">
         {showSaving && (
-          <span className="text-muted-foreground line-through">
-            {rupiah(getYearlyListPrice(plan))}
-          </span>
+          <span className="text-muted-foreground line-through">{rupiah(plan.price_monthly)}</span>
         )}
       </div>
 
       <div className="text-2xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-        {price === 0 ? "Gratis" : rupiah(price)}
-        {price > 0 && (
-          <span className="text-sm font-medium text-muted-foreground">
-            /{cycle === "yearly" ? "thn" : "bln"}
-          </span>
-        )}
+        {perMonth === 0 ? "Gratis" : rupiah(Math.round(perMonth))}
+        {perMonth > 0 && <span className="text-sm font-medium text-muted-foreground">/bln</span>}
+      </div>
+
+      <div className="min-h-[18px] text-xs text-muted-foreground">
+        {cycle === "yearly" && plan.price_yearly > 0 && `Ditagih ${rupiah(plan.price_yearly)}/tahun`}
       </div>
 
       {showSaving && (

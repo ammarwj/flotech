@@ -1,118 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+
 import { usePlanCtaHref } from "@/components/auth/public-auth-actions";
+import { observeReveals } from "@/components/landing/reveal-init";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getPublicPlans } from "@/lib/api/plans";
+import { rupiahCompact } from "@/lib/labels";
+import {
+  formatPlanFeature,
+  getMaxYearlyDiscount,
+  getMonthlyEquivalent,
+  getPlanColor,
+  getPlanFeatureValue,
+} from "@/lib/plan";
+import type { Plan } from "@/types/api";
 import { CheckIcon, CrossIcon } from "./icons";
-
-type Feature = { label: string; off?: boolean };
-
-type Plan = {
-  name: string;
-  swatch: string;
-  desc: string;
-  priceMonthly: string;
-  priceYearly: string;
-  per?: string;
-  note: string;
-  cta: string;
-  href: string;
-  featured?: boolean;
-  tag?: string;
-  delay?: string;
-  features: Feature[];
-};
 
 const SALES_MAILTO =
   "mailto:sales@flo-event.id?subject=Tertarik%20paket%20Professional%20flo-event";
 
-const PLANS: Plan[] = [
-  {
-    name: "Free",
-    swatch: "var(--plan-free)",
-    desc: "Untuk komunitas kecil yang baru mulai.",
-    priceMonthly: "0",
-    priceYearly: "0",
-    note: "Gratis selamanya",
-    cta: "Mulai Gratis",
-    href: "/register",
-    features: [
-      { label: "1 event aktif" },
-      { label: "8 tim per event" },
-      { label: "Jadwal, klasemen & bracket" },
-      { label: "Statistik basic" },
-      { label: "Tiket QR & sertifikat", off: true },
-    ],
-  },
-  {
-    name: "Starter",
-    swatch: "var(--plan-starter)",
-    desc: "Untuk klub & kampus yang rutin gelar event.",
-    priceMonthly: "149rb",
-    priceYearly: "119rb",
-    per: "/bln",
-    note: "≈ Rp 1,43jt/tahun",
-    cta: "Pilih Starter",
-    href: "/register",
-    delay: "60",
-    features: [
-      { label: "3 event aktif · 32 tim" },
-      { label: "Payment gateway" },
-      { label: "Tiket QR (500/event)" },
-      { label: "Generator sertifikat" },
-      { label: "Export Excel & PDF" },
-    ],
-  },
-  {
-    name: "Pro",
-    swatch: "var(--plan-pro)",
-    desc: "Untuk EO profesional & turnamen besar.",
-    priceMonthly: "399rb",
-    priceYearly: "319rb",
-    per: "/bln",
-    note: "≈ Rp 3,83jt/tahun",
-    cta: "Pilih Pro",
-    href: "/register",
-    featured: true,
-    tag: "Paling Populer",
-    delay: "120",
-    features: [
-      { label: "10 event aktif · 128 tim" },
-      { label: "Tiket QR (5.000/event)" },
-      { label: "Kirim sertifikat via email" },
-      { label: "Laporan turnamen full" },
-      { label: "Custom subdomain · priority support" },
-    ],
-  },
-  {
-    name: "Professional",
-    swatch: "var(--plan-professional)",
-    desc: "Untuk federasi & turnamen skala nasional.",
-    priceMonthly: "999rb",
-    priceYearly: "799rb",
-    per: "/bln",
-    note: "≈ Rp 9,59jt/tahun",
-    cta: "Hubungi Sales",
-    href: SALES_MAILTO,
-    delay: "180",
-    features: [
-      { label: "Event & tim unlimited" },
-      { label: "Tiket unlimited · fee 1%" },
-      { label: "Custom domain & white label" },
-      { label: "API access" },
-      { label: "Dedicated support" },
-    ],
-  },
-];
+/**
+ * The bits of a card the plan catalogue has no opinion about: the top plan is a
+ * sales conversation rather than a self-serve checkout, and `pro` is the one we
+ * push. Everything else on the card — price, description, features — is API data.
+ */
+function ctaFor(plan: Plan): { label: string; href: string } {
+  if (plan.slug === "professional") return { label: "Hubungi Sales", href: SALES_MAILTO };
+  if (plan.price_monthly === 0) return { label: "Mulai Gratis", href: "/register" };
+  return { label: `Pilih ${plan.name}`, href: "/register" };
+}
+
+/** Shown only in yearly mode (the monthly note is hidden by CSS). */
+function yearlyNote(plan: Plan): string {
+  if (plan.price_monthly === 0) return "Gratis selamanya";
+  return `≈ Rp ${rupiahCompact(plan.price_yearly)}/tahun`;
+}
+
+/** Ticket platform fee per plan, e.g. "3% (Starter) · 2% (Pro)". */
+function feeFootnote(plans: Plan[]): string | null {
+  const fees = plans.flatMap((plan) => {
+    const fee = getPlanFeatureValue(plan, "ticket_fee_percent");
+    return fee ? [`${fee}% (${plan.name})`] : [];
+  });
+
+  return fees.length > 0 ? `Platform fee tiket: ${fees.join(" · ")}.` : null;
+}
 
 export function Pricing() {
   const [yearly, setYearly] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
 
-  const toggle = () => {
-    const next = !yearly;
-    setYearly(next);
-    document.body.setAttribute("data-billing", next ? "yearly" : "monthly");
-  };
+  const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
+  const plans = plansQuery.data;
+
+  // The cards don't exist when RevealInit sweeps the page, so they'd never be
+  // revealed. Observe them here once they've rendered.
+  useEffect(() => {
+    if (!plans || !gridRef.current) return;
+    return observeReveals(gridRef.current);
+  }, [plans]);
+
+  // The CSS reads the cycle off the body, but the body outlives this section:
+  // without the cleanup, leaving the page and coming back would leave a stale
+  // "yearly" attribute contradicting the freshly-reset switch.
+  useEffect(() => {
+    document.body.setAttribute("data-billing", yearly ? "yearly" : "monthly");
+    return () => document.body.setAttribute("data-billing", "monthly");
+  }, [yearly]);
+
+  const discount = getMaxYearlyDiscount(plans);
 
   return (
     <section
@@ -132,65 +91,89 @@ export function Pricing() {
             <span className="lbl lbl-m">Bulanan</span>
             <button
               className="switch"
-              onClick={toggle}
+              onClick={() => setYearly((v) => !v)}
               role="switch"
               aria-checked={yearly}
               aria-label="Tagihan bulanan atau tahunan"
             />
             <span className="lbl lbl-y">Tahunan</span>
-            <span className="save">Hemat 20%</span>
+            {discount > 0 && <span className="save">Hemat {discount}%</span>}
           </div>
         </div>
 
-        <div className="price-grid">
-          {PLANS.map((p) => (
-            <article key={p.name} className={`plan${p.featured ? " featured" : ""} reveal`} data-delay={p.delay}>
-              {p.tag && <span className="plan-tag">{p.tag}</span>}
-              <div className="plan-name">
-                <span className="swatch" style={{ background: p.swatch }} /> {p.name}
-              </div>
-              <p className="plan-desc">{p.desc}</p>
-              <div className="plan-price">
-                <span className="cur">Rp</span>
-                <span className="amt amt-m">{p.priceMonthly}</span>
-                <span className="amt amt-y">{p.priceYearly}</span>
-                {p.per && <span className="per">{p.per}</span>}
-              </div>
-              <p className="plan-note">{p.note}</p>
-              <PlanCta plan={p} />
-              <ul className="plan-feats">
-                {p.features.map((f) => (
-                  <li key={f.label} className={f.off ? "off" : undefined}>
-                    {f.off ? <CrossIcon /> : <CheckIcon />} {f.label}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
+        <div className="price-grid" ref={gridRef}>
+          {plansQuery.isPending
+            ? [0, 1, 2, 3].map((i) => (
+                <article key={i} className="plan" aria-hidden>
+                  <Skeleton className="h-full min-h-[420px] w-full" />
+                </article>
+              ))
+            : plans?.map((plan, i) => (
+                <PlanCard key={plan.id} plan={plan} delay={i > 0 ? String(i * 60) : undefined} />
+              ))}
         </div>
-        <p className="price-foot">
-          Platform fee tiket: 3% (Starter) · 2% (Pro) · 1% (Professional). Diskon 20% untuk pembayaran tahunan.
-        </p>
+
+        {plansQuery.isError && (
+          <p className="price-foot">Gagal memuat paket. Coba muat ulang halaman ini.</p>
+        )}
+
+        {plans && (
+          <p className="price-foot">
+            {feeFootnote(plans)}
+            {discount > 0 && ` Diskon ${discount}% untuk pembayaran tahunan.`}
+          </p>
+        )}
       </div>
     </section>
   );
 }
 
+function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
+  const featured = plan.slug === "pro";
+  const cta = ctaFor(plan);
+
+  return (
+    <article className={`plan${featured ? " featured" : ""} reveal`} data-delay={delay}>
+      {featured && <span className="plan-tag">Paling Populer</span>}
+      <div className="plan-name">
+        <span className="swatch" style={{ background: getPlanColor(plan.slug) }} /> {plan.name}
+      </div>
+      <p className="plan-desc">{plan.description}</p>
+      <div className="plan-price">
+        <span className="cur">Rp</span>
+        {/* Yearly is billed as one sum, but the card compares plans per month. */}
+        <span className="amt amt-m">{rupiahCompact(plan.price_monthly)}</span>
+        <span className="amt amt-y">{rupiahCompact(getMonthlyEquivalent(plan))}</span>
+        {plan.price_monthly > 0 && <span className="per">/bln</span>}
+      </div>
+      <p className="plan-note">{yearlyNote(plan)}</p>
+      <PlanCta cta={cta} featured={featured} />
+      <ul className="plan-feats">
+        {plan.feature_details?.map((feature) => (
+          <li key={feature.key} className={feature.included ? undefined : "off"}>
+            {feature.included ? <CheckIcon /> : <CrossIcon />} {formatPlanFeature(feature)}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
 /**
  * A signed-in organizer picking a plan wants the checkout page, not the sign-up
- * form. The Enterprise card points at a mailto and is left alone.
+ * form. The Professional card points at a mailto and is left alone.
  */
-function PlanCta({ plan }: { plan: Plan }) {
-  const href = usePlanCtaHref(plan.href);
-  const className = `btn ${plan.featured ? "btn-primary" : "btn-secondary"} btn-block`;
+function PlanCta({ cta, featured }: { cta: { label: string; href: string }; featured: boolean }) {
+  const href = usePlanCtaHref(cta.href);
+  const className = `btn ${featured ? "btn-primary" : "btn-secondary"} btn-block`;
 
   return href.startsWith("/") ? (
     <Link href={href} className={className}>
-      {plan.cta}
+      {cta.label}
     </Link>
   ) : (
     <a href={href} className={className}>
-      {plan.cta}
+      {cta.label}
     </a>
   );
 }

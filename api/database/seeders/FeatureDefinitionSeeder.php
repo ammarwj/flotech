@@ -28,6 +28,14 @@ class FeatureDefinitionSeeder extends Seeder
                 'sort_order' => 20,
             ],
             [
+                'feature_key' => 'payment_gateway',
+                'feature_label' => 'Payment gateway',
+                'feature_group' => 'ticket',
+                'feature_type' => 'boolean',
+                'description' => 'Terima pembayaran tiket dan biaya pendaftaran secara online.',
+                'sort_order' => 25,
+            ],
+            [
                 'feature_key' => 'qr_tickets',
                 'feature_label' => 'Tiket QR',
                 'feature_group' => 'ticket',
@@ -74,6 +82,14 @@ class FeatureDefinitionSeeder extends Seeder
                 'feature_type' => 'boolean',
                 'description' => 'Kirim sertifikat otomatis ke email peserta.',
                 'sort_order' => 80,
+            ],
+            [
+                'feature_key' => 'export_data',
+                'feature_label' => 'Export Excel & PDF',
+                'feature_group' => 'platform',
+                'feature_type' => 'boolean',
+                'description' => 'Unduh data peserta, jadwal, dan laporan sebagai Excel atau PDF.',
+                'sort_order' => 85,
             ],
             [
                 'feature_key' => 'custom_domain',

@@ -21,8 +21,10 @@ class PlanSeeder extends Seeder
                 'features' => [
                     'max_active_events' => '1',
                     'max_teams_per_event' => '8',
+                    'payment_gateway' => 'false',
                     'qr_tickets' => 'false',
                     'certificate_generator' => 'false',
+                    'export_data' => 'false',
                 ],
             ],
             [
@@ -35,9 +37,11 @@ class PlanSeeder extends Seeder
                 'features' => [
                     'max_active_events' => '3',
                     'max_teams_per_event' => '32',
+                    'payment_gateway' => 'true',
                     'qr_tickets' => 'true',
                     'max_tickets_per_event' => '500',
                     'certificate_generator' => 'true',
+                    'export_data' => 'true',
                     'ticket_fee_percent' => '3',
                     'registration_fee_percent' => '3',
                 ],
@@ -52,10 +56,12 @@ class PlanSeeder extends Seeder
                 'features' => [
                     'max_active_events' => '10',
                     'max_teams_per_event' => '128',
+                    'payment_gateway' => 'true',
                     'qr_tickets' => 'true',
                     'max_tickets_per_event' => '5000',
                     'certificate_generator' => 'true',
                     'certificate_email' => 'true',
+                    'export_data' => 'true',
                     'ticket_fee_percent' => '2',
                     'registration_fee_percent' => '2',
                 ],
@@ -70,10 +76,12 @@ class PlanSeeder extends Seeder
                 'features' => [
                     'max_active_events' => '-1',
                     'max_teams_per_event' => '-1',
+                    'payment_gateway' => 'true',
                     'qr_tickets' => 'true',
                     'max_tickets_per_event' => '-1',
                     'certificate_generator' => 'true',
                     'certificate_email' => 'true',
+                    'export_data' => 'true',
                     'custom_domain' => 'true',
                     'api_access' => 'true',
                     'ticket_fee_percent' => '1',

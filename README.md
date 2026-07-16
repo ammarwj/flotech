@@ -58,14 +58,38 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up web api db red
 
 ## Production deploy (VPS)
 
+The host needs only Docker and the Compose plugin — every runtime ships in the
+images. DNS for all three names must already point at the box.
+
 ```bash
-cp .env.example .env             # fill in real secrets + domains
-cp api/.env.example api/.env     # fill in secrets, set APP_KEY
+cp .env.example .env             # domains + POSTGRES_* (compose interpolation only)
+cp api/.env.example api/.env     # the app's own secrets — see the two notes below
 cp web/.env.example web/.env.production
-./init-letsencrypt.sh            # obtain TLS certs (DNS must point here first)
+
+# RS256 keys must exist BEFORE anything builds: the image bakes them in via
+# `COPY . .`, and .gitignore keeps *.pem out of the clone, so a fresh checkout
+# has none. Build first and api, worker and scheduler all come up unable to
+# sign tokens. init-letsencrypt.sh builds too, so generate them here, not later.
+openssl genrsa -out api/storage/jwt/jwt-private.pem 2048
+openssl rsa -in api/storage/jwt/jwt-private.pem -pubout -out api/storage/jwt/jwt-public.pem
+
+./init-letsencrypt.sh            # obtain TLS certs
 docker compose up -d --build
 docker compose exec api php artisan migrate --force
 ```
+
+Two things about `api/.env` that bite in production:
+
+- **`DB_USERNAME`/`DB_PASSWORD` must match `POSTGRES_USER`/`POSTGRES_PASSWORD`
+  in the root `.env`.** The root file only feeds compose interpolation — it is
+  never injected into the api container, which reads `api/.env` via `env_file`.
+  Setting `APP_KEY` or `JWT_*` in the root `.env` does nothing.
+- **Generate `APP_KEY` on the host**, not with `artisan key:generate`. Nothing
+  bind-mounts `./api` in production, so the command would rewrite the `.env`
+  *inside* a container and lose it on the next recreate. Paste this in instead:
+  ```bash
+  echo "base64:$(openssl rand -base64 32)"
+  ```
 
 Services: `nginx` (80/443) · `web` (Next.js) · `api` (Laravel) · `worker` (Horizon)
 · `scheduler` · `db` (Postgres) · `redis`.

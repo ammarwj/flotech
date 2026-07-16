@@ -13,6 +13,23 @@ export function getActiveEventLimit(org?: Organization | null): number | null {
   return limit;
 }
 
+const PLAN_COLORS: Record<string, string> = {
+  free: "var(--plan-free)",
+  starter: "var(--plan-starter)",
+  pro: "var(--plan-pro)",
+  professional: "var(--plan-professional)",
+};
+
+/** Swatch colour for a plan, shared by the landing table and the dashboard cards. */
+export function getPlanColor(slug: string): string {
+  return PLAN_COLORS[slug] ?? "var(--brand-600)";
+}
+
+/** Raw feature value from a plan's `features` map, or null when the plan lacks it. */
+export function getPlanFeatureValue(plan: Plan, key: string): string | null {
+  return plan.features?.[key] ?? null;
+}
+
 /** Human-readable line for a plan feature, e.g. "Event aktif: 3" or "Tiket QR". */
 export function formatPlanFeature(feature: PlanFeatureDetail): string {
   if (feature.value === null || feature.type === "boolean") return feature.label;
@@ -40,9 +57,13 @@ export function computeYearlyPrice(monthly: number, discountPercent: number): nu
   return Math.round((monthly * 12 * (1 - discountPercent / 100)) / 1000) * 1000;
 }
 
-/** Undiscounted yearly price (12 x monthly) — the struck-through figure. */
-export function getYearlyListPrice(plan: Plan): number {
-  return plan.price_monthly * 12;
+/**
+ * Per-month figure for a yearly subscription. Both pricing tables advertise the
+ * monthly rate and disclose the yearly sum separately, so plans stay comparable
+ * across billing cycles — `price_yearly` is still what actually gets billed.
+ */
+export function getMonthlyEquivalent(plan: Plan): number {
+  return plan.price_yearly / 12;
 }
 
 /** Best discount across plans, for the billing-cycle toggle badge. */
