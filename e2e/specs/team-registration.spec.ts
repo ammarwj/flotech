@@ -22,6 +22,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     await page.getByLabel("Nama kontak").fill("Budi");
     await page.getByLabel("No. HP kontak").fill("081234567890");
     await page.getByPlaceholder("Nama pemain").first().fill("Pemain Satu");
+    await page.getByLabel("Persetujuan ketentuan").check();
     await page.getByRole("button", { name: "Kirim Pendaftaran" }).click();
 
     await expect(page.getByRole("heading", { name: /pendaftaran terkirim/i })).toBeVisible();
@@ -91,6 +92,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     await page.getByLabel("Nama tim").fill(teamName);
     await page.getByLabel("Nama kontak").fill("Budi");
     await page.getByLabel("No. HP kontak").fill("081234567890");
+    await page.getByLabel("Persetujuan ketentuan").check();
     await page.getByRole("button", { name: "Kirim Pendaftaran" }).click();
     await expect(page.getByRole("heading", { name: /pendaftaran terkirim/i })).toBeVisible();
 
@@ -150,6 +152,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     await page.getByLabel("Nama kontak").fill("Budi");
     await page.getByLabel("No. HP kontak").fill("081234567890");
     await page.getByPlaceholder("Nama pemain").first().fill("Pemain Satu");
+    await page.getByLabel("Persetujuan ketentuan").check();
     await page.getByRole("button", { name: "Kirim Pendaftaran" }).click();
 
     await expect(page.getByText(/kuota tim untuk kategori ini sudah penuh/i)).toBeVisible();

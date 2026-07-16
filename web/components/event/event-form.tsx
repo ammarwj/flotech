@@ -351,6 +351,11 @@ export function EventForm({
   // Per-category name errors, keyed by the category's local `_key`.
   const [catErrors, setCatErrors] = useState<Record<string, string | undefined>>({});
 
+  // No-gambling attestation. An existing event was already allowed, so editing
+  // starts pre-attested; a brand-new event must tick it explicitly.
+  const [attested, setAttested] = useState(!!initial);
+  const [attestError, setAttestError] = useState<string>();
+
   const errorFor = (k: keyof EventInput): string | undefined =>
     (k in clientErrors ? clientErrors[k as string] : fieldErrors?.[k as string]) || undefined;
 
@@ -435,7 +440,10 @@ export function EventForm({
     }
     setCatErrors(catNext);
 
-    if (next.name || next.start_date || next.end_date || Object.keys(catNext).length > 0) {
+    const attestBad = !attested;
+    setAttestError(attestBad ? "Kamu harus menyetujui pernyataan ini untuk melanjutkan." : undefined);
+
+    if (next.name || next.start_date || next.end_date || Object.keys(catNext).length > 0 || attestBad) {
       if (Object.keys(catNext).length > 0 && !next.name && !next.start_date && !next.end_date) {
         toast.error("Lengkapi nama setiap kategori.");
       }
@@ -690,6 +698,35 @@ export function EventForm({
           </p>
           <EventSummary v={v} categories={categories} banner={bannerShown} days={days} />
         </aside>
+      </div>
+
+      <div className="rounded-xl border border-border p-4">
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            aria-label="Pernyataan tanpa perjudian"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+            checked={attested}
+            onChange={(e) => {
+              setAttested(e.target.checked);
+              if (e.target.checked) setAttestError(undefined);
+            }}
+          />
+          <span className="leading-relaxed text-muted-foreground">
+            Saya menyatakan event ini <strong className="text-foreground">tidak mengandung unsur perjudian</strong>{" "}
+            dalam bentuk apa pun, termasuk hadiah yang bersumber dari akumulasi biaya pendaftaran peserta, dan
+            saya menyetujui{" "}
+            <Link
+              href="/ketentuan"
+              target="_blank"
+              className="font-medium text-[var(--brand-600)] underline"
+            >
+              Ketentuan Layanan
+            </Link>
+            .
+          </span>
+        </label>
+        <FieldError message={attestError} />
       </div>
 
       <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-3 rounded-xl border border-border bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">

@@ -78,6 +78,7 @@ function RegisterTeamPage() {
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   // Local blob for instant preview (dev R2 returns a non-renderable mock:// URL).
   const logoShown = logoPreview ?? (team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null);
@@ -423,11 +424,28 @@ function RegisterTeamPage() {
           </CardContent>
         </Card>
 
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            aria-label="Persetujuan ketentuan"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+          />
+          <span className="leading-relaxed text-muted-foreground">
+            Saya menyetujui{" "}
+            <Link href="/ketentuan" target="_blank" className="font-medium text-[var(--primary)] underline">
+              Ketentuan Layanan
+            </Link>{" "}
+            dan menyatakan tidak terlibat perjudian dalam bentuk apa pun.
+          </span>
+        </label>
+
         <div className="flex justify-end">
           <Button
             type="submit"
             size="lg"
-            disabled={!sessionReady || !resolvedCategoryId || mutation.isPending || uploading || logoUploading}
+            disabled={!sessionReady || !resolvedCategoryId || !agreed || mutation.isPending || uploading || logoUploading}
           >
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
           </Button>

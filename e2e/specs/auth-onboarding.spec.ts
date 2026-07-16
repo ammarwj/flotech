@@ -109,6 +109,8 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
     await page.getByPlaceholder("U-17 / Woman / Senior").fill("Umum");
     await pickDate(page, "Tanggal mulai", daysAhead(10));
     await pickDate(page, "Tanggal selesai", daysAhead(11));
+    // Organizer must attest the event carries no gambling before it can be saved.
+    await page.getByLabel("Pernyataan tanpa perjudian").check();
     await page.getByRole("button", { name: /simpan|buat event/i }).click();
 
     await expect(toast(page, /event berhasil dibuat/i)).toBeVisible();
