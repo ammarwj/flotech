@@ -58,12 +58,13 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
             </span>
           )}
           {/* Badge tints are translucent, so they need a solid backing to stay
-              legible on top of a banner photo. */}
-          <span className="absolute left-3 top-3 rounded-full bg-[var(--bg)]">
+              legible on top of a banner photo. inline-flex so the backing hugs
+              the pill exactly instead of filling the taller inline line-box. */}
+          <span className="absolute left-3 top-3 inline-flex rounded-full bg-[var(--bg)]">
             <EventStatusBadge status={event.status} />
           </span>
           {event.tickets_on_sale && (
-            <span className="absolute right-3 top-3 rounded-full bg-[var(--bg)]">
+            <span className="absolute right-3 top-3 inline-flex rounded-full bg-[var(--bg)]">
               <Badge variant="info">
                 <Ticket className="h-3 w-3" />
                 Tiket
