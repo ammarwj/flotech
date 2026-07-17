@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
+import { ManualModeBanner } from "@/components/payment/manual-mode-banner";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -40,5 +41,10 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <ManualModeBanner />
+      {children}
+    </>
+  );
 }

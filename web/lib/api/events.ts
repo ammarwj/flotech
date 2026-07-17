@@ -230,6 +230,14 @@ export async function uploadImage(file: File, folder = "images"): Promise<string
   return data.data.file_url;
 }
 
+/** Attach the transfer receipt for a manual registration fee. */
+export async function submitTeamProof(teamId: string, paymentProofUrl: string): Promise<Team> {
+  const { data } = await apiClient.post<ApiEnvelope<Team>>(`/my-teams/${teamId}/proof`, {
+    payment_proof_url: paymentProofUrl,
+  });
+  return data.data;
+}
+
 export async function getMyTeams(): Promise<Team[]> {
   const { data } = await apiClient.get<ApiEnvelope<Team[]>>("/my-teams");
   return data.data;

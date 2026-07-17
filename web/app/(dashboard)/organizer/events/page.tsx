@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket } from "lucide-react";
+import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
@@ -156,6 +156,16 @@ export default function EventsPage() {
                   <Link href={`/organizer/events/${ev.id}/tickets`}>
                     <Ticket className="h-4 w-4" />
                     Tiket
+                  </Link>
+                </Button>
+                {/* Always shown, not just while the gateway is off: manual
+                    orders that already have proof never expire on their own, so
+                    hiding this the moment the gateway returns would strand
+                    them. */}
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/payments`}>
+                    <BadgeCheck className="h-4 w-4" />
+                    Pembayaran
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">

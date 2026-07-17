@@ -3,10 +3,17 @@ import type {
   ApiEnvelope,
   PurchaseResult,
   ScanResponse,
+  Team,
   TicketCategory,
   TicketOrder,
   TicketReport,
 } from "@/types/api";
+
+/** The manual transfers waiting on an org admin for one event. */
+export interface PendingPayments {
+  tickets: TicketOrder[];
+  teams: Team[];
+}
 
 export interface TicketCategoryInput {
   name: string;
@@ -122,5 +129,81 @@ export async function purchaseTickets(
 
 export async function getTicketOrder(orderId: string): Promise<TicketOrder> {
   const { data } = await apiClient.get<ApiEnvelope<TicketOrder>>(`/ticket-orders/${orderId}`);
+  return data.data;
+}
+
+/**
+ * Attach the buyer's transfer receipt to a manual order. Public, like the
+ * e-ticket page it's used from — the order id is the only credential a buyer
+ * who never signed up has.
+ */
+export async function submitTicketProof(
+  orderId: string,
+  paymentProofUrl: string
+): Promise<TicketOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<TicketOrder>>(
+    `/ticket-orders/${orderId}/proof`,
+    { payment_proof_url: paymentProofUrl }
+  );
+  return data.data;
+}
+
+// ---- Manual-transfer verification (org admin) ----
+
+export async function getPendingPayments(
+  orgId: string,
+  eventId: string
+): Promise<PendingPayments> {
+  const { data } = await apiClient.get<ApiEnvelope<PendingPayments>>(
+    `/organizations/${orgId}/events/${eventId}/payments`
+  );
+  return data.data;
+}
+
+export async function approveTicketPayment(
+  orgId: string,
+  eventId: string,
+  orderId: string
+): Promise<TicketOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<TicketOrder>>(
+    `/organizations/${orgId}/events/${eventId}/payments/tickets/${orderId}/approve`
+  );
+  return data.data;
+}
+
+export async function rejectTicketPayment(
+  orgId: string,
+  eventId: string,
+  orderId: string,
+  reason: string
+): Promise<TicketOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<TicketOrder>>(
+    `/organizations/${orgId}/events/${eventId}/payments/tickets/${orderId}/reject`,
+    { reason }
+  );
+  return data.data;
+}
+
+export async function approveTeamPayment(
+  orgId: string,
+  eventId: string,
+  teamId: string
+): Promise<Team> {
+  const { data } = await apiClient.post<ApiEnvelope<Team>>(
+    `/organizations/${orgId}/events/${eventId}/payments/teams/${teamId}/approve`
+  );
+  return data.data;
+}
+
+export async function rejectTeamPayment(
+  orgId: string,
+  eventId: string,
+  teamId: string,
+  reason: string
+): Promise<Team> {
+  const { data } = await apiClient.post<ApiEnvelope<Team>>(
+    `/organizations/${orgId}/events/${eventId}/payments/teams/${teamId}/reject`,
+    { reason }
+  );
   return data.data;
 }

@@ -3,7 +3,7 @@ import type {
   AdminPayment,
   AdminWallet,
   ApiEnvelope,
-  PlatformSetting,
+  PlatformSettingsPayload,
   Withdrawal,
   WithdrawalStatus,
 } from "@/types/api";
@@ -73,16 +73,19 @@ export async function getAdminWallets(negativeOnly = false): Promise<AdminWallet
   return data.data;
 }
 
-// ---- Payout policy (super admin) ----
+// ---- Platform policy (super admin) ----
 
-export async function getPlatformSettings(): Promise<PlatformSetting[]> {
-  const { data } = await apiClient.get<ApiEnvelope<PlatformSetting[]>>("/admin/settings");
+export async function getPlatformSettings(): Promise<PlatformSettingsPayload> {
+  const { data } = await apiClient.get<ApiEnvelope<PlatformSettingsPayload>>("/admin/settings");
   return data.data;
 }
 
 export async function updatePlatformSettings(
-  values: Record<string, number>
-): Promise<PlatformSetting[]> {
-  const { data } = await apiClient.put<ApiEnvelope<PlatformSetting[]>>("/admin/settings", values);
+  values: Record<string, number | boolean>
+): Promise<PlatformSettingsPayload> {
+  const { data } = await apiClient.put<ApiEnvelope<PlatformSettingsPayload>>(
+    "/admin/settings",
+    values
+  );
   return data.data;
 }

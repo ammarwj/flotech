@@ -42,6 +42,12 @@ class FaqSeeder extends Seeder
                 'sort_order' => 50,
             ],
             [
+                'question' => 'Bagaimana kalau payment gateway sedang bermasalah?',
+                'answer' => 'Event kamu tetap bisa jualan. Kalau gateway sedang terganggu, kami mengalihkan seluruh platform ke transfer manual: pembeli melihat rekening organisasimu, transfer langsung ke sana, lalu mengunggah bukti untuk kamu verifikasi dari halaman event. Uangnya masuk ke rekeningmu sendiri dan kami tidak memotong fee sepeser pun. Pastikan rekening penarikanmu sudah terisi supaya jalur ini siap saat dibutuhkan.',
+                'is_active' => true,
+                'sort_order' => 55,
+            ],
+            [
                 'question' => 'Apakah boleh mengadakan event perjudian atau hadiah dari uang pendaftaran?',
                 'answer' => 'Tidak. flo-event melarang segala bentuk perjudian, termasuk hadiah yang dikumpulkan (pooling) dari biaya pendaftaran peserta. Biaya pendaftaran hanya untuk operasional penyelenggaraan; hadiah harus bersumber dari sponsor atau dana penyelenggara. Pelanggaran dapat berujung penghapusan event dan penangguhan akun. Selengkapnya di halaman Ketentuan Layanan.',
                 'is_active' => true,

@@ -4,16 +4,19 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ticket\PurchaseTicketRequest;
+use App\Http\Resources\PublicBankAccountResource;
 use App\Http\Resources\TicketCategoryResource;
 use App\Http\Resources\TicketOrderResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
+use App\Services\PaymentRails;
 use App\Services\PlanGate;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class PublicTicketController extends Controller
@@ -22,6 +25,7 @@ class PublicTicketController extends Controller
         protected PlanGate $gate,
         protected TicketService $tickets,
         protected MidtransService $midtrans,
+        protected PaymentRails $rails,
     ) {}
 
     /**
@@ -40,8 +44,11 @@ class PublicTicketController extends Controller
     }
 
     /**
-     * Buy tickets: reserve quota, issue tickets and start a Midtrans payment.
-     * Without Midtrans credentials the order is auto-paid (dev convenience).
+     * Buy tickets: reserve quota, issue tickets and start payment.
+     *
+     * Two rails. Normally Midtrans; while a super admin has the gateway switched
+     * off, the buyer transfers straight to the organizer's bank and uploads
+     * proof for an org admin to approve. Free tickets use neither.
      */
     public function purchase(PurchaseTicketRequest $request, string $orgSlug, string $eventSlug): JsonResponse
     {
@@ -69,7 +76,13 @@ class PublicTicketController extends Controller
         }
 
         $total = (float) $category->price * (int) $data['quantity'];
-        $platformFee = $this->tickets->platformFee($org, $total);
+
+        // Throws (422/403) when this organizer can't collect at all. A bank
+        // account back means the gateway is off and the buyer transfers to the
+        // organizer directly; null means Midtrans, or a free ticket.
+        $bank = $this->rails->destinationFor($org, $total);
+        $manual = $bank !== null;
+
         $orderId = 'TIX-'.Str::upper(Str::random(10));
 
         $order = $this->tickets->purchase(
@@ -81,31 +94,45 @@ class PublicTicketController extends Controller
                 'quantity' => $data['quantity'],
             ],
             $data['holder_names'] ?? [],
-            $platformFee,
+            // Manual money never reaches us, so there is nothing to take a cut of.
+            $manual ? 0.0 : $this->tickets->platformFee($org, $total),
             $orderId,
             auth('api')->id(),
+            $manual ? 'manual' : 'gateway',
+            $manual ? $this->rails->deadline() : null,
         );
 
-        $snap = $this->midtrans->createSnapTransaction(
-            ['order_id' => $orderId, 'gross_amount' => (int) round($total)],
-            ['first_name' => $data['buyer_name'], 'email' => $data['buyer_email']],
-            rtrim((string) config('app.frontend_url'), '/').'/tickets/'.$order->id,
-        );
+        $snap = ['token' => null, 'redirect_url' => null, 'mock' => false];
 
-        if ($snap['token']) {
-            $order->update(['midtrans_token' => $snap['token']]);
+        if (! $manual) {
+            $snap = $this->midtrans->createSnapTransaction(
+                ['order_id' => $orderId, 'gross_amount' => (int) round($total)],
+                ['first_name' => $data['buyer_name'], 'email' => $data['buyer_email']],
+                rtrim((string) config('app.frontend_url'), '/').'/tickets/'.$order->id,
+            );
+
+            if ($snap['token']) {
+                $order->update(['midtrans_token' => $snap['token']]);
+            }
         }
 
-        // Free tickets or no gateway configured — settle immediately.
-        if ($snap['mock'] || $total <= 0) {
+        // Free tickets, or dev with no Midtrans credentials, settle on the spot.
+        // A manual order must never reach this: `mock` means "no server key",
+        // not "paid", and settling one would issue tickets for money nobody sent.
+        $settled = ! $manual && ($snap['mock'] || $total <= 0);
+        if ($settled) {
             $this->tickets->markPaid($order);
         }
 
         return ApiResponse::success([
-            'order' => new TicketOrderResource($order->fresh()->load(['category', 'event', 'tickets.category'])),
+            'order' => new TicketOrderResource(
+                $order->fresh()->load(['category', 'event.organization.bankAccounts', 'tickets.category']),
+            ),
             'snap_token' => $snap['token'],
             'redirect_url' => $snap['redirect_url'],
-            'mock' => $snap['mock'] || $total <= 0,
+            'mock' => $settled,
+            'payment_method' => $manual ? 'manual' : 'gateway',
+            'bank_account' => $bank ? new PublicBankAccountResource($bank) : null,
         ], 'Pesanan tiket dibuat', 201);
     }
 
@@ -114,9 +141,42 @@ class PublicTicketController extends Controller
      */
     public function order(string $order): JsonResponse
     {
-        $ticketOrder = TicketOrder::with(['category', 'event', 'tickets.category'])->findOrFail($order);
+        // The organization chain is what lets an unpaid manual order tell the
+        // buyer where to transfer (see TicketOrderResource::payTo()).
+        $ticketOrder = TicketOrder::with([
+            'category',
+            'event.organization.bankAccounts',
+            'tickets.category',
+        ])->findOrFail($order);
 
         return ApiResponse::success(new TicketOrderResource($ticketOrder));
+    }
+
+    /**
+     * Upload the transfer receipt for a manual order.
+     *
+     * Public, like the e-ticket page it lives on: a ticket buyer never has to
+     * sign up, so the order's unguessable id is the only credential there is —
+     * exactly what `order()` above already relies on.
+     */
+    public function proof(Request $request, string $order): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_proof_url' => ['required', 'string', 'url', 'max:2048'],
+        ]);
+
+        $ticketOrder = TicketOrder::findOrFail($order);
+
+        $this->tickets->submitProof($ticketOrder, $data['payment_proof_url']);
+
+        return ApiResponse::success(
+            new TicketOrderResource($ticketOrder->fresh()->load([
+                'category',
+                'event.organization.bankAccounts',
+                'tickets.category',
+            ])),
+            'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
+        );
     }
 
     /**

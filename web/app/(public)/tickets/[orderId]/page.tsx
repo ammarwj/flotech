@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { CheckCircle2, Clock, CalendarDays, MapPin, Ticket as TicketIcon } from "lucide-react";
 
-import { getTicketOrder } from "@/lib/api/tickets";
+import { getTicketOrder, submitTicketProof } from "@/lib/api/tickets";
+import { parseApiError } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QrCode } from "@/components/event/qr-code";
+import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
 import "../../event-shell.css";
 
@@ -19,13 +22,26 @@ function fmtDate(d: string | null) {
 
 export default function ETicketPage() {
   const params = useParams<{ orderId: string }>();
+  const qc = useQueryClient();
 
   const query = useQuery({
     queryKey: ["ticket-order", params.orderId],
     queryFn: () => getTicketOrder(params.orderId),
     retry: false,
-    // Poll while awaiting payment so the e-tickets unlock once settled.
+    // Poll while awaiting payment so the e-tickets unlock once settled — for a
+    // manual order that's when the organizer approves the uploaded proof.
     refetchInterval: (q) => (q.state.data?.status === "pending" ? 4000 : false),
+  });
+
+  const proof = useMutation({
+    mutationFn: (proofUrl: string) => submitTicketProof(params.orderId, proofUrl),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ticket-order", params.orderId] });
+      toast.success("Bukti terkirim", {
+        description: "Menunggu verifikasi penyelenggara.",
+      });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti.").message),
   });
 
   if (query.isLoading) {
@@ -50,6 +66,7 @@ export default function ETicketPage() {
 
   const order = query.data;
   const paid = order.status === "paid";
+  const manual = order.payment_method === "manual" && order.status === "pending";
 
   return (
     <div className="container" style={{ paddingBlock: 48, maxWidth: 640 }}>
@@ -77,6 +94,18 @@ export default function ETicketPage() {
           </p>
         </div>
       </Card>
+
+      {manual && (
+        <ManualTransferPanel
+          bankAccount={order.bank_account}
+          amount={order.total_price}
+          deadlineAt={order.payment_deadline_at}
+          awaitingVerification={order.awaiting_verification}
+          rejectedReason={order.rejected_reason}
+          pending={proof.isPending}
+          onSubmit={(url) => proof.mutate(url)}
+        />
+      )}
 
       {/* Event + order summary */}
       <Card className="mb-6 p-5">

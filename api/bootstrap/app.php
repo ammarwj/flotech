@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\PaymentException;
 use App\Exceptions\WalletException;
 use App\Http\Middleware\CheckPlanFeature;
 use App\Http\Middleware\CheckPlanLimit;
@@ -53,6 +54,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (WalletException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (PaymentException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }

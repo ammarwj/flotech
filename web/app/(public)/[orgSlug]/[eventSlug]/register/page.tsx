@@ -23,9 +23,11 @@ import {
   getPublicEvent,
   registerTeam,
   signUpload,
+  submitTeamProof,
   uploadImage,
   type RegisterTeamPayload,
 } from "@/lib/api/events";
+import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
@@ -141,6 +143,16 @@ function RegisterTeamPage() {
       setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal mendaftar") : "Gagal mendaftar"),
   });
 
+  const proof = useMutation({
+    mutationFn: ({ teamId, url }: { teamId: string; url: string }) => submitTeamProof(teamId, url),
+    onError: (err) =>
+      setError(
+        err instanceof AxiosError
+          ? (err.response?.data?.message ?? "Gagal mengirim bukti")
+          : "Gagal mengirim bukti"
+      ),
+  });
+
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
     setUploading(true);
@@ -163,6 +175,37 @@ function RegisterTeamPage() {
   // Paid registration: the order was created and we're handing off to Midtrans.
   // Show a "redirecting" state instead of a misleading success card.
   const redirectingToPay = mutation.isSuccess && !mutation.data?.mock && !!mutation.data?.redirect_url;
+
+  // Manual transfer (the gateway is off): there is nowhere to redirect, and the
+  // fee is not paid yet — the success card below would be a lie.
+  const awaitingManualTransfer = mutation.isSuccess && mutation.data?.payment_method === "manual";
+
+  if (awaitingManualTransfer && mutation.data) {
+    const registered = mutation.data.team;
+    return (
+      <div className="container" style={{ paddingBlock: 80, maxWidth: 560 }}>
+        <h1 className="mb-2 text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+          Selesaikan pembayaran
+        </h1>
+        <p className="mb-6 text-muted-foreground">
+          Tim <b className="text-foreground">{registered.name}</b> sudah tercatat. Pendaftaran
+          dikirim ke penyelenggara setelah biaya pendaftaran diverifikasi.
+        </p>
+        <ManualTransferPanel
+          bankAccount={mutation.data.bank_account}
+          amount={registered.payment_amount}
+          deadlineAt={registered.payment_deadline_at}
+          awaitingVerification={proof.isSuccess}
+          rejectedReason={registered.rejected_reason}
+          pending={proof.isPending}
+          onSubmit={(url) => proof.mutate({ teamId: registered.id, url })}
+        />
+        <Button asChild size="lg" variant="outline" className="w-full">
+          <Link href="/participant">Ke Tim Saya</Link>
+        </Button>
+      </div>
+    );
+  }
 
   if (redirectingToPay) {
     return (

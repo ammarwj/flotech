@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Public;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\MatchResource;
+use App\Http\Resources\PublicBankAccountResource;
 use App\Http\Resources\PublicEventListResource;
 use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
@@ -201,6 +202,10 @@ class PublicEventController extends Controller
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
+            'payment_method' => $payment['payment_method'],
+            'bank_account' => $payment['bank_account']
+                ? new PublicBankAccountResource($payment['bank_account'])
+                : null,
         ], $message, 201);
     }
 

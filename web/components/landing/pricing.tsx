@@ -120,6 +120,7 @@ export function Pricing() {
           <p className="price-foot">
             {feeFootnote(plans)}
             {discount > 0 && ` Diskon ${discount}% untuk pembayaran tahunan.`}
+            {" Kalau payment gateway sedang bermasalah, pembayaran otomatis dialihkan ke transfer manual ke rekeningmu — tanpa potongan fee."}
           </p>
         )}
       </div>

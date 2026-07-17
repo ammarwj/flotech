@@ -104,6 +104,13 @@ export interface Organization {
   plan_id: string | null;
   plan_expires_at: string | null;
   plan?: Plan;
+  /**
+   * Platform-wide, not a property of this org: false means a super admin has
+   * switched Midtrans off and all sales run on manual bank transfer.
+   */
+  payment_gateway_enabled: boolean;
+  /** Whether a primary payout account exists — the manual-transfer destination. */
+  has_bank_account: boolean;
 }
 
 export type SubscriptionStatus = "active" | "past_due" | "cancelled" | "expired";
@@ -420,7 +427,7 @@ export interface TeamDocument {
 
 export type PaymentStatus = "unpaid" | "paid";
 
-export interface Team {
+export interface Team extends ManualPaymentFields {
   id: string;
   event_id: string;
   /** The competition category this team is entered in. */
@@ -446,18 +453,50 @@ export interface Team {
   category?: EventCategory;
 }
 
-export interface RegisterTeamResult {
-  team: Team;
-  snap_token: string | null;
-  redirect_url: string | null;
-  mock: boolean;
+/**
+ * How a payment is collected. `manual` means a super admin has the gateway
+ * switched off, so the buyer transfers to the organizer's own bank account and
+ * uploads proof — the platform never holds that money and takes no fee.
+ */
+export type PaymentMethod = "gateway" | "manual";
+
+/** Where a buyer must transfer for a manual payment. */
+export interface PublicBankAccount {
+  bank_name: string;
+  bank_code: string | null;
+  account_number: string;
+  account_holder: string;
 }
 
-export interface PayRegistrationResult {
-  team: Team;
+/** Columns shared by anything payable — a ticket order or a team registration. */
+export interface ManualPaymentFields {
+  payment_method: PaymentMethod;
+  /** Derived server-side: manual, unsettled, proof uploaded, not yet ruled on. */
+  awaiting_verification: boolean;
+  payment_proof_url: string | null;
+  payment_proof_uploaded_at: string | null;
+  /** Unpaid manual orders are cancelled after this and their quota released. */
+  payment_deadline_at: string | null;
+  rejected_reason: string | null;
+  verified_at: string | null;
+}
+
+/** Shared by every "start a payment" response. */
+export interface PaymentStart {
   snap_token: string | null;
   redirect_url: string | null;
   mock: boolean;
+  payment_method: PaymentMethod;
+  /** Present only when `payment_method` is `manual`. */
+  bank_account: PublicBankAccount | null;
+}
+
+export interface RegisterTeamResult extends PaymentStart {
+  team: Team;
+}
+
+export interface PayRegistrationResult extends PaymentStart {
+  team: Team;
 }
 
 export interface PublicEvent {
@@ -562,7 +601,7 @@ export interface Ticket {
   category?: { id: string; name: string };
 }
 
-export interface TicketOrder {
+export interface TicketOrder extends ManualPaymentFields {
   id: string;
   event_id: string;
   buyer_name: string;
@@ -575,16 +614,15 @@ export interface TicketOrder {
   status: TicketOrderStatus;
   paid_at: string | null;
   created_at?: string;
+  /** Where to transfer. Only sent while a manual order is still unpaid. */
+  bank_account?: PublicBankAccount | null;
   category?: { id: string; name: string };
   event?: { id: string; name: string; start_date: string | null; location_name: string | null };
   tickets?: Ticket[];
 }
 
-export interface PurchaseResult {
+export interface PurchaseResult extends PaymentStart {
   order: TicketOrder;
-  snap_token: string | null;
-  redirect_url: string | null;
-  mock: boolean;
 }
 
 export type ScanResult = "valid" | "used" | "unpaid" | "invalid";
@@ -753,13 +791,25 @@ export interface AdminWallet extends Wallet {
 export interface PlatformSetting {
   key: string;
   label: string;
-  type: "money" | "int";
-  value: number;
-  /** From config/wallet.php — used when never overridden. */
-  default: number;
-  min: number;
-  max: number;
+  /** Longer explanation for settings whose blast radius isn't obvious. */
+  description: string | null;
+  type: "money" | "int" | "bool";
+  value: number | boolean;
+  /** From config/wallet.php or config/payments.php — used when never overridden. */
+  default: number | boolean;
+  /** Null for `bool` — bounds are meaningless for a switch. */
+  min: number | null;
+  max: number | null;
   is_overridden: boolean;
+}
+
+export interface PlatformSettingsPayload {
+  settings: PlatformSetting[];
+  /**
+   * Organizations with no primary bank account. They cannot be paid at all
+   * while the gateway is off, so the admin sees this before flipping it.
+   */
+  orgs_without_bank_account: number;
 }
 
 // ---- Certificates ----

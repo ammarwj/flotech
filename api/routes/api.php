@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
+use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
@@ -133,6 +134,10 @@ Route::prefix('v1')->group(function () {
 
     // Public e-ticket lookup (by order id).
     Route::get('ticket-orders/{order}', [PublicTicketController::class, 'order']);
+    // Transfer receipt for a manual order. Public for the same reason the
+    // lookup above is: the buyer never signs up, so the unguessable order id
+    // is the credential.
+    Route::post('ticket-orders/{order}/proof', [PublicTicketController::class, 'proof']);
 
     // Presigned upload URL (used by the public registration form too).
     Route::post('uploads/sign', [UploadController::class, 'sign']);
@@ -150,6 +155,7 @@ Route::prefix('v1')->group(function () {
         Route::patch('my-teams/{team}', [MyTeamController::class, 'update']);
         Route::post('my-teams/{team}/withdraw', [MyTeamController::class, 'withdraw']);
         Route::post('my-teams/{team}/pay', [MyTeamController::class, 'pay']);
+        Route::post('my-teams/{team}/proof', [MyTeamController::class, 'proof']);
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);
@@ -232,6 +238,17 @@ Route::prefix('v1')->group(function () {
                 'events/{event}/ticket-orders',
                 [TicketOrderController::class, 'index'],
             );
+
+            // Manual-transfer verification. Approving a receipt issues a valid
+            // ticket on someone's say-so, so it is owner/admin only — a gate
+            // operator must not be able to.
+            Route::middleware('org.admin')->group(function () {
+                Route::get('events/{event}/payments', [PaymentVerificationController::class, 'index']);
+                Route::post('events/{event}/payments/tickets/{order}/approve', [PaymentVerificationController::class, 'approveTicket']);
+                Route::post('events/{event}/payments/tickets/{order}/reject', [PaymentVerificationController::class, 'rejectTicket']);
+                Route::post('events/{event}/payments/teams/{team}/approve', [PaymentVerificationController::class, 'approveTeam']);
+                Route::post('events/{event}/payments/teams/{team}/reject', [PaymentVerificationController::class, 'rejectTeam']);
+            });
 
             // Wallet & payouts (Phase 4). Money endpoints are narrowed to the
             // owner/admin — `tenant` alone would also admit gate operators.

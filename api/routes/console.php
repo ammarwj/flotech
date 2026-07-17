@@ -12,3 +12,7 @@ Artisan::command('inspire', function () {
 // denormalized balances are checked against the ledger daily.
 Schedule::command('wallet:release')->hourly()->withoutOverlapping();
 Schedule::command('wallet:audit')->dailyAt('01:00');
+
+// Manual transfers get no Midtrans expiry webhook, so abandoned orders would
+// hold their ticket quota forever.
+Schedule::command('tickets:expire-manual')->hourly()->withoutOverlapping();

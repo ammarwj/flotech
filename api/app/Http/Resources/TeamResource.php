@@ -35,6 +35,15 @@ class TeamResource extends JsonResource
             'platform_fee' => (float) $this->platform_fee,
             'paid_at' => $this->paid_at,
             'midtrans_token' => $this->midtrans_token,
+            'payment_method' => $this->payment_method,
+            // Derived, not stored — see HasManualPayment for why there is no
+            // `awaiting_verification` status value.
+            'awaiting_verification' => $this->isAwaitingVerification(),
+            'payment_proof_url' => $this->payment_proof_url,
+            'payment_proof_uploaded_at' => $this->payment_proof_uploaded_at,
+            'payment_deadline_at' => $this->payment_deadline_at,
+            'rejected_reason' => $this->rejected_reason,
+            'verified_at' => $this->verified_at,
             'event' => new EventResource($this->whenLoaded('event')),
             'category' => new EventCategoryResource($this->whenLoaded('category')),
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [

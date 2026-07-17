@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\PaymentException;
 use App\Mail\TicketPurchasedMail;
 use App\Models\Organization;
 use App\Models\TicketCategory;
 use App\Models\TicketOrder;
+use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -39,15 +41,20 @@ class TicketService
      * Create a pending order, reserve the quota and issue one QR ticket per
      * seat. Runs in a transaction so quota and tickets stay consistent.
      *
+     * `$paymentMethod` is snapshotted rather than resolved later: the gateway
+     * can be switched back on at any time, and an order taken during an outage
+     * stays a manual one for the rest of its life. `$deadline` only applies to
+     * manual orders — nothing else releases their reserved quota.
+     *
      * @param  array{buyer_name: string, buyer_email: string, buyer_phone?: string|null, quantity: int}  $buyer
      * @param  list<string|null>  $holderNames
      */
-    public function purchase(TicketCategory $category, array $buyer, array $holderNames, float $platformFee, string $orderId, ?string $userId): TicketOrder
+    public function purchase(TicketCategory $category, array $buyer, array $holderNames, float $platformFee, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null): TicketOrder
     {
         $quantity = (int) $buyer['quantity'];
         $unitPrice = (float) $category->price;
 
-        return DB::transaction(function () use ($category, $buyer, $holderNames, $platformFee, $orderId, $userId, $quantity, $unitPrice) {
+        return DB::transaction(function () use ($category, $buyer, $holderNames, $platformFee, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline) {
             $category->increment('sold', $quantity);
 
             $order = $category->orders()->create([
@@ -61,6 +68,8 @@ class TicketService
                 'total_price' => $unitPrice * $quantity,
                 'platform_fee' => $platformFee,
                 'status' => 'pending',
+                'payment_method' => $paymentMethod,
+                'payment_deadline_at' => $deadline,
                 'midtrans_order_id' => $orderId,
             ]);
 
@@ -91,7 +100,14 @@ class TicketService
 
         DB::transaction(function () use ($order) {
             $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
-            $this->wallet->creditTicketOrder($order->load('event.organization'));
+
+            // A manual transfer went straight into the organizer's own bank
+            // account — the money never passed through us, so crediting the
+            // wallet would make their balance claim funds we are not holding.
+            // Same reasoning as the offline team entry in RegistrationController.
+            if (! $order->isManual()) {
+                $this->wallet->creditTicketOrder($order->load('event.organization'));
+            }
         });
 
         $this->sendPurchaseConfirmation($order);
@@ -114,6 +130,52 @@ class TicketService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * The buyer uploads their transfer receipt for an org admin to check.
+     *
+     * @throws PaymentException
+     */
+    public function submitProof(TicketOrder $order, string $proofUrl): void
+    {
+        if (! $order->isManual()) {
+            throw new PaymentException('Pesanan ini tidak dibayar lewat transfer manual.');
+        }
+
+        if ($order->status !== 'pending') {
+            throw new PaymentException('Pesanan ini sudah tidak menunggu pembayaran.');
+        }
+
+        $order->attachProof($proofUrl);
+    }
+
+    /**
+     * Accept a manual transfer. markPaid() is what keeps this off the wallet —
+     * the money went to the organizer's own account, not ours.
+     *
+     * @throws PaymentException
+     */
+    public function approveProof(TicketOrder $order, User $admin): void
+    {
+        if (! $order->isAwaitingVerification()) {
+            throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
+        }
+
+        $order->markVerified($admin);
+        $this->markPaid($order->fresh());
+    }
+
+    /**
+     * @throws PaymentException
+     */
+    public function rejectProof(TicketOrder $order, string $reason, Carbon $deadline): void
+    {
+        if (! $order->isAwaitingVerification()) {
+            throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
+        }
+
+        $order->rejectProof($reason, $deadline);
     }
 
     /**

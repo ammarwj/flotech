@@ -25,6 +25,13 @@ class UpdatePlatformSettingsRequest extends FormRequest
         $rules = [];
 
         foreach (PlatformSettings::DEFINITIONS as $key => $definition) {
+            // Bounds don't apply to a switch — only money/int carry min/max.
+            if ($definition['type'] === 'bool') {
+                $rules[$key] = ['sometimes', 'boolean'];
+
+                continue;
+            }
+
             $rules[$key] = [
                 'sometimes',
                 $definition['type'] === 'int' ? 'integer' : 'numeric',

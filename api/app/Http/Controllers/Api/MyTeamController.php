@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\PublicBankAccountResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
 use App\Services\RegistrationService;
@@ -114,7 +115,7 @@ class MyTeamController extends Controller
     }
 
     /**
-     * (Re)start the Midtrans payment for an unpaid registration fee.
+     * (Re)start the payment for an unpaid registration fee.
      */
     public function pay(string $team): JsonResponse
     {
@@ -131,7 +132,30 @@ class MyTeamController extends Controller
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
+            'payment_method' => $payment['payment_method'],
+            'bank_account' => $payment['bank_account']
+                ? new PublicBankAccountResource($payment['bank_account'])
+                : null,
         ], 'Pembayaran dimulai');
+    }
+
+    /**
+     * Upload the transfer receipt for a manual registration fee.
+     */
+    public function proof(Request $request, string $team): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_proof_url' => ['required', 'string', 'url', 'max:2048'],
+        ]);
+
+        $model = $this->scope()->findOrFail($team);
+
+        $this->registration->submitProof($model, $data['payment_proof_url']);
+
+        return ApiResponse::success(
+            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
+            'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
+        );
     }
 
     protected function isEditable(Team $team): bool

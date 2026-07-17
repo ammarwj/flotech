@@ -21,10 +21,13 @@ class PlanSeeder extends Seeder
                 'features' => [
                     'max_active_events' => '1',
                     'max_teams_per_event' => '8',
-                    'payment_gateway' => 'false',
+                    'payment_gateway' => 'true',
                     'qr_tickets' => 'false',
                     'certificate_generator' => 'false',
                     'export_data' => 'false',
+                    // No ticket_fee_percent: without `qr_tickets` this plan
+                    // cannot sell tickets at all, so there is nothing to charge.
+                    'registration_fee_percent' => '4',
                 ],
             ],
             [
