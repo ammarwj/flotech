@@ -19,6 +19,8 @@ class DatabaseSeeder extends Seeder
             CatalogSeeder::class,
             FeatureDefinitionSeeder::class,
             PlanSeeder::class,
+            TestimonialSeeder::class,
+            FaqSeeder::class,
             UserSeeder::class,
             DemoEventSeeder::class,
         ]);

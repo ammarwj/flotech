@@ -1,61 +1,30 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import { observeReveals } from "@/components/landing/reveal-init";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getPublicTestimonials } from "@/lib/api/landing";
+import { avatarGradient } from "@/lib/landing";
 import { StarIcon } from "./icons";
 
-type Testimonial = {
-  quote: string;
-  initials: string;
-  avatar: string;
-  name: string;
-  role: string;
-  delay?: string;
-};
-
-const TESTIMONIALS: Testimonial[] = [
-  {
-    quote:
-      "Dulu rekap klasemen liga futsal kami makan waktu berjam-jam tiap pekan. Sekarang otomatis begitu skor dikonfirmasi. Game changer buat EO kecil.",
-    initials: "RP",
-    avatar: "linear-gradient(135deg,var(--brand-500),var(--brand-700))",
-    name: "Rizky Pratama",
-    role: "Ketua Liga Futsal Bandung",
-  },
-  {
-    quote:
-      "Fitur sertifikatnya juara. Kami upload desain sendiri, atur posisi sekali, generate 200 sertifikat pemain dalam hitungan menit.",
-    initials: "SW",
-    avatar: "linear-gradient(135deg,var(--accent-purple),#5B21B6)",
-    name: "Sari Wulandari",
-    role: "Event Organizer, Surabaya",
-    delay: "80",
-  },
-  {
-    quote:
-      "Tiket QR + scan check-in bikin pintu masuk turnamen badminton kami nggak antre lagi. Validasi instan, anti tiket palsu.",
-    initials: "DA",
-    avatar: "linear-gradient(135deg,var(--accent-pink),#9D174D)",
-    name: "Dimas Aryo",
-    role: "PB Garuda Mas, Yogyakarta",
-    delay: "160",
-  },
-  {
-    quote:
-      "Landing page per event-nya rapi banget. Peserta tinggal scan, lihat jadwal & klasemen tanpa harus tanya-tanya admin lagi.",
-    initials: "NF",
-    avatar: "linear-gradient(135deg,var(--success),#047857)",
-    name: "Nadia Fitri",
-    role: "Panitia Voli Antar-Kampus",
-  },
-  {
-    quote:
-      "Naik dari Basic ke Pro pas turnamen tahunan kami membesar. Upgrade-nya mulus, datanya aman semua. Worth it.",
-    initials: "HW",
-    avatar: "linear-gradient(135deg,var(--plan-professional),#B45309)",
-    name: "Hendra Wijaya",
-    role: "Padel Community Jakarta",
-    delay: "80",
-  },
-];
-
 export function Testimonials() {
+  const colRef = useRef<HTMLDivElement>(null);
+
+  const query = useQuery({ queryKey: ["public-testimonials"], queryFn: getPublicTestimonials });
+  const testimonials = query.data;
+
+  // The cards don't exist when RevealInit sweeps the page, so they'd never be
+  // revealed. Observe them here once they've rendered.
+  useEffect(() => {
+    if (!testimonials || !colRef.current) return;
+    return observeReveals(colRef.current);
+  }, [testimonials]);
+
+  // Nothing to say beats a heading over an empty grid.
+  if (query.isError || testimonials?.length === 0) return null;
+
   return (
     <section className="section">
       <div className="container">
@@ -63,17 +32,23 @@ export function Testimonials() {
           <span className="eyebrow">Kata Mereka</span>
           <h2 className="section-title">Penyelenggara di seluruh Indonesia</h2>
         </div>
-        <div className="tcol">
-          {TESTIMONIALS.map((t) => (
-            <div key={t.name} className="tcard reveal" data-delay={t.delay}>
+        <div className="tcol" ref={colRef}>
+          {query.isPending &&
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="tcard" aria-hidden>
+                <Skeleton className="h-full min-h-[180px] w-full" />
+              </div>
+            ))}
+          {testimonials?.map((t, i) => (
+            <div key={t.id} className="tcard reveal" data-delay={String((i % 3) * 80)}>
               <div className="tstars">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <StarIcon key={i} />
+                {Array.from({ length: t.rating }).map((_, star) => (
+                  <StarIcon key={star} />
                 ))}
               </div>
               <p>&ldquo;{t.quote}&rdquo;</p>
               <div className="who">
-                <span className="av" style={{ background: t.avatar }}>
+                <span className="av" style={{ background: avatarGradient(t.avatar_preset) }}>
                   {t.initials}
                 </span>
                 <div>

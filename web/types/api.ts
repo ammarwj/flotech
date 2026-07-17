@@ -61,6 +61,29 @@ export interface FeatureDefinition {
   sort_order: number;
 }
 
+/** Avatar gradients are looked up in `lib/landing.ts`; the API only stores the key. */
+export type AvatarPreset = "brand" | "purple" | "pink" | "success" | "amber" | "blue";
+
+export interface Testimonial {
+  id: string;
+  quote: string;
+  name: string;
+  role: string;
+  initials: string;
+  avatar_preset: AvatarPreset;
+  rating: number;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
 export type SocialPlatform = "instagram" | "youtube" | "x" | "tiktok" | "facebook";
 
 /** Profile URLs per platform. Unset platforms are `null` (or absent, publicly). */

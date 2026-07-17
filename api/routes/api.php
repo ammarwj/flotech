@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\ConfigOptionController;
+use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SportController;
+use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\WalletController as AdminWalletController;
 use App\Http\Controllers\Api\Admin\WithdrawalController as AdminWithdrawalController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -34,8 +36,12 @@ use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
 use App\Http\Controllers\Api\WithdrawalController;
+use App\Http\Resources\FaqResource;
 use App\Http\Resources\PlanResource;
+use App\Http\Resources\TestimonialResource;
+use App\Models\Faq;
 use App\Models\Plan;
+use App\Models\Testimonial;
 use App\Support\ApiResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +64,23 @@ Route::prefix('v1')->group(function () {
             Plan::with('features')
                 ->where('is_active', true)
                 ->where('is_public', true)
+                ->orderBy('sort_order')
+                ->get()
+        )
+    ));
+
+    // Landing page content, edited by super_admin under /admin/testimonials & /admin/faqs.
+    Route::get('/testimonials', fn () => ApiResponse::success(
+        TestimonialResource::collection(
+            Testimonial::where('is_active', true)
+                ->orderBy('sort_order')
+                ->get()
+        )
+    ));
+
+    Route::get('/faqs', fn () => ApiResponse::success(
+        FaqResource::collection(
+            Faq::where('is_active', true)
                 ->orderBy('sort_order')
                 ->get()
         )
@@ -234,6 +257,10 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('feature-definitions', FeatureDefinitionController::class)
                 ->parameters(['feature-definitions' => 'feature_definition'])
                 ->except(['show']);
+
+            // Landing page content.
+            Route::apiResource('testimonials', TestimonialController::class)->except(['show']);
+            Route::apiResource('faqs', FaqController::class)->except(['show']);
 
             // Catalog administration.
             Route::get('engines', [ConfigOptionController::class, 'engines']);

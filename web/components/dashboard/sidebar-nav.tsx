@@ -16,6 +16,8 @@ import {
   Wallet,
   Banknote,
   ReceiptText,
+  MessageSquareQuote,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,6 +67,8 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/withdrawals", label: "Penarikan Dana", icon: Banknote, mobile: true },
   { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },
   { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
+  { href: "/admin/testimonials", label: "Testimoni", icon: MessageSquareQuote },
+  { href: "/admin/faqs", label: "FAQ", icon: HelpCircle },
   { href: "/admin/sports", label: "Cabang Olahraga", icon: Trophy, mobile: true },
   { href: "/admin/config-options", label: "Opsi Konfigurasi", icon: Settings2, mobile: true },
   { href: "/admin/settings", label: "Pengaturan Platform", icon: Settings },
