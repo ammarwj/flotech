@@ -23,6 +23,12 @@ class WalletTest extends TestCase
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
         $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+
+        // Every plan in PlanSeeder grants `payment_gateway`, and PaymentRails
+        // refuses to take money online without it. A plan built here without it
+        // isn't a stricter test — it's an org that can't sell anything.
+        $features = ['payment_gateway' => 'true'] + $features;
+
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }

@@ -21,6 +21,11 @@ class WalletReleaseTest extends TestCase
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
         $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+
+        // See WalletTest: PaymentRails gates online payment on this entitlement,
+        // and every seeded plan grants it.
+        $features = ['payment_gateway' => 'true'] + $features;
+
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }

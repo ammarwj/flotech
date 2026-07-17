@@ -4,7 +4,10 @@ import { Api, PASSWORD, SUPER_ADMIN, type Account, type Org } from "./api";
 
 /**
  * An organizer that already exists: a fresh account with an organization on the
- * free plan. This is where §5.1 *ends*, so it is where every later flow starts.
+ * `pro` plan. This is where §5.1 *ends*, so it is where every later flow starts.
+ *
+ * The plan is not incidental — there is no free tier, and a planless org has no
+ * entitlements at all. See `Api.createOrg`.
  */
 export interface Organizer {
   account: Account;

@@ -27,6 +27,23 @@ class PlatformSettingTest extends TestCase
         PlatformSettings::flush();
     }
 
+    /**
+     * One setting out of the payload, by key.
+     *
+     * Looked up rather than indexed: the list is a catalog that grows, and
+     * positional assertions here broke the moment `payment_gateway_enabled` was
+     * added at the front of PlatformSettings::DEFINITIONS.
+     *
+     * @return array<string, mixed>
+     */
+    private function setting(array $payload, string $key): array
+    {
+        $found = collect($payload['settings'])->firstWhere('key', $key);
+        $this->assertNotNull($found, "Setting {$key} tidak ada di payload.");
+
+        return $found;
+    }
+
     private function fundedOrg(User $owner, float $available): Organization
     {
         $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
@@ -48,14 +65,19 @@ class PlatformSettingTest extends TestCase
 
     public function test_settings_fall_back_to_config_defaults(): void
     {
-        $this->actingAs($this->admin, 'api')
+        $payload = $this->actingAs($this->admin, 'api')
             ->getJson('/api/v1/admin/settings')
             ->assertOk()
-            ->assertJsonPath('data.0.key', 'wallet_minimum_withdrawal')
-            ->assertJsonPath('data.0.value', 100000)
-            ->assertJsonPath('data.0.is_overridden', false)
-            ->assertJsonPath('data.1.key', 'wallet_admin_fee')
-            ->assertJsonPath('data.1.value', 5000);
+            ->json('data');
+
+        $minimum = $this->setting($payload, 'wallet_minimum_withdrawal');
+        $this->assertSame(100000, $minimum['value']);
+        $this->assertFalse($minimum['is_overridden']);
+
+        $this->assertSame(5000, $this->setting($payload, 'wallet_admin_fee')['value']);
+
+        // The gateway switch defaults on, from config/payments.php.
+        $this->assertTrue($this->setting($payload, 'payment_gateway_enabled')['value']);
     }
 
     public function test_non_super_admin_cannot_read_or_change_settings(): void
@@ -70,14 +92,17 @@ class PlatformSettingTest extends TestCase
 
     public function test_admin_can_change_the_payout_rules_and_they_take_effect(): void
     {
-        $this->actingAs($this->admin, 'api')
+        $payload = $this->actingAs($this->admin, 'api')
             ->putJson('/api/v1/admin/settings', [
                 'wallet_minimum_withdrawal' => 50000,
                 'wallet_admin_fee' => 2500,
             ])
             ->assertOk()
-            ->assertJsonPath('data.0.value', 50000)
-            ->assertJsonPath('data.0.is_overridden', true);
+            ->json('data');
+
+        $minimum = $this->setting($payload, 'wallet_minimum_withdrawal');
+        $this->assertSame(50000, $minimum['value']);
+        $this->assertTrue($minimum['is_overridden']);
 
         $owner = User::factory()->create();
         $org = $this->fundedOrg($owner, 60000);

@@ -19,6 +19,8 @@ class RegistrationTest extends TestCase
         $owner = User::factory()->create();
         $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
         $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => $maxTeamsFeature]);
+        // PaymentRails refuses an online payment without this; every seeded plan grants it.
+        $plan->features()->create(['feature_key' => 'payment_gateway', 'value' => 'true']);
         $org = Organization::create(['name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id]);
 
         $event = $org->events()->create([

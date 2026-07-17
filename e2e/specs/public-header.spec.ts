@@ -17,7 +17,7 @@ test.describe("Header publik sadar-login", () => {
     await signIn(page, organizer.account.email);
     await page.goto("/");
 
-    // Signed in, the header drops the guest "Masuk"/"Mulai Gratis" for a single
+    // Signed in, the header drops the guest "Masuk"/"Daftar" for a single
     // shortcut into the app.
     await expect(page.getByRole("link", { name: "Dashboard", exact: true }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Masuk", exact: true })).toBeHidden();
@@ -62,7 +62,7 @@ test.describe("Header publik sadar-login", () => {
 
     // A guest is a legitimate visitor here — no bounce to /login. Logging out
     // swaps the dashboard shortcut back for the guest CTA, in place.
-    await expect(page.getByRole("link", { name: "Mulai Gratis" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Daftar", exact: true }).first()).toBeVisible();
     await expect(page).toHaveURL(/\/event$/);
     await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0);
   });

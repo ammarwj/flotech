@@ -39,6 +39,16 @@ export interface Team {
 /** Seeded platform admin — the only account the suite reuses (see UserSeeder). */
 export const SUPER_ADMIN = { email: "admin@flo-event.id", password: "password" };
 
+/**
+ * The plan a fixture organization is born on.
+ *
+ * `pro` by default because it is the roomiest plan that still isn't unlimited:
+ * `qr_tickets` on (`basic` has it *off*, so it cannot sell a ticket at all),
+ * 10 active events, 128 teams per event — no spec bumps a cap by accident.
+ * Override per spec when the cap is what's being tested.
+ */
+export type PlanSlug = "basic" | "starter" | "pro" | "professional";
+
 /** Passwords must carry a letter and a digit (Password::min(8)->letters()->numbers()). */
 export const PASSWORD = "rahasia123";
 
@@ -114,10 +124,37 @@ export class Api {
 
   // ---- Organization & events ----
 
-  async createOrg(token: string, name = unique("EO")): Promise<Org> {
+  /** slug → id, fetched once per worker. The catalog is seeded and immutable here. */
+  private plans?: Map<string, string>;
+
+  private async planId(slug: PlanSlug): Promise<string> {
+    if (!this.plans) {
+      const res = await this.request.get(`${API_URL}/plans`);
+      const list = await this.unwrap<Array<{ id: string; slug: string }>>(res, "Ambil daftar paket");
+      this.plans = new Map(list.map((p) => [p.slug, p.id]));
+    }
+
+    const id = this.plans.get(slug);
+    if (!id) throw new Error(`Paket "${slug}" tidak ada. Jalankan: docker compose exec api php artisan db:seed`);
+    return id;
+  }
+
+  /**
+   * An organization that can actually do something.
+   *
+   * There is no free tier: an org created without a plan has *no* entitlements
+   * (PlanGate::withinLimit denies a planless org outright), so it cannot even
+   * create an event — every spec downstream would fail in setup with a 403.
+   *
+   * The plan is set here rather than through `subscriptions/checkout` because
+   * MIDTRANS_SERVER_KEY is populated in api/.env: checkout returns a real Snap
+   * redirect and leaves the org *unpaid*, so it would arrange nothing. Buying a
+   * plan is not what these specs prove; having one is their precondition.
+   */
+  async createOrg(token: string, name = unique("EO"), plan: PlanSlug = "pro"): Promise<Org> {
     const res = await this.request.post(`${API_URL}/organizations`, {
       headers: this.auth(token),
-      data: { name },
+      data: { name, plan_id: await this.planId(plan) },
     });
     return this.unwrap<Org>(res, `Buat organisasi ${name}`);
   }
@@ -252,6 +289,24 @@ export class Api {
       },
     });
     return this.unwrap<Team>(res, `Tambah tim manual ${name}`);
+  }
+
+  // ---- Landing content ----
+
+  /**
+   * Deletes every FAQ whose question contains `marker`.
+   *
+   * Landing content is global: unlike an org or an event, a leftover FAQ shows
+   * up on the dev landing page for whoever opens it next. A spec that creates
+   * one is responsible for taking it away again.
+   */
+  async purgeFaqs(adminToken: string, marker: string): Promise<void> {
+    const res = await this.request.get(`${API_URL}/admin/faqs`, { headers: this.auth(adminToken) });
+    const faqs = await this.unwrap<Array<{ id: string; question: string }>>(res, "Daftar FAQ");
+
+    for (const faq of faqs.filter((f) => f.question.includes(marker))) {
+      await this.request.delete(`${API_URL}/admin/faqs/${faq.id}`, { headers: this.auth(adminToken) });
+    }
   }
 
   // ---- Wallet (§5.7) ----

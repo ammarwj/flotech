@@ -35,6 +35,8 @@ class RefundTest extends TestCase
         $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
         $plan->features()->create(['feature_key' => 'qr_tickets', 'value' => 'true']);
         $plan->features()->create(['feature_key' => 'ticket_fee_percent', 'value' => '5']);
+        // PaymentRails refuses an online payment without this; every seeded plan grants it.
+        $plan->features()->create(['feature_key' => 'payment_gateway', 'value' => 'true']);
 
         $org = Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
