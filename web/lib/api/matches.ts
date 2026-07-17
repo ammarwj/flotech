@@ -24,6 +24,36 @@ export async function getMatches(
   return data.data;
 }
 
+export interface CreateMatchPayload {
+  home_team_id: string;
+  away_team_id: string;
+  /** ISO kickoff time; null when undecided. */
+  scheduled_at?: string | null;
+  venue?: string | null;
+}
+
+/** Add a single fixture by hand (organizers with their own schedule). */
+export async function createMatch(
+  orgId: string,
+  eventId: string,
+  categoryId: string,
+  payload: CreateMatchPayload
+): Promise<Match> {
+  const { data } = await apiClient.post<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/matches`,
+    payload
+  );
+  return data.data;
+}
+
+/** Delete a fixture (manual or generated). */
+export async function deleteMatch(orgId: string, matchId: string): Promise<null> {
+  const { data } = await apiClient.delete<ApiEnvelope<null>>(
+    `/organizations/${orgId}/matches/${matchId}`
+  );
+  return data.data;
+}
+
 export interface ScheduleOptions {
   /** Date of the first matchday (YYYY-MM-DD); defaults to the event start. */
   start_date?: string | null;

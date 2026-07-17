@@ -12,6 +12,8 @@ import {
   Goal,
   LayoutList,
   CalendarRange,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,8 +26,11 @@ import {
   getKnockoutPlan,
   generateKnockout,
   updateMatchResult,
+  createMatch,
+  deleteMatch,
   type DrawPayload,
   type ScheduleOptions,
+  type CreateMatchPayload,
 } from "@/lib/api/matches";
 import { getEvent, getRegistrations } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
@@ -60,6 +65,7 @@ import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
 import { MatchConfirmBar } from "@/components/event/match-confirm-bar";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
+import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -73,6 +79,7 @@ export default function SchedulePage() {
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
+  const [manualDialog, setManualDialog] = useState(false);
   const [dateKey, setDateKey] = useState<string | null>(null);
 
   const eventQuery = useQuery({
@@ -118,11 +125,12 @@ export default function SchedulePage() {
   );
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
-  // Registrations are event-wide; the group draw only needs this category's teams.
+  // Registrations are event-wide; the group draw and the manual-match dialog
+  // both narrow to this category's approved teams below.
   const teamsQuery = useQuery({
     queryKey: ["registrations", orgId, eventId],
     queryFn: () => getRegistrations(orgId!, eventId),
-    enabled: !!orgId && isHybrid,
+    enabled: !!orgId,
   });
   // The planned bracket, shown until the real one is built.
   const planQuery = useQuery({
@@ -171,6 +179,16 @@ export default function SchedulePage() {
       refreshEventData();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat bracket.").message),
+  });
+
+  const addManual = useMutation({
+    mutationFn: (payload: CreateMatchPayload) => createMatch(orgId!, eventId, catId!, payload),
+    onSuccess: () => {
+      toast.success("Pertandingan ditambahkan");
+      setManualDialog(false);
+      refreshEventData();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menambah pertandingan.").message),
   });
 
   const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
@@ -224,6 +242,14 @@ export default function SchedulePage() {
                 Undian Grup
               </Button>
             )}
+            <Button
+              variant="outline"
+              onClick={() => setManualDialog(true)}
+              disabled={addManual.isPending || !orgId}
+            >
+              <Plus className="h-4 w-4" />
+              Tambah Manual
+            </Button>
             <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending || !orgId}>
               <Sparkles className="h-4 w-4" />
               {generate.isPending
@@ -301,10 +327,20 @@ export default function SchedulePage() {
                 : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
           }
           action={
-            <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending}>
-              <Sparkles className="h-4 w-4" />
-              Buat Jadwal
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending}>
+                <Sparkles className="h-4 w-4" />
+                Buat Jadwal
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setManualDialog(true)}
+                disabled={addManual.isPending}
+              >
+                <Plus className="h-4 w-4" />
+                Tambah Manual
+              </Button>
+            </div>
           }
         />
       ) : activeTab === "bracket" ? (
@@ -442,6 +478,16 @@ export default function SchedulePage() {
         </div>
       )}
 
+      <ManualMatchDialog
+        // A fresh mount per open, so the form always starts empty.
+        key={String(manualDialog)}
+        open={manualDialog}
+        teams={approvedTeams}
+        pending={addManual.isPending}
+        onClose={() => setManualDialog(false)}
+        onSubmit={(payload) => addManual.mutate(payload)}
+      />
+
       {eventQuery.data && (
         <ScheduleSettingsDialog
           event={eventQuery.data}
@@ -511,12 +557,39 @@ function MatchCard({
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
   });
 
+  const del = useMutation({
+    mutationFn: () => deleteMatch(orgId, match.id),
+    onSuccess: () => {
+      toast.success("Pertandingan dihapus");
+      qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menghapus pertandingan.").message),
+  });
+
+  const removeBtn = (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => {
+        if (window.confirm("Hapus pertandingan ini?")) del.mutate();
+      }}
+      disabled={del.isPending}
+      aria-label="Hapus pertandingan"
+      title="Hapus pertandingan"
+      className="text-muted-foreground hover:text-[var(--danger)]"
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
+  );
+
   // Walkover (bye): one team present, no opponent, already settled.
   if (match.home_team && !match.away_team && match.status === "finished") {
     return (
       <Card className="flex items-center gap-3 p-3 text-sm">
         <span className="flex-1 font-semibold">{match.home_team.name}</span>
         <span className="text-xs text-muted-foreground">menang otomatis (bye)</span>
+        {removeBtn}
       </Card>
     );
   }
@@ -530,8 +603,9 @@ function MatchCard({
           <span className="text-xs">menunggu hasil sebelumnya</span>
           <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
         </div>
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-3 flex items-start justify-between gap-2 border-t border-border pt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+          {removeBtn}
         </div>
       </Card>
     );
@@ -548,10 +622,13 @@ function MatchCard({
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
-            <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
-              <Goal className="h-4 w-4" />
-              Statistik pemain
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
+                <Goal className="h-4 w-4" />
+                Statistik pemain
+              </Button>
+              {removeBtn}
+            </div>
           </div>
           {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}
         </div>
@@ -591,6 +668,7 @@ function MatchCard({
           aria-label={`Skor ${match.away_team.name}`}
         />
         <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
+        {removeBtn}
         <Button
           size="sm"
           variant="outline"

@@ -233,6 +233,52 @@ class MatchController extends Controller
     }
 
     /**
+     * Add a single fixture by hand, for organizers who already have their own
+     * schedule instead of auto-generating one. Created as a generic fixture
+     * (stage null): for a league it flows into the standings once its result is
+     * confirmed; it never drives a knockout bracket.
+     */
+    public function storeManual(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        // Only approved teams of this category may be paired.
+        $approved = $categoryModel->teams()->where('status', 'approved')->pluck('id');
+
+        if ($approved->count() < 2) {
+            return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk menambah pertandingan.', null, 422);
+        }
+
+        $data = $request->validate([
+            'home_team_id' => ['required', 'uuid', Rule::in($approved)],
+            'away_team_id' => ['required', 'uuid', 'different:home_team_id', Rule::in($approved)],
+            'scheduled_at' => ['nullable', 'date'],
+            'venue' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $match = GameMatch::create([
+            'event_id' => $categoryModel->event_id,
+            'category_id' => $categoryModel->id,
+            'stage' => null,
+            'round' => 1,
+            'leg' => 1,
+            // Keep manual fixtures in insertion order within the null stage.
+            'order' => (int) $categoryModel->matches()->whereNull('stage')->max('order') + 1,
+            'home_team_id' => $data['home_team_id'],
+            'away_team_id' => $data['away_team_id'],
+            'scheduled_at' => $data['scheduled_at'] ?? null,
+            'venue' => $data['venue'] ?? null,
+            'status' => 'scheduled',
+        ]);
+
+        return ApiResponse::success(
+            new MatchResource($match->load(['homeTeam', 'awayTeam'])),
+            'Pertandingan ditambahkan',
+            201,
+        );
+    }
+
+    /**
      * Current league standings for a category.
      */
     public function standings(Request $request, string $organization, string $event, string $category): JsonResponse
@@ -470,6 +516,17 @@ class MatchController extends Controller
             new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
             'Hasil dikonfirmasi',
         );
+    }
+
+    /**
+     * Delete a fixture (manual or generated). Player stats and goals cascade
+     * with the match at the database level.
+     */
+    public function destroy(Request $request, string $organization, string $match): JsonResponse
+    {
+        $this->match($request, $match)->delete();
+
+        return ApiResponse::success(null, 'Pertandingan dihapus');
     }
 
     /**

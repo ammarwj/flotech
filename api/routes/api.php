@@ -200,11 +200,14 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
             Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
             Route::get('events/{event}/categories/{category}/matches', [MatchController::class, 'index']);
+            // Manual fixture: organizers who already have their own schedule.
+            Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);
             Route::get('events/{event}/categories/{category}/standings', [MatchController::class, 'standings']);
             Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
+            Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
 
