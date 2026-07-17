@@ -16,9 +16,13 @@ import { expect, test } from "../fixtures/test";
  * where sqlite makes the flag per-test.
  */
 test.describe("Pengaturan platform — saklar payment gateway", () => {
-  // `organizer` is requested for its side effect: a fresh org with no bank
-  // account, so the "belum punya rekening" count below is never zero by luck.
-  test("mematikan gateway memperingatkan admin sebelum disimpan", async ({ adminPage: page, organizer }) => {
+  // `organizer` is requested for its side effect only — it creates a fresh org
+  // with no bank account, so the "belum punya rekening" count below is never
+  // zero by luck. Nothing in the test body needs the value.
+  test("mematikan gateway memperingatkan admin sebelum disimpan", async ({
+    adminPage: page,
+    organizer: _organizer,
+  }) => {
     await page.goto("/admin/settings");
 
     const gateway = page.getByRole("switch", { name: "Payment gateway aktif" });

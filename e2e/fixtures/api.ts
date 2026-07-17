@@ -294,18 +294,23 @@ export class Api {
   // ---- Landing content ----
 
   /**
-   * Deletes every FAQ whose question contains `marker`.
+   * Deletes landing content whose `field` contains `marker`.
    *
-   * Landing content is global: unlike an org or an event, a leftover FAQ shows
-   * up on the dev landing page for whoever opens it next. A spec that creates
-   * one is responsible for taking it away again.
+   * Landing content is global: unlike an org or an event, a leftover FAQ or
+   * testimonial shows up on the dev landing page for whoever opens it next. A
+   * spec that creates one is responsible for taking it away again.
    */
-  async purgeFaqs(adminToken: string, marker: string): Promise<void> {
-    const res = await this.request.get(`${API_URL}/admin/faqs`, { headers: this.auth(adminToken) });
-    const faqs = await this.unwrap<Array<{ id: string; question: string }>>(res, "Daftar FAQ");
+  async purgeLandingContent(
+    adminToken: string,
+    resource: "faqs" | "testimonials",
+    field: "question" | "name",
+    marker: string,
+  ): Promise<void> {
+    const res = await this.request.get(`${API_URL}/admin/${resource}`, { headers: this.auth(adminToken) });
+    const rows = await this.unwrap<Array<Record<string, string>>>(res, `Daftar ${resource}`);
 
-    for (const faq of faqs.filter((f) => f.question.includes(marker))) {
-      await this.request.delete(`${API_URL}/admin/faqs/${faq.id}`, { headers: this.auth(adminToken) });
+    for (const row of rows.filter((r) => r[field]?.includes(marker))) {
+      await this.request.delete(`${API_URL}/admin/${resource}/${row.id}`, { headers: this.auth(adminToken) });
     }
   }
 

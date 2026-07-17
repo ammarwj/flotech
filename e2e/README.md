@@ -45,7 +45,7 @@ API/web mati atau seeder belum pernah dijalankan.
 | `manual-team.spec.ts` | tim yang didaftarkan organizer sendiri (di luar aplikasi) |
 | `public-header.spec.ts` | header publik yang sadar status login |
 | `platform-settings.spec.ts` | saklar payment gateway di `/admin/settings` (lihat "Transfer manual" di bawah) |
-| `landing-content.spec.ts` | FAQ landing yang diedit super admin — konten, bukan kode |
+| `landing-content.spec.ts` | FAQ & testimoni landing yang diedit super admin — konten, bukan kode |
 
 ## Cara kerjanya
 
@@ -112,3 +112,8 @@ diisolasi per test. Jadi pembagiannya:
 - Test yang menyelesaikan pencairan mengunggah gambar bukti transfer
   (`fixtures/transfer-proof.png`, 16×16) ke R2 — ini menulis objek kecil ke
   bucket `payout-proofs/` sungguhan.
+- `getByText("X")` itu **substring & case-insensitive**. `getByText("Nonaktif")`
+  pernah lolos hanya karena mencocoki kalimat "Yang nonaktif tidak ikut tampil"
+  di deskripsi halaman, bukan badge-nya — assertion-nya hijau tapi tidak menguji
+  apa pun. Untuk label pendek pakai `{ exact: true }`, dan sesekali rusak
+  sengaja kodenya untuk memastikan test-nya memang bisa merah.
