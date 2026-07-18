@@ -133,4 +133,88 @@ class ScheduleTimezoneTest extends TestCase
             $this->assertLessThanOrEqual('2026-08-30', $day);
         }
     }
+
+    /**
+     * The manual path is a different code path from applySchedule above: the
+     * browser resolves the venue clock itself and sends an offset-bearing ISO
+     * string. Eloquent formats that Carbon as-is, so an unnormalized write put
+     * "10:00" into a UTC column and the fixture read back as 17:00 WIB.
+     */
+    private function actingAsOwnerOf(EventCategory $category): self
+    {
+        return $this->actingAs($category->event->organization->owner, 'api');
+    }
+
+    public function test_manual_schedule_update_stores_the_offset_as_a_utc_instant(): void
+    {
+        $jakarta = $this->categoryIn('Asia/Jakarta');
+        $jayapura = $this->categoryIn('Asia/Jayapura');
+
+        $sent = [
+            'Asia/Jakarta' => '2026-08-01T10:00:00.000+07:00',
+            'Asia/Jayapura' => '2026-08-01T10:00:00.000+09:00',
+        ];
+
+        foreach (['Asia/Jakarta' => $jakarta, 'Asia/Jayapura' => $jayapura] as $zone => $category) {
+            $match = $category->matches()->create([
+                'event_id' => $category->event_id,
+                'round' => 1,
+                'leg' => 1,
+                'order' => 1,
+                'home_team_id' => $category->event->teams()->orderBy('name')->first()->id,
+                'away_team_id' => $category->event->teams()->orderBy('name', 'desc')->first()->id,
+                'status' => 'scheduled',
+            ]);
+
+            $this->actingAsOwnerOf($category)
+                ->patchJson("/api/v1/organizations/{$category->event->organization_id}/matches/{$match->id}/schedule", [
+                    'scheduled_at' => $sent[$zone],
+                ])
+                ->assertOk();
+
+            $this->assertSame(
+                '10:00',
+                $match->refresh()->scheduled_at->setTimezone($zone)->format('H:i'),
+                "10:00 typed in {$zone} must read back as 10:00 there",
+            );
+        }
+
+        // The comparison is the point: both events were sent the same wall clock,
+        // so identical stored instants would mean the offset was thrown away.
+        $this->assertSame('03:00', $jakarta->matches()->first()->scheduled_at->utc()->format('H:i'), '10:00 WIB is 03:00Z');
+        $this->assertSame('01:00', $jayapura->matches()->first()->scheduled_at->utc()->format('H:i'), '10:00 WIT is 01:00Z');
+    }
+
+    public function test_manually_created_match_stores_the_offset_as_a_utc_instant(): void
+    {
+        $jakarta = $this->categoryIn('Asia/Jakarta');
+        $jayapura = $this->categoryIn('Asia/Jayapura');
+
+        $sent = [
+            'Asia/Jakarta' => '2026-08-01T19:30:00.000+07:00',
+            'Asia/Jayapura' => '2026-08-01T19:30:00.000+09:00',
+        ];
+
+        foreach (['Asia/Jakarta' => $jakarta, 'Asia/Jayapura' => $jayapura] as $zone => $category) {
+            $event = $category->event;
+            $teams = $event->teams()->orderBy('name')->pluck('id');
+
+            $this->actingAsOwnerOf($category)
+                ->postJson("/api/v1/organizations/{$event->organization_id}/events/{$event->id}/categories/{$category->id}/matches", [
+                    'home_team_id' => $teams[0],
+                    'away_team_id' => $teams[1],
+                    'scheduled_at' => $sent[$zone],
+                ])
+                ->assertCreated();
+
+            $stored = $category->matches()->latest('created_at')->first()->scheduled_at;
+
+            $this->assertSame('19:30', $stored->setTimezone($zone)->format('H:i'), "19:30 typed in {$zone} must read back as 19:30 there");
+            // An evening kickoff is the most likely to slip a day when converted.
+            $this->assertSame('2026-08-01', $stored->setTimezone($zone)->format('Y-m-d'), "kickoff must stay on 1 Aug in {$zone}");
+        }
+
+        $this->assertSame('12:30', $jakarta->matches()->first()->scheduled_at->utc()->format('H:i'), '19:30 WIB is 12:30Z');
+        $this->assertSame('10:30', $jayapura->matches()->first()->scheduled_at->utc()->format('H:i'), '19:30 WIT is 10:30Z');
+    }
 }

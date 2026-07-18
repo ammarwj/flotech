@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -53,6 +55,26 @@ class GameMatch extends Model
             'away_penalty' => 'integer',
             'scheduled_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Kickoff is always stored as a UTC instant.
+     *
+     * Clients send an offset-bearing ISO string ("...T10:00:00+07:00"). Without
+     * this, Eloquent's fromDateTime() formats that Carbon as-is and lands the
+     * venue-local wall clock raw in a UTC column — a 10:00 WIB kickoff reads
+     * back as 17:00. Same reason ScheduleService calls ->utc() on every write.
+     *
+     * A set-only Attribute bypasses the datetime cast on write, so this returns
+     * the DB-ready string itself; reads still go through the cast.
+     */
+    protected function scheduledAt(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value === null
+                ? null
+                : Carbon::parse($value)->utc()->format('Y-m-d H:i:s'),
+        );
     }
 
     public function event(): BelongsTo
