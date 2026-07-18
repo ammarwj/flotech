@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ExternalLink,
   CalendarClock,
+  Search,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
@@ -34,6 +35,7 @@ import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,6 +72,7 @@ export default function RegistrationsPage() {
   const eventId = params.id;
   const { orgId } = useActiveOrg();
   const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
 
   // null = closed, "new" = adding, a Team = editing that team.
   const [manual, setManual] = useState<Team | "new" | null>(null);
@@ -119,15 +122,35 @@ export default function RegistrationsPage() {
   });
 
   const teams = query.data;
+  // Header stats describe the whole event, so they ignore both search and filter.
   const pendingCount = teams?.filter((t) => t.status === "pending").length ?? 0;
 
+  // Search runs before the status filter, so the chip counts describe what
+  // clicking each chip would actually show. Counting the unsearched list would
+  // promise "Menunggu 12" and then render two rows.
+  const matched = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return teams ?? [];
+
+    return (teams ?? []).filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        (t.category?.name ?? "").toLowerCase().includes(q) ||
+        (t.contact_name ?? "").toLowerCase().includes(q) ||
+        (t.contact_phone ?? "").toLowerCase().includes(q) ||
+        // Rosters are collapsed by default, so a player hit is the one match the
+        // organizer cannot see for themselves — worth searching anyway.
+        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q))
+    );
+  }, [teams, search]);
+
   const counts: Record<Filter, number> = {
-    all: teams?.length ?? 0,
-    pending: pendingCount,
-    approved: teams?.filter((t) => t.status === "approved").length ?? 0,
-    rejected: teams?.filter((t) => t.status === "rejected").length ?? 0,
+    all: matched.length,
+    pending: matched.filter((t) => t.status === "pending").length,
+    approved: matched.filter((t) => t.status === "approved").length,
+    rejected: matched.filter((t) => t.status === "rejected").length,
   };
-  const shown = (teams ?? []).filter((t) => filter === "all" || t.status === filter);
+  const shown = matched.filter((t) => filter === "all" || t.status === filter);
 
   return (
     <div>
@@ -166,31 +189,64 @@ export default function RegistrationsPage() {
 
       {teams && teams.length > 0 && (
         <>
-          <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
-            {FILTERS.map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors",
-                  filter === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-                <span
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
+              {FILTERS.map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
                   className={cn(
-                    "rounded-full px-1.5 text-[11px]",
-                    filter === key ? "bg-white/20" : "bg-[var(--bg-soft)]"
+                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors",
+                    filter === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {counts[key]}
-                </span>
-              </button>
-            ))}
+                  {label}
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[11px]",
+                      filter === key ? "bg-white/20" : "bg-[var(--bg-soft)]"
+                    )}
+                  >
+                    {counts[key]}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* h-8 matches the filter rail exactly (p-0.5 + py-1.5 text-xs);
+                the Input default of h-10 left the two visibly out of line. */}
+            <div className="relative w-full sm:ml-auto sm:w-56">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari tim atau pemain…"
+                className="h-8 rounded-lg pl-8 pr-8 text-xs"
+                aria-label="Cari pendaftaran"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Hapus pencarian"
+                  className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
 
           {shown.length === 0 ? (
-            <EmptyState icon={Inbox} title="Tidak ada tim" description="Tidak ada tim pada filter ini." />
+            search.trim() ? (
+              <EmptyState
+                icon={Search}
+                title="Tidak ada tim yang cocok"
+                description="Coba ubah kata kunci atau filter status."
+              />
+            ) : (
+              <EmptyState icon={Inbox} title="Tidak ada tim" description="Tidak ada tim pada filter ini." />
+            )
           ) : (
             <div className="grid gap-3">
               {shown.map((team) => (
