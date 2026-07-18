@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\ActiveSessionController;
 use App\Http\Controllers\Api\Admin\ConfigOptionController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
@@ -145,7 +146,9 @@ Route::prefix('v1')->group(function () {
     Route::post('uploads/image', [UploadController::class, 'image']);
 
     // ---- Authenticated app ----
-    Route::middleware('auth:api')->group(function () {
+    // `track.seen` stamps users.last_seen_at (throttled) so admins can see who is
+    // currently accessing the app.
+    Route::middleware(['auth:api', 'track.seen'])->group(function () {
         Route::get('organizations', [OrganizationController::class, 'index']);
         Route::post('organizations', [OrganizationController::class, 'store']);
 
@@ -311,6 +314,9 @@ Route::prefix('v1')->group(function () {
             // a deploy; config/wallet.php holds the defaults.
             Route::get('settings', [PlatformSettingController::class, 'index']);
             Route::put('settings', [PlatformSettingController::class, 'update']);
+
+            // Who is logged in / currently accessing the app.
+            Route::get('active-sessions', [ActiveSessionController::class, 'index']);
         });
     });
 

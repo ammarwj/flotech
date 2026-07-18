@@ -7,6 +7,7 @@ use App\Http\Middleware\CheckPlanLimit;
 use App\Http\Middleware\EnsureOrgAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\TenantScope;
+use App\Http\Middleware\TrackLastSeen;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -35,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
+            'track.seen' => TrackLastSeen::class,
             'tenant' => TenantScope::class,
             'org.admin' => EnsureOrgAdmin::class,
             'plan.feature' => CheckPlanFeature::class,

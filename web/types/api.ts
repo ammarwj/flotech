@@ -892,3 +892,24 @@ export interface CertificateVerification {
   event: { name: string | null; start_date: string | null };
   organization: { name: string | null; slug: string | null; logo_url: string | null };
 }
+
+/** One logged-in user with their active device sessions (admin "Sesi Aktif"). */
+export interface ActiveSessionDevice {
+  id: string;
+  device_info: string | null;
+  ip_address: string | null;
+  login_at: string | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  avatar_url: string | null;
+  /** Seen within the last few minutes. */
+  online: boolean;
+  last_seen_at: string | null;
+  session_count: number;
+  sessions: ActiveSessionDevice[];
+}
