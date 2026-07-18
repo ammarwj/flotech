@@ -99,6 +99,11 @@ export function buildMatchSections(
       out.push([`Knockout · ${knockoutRoundLabel(list.length)}`, list]);
     }
 
+    // Fixtures added by hand carry no stage, so they belong to neither loop
+    // above — without this they'd vanish from the list entirely.
+    const loose = matches.filter((m) => m.stage !== "group" && m.stage !== "knockout");
+    if (loose.length) out.push(["Pertandingan Tambahan", loose]);
+
     return out;
   }
 
@@ -121,6 +126,11 @@ export function buildMatchSections(
         out.push([heading, list]);
       }
     }
+    // Same gap as hybrid: a hand-added fixture sits in no bracket.
+    const loose = matches.filter(
+      (m) => !groups.some(([bracket]) => bracket === m.bracket) && m.status !== "cancelled"
+    );
+    if (loose.length) out.push(["Pertandingan Tambahan", loose]);
     return out;
   }
 
