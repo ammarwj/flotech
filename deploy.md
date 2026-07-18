@@ -136,6 +136,9 @@ APP_KEY=            # diisi di langkah 4
 APP_URL=https://api-flo-event.flotech.id
 FRONTEND_URL=https://flo-event.flotech.id
 
+# Cookie refresh token harus dibagi web <-> api (dua subdomain berbeda).
+SESSION_DOMAIN=.flotech.id
+
 # Harus SAMA PERSIS dengan POSTGRES_* di .env root
 DB_HOST=db
 DB_DATABASE=flo_event
@@ -165,6 +168,12 @@ TELESCOPE_ENABLED=false     # jangan pernah true di produksi
 ```
 
 > **Gotcha kritis:**
+> - **`SESSION_DOMAIN` wajib domain induk (`.flotech.id`), bukan `null`.** Cookie
+>   refresh token diterbitkan oleh `api-flo-event...` tapi dibaca oleh route
+>   `/api/auth/refresh` milik Next di `flo-event...`. Dengan `null` cookie jadi
+>   *host-only* — hanya berlaku di subdomain API — sehingga tiap reload halaman
+>   berakhir logout. Di lokal ini tak terlihat karena web & API sama-sama
+>   `localhost` (cookie mengabaikan port).
 > - **`DB_USERNAME`/`DB_PASSWORD` (api/.env) wajib sama dengan
 >   `POSTGRES_USER`/`POSTGRES_PASSWORD` (.env root).** Root `.env` yang membuat
 >   database; `api/.env` yang menyambunginya. Beda sedikit → api tak bisa connect.
@@ -430,6 +439,7 @@ docker compose exec nginx nginx -s reload
 | Landing kosong (harga/FAQ/testimoni tak muncul) | Seeder katalog/landing belum dijalankan (langkah 7). |
 | Email tak terkirim | `MAIL_MAILER` masih `log`; set `resend` + `RESEND_API_KEY`. |
 | Pembayaran tak pernah lunas | Notification URL Midtrans belum diarahkan ke `/api/v1/webhooks/midtrans` (langkah 8). |
+| Reload halaman selalu balik ke `/login` | `SESSION_DOMAIN` masih `null` → cookie refresh host-only di subdomain API. Set `.flotech.id`, `docker compose up -d api worker scheduler`, `php artisan optimize`, lalu login ulang sekali. |
 
 ---
 
