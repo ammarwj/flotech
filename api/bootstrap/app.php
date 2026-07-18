@@ -28,6 +28,17 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // The api always runs behind our own nginx (which terminates TLS and
+        // sets X-Forwarded-Proto: https). Without this, Laravel sees the plain
+        // http connection from nginx and generates http:// URLs/redirects on an
+        // https site. The api is only reachable through that proxy, so trust it.
+        $middleware->trustProxies(at: '*', headers:
+            Request::HEADER_X_FORWARDED_FOR |
+            Request::HEADER_X_FORWARDED_HOST |
+            Request::HEADER_X_FORWARDED_PORT |
+            Request::HEADER_X_FORWARDED_PROTO
+        );
+
         // API-only app has no "login" route; never redirect guests there.
         // Returning null lets unauthenticated api/* requests resolve to a JSON 401.
         $middleware->redirectGuestsTo(

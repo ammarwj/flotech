@@ -8,6 +8,10 @@ services:
   nginx:
     image: nginx:alpine
     restart: unless-stopped
+    # Standalone deploy only (flo-event owns 80/443 & handles TLS).
+    # On a host that already runs a reverse proxy, leave this profile off and
+    # use docker-compose.shared.yml instead. See deploy.md "Varian B".
+    profiles: ["standalone"]
     ports:
       - "80:80"
       - "443:443"
@@ -24,6 +28,8 @@ services:
   certbot:
     image: certbot/certbot
     restart: unless-stopped
+    # Standalone only — the host reverse proxy owns TLS in shared mode.
+    profiles: ["standalone"]
     volumes:
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot

@@ -12,9 +12,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 [ -f .env ] && set -a && . ./.env && set +a
 
-DOMAIN="${APP_DOMAIN:-flo-event.id}"
-API="${API_DOMAIN:-api.${DOMAIN}}"
-EMAIL="${LETSENCRYPT_EMAIL:-admin@${DOMAIN}}"
+DOMAIN="${APP_DOMAIN:-flo-event.flotech.id}"
+API="${API_DOMAIN:-api-flo-event.flotech.id}"
+EMAIL="${LETSENCRYPT_EMAIL:-admin@flotech.id}"
 STAGING="${STAGING:-0}"
 
 staging_arg=""
@@ -24,7 +24,7 @@ staging_arg=""
 # its certs from that directory. Keep the two in step.
 LIVE="/etc/letsencrypt/live/$DOMAIN"
 
-echo "==> Certificate for: $DOMAIN, www.$DOMAIN, $API"
+echo "==> Certificate for: $DOMAIN, $API"
 
 # ---- 1. Dummy certificate ---------------------------------------------------
 # Chicken-and-egg: nginx refuses to start when `ssl_certificate` points at a
@@ -64,7 +64,7 @@ docker compose run --rm --entrypoint certbot certbot certonly \
   --webroot -w /var/www/certbot \
   $staging_arg \
   --email "$EMAIL" --agree-tos --no-eff-email \
-  -d "$DOMAIN" -d "www.$DOMAIN" -d "$API"
+  -d "$DOMAIN" -d "$API"
 
 # ---- 5. Serve it ------------------------------------------------------------
 echo "==> Reloading nginx..."

@@ -1,0 +1,26 @@
+# ============================================================
+# flo-event — shared-host override
+#
+# Use when the VPS ALREADY runs a reverse proxy on :80/:443 (e.g. the runup
+# stack). This stack does NOT touch 80/443: it drops its own nginx/certbot
+# (they sit behind the `standalone` profile in docker-compose.yml, so they are
+# skipped unless you pass --profile standalone) and exposes web + api on
+# loopback ports for the host proxy to forward to.
+#
+# Ports chosen to avoid the runup stack (which uses 3000/8000/5432):
+#   web -> 127.0.0.1:3001
+#   api -> 127.0.0.1:8001
+#
+# Run with BOTH files, no profile:
+#   docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
+# TLS is handled by the host reverse proxy (see deploy.md "Varian B").
+# ============================================================
+
+services:
+  web:
+    ports:
+      - "127.0.0.1:3001:3000"
+
+  api:
+    ports:
+      - "127.0.0.1:8001:8000"

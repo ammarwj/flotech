@@ -1,0 +1,20 @@
+# ============================================================
+# flo-event — HOST Caddy config (alternative to host-nginx)
+# Use ONLY if the VPS reverse proxy is Caddy, not nginx.
+# Append to /etc/caddy/Caddyfile (or import from it), then: sudo systemctl reload caddy
+# Caddy provisions & renews TLS automatically — no certbot needed.
+# ============================================================
+
+flo-event.flotech.id {
+	reverse_proxy 127.0.0.1:3001
+	request_body {
+		max_size 25MB
+	}
+}
+
+api-flo-event.flotech.id {
+	reverse_proxy 127.0.0.1:8001
+	request_body {
+		max_size 25MB
+	}
+}
