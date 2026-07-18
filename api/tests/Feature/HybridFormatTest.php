@@ -217,6 +217,43 @@ class HybridFormatTest extends TestCase
         $this->assertContains(['Juara Grup B', 'Runner-up Grup A'], $labels);
     }
 
+    public function test_knockout_bracket_can_be_deleted_without_touching_the_groups(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $category = $event->categories->first();
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/schedule")
+            ->assertCreated();
+        $this->finishGroupStage($event);
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertCreated();
+
+        $groupsBefore = $event->matches()->where('stage', 'group')->count();
+
+        $this->actingAs($user, 'api')
+            ->deleteJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertOk();
+
+        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
+        // The whole point of the undo: group results survive it.
+        $this->assertSame($groupsBefore, $event->matches()->where('stage', 'group')->count());
+
+        // Nothing left to delete → refused, not a silent no-op.
+        $this->actingAs($user, 'api')
+            ->deleteJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertStatus(422);
+
+        // And the bracket can be rebuilt afterwards.
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertCreated();
+        $this->assertSame(3, $event->matches()->where('stage', 'knockout')->count());
+    }
+
     public function test_knockout_bracket_is_built_from_the_qualifiers(): void
     {
         $user = User::factory()->create();

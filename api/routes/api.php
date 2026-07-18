@@ -203,6 +203,7 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/categories/{category}/draw', [MatchController::class, 'drawGroups']);
             Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
             Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
+            Route::delete('events/{event}/categories/{category}/knockout', [MatchController::class, 'destroyKnockout']);
             Route::get('events/{event}/categories/{category}/matches', [MatchController::class, 'index']);
             // Manual fixture: organizers who already have their own schedule.
             Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);

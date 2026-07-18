@@ -223,6 +223,31 @@ class MatchController extends Controller
     }
 
     /**
+     * Drop the knockout bracket of a hybrid category, back to the planned one.
+     * Group fixtures and their results are left untouched — this is the undo for
+     * a bracket that was generated too early, not a schedule reset.
+     */
+    public function destroyKnockout(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'hybrid') {
+            return ApiResponse::error('Hapus bracket hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $deleted = $categoryModel->matches()->where('stage', 'knockout')->delete();
+
+        if ($deleted === 0) {
+            return ApiResponse::error('Belum ada bracket knockout untuk dihapus.', null, 422);
+        }
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($categoryModel)),
+            "Bracket knockout dihapus: {$deleted} pertandingan",
+        );
+    }
+
+    /**
      * List all matches for a category (organizer view).
      */
     public function index(Request $request, string $organization, string $event, string $category): JsonResponse

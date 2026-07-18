@@ -25,6 +25,7 @@ import {
   drawGroups,
   getKnockoutPlan,
   generateKnockout,
+  deleteKnockout,
   updateMatchResult,
   createMatch,
   deleteMatch,
@@ -179,6 +180,18 @@ export default function SchedulePage() {
       refreshEventData();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat bracket.").message),
+  });
+
+  const dropKnockout = useMutation({
+    mutationFn: () => deleteKnockout(orgId!, eventId, catId!),
+    onSuccess: () => {
+      toast.success("Bracket dihapus", {
+        description: "Fase grup dan hasilnya tidak ikut terhapus.",
+      });
+      // The bracket tab now falls back to the plan, which may be stale.
+      refreshEventData();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menghapus bracket.").message),
   });
 
   const addManual = useMutation({
@@ -370,12 +383,34 @@ export default function SchedulePage() {
               )}
             </Card>
             {isHybrid && (
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Spell out what's at stake: a bracket with results entered
+                    // is not the same undo as one generated a minute ago.
+                    const played = knockoutTies.filter((m) => m.status === "finished").length;
+                    const warning = played > 0 ? `\n\n${played} hasil pertandingan akan ikut hilang.` : "";
+                    if (
+                      window.confirm(
+                        `Hapus bracket knockout? Fase grup dan hasilnya tetap aman.${warning}`,
+                      )
+                    ) {
+                      dropKnockout.mutate();
+                    }
+                  }}
+                  disabled={dropKnockout.isPending || knockout.isPending}
+                  className="text-muted-foreground hover:text-[var(--danger)]"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {dropKnockout.isPending ? "Menghapus…" : "Hapus Bracket"}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => knockout.mutate()}
-                  disabled={knockout.isPending}
+                  disabled={knockout.isPending || dropKnockout.isPending}
                 >
                   <Sparkles className="h-4 w-4" />
                   {knockout.isPending ? "Membuat…" : "Buat Ulang Bracket"}

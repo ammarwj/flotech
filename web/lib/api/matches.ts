@@ -130,6 +130,18 @@ export async function generateKnockout(
   return data.data;
 }
 
+/** Drop the knockout bracket, back to the plan. Group fixtures survive. */
+export async function deleteKnockout(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Match[]> {
+  const { data } = await apiClient.delete<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout`
+  );
+  return data.data;
+}
+
 export async function confirmResult(
   orgId: string,
   matchId: string,
