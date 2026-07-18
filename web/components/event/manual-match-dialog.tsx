@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarClock, MapPin, Swords, X } from "lucide-react";
+import { MapPin, Swords, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,13 +127,13 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
                   <span className="font-normal text-muted-foreground">(opsional, {tzLabel(tz)})</span>
                 </Label>
                 <div className="relative">
-                  <CalendarClock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  {/* datetime-local draws its own picker button — a lucide
+                      calendar beside it reads as two calendars. */}
                   <Input
                     id="manual-when"
                     type="datetime-local"
                     value={when}
                     onChange={(e) => setWhen(e.target.value)}
-                    className="pl-8"
                   />
                 </div>
               </div>

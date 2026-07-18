@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Check, MapPin } from "lucide-react";
+import { Check, MapPin } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -47,18 +47,22 @@ export function MatchScheduleEditor({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative">
-        <CalendarClock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* The zone sits beside the field, not inside it: datetime-local draws a
+          native picker icon at its right edge (steppers on Safari), which no
+          amount of padding reliably clears. Kept in one flex box so the label
+          never wraps away from the input it describes. */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* No decorative leading icon here: datetime-local already draws its own
+            picker button, and a lucide one beside it reads as two calendars.
+            Matches ticket-category-form and schedule-settings-dialog. */}
         <Input
           type="datetime-local"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
-          className="h-9 w-[14.5rem] pl-8"
+          className="h-9 w-[13rem]"
           aria-label={`Tanggal & jam pertandingan (${tzLabel(tz)})`}
         />
-        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-muted-foreground">
-          {tzLabel(tz)}
-        </span>
+        <span className="text-[11px] font-semibold text-muted-foreground">{tzLabel(tz)}</span>
       </div>
       <div className="relative min-w-[10rem] flex-1">
         <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
