@@ -130,6 +130,8 @@ Route::prefix('v1')->group(function () {
         Route::get('categories/{categorySlug}/matches', [PublicEventController::class, 'matches']);
         Route::get('categories/{categorySlug}/standings', [PublicEventController::class, 'standings']);
         Route::get('categories/{categorySlug}/leaderboard', [PublicEventController::class, 'leaderboard']);
+        // Player stats of a single fixture, for the match detail dialog.
+        Route::get('matches/{match}/stats', [PublicEventController::class, 'matchStats']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
         Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
     });

@@ -348,6 +348,30 @@ export interface MatchStatsData {
 }
 
 /**
+ * The public read-only view of the same data. Deliberately not `MatchStatsData`:
+ * nothing here is editable, so it carries no roster — only the players who
+ * recorded something, with their tally attached.
+ */
+export interface PublicMatchStatPlayer {
+  id: string;
+  full_name: string;
+  jersey_number: string | null;
+  stats: Record<string, number>;
+}
+
+export interface PublicMatchStatTeam {
+  id: string;
+  name: string;
+  players: PublicMatchStatPlayer[];
+}
+
+export interface PublicMatchStats {
+  columns: StatColumn[];
+  home_team: PublicMatchStatTeam | null;
+  away_team: PublicMatchStatTeam | null;
+}
+
+/**
  * One competition inside an event (U17, U19, Woman, …). Format, bracket config,
  * fee and team cap live here — an event may run several at once, each different.
  */

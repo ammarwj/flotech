@@ -11,10 +11,12 @@ use App\Http\Resources\PublicEventResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\EventCategory;
+use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Notifications\NewTeamRegistered;
 use App\Notifications\TeamRegistrationSubmitted;
+use App\Services\Catalog;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
 use App\Services\RegistrationService;
@@ -124,6 +126,67 @@ class PublicEventController extends Controller
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         return ApiResponse::success($standings->compute($category));
+    }
+
+    /**
+     * Player stats recorded in one match, for the public match detail. Unlike
+     * the organizer's editor payload this carries no rosters — only the players
+     * who actually registered something, since nothing here is editable.
+     */
+    public function matchStats(string $orgSlug, string $eventSlug, string $matchId): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        $match = GameMatch::with(['homeTeam', 'awayTeam', 'stats.player'])->findOrFail($matchId);
+
+        // The slug pair is the whole of the authorization here, so the match has
+        // to belong to that event — otherwise any match id is readable through
+        // any published event's URL.
+        abort_if($match->event_id !== $event->id, 404);
+
+        return ApiResponse::success([
+            'columns' => Catalog::statColumns($event->sport_type),
+            'home_team' => $this->matchStatLine($match, $match->homeTeam, $event->sport_type),
+            'away_team' => $this->matchStatLine($match, $match->awayTeam, $event->sport_type),
+        ]);
+    }
+
+    /**
+     * One side of a match detail: the players with something to their name.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function matchStatLine(GameMatch $match, ?Team $team, ?string $sport): ?array
+    {
+        if (! $team) {
+            return null;
+        }
+
+        // Scorers first — that is what a match detail is read for. Ties fall
+        // back to name so the order is stable between requests.
+        $goalKey = collect(Catalog::statColumns($sport))->firstWhere('role', 'goal')['key'] ?? null;
+
+        $players = $match->stats
+            ->where('team_id', $team->id)
+            ->filter(fn ($s) => $s->player !== null && $s->value > 0)
+            ->groupBy('player_id')
+            ->map(fn ($rows) => [
+                'id' => $rows->first()->player->id,
+                'full_name' => $rows->first()->player->full_name,
+                'jersey_number' => $rows->first()->player->jersey_number,
+                'stats' => $rows->mapWithKeys(fn ($s) => [$s->stat_key => $s->value]),
+            ])
+            ->sortBy([
+                fn ($a, $b) => ($b['stats'][$goalKey] ?? 0) <=> ($a['stats'][$goalKey] ?? 0),
+                fn ($a, $b) => strcmp($a['full_name'], $b['full_name']),
+            ])
+            ->values();
+
+        return [
+            'id' => $team->id,
+            'name' => $team->name,
+            'players' => $players,
+        ];
     }
 
     /**

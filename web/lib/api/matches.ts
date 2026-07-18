@@ -7,6 +7,7 @@ import type {
   Match,
   MatchStatsData,
   MatchStatus,
+  PublicMatchStats,
   Standing,
   Team,
 } from "@/types/api";
@@ -275,6 +276,18 @@ export async function getPublicLeaderboard(
 ): Promise<Leaderboard> {
   const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
     `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/leaderboard`
+  );
+  return data.data;
+}
+
+/** Player stats of one fixture, for the public match detail. */
+export async function getPublicMatchStats(
+  orgSlug: string,
+  eventSlug: string,
+  matchId: string
+): Promise<PublicMatchStats> {
+  const { data } = await apiClient.get<ApiEnvelope<PublicMatchStats>>(
+    `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}/stats`
   );
   return data.data;
 }

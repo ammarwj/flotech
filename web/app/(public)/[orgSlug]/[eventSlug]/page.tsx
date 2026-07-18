@@ -9,6 +9,7 @@ import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Tick
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
+import { PublicAllSchedule } from "@/components/event/public-all-schedule";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
@@ -31,6 +32,9 @@ function dateRange(a: string | null, b: string | null) {
 }
 
 type TabKey = "info" | "teams" | ResultsTab;
+
+/** Sentinel category id for the combined, all-categories schedule. */
+const ALL_CATEGORIES = "all";
 
 export default function PublicEventPage() {
   const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
@@ -71,8 +75,11 @@ export default function PublicEventPage() {
   const sportColor = colorOf(ev.sport_type);
 
   const categories = ev.categories ?? [];
-  const selectedCategory =
-    categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  // "Semua" only means something with more than one category to combine.
+  const isAll = categoryId === ALL_CATEGORIES && categories.length > 1;
+  const selectedCategory = isAll
+    ? null
+    : (categories.find((c) => c.id === categoryId) ?? categories[0] ?? null);
   const selectedEngine = selectedCategory?.engine ?? null;
   // Preselect the viewed category on the registration form.
   const registerHref = selectedCategory
@@ -85,16 +92,24 @@ export default function PublicEventPage() {
     ["info", "Info", Info],
     ["teams", "Tim Peserta", Users],
     ["schedule", "Jadwal", CalendarClock],
-    ...(isKnockoutFormat(selectedEngine)
-      ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
-      : isHybridFormat(selectedEngine)
-        ? ([
-            ["standings", "Klasemen", ListOrdered],
-            ["bracket", "Bracket", Network],
-          ] as [TabKey, string, typeof Info][])
-        : ([["standings", "Klasemen", ListOrdered]] as [TabKey, string, typeof Info][])),
-    ["stats", "Statistik", Goal],
+    // Klasemen, bracket and the leaderboard are all per-category — a bracket
+    // belongs to exactly one — so "Semua" offers the schedule alone.
+    ...(isAll
+      ? []
+      : ([
+          ...(isKnockoutFormat(selectedEngine)
+            ? [["bracket", "Bracket", Network]]
+            : isHybridFormat(selectedEngine)
+              ? [
+                  ["standings", "Klasemen", ListOrdered],
+                  ["bracket", "Bracket", Network],
+                ]
+              : [["standings", "Klasemen", ListOrdered]]),
+          ["stats", "Statistik", Goal],
+        ] as [TabKey, string, typeof Info][])),
   ];
+  // Switching to "Semua" from a tab that just disappeared would blank the page.
+  const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
 
   return (
     <>
@@ -185,7 +200,7 @@ export default function PublicEventPage() {
                 onClick={() => setTab(key)}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
-                  tab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
+                  activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -197,7 +212,7 @@ export default function PublicEventPage() {
       </section>
 
       {/* ===== INFO TAB ===== */}
-      {tab === "info" && (
+      {activeTab === "info" && (
         <>
           {ev.banner_url && (
             <section className="section" style={{ paddingBottom: 0 }}>
@@ -342,7 +357,7 @@ export default function PublicEventPage() {
       )}
 
       {/* ===== TEAMS TAB ===== */}
-      {tab === "teams" && (
+      {activeTab === "teams" && (
         <section className="section">
           <div className="container">
             <div className="esection-title">
@@ -402,19 +417,22 @@ export default function PublicEventPage() {
       )}
 
       {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
-      {tab !== "info" && tab !== "teams" && selectedCategory && (
+      {activeTab !== "info" && activeTab !== "teams" && (selectedCategory || isAll) && (
         <>
           {categories.length > 1 && (
             <section className="section" style={{ paddingBottom: 0 }}>
               <div className="container">
                 <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium">
-                  {categories.map((c) => (
+                  {[
+                    { id: ALL_CATEGORIES, name: "Semua" },
+                    ...categories.map((c) => ({ id: c.id, name: c.name })),
+                  ].map((c) => (
                     <button
                       key={c.id}
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
                         "rounded-full px-3.5 py-1.5 transition-colors",
-                        c.id === selectedCategory.id
+                        (c.id === ALL_CATEGORIES ? isAll : c.id === selectedCategory?.id)
                           ? "bg-[var(--tint)] text-[var(--brand-700)]"
                           : "text-muted-foreground hover:text-foreground"
                       )}
@@ -426,15 +444,23 @@ export default function PublicEventPage() {
               </div>
             </section>
           )}
-          <PublicResults
-            key={selectedCategory.id}
-            orgSlug={params.orgSlug}
-            eventSlug={params.eventSlug}
-            categorySlug={selectedCategory.slug}
-            engine={selectedCategory.engine}
-            bracketConfig={selectedCategory.bracket_config}
-            activeTab={tab}
-          />
+          {isAll ? (
+            <PublicAllSchedule
+              orgSlug={params.orgSlug}
+              eventSlug={params.eventSlug}
+              categories={categories}
+            />
+          ) : (
+            <PublicResults
+              key={selectedCategory!.id}
+              orgSlug={params.orgSlug}
+              eventSlug={params.eventSlug}
+              categorySlug={selectedCategory!.slug}
+              engine={selectedCategory!.engine}
+              bracketConfig={selectedCategory!.bracket_config}
+              activeTab={activeTab}
+            />
+          )}
         </>
       )}
 

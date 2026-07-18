@@ -101,13 +101,17 @@
 /* schedule */
 .match-day { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text-muted); margin: 24px 0 12px; }
 .match-day:first-child { margin-top: 0; }
+/* A <button>: the card opens the match detail, so it resets the button
+   defaults (centred text, own font/colour) back to what the layout expects. */
 .match-card {
   display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 16px;
   padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface); margin-bottom: 10px;
   transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
 }
 .match-card:hover { border-color: var(--brand-500); box-shadow: var(--shadow-sm); }
+.match-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
 .match-time { text-align: center; }
 .match-time b { display: block; font-family: var(--font-mono); font-size: 15px; }
 .match-time small { font-size: 11px; color: var(--text-muted); }
