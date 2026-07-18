@@ -26,6 +26,19 @@ class UserResource extends JsonResource
             'default_mode' => $this->default_mode,
             'is_verified' => (bool) $this->is_verified,
             'email_verified_at' => $this->email_verified_at,
+            'last_seen_at' => $this->last_seen_at,
+            // Org context — only present when the caller eager-loads them (admin
+            // user management). Kept out of the default payload via whenLoaded so
+            // auth me() and other callers stay a single query.
+            'owned_organizations' => $this->whenLoaded('ownedOrganizations', fn () => $this->ownedOrganizations->map(fn ($org) => [
+                'id' => $org->id,
+                'name' => $org->name,
+            ])->values()),
+            'memberships' => $this->whenLoaded('organizationMemberships', fn () => $this->organizationMemberships->map(fn ($m) => [
+                'organization_id' => $m->organization_id,
+                'organization_name' => $m->organization?->name,
+                'role' => $m->role,
+            ])->values()),
         ];
     }
 }

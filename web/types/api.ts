@@ -913,3 +913,19 @@ export interface ActiveSession {
   session_count: number;
   sessions: ActiveSessionDevice[];
 }
+
+/** A platform user as seen in the super-admin user-management list. */
+export interface AdminUser {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  role: "super_admin" | "user";
+  default_mode: "organizer" | "participant";
+  is_verified: boolean;
+  email_verified_at: string | null;
+  last_seen_at: string | null;
+  owned_organizations: { id: string; name: string }[];
+  memberships: { organization_id: string; organization_name: string | null; role: string }[];
+}

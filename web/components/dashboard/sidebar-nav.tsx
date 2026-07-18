@@ -64,6 +64,7 @@ export const PARTICIPANT_NAV: NavItem[] = [
 /** SaaS super-admin navigation. */
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
+  { href: "/admin/users", label: "Manajemen User", icon: Users, mobile: true },
   { href: "/admin/plans", label: "Paket & Fitur", icon: CreditCard, mobile: true },
   { href: "/admin/withdrawals", label: "Penarikan Dana", icon: Banknote, mobile: true },
   { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
+use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\WalletController as AdminWalletController;
 use App\Http\Controllers\Api\Admin\WithdrawalController as AdminWithdrawalController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -317,6 +318,11 @@ Route::prefix('v1')->group(function () {
 
             // Who is logged in / currently accessing the app.
             Route::get('active-sessions', [ActiveSessionController::class, 'index']);
+
+            // Platform user management (list/search, role change, verify, delete).
+            Route::get('users', [AdminUserController::class, 'index']);
+            Route::patch('users/{user}', [AdminUserController::class, 'update']);
+            Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
         });
     });
 
