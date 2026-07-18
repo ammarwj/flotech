@@ -401,6 +401,8 @@ export interface SportEvent {
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
+  /** The venue's zone. Kickoff times are UTC instants; this is what they mean. */
+  timezone: string;
   registration_open: string | null;
   registration_close: string | null;
   location_name: string | null;
@@ -533,6 +535,8 @@ export interface PublicEvent {
   status: EventStatus;
   start_date: string | null;
   end_date: string | null;
+  /** The venue's zone. Kickoff times are UTC instants; this is what they mean. */
+  timezone: string;
   registration_open: string | null;
   registration_close: string | null;
   registration_is_open: boolean;

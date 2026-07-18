@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
+use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,6 +25,7 @@ class UpdateEventRequest extends FormRequest
             'status' => ['sometimes', Rule::in(['draft', 'open', 'registration_closed', 'ongoing', 'finished', 'cancelled'])],
             'start_date' => ['sometimes', 'date'],
             'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
+            'timezone' => ['sometimes', 'string', Rule::in(DateTimeZone::listIdentifiers())],
             'registration_open' => ['nullable', 'date'],
             'registration_close' => ['nullable', 'date'],
             'location_name' => ['nullable', 'string', 'max:255'],

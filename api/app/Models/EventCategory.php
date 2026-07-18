@@ -96,4 +96,10 @@ class EventCategory extends Model
     {
         return Attribute::get(fn () => $this->event->end_date);
     }
+
+    /** So is the venue's zone, which every kickoff time is written against. */
+    protected function timezone(): Attribute
+    {
+        return Attribute::get(fn () => $this->event->timezone);
+    }
 }

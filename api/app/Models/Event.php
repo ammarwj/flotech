@@ -20,6 +20,7 @@ class Event extends Model
         'status',
         'start_date',
         'end_date',
+        'timezone',
         'registration_open',
         'registration_close',
         'location_name',

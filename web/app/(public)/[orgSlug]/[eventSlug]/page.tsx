@@ -10,6 +10,7 @@ import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
 import { PublicAllSchedule } from "@/components/event/public-all-schedule";
+import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
@@ -112,7 +113,9 @@ export default function PublicEventPage() {
   const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
 
   return (
-    <>
+    // Kickoff times render in the venue's zone, so every visitor reads the same
+    // clock the organizer set — not their own.
+    <EventTimezoneProvider timezone={ev.timezone}>
       {/* ===== HERO ===== */}
       <header className="ehero">
         <div className="container ehero-inner">
@@ -492,6 +495,6 @@ export default function PublicEventPage() {
           </div>
         </div>
       </footer>
-    </>
+    </EventTimezoneProvider>
   );
 }

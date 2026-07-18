@@ -44,6 +44,7 @@ import {
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
+import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { isSetBased } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,9 @@ export default function SchedulePage() {
     queryFn: () => getEvent(orgId!, eventId),
     enabled: !!orgId,
   });
+
+  // Kickoff times belong to the venue's zone, not the organizer's browser.
+  const tz = eventQuery.data?.timezone ?? "Asia/Jakarta";
 
   // Each category runs its own format, so the schedule/standings/bracket below
   // are all scoped to the one the organizer has selected.
@@ -209,12 +213,12 @@ export default function SchedulePage() {
 
   // The list view shows one matchday at a time; round/group headings are kept
   // inside the day, so a fixture never loses its context.
-  const dateGroups = groupByDate(matches);
+  const dateGroups = groupByDate(matches, tz);
   const activeDateKey =
-    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups);
+    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
   const activeDateGroup = dateGroups.find((g) => g.key === activeDateKey);
   const daySections = sections
-    .map(([label, list]) => [label, list.filter((m) => dateKeyOf(m.scheduled_at) === activeDateKey)] as [string, Match[]])
+    .map(([label, list]) => [label, list.filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)] as [string, Match[]])
     .filter(([, list]) => list.length > 0);
 
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
@@ -237,6 +241,7 @@ export default function SchedulePage() {
         ];
 
   return (
+    <EventTimezoneProvider timezone={tz}>
     <div>
       <PageHeader
         title="Jadwal & Klasemen"
@@ -455,7 +460,7 @@ export default function SchedulePage() {
 
               <div className="mb-6 grid gap-1 border-b border-border pb-3">
                 <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                  {fullDateLabel(activeDateGroup?.iso ?? null)}
+                  {fullDateLabel(activeDateGroup?.iso ?? null, tz)}
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   {activeDateGroup?.list.length ?? 0} pertandingan
@@ -548,6 +553,7 @@ export default function SchedulePage() {
         />
       )}
     </div>
+    </EventTimezoneProvider>
   );
 }
 

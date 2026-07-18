@@ -28,6 +28,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { rupiah } from "@/lib/labels";
+import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
@@ -317,6 +318,7 @@ export function EventForm({
     sport_type: initial?.sport_type ?? "",
     start_date: initial?.start_date ?? "",
     end_date: initial?.end_date ?? "",
+    timezone: initial?.timezone ?? "Asia/Jakarta",
     location_name: initial?.location_name ?? "",
     location_address: initial?.location_address ?? "",
     description: initial?.description ?? "",
@@ -545,6 +547,27 @@ export function EventForm({
                 days && <FieldHint>Berlangsung {days} hari.</FieldHint>
               )}
             </div>
+          </div>
+
+          <div className="grid gap-2 sm:max-w-[50%] sm:pr-2">
+            <Label htmlFor="timezone" className="font-semibold">
+              Zona waktu
+            </Label>
+            <Select
+              id="timezone"
+              value={v.timezone ?? "Asia/Jakarta"}
+              onChange={(e) => set("timezone", e.target.value)}
+            >
+              {TIMEZONES.map((z) => (
+                <option key={z.value} value={z.value}>
+                  {z.label}
+                </option>
+              ))}
+            </Select>
+            <FieldHint>
+              Zona waktu lokasi pertandingan. Jam yang kamu isi di jadwal berarti jam setempat, dan
+              penonton di zona mana pun akan melihat jam yang sama.
+            </FieldHint>
           </div>
         </CardContent>
       </Card>

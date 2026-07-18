@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { dateKeyOf } from "@/lib/match-dates";
 import { matchScoreText } from "@/lib/scoring";
+import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -13,25 +15,33 @@ const MONTHS = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 ];
 
-const dayKey = (y: number, m: number, d: number) => `${y}-${m}-${d}`;
+/**
+ * Grid-cell key in the same "YYYY-MM-DD" shape dateKeyOf() produces, so a
+ * fixture lands on the day it is played at the venue rather than the day it
+ * falls on in the viewer's zone.
+ */
+const dayKey = (y: number, m: number, d: number) =>
+  `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
 /** Month-grid view of fixtures, grouped by their scheduled date. */
 export function MatchCalendar({ matches }: { matches: Match[] }) {
+  const tz = useEventTimezone();
   const byDay = new Map<string, Match[]>();
-  let earliest: Date | null = null;
+  let earliestKey: string | null = null;
 
   for (const m of matches) {
     if (!m.scheduled_at) continue;
-    const dt = new Date(m.scheduled_at);
-    if (!earliest || dt < earliest) earliest = dt;
-    const k = dayKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    const k = dateKeyOf(m.scheduled_at, tz);
+    if (!earliestKey || k < earliestKey) earliestKey = k;
     const arr = byDay.get(k);
     if (arr) arr.push(m);
     else byDay.set(k, [m]);
   }
 
-  const base = earliest ?? new Date();
-  const [cursor, setCursor] = useState({ year: base.getFullYear(), month: base.getMonth() });
+  // Which month to open on, read in the venue's zone like everything else.
+  const todayKey = dateKeyOf(new Date().toISOString(), tz);
+  const [baseYear, baseMonth] = (earliestKey ?? todayKey).split("-").map(Number);
+  const [cursor, setCursor] = useState({ year: baseYear, month: baseMonth - 1 });
 
   const shift = (delta: number) => {
     const d = new Date(cursor.year, cursor.month + delta, 1);
@@ -48,9 +58,7 @@ export function MatchCalendar({ matches }: { matches: Match[] }) {
   while (cells.length % 7 !== 0) cells.push(null);
 
   const unscheduled = matches.filter((m) => !m.scheduled_at).length;
-  const today = new Date();
-  const isToday = (d: number) =>
-    today.getFullYear() === cursor.year && today.getMonth() === cursor.month && today.getDate() === d;
+  const isToday = (d: number) => dayKey(cursor.year, cursor.month, d) === todayKey;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">

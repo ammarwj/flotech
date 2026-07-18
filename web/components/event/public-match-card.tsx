@@ -1,7 +1,8 @@
 "use client";
 
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
-import { timeOf } from "@/lib/match-dates";
+import { timeOf, tzLabel } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -34,9 +35,10 @@ export function PublicMatchCard({
   categoryLabel?: string;
   onClick: () => void;
 }) {
+  const tz = useEventTimezone();
   const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
   const live = m.status === "ongoing";
-  const time = timeOf(m.scheduled_at);
+  const time = timeOf(m.scheduled_at, tz);
   const winner = done ? matchWinnerId(m) : null;
   const metaLabel = m.group_name
     ? `Grup ${m.group_name}`
@@ -59,7 +61,7 @@ export function PublicMatchCard({
         ) : (
           <>
             <b>{time ?? "TBD"}</b>
-            {time && <small>WIB</small>}
+            {time && <small>{tzLabel(tz)}</small>}
           </>
         )}
       </div>

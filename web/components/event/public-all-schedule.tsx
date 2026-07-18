@@ -6,6 +6,7 @@ import { useQueries } from "@tanstack/react-query";
 import { getPublicMatches } from "@/lib/api/matches";
 import { isKnockout as isKnockoutFormat } from "@/lib/bracket";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import { MatchDayTabs } from "./match-day-tabs";
 import { PublicMatchCard } from "./public-match-card";
 import { MatchDetailDialog } from "./match-detail-dialog";
@@ -27,6 +28,7 @@ export function PublicAllSchedule({
   eventSlug: string;
   categories: EventCategory[];
 }) {
+  const tz = useEventTimezone();
   const [dateKey, setDateKey] = useState<string | null>(null);
   const [open, setOpen] = useState<{ match: Match; categoryLabel: string } | null>(null);
 
@@ -54,9 +56,9 @@ export function PublicAllSchedule({
     }
   });
 
-  const dateGroups = groupByDate(matches);
+  const dateGroups = groupByDate(matches, tz);
   const activeDateKey =
-    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups);
+    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
   const activeGroup = dateGroups.find((g) => g.key === activeDateKey);
 
   return (
@@ -76,7 +78,7 @@ export function PublicAllSchedule({
 
             {activeGroup && (
               <>
-                <div className="match-day">{fullDateLabel(activeGroup.iso)}</div>
+                <div className="match-day">{fullDateLabel(activeGroup.iso, tz)}</div>
                 {activeGroup.list.map((m) => {
                   const category = byMatchId.get(m.id);
                   return (

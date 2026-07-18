@@ -6,7 +6,8 @@ import { MapPin, X } from "lucide-react";
 
 import { getPublicMatchStats } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
-import { fullDateLabel, timeOf } from "@/lib/match-dates";
+import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 import type { Match, PublicMatchStatTeam, StatColumn } from "@/types/api";
 
@@ -31,6 +32,8 @@ export function MatchDetailDialog({
   categoryLabel?: string;
   onClose: () => void;
 }) {
+  const tz = useEventTimezone();
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -51,7 +54,7 @@ export function MatchDetailDialog({
 
   const done = match.status === "finished" && match.home_score !== null && match.away_score !== null;
   const winner = done ? matchWinnerId(match) : null;
-  const time = timeOf(match.scheduled_at);
+  const time = timeOf(match.scheduled_at, tz);
   const columns = query.data?.columns ?? [];
   const sides = [query.data?.home_team, query.data?.away_team].filter(Boolean) as PublicMatchStatTeam[];
   const hasStats = sides.some((s) => s.players.length > 0);
@@ -90,8 +93,8 @@ export function MatchDetailDialog({
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
               <span>
-                {fullDateLabel(match.scheduled_at)}
-                {time && ` · ${time} WIB`}
+                {fullDateLabel(match.scheduled_at, tz)}
+                {time && ` · ${time} ${tzLabel(tz)}`}
               </span>
               {match.venue && (
                 <span className="inline-flex items-center gap-1">

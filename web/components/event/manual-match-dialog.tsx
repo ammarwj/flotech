@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { CreateMatchPayload } from "@/lib/api/matches";
+import { fromEventInput, tzLabel } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import type { Team } from "@/types/api";
 
 /**
@@ -29,6 +31,7 @@ export function ManualMatchDialog({ open, ...props }: ManualMatchDialogProps & {
 }
 
 function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
+  const tz = useEventTimezone();
   const [home, setHome] = useState("");
   const [away, setAway] = useState("");
   const [when, setWhen] = useState("");
@@ -46,8 +49,8 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
     onSubmit({
       home_team_id: home,
       away_team_id: away,
-      // datetime-local is local time → send as ISO so the backend stores it correctly.
-      scheduled_at: when ? new Date(when).toISOString() : null,
+      // What the organizer typed is the venue's wall clock, not their own.
+      scheduled_at: fromEventInput(when, tz),
       venue: venue.trim() || null,
     });
 
@@ -120,7 +123,8 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
 
               <div className="grid gap-1.5">
                 <Label htmlFor="manual-when" className="font-semibold">
-                  Tanggal & jam <span className="font-normal text-muted-foreground">(opsional)</span>
+                  Tanggal & jam{" "}
+                  <span className="font-normal text-muted-foreground">(opsional, {tzLabel(tz)})</span>
                 </Label>
                 <div className="relative">
                   <CalendarClock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

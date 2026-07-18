@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { tabDateLabel, type DateGroup } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,6 +21,7 @@ export function MatchDayTabs({
   activeKey?: string;
   onSelect: (key: string) => void;
 }) {
+  const tz = useEventTimezone();
   const activeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function MatchDayTabs({
               : "border-border bg-[var(--surface)] text-muted-foreground hover:text-foreground"
           )}
         >
-          {tabDateLabel(g.iso)}
+          {tabDateLabel(g.iso, tz)}
         </button>
       ))}
     </div>

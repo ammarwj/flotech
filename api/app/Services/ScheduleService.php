@@ -39,7 +39,7 @@ class ScheduleService
             return 0;
         }
 
-        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
+        $start = $this->categoryStart($category);
 
         $category->matches()->delete();
 
@@ -57,7 +57,7 @@ class ScheduleService
                     'order' => $order++,
                     'home_team_id' => $home,
                     'away_team_id' => $away,
-                    'scheduled_at' => $start->copy()->addDays($roundIndex),
+                    'scheduled_at' => $start->copy()->addDays($roundIndex)->utc(),
                     'status' => 'scheduled',
                 ]);
                 $created++;
@@ -88,7 +88,7 @@ class ScheduleService
             return 0;
         }
 
-        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
+        $start = $this->categoryStart($category);
 
         $category->matches()->delete();
 
@@ -119,7 +119,7 @@ class ScheduleService
                         'order' => $orders[$round]++,
                         'home_team_id' => $home,
                         'away_team_id' => $away,
-                        'scheduled_at' => $start->copy()->addDays($roundIndex),
+                        'scheduled_at' => $start->copy()->addDays($roundIndex)->utc(),
                         'status' => 'scheduled',
                     ]);
                     $created++;
@@ -173,7 +173,7 @@ class ScheduleService
                 'order' => $o,
                 'home_team_id' => $home,
                 'away_team_id' => $away,
-                'scheduled_at' => $start,
+                'scheduled_at' => $start->copy()->utc(),
                 'status' => $bye ? 'finished' : 'scheduled',
                 'confirmed_at' => $bye ? now() : null,
             ]);
@@ -187,7 +187,7 @@ class ScheduleService
                     'stage' => 'knockout',
                     'round' => $r,
                     'order' => $o,
-                    'scheduled_at' => $start->copy()->addDays($r - 1),
+                    'scheduled_at' => $start->copy()->addDays($r - 1)->utc(),
                     'status' => 'scheduled',
                 ]);
             }
@@ -278,13 +278,20 @@ class ScheduleService
      */
     protected function knockoutStart(EventCategory $category): Carbon
     {
+        // "The day after" is a calendar question, so it has to be asked in the
+        // venue's zone: a 21:00 WIB kickoff is stored as 14:00Z the same day,
+        // but a 07:00 WIB one is 00:00Z — reading those in UTC would put the
+        // knockout on different days for kickoffs in the same evening.
+        $tz = $category->timezone;
         $lastGroup = $category->matches()->where('stage', 'group')->max('scheduled_at');
 
         if ($lastGroup) {
-            return Carbon::parse($lastGroup)->startOfDay()->addDay();
+            return Carbon::parse($lastGroup, 'UTC')->setTimezone($tz)->startOfDay()->addDay();
         }
 
-        return $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
+        return $category->start_date
+            ? Carbon::parse($category->start_date, $tz)->startOfDay()
+            : Carbon::now($tz)->startOfDay();
     }
 
     /**
@@ -409,7 +416,7 @@ class ScheduleService
         $totalRounds = (int) log($bracketSize, 2);
         $byes = $bracketSize - $n;
 
-        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
+        $start = $this->categoryStart($category);
 
         $category->matches()->delete();
 
@@ -429,7 +436,7 @@ class ScheduleService
                 'order' => $o,
                 'home_team_id' => $home,
                 'away_team_id' => $away,
-                'scheduled_at' => $start,
+                'scheduled_at' => $start->copy()->utc(),
                 'status' => $away === null ? 'finished' : 'scheduled', // bye = walkover
                 'confirmed_at' => $away === null ? now() : null, // byes are auto-final
             ]);
@@ -444,7 +451,7 @@ class ScheduleService
                     'category_id' => $category->id,
                     'round' => $r,
                     'order' => $o,
-                    'scheduled_at' => $start->copy()->addDays($r - 1),
+                    'scheduled_at' => $start->copy()->addDays($r - 1)->utc(),
                     'status' => 'scheduled',
                 ]);
             }
@@ -561,7 +568,7 @@ class ScheduleService
 
         $bracketSize = $n;
         $k = (int) log($bracketSize, 2);
-        $start = $category->start_date ? Carbon::parse($category->start_date) : Carbon::now()->startOfDay();
+        $start = $this->categoryStart($category);
 
         $category->matches()->delete();
 
@@ -674,9 +681,24 @@ class ScheduleService
             'order' => $order,
             'home_team_id' => $home,
             'away_team_id' => $away,
-            'scheduled_at' => $when,
+            'scheduled_at' => $when->copy()->utc(),
             'status' => 'scheduled',
         ]);
+    }
+
+    /**
+     * Midnight on the category's first day, *in the venue's zone*. Generators
+     * use this as a placeholder date until applySchedule() assigns real kickoff
+     * times; it still has to be zoned, or the placeholder lands on the wrong
+     * calendar day for any venue far enough from UTC.
+     */
+    protected function categoryStart(EventCategory $category): Carbon
+    {
+        $tz = $category->timezone;
+
+        return $category->start_date
+            ? Carbon::parse($category->start_date, $tz)->startOfDay()
+            : Carbon::now($tz)->startOfDay();
     }
 
     protected function findMatch(EventCategory $category, string $bracket, int $round, int $order): ?GameMatch
@@ -729,12 +751,18 @@ class ScheduleService
             return;
         }
 
+        // Every wall-clock value below ("15:00", "the 3rd") means the venue's
+        // zone, not the server's. The app runs in UTC, so parsing these without
+        // a zone would silently write 15:00Z for a 15:00 WIB kickoff — the
+        // fixture would then show up at 22:00.
+        $tz = $category->timezone;
+
         $startDate = ! empty($opts['start_date'])
-            ? Carbon::parse($opts['start_date'])->startOfDay()
+            ? Carbon::parse($opts['start_date'], $tz)->startOfDay()
             : ($stage === 'knockout'
                 ? $this->knockoutStart($category)->startOfDay()
-                : ($category->start_date ? Carbon::parse($category->start_date)->startOfDay() : Carbon::now()->startOfDay()));
-        $endDate = $category->end_date ? Carbon::parse($category->end_date)->startOfDay() : null;
+                : ($category->start_date ? Carbon::parse($category->start_date, $tz)->startOfDay() : Carbon::now($tz)->startOfDay()));
+        $endDate = $category->end_date ? Carbon::parse($category->end_date, $tz)->startOfDay() : null;
 
         $startMin = $this->minutesOfDay($opts['daily_start'] ?? '15:00');
         $endMin = $this->minutesOfDay($opts['daily_end'] ?? '21:00');
@@ -785,7 +813,10 @@ class ScheduleService
                 $time = $times[min(intdiv($slot, $venues), count($times) - 1)];
 
                 $m->update([
-                    'scheduled_at' => $day->copy()->addMinutes($time),
+                    // ->utc() is not optional: Eloquent's fromDateTime() formats
+                    // the Carbon instance as-is, so without it the venue-local
+                    // wall clock would land raw in a UTC column.
+                    'scheduled_at' => $day->copy()->addMinutes($time)->utc(),
                     'venue' => $venues > 1 ? 'Lapangan '.($lane + 1) : null,
                 ]);
                 $slot++;

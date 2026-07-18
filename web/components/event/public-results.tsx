@@ -12,6 +12,7 @@ import {
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
+import { useEventTimezone } from "./event-timezone";
 import { MatchDayTabs } from "./match-day-tabs";
 import { StandingsTable } from "./standings-table";
 import { GroupStandings } from "./group-standings";
@@ -56,6 +57,7 @@ export function PublicResults({
     catalog.tiebreakers.map((t) => t.key),
   );
   const [dateKey, setDateKey] = useState<string | null>(null);
+  const tz = useEventTimezone();
   const [openMatch, setOpenMatch] = useState<Match | null>(null);
 
   const matchesQuery = useQuery({
@@ -91,9 +93,9 @@ export function PublicResults({
     );
   }
 
-  const dateGroups = groupByDate(matches);
+  const dateGroups = groupByDate(matches, tz);
   const activeDateKey =
-    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups);
+    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
   const activeGroup = dateGroups.find((g) => g.key === activeDateKey);
 
   return (
@@ -119,7 +121,7 @@ export function PublicResults({
 
             {activeGroup && (
               <>
-                <div className="match-day">{fullDateLabel(activeGroup.iso)}</div>
+                <div className="match-day">{fullDateLabel(activeGroup.iso, tz)}</div>
                 {activeGroup.list.map((m) => (
                   <PublicMatchCard
                     key={m.id}

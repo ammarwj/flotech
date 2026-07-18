@@ -8,6 +8,7 @@ import type { SportEvent } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { tzLabel } from "@/lib/match-dates";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -111,10 +112,10 @@ export function ScheduleSettingsDialog({
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Jam mulai">
+            <Field label="Jam mulai" hint={tzLabel(event.timezone)}>
               <Input type="time" value={dailyStart} onChange={(e) => setDailyStart(e.target.value)} />
             </Field>
-            <Field label="Jam selesai">
+            <Field label="Jam selesai" hint={tzLabel(event.timezone)}>
               <Input
                 type="time"
                 value={dailyEnd}

@@ -27,6 +27,8 @@ class PublicEventResource extends JsonResource
             'status' => $this->status,
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
+            // Kickoff times are UTC on the wire; this is the zone they mean.
+            'timezone' => $this->timezone,
             'registration_open' => $this->registration_open,
             'registration_close' => $this->registration_close,
             'registration_is_open' => $this->isRegistrationOpen(),

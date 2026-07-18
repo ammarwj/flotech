@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
+use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,6 +25,9 @@ class StoreEventRequest extends FormRequest
             'sport_type' => ['required', Rule::in(Catalog::sportSlugs())],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            // The venue's zone; kickoff times typed by the organizer mean this
+            // zone. Absent = the column default (Asia/Jakarta).
+            'timezone' => ['nullable', 'string', Rule::in(DateTimeZone::listIdentifiers())],
             'registration_open' => ['nullable', 'date'],
             'registration_close' => ['nullable', 'date', 'after_or_equal:registration_open'],
             'location_name' => ['nullable', 'string', 'max:255'],
