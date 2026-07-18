@@ -87,7 +87,9 @@ export function PublicResults({
 
   const matches = matchesQuery.data ?? [];
   if (matchesQuery.isLoading) return null;
-  if (matches.length === 0) {
+  // Standings are built from the drawn teams, not the fixtures, so they stay
+  // readable before a schedule exists — every other panel needs matches.
+  if (matches.length === 0 && activeTab !== "standings") {
     return (
       <section className="section" style={{ paddingTop: 24 }}>
         <div className="container">

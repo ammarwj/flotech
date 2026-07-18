@@ -328,7 +328,9 @@ export default function SchedulePage() {
             <Skeleton key={i} className="h-16 w-full rounded-xl" />
           ))}
         </div>
-      ) : matches.length === 0 ? (
+      ) : /* The table stands on the draw alone, so it must outlive this gate: a
+            category with groups but no fixtures still has something to show. */
+      matches.length === 0 && activeTab !== "standings" ? (
         <EmptyState
           icon={CalendarClock}
           title="Belum ada jadwal"

@@ -171,6 +171,79 @@ class HybridFormatTest extends TestCase
         }
     }
 
+    /**
+     * The group table stands on the draw alone — the organizer web pages render
+     * it before any fixture exists, so an empty schedule must not empty it.
+     */
+    public function test_standings_are_returned_for_a_drawn_group_with_no_fixtures(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $category = $event->categories->first();
+
+        $ids = $event->teams()->orderBy('name')->pluck('id')->all();
+        $assignments = [];
+        foreach ($ids as $i => $id) {
+            $assignments[$id] = $i < 4 ? 'A' : 'B';
+        }
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/draw", [
+                'method' => 'manual',
+                'assignments' => $assignments,
+            ])
+            ->assertOk();
+
+        // Drawn, but deliberately no schedule generated.
+        $this->assertSame(0, $event->matches()->count());
+
+        $rows = $this->actingAs($user, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/standings")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(8, $rows);
+        foreach ($rows as $row) {
+            $this->assertContains($row['group_name'], ['A', 'B']);
+            $this->assertSame(0, $row['played']);
+            $this->assertSame(0, $row['points']);
+        }
+    }
+
+    public function test_knockout_is_refused_when_the_group_stage_has_no_fixtures(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $category = $event->categories->first();
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/draw", [
+                'method' => 'random',
+            ])
+            ->assertOk();
+
+        // Nothing pending, because nothing exists — the bracket must not read
+        // that as a finished group stage and seed itself alphabetically.
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertStatus(422);
+
+        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
+
+        // Contrast: the same call succeeds once the groups are actually played.
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/schedule")
+            ->assertCreated();
+        $this->finishGroupStage($event);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/knockout")
+            ->assertCreated();
+        $this->assertSame(3, $event->matches()->where('stage', 'knockout')->count());
+    }
+
     public function test_knockout_needs_the_group_stage_to_be_finished(): void
     {
         $user = User::factory()->create();

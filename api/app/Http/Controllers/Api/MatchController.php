@@ -186,6 +186,17 @@ class MatchController extends Controller
 
         $config = HybridConfig::fromCategory($categoryModel);
 
+        // A group stage with no fixtures at all has nothing pending, which the
+        // check below would read as "already played". Seeds would then come
+        // straight from the alphabetical order the zeroed table falls back to.
+        if ($categoryModel->matches()->where('stage', 'group')->count() === 0) {
+            return ApiResponse::error(
+                'Fase grup belum punya jadwal — buat jadwal grup dulu sebelum membuat bracket.',
+                ['feature' => 'group_stage_incomplete'],
+                422,
+            );
+        }
+
         $pending = $categoryModel->matches()
             ->where('stage', 'group')
             ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
