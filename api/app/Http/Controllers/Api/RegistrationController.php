@@ -83,8 +83,8 @@ class RegistrationController extends Controller
                 'category_id' => $category->id,
                 'name' => $data['name'],
                 'logo_url' => $data['logo_url'] ?? null,
-                'contact_name' => $data['contact_name'],
-                'contact_phone' => $data['contact_phone'],
+                'contact_name' => $data['contact_name'] ?? null,
+                'contact_phone' => $data['contact_phone'] ?? null,
                 'status' => 'approved',
                 'registered_at' => Carbon::now(),
                 'approved_at' => Carbon::now(),
@@ -128,8 +128,8 @@ class RegistrationController extends Controller
                 'category_id' => $category->id,
                 'name' => $data['name'],
                 'logo_url' => $data['logo_url'] ?? null,
-                'contact_name' => $data['contact_name'],
-                'contact_phone' => $data['contact_phone'],
+                'contact_name' => $data['contact_name'] ?? null,
+                'contact_phone' => $data['contact_phone'] ?? null,
             ]);
 
             $this->roster->syncPlayers($teamModel, $data['players'] ?? []);

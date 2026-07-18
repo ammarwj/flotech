@@ -827,12 +827,31 @@ img { max-width: 100%; display: block; }
 body[data-billing="monthly"] .bill-switch .lbl-m { color: var(--text); }
 body[data-billing="yearly"] .bill-switch .lbl-y { color: var(--text); }
 
+/* The catalog is data-driven, so this row is 2, 3 or 4 wide. repeat(4, 1fr) left
+   a dead track when a plan was unpublished, pushing the cards off-centre under a
+   centred heading. auto-fit collapses empty tracks (and replaces the two
+   breakpoints below), while --plan-count caps the row so a short one stays
+   card-sized and centred instead of stretching across the container. At the full
+   four the cap exceeds the 1200px container, so that case is unchanged. */
 .price-grid {
-  margin-top: 48px;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: stretch;
+  /* Columns = however many plans there are, capped by how many fit at this
+     width (--fit). auto-fit then collapses the tracks the cap left over.
+     --plan-count is set inline, so the cap has to live in its own variable:
+     a media query can never override an inline style. */
+  --cols: min(var(--plan-count, 4), var(--fit, 4));
+  margin: 48px auto 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  gap: 18px;
+  align-items: stretch;
+  max-width: calc(var(--cols) * 300px + (var(--cols) - 1) * 18px);
 }
-@media (max-width: 1000px) { .price-grid { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 540px) { .price-grid { grid-template-columns: 1fr; } }
+/* Same widths the old fixed grid switched at. Four cards stop fitting here, and
+   dropping straight to two keeps the rows even instead of orphaning a fourth. */
+@media (max-width: 1100px) { .price-grid { --fit: 2; } }
+/* One per row, and let it use the full column: capping a lone card at 300px
+   would leave gutters on a phone where there is no width to spare. */
+@media (max-width: 540px) { .price-grid { --fit: 1; max-width: none; } }
 .plan {
   display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: var(--r-lg);

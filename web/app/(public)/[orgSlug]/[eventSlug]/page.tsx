@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal, Search, X } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
@@ -14,6 +14,7 @@ import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
+import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
@@ -43,6 +44,7 @@ export default function PublicEventPage() {
   const base = `/${params.orgSlug}/${params.eventSlug}`;
   const [tab, setTab] = useState<TabKey>("info");
   const [openTeam, setOpenTeam] = useState<PublicTeam | null>(null);
+  const [teamSearch, setTeamSearch] = useState("");
   // Which category's schedule/standings/bracket the competition tabs show.
   const [categoryId, setCategoryId] = useState<string>("");
 
@@ -51,6 +53,21 @@ export default function PublicEventPage() {
     queryFn: () => getPublicEvent(params.orgSlug, params.eventSlug),
     retry: false,
   });
+
+  // Rosters live behind a dialog, so a player hit is the one match a visitor
+  // cannot spot by scanning the grid — worth matching on even though only the
+  // team name is rendered on the card.
+  const allTeams = query.data?.approved_teams;
+  const shownTeams = useMemo(() => {
+    const q = teamSearch.trim().toLowerCase();
+    if (!q) return allTeams ?? [];
+
+    return (allTeams ?? []).filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q))
+    );
+  }, [allTeams, teamSearch]);
 
   if (query.isLoading) {
     return (
@@ -363,18 +380,46 @@ export default function PublicEventPage() {
       {activeTab === "teams" && (
         <section className="section">
           <div className="container">
-            <div className="esection-title">
+            <div className="esection-title flex-wrap">
               <h2 className="section-title" style={{ margin: 0 }}>
                 Tim Peserta
               </h2>
-              {ev.approved_teams && ev.approved_teams.length > 0 && (
-                <span className="pill">{ev.approved_teams.length} tim</span>
+              {allTeams && allTeams.length > 0 && (
+                <>
+                  {/* `.esection-title .pill` pushes the count to the far right;
+                      here it belongs beside the heading, so the search box takes
+                      over the ml-auto. The count follows the search so it never
+                      promises more teams than the grid below actually shows. */}
+                  <span className="pill ml-0!">
+                    {teamSearch.trim() ? `${shownTeams.length} dari ${allTeams.length} tim` : `${allTeams.length} tim`}
+                  </span>
+                  <div className="relative w-full sm:ml-auto sm:w-64">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={teamSearch}
+                      onChange={(e) => setTeamSearch(e.target.value)}
+                      placeholder="Cari tim atau pemain…"
+                      className="pl-9 pr-9"
+                      aria-label="Cari tim peserta"
+                    />
+                    {teamSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setTeamSearch("")}
+                        aria-label="Hapus pencarian"
+                        className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
-            {ev.approved_teams && ev.approved_teams.length > 0 ? (
+            {shownTeams.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {ev.approved_teams.map((t) => (
+                {shownTeams.map((t) => (
                   <button
                     key={t.id}
                     type="button"
@@ -402,6 +447,10 @@ export default function PublicEventPage() {
                   </button>
                 ))}
               </div>
+            ) : teamSearch.trim() ? (
+              <p className="section-sub" style={{ margin: 0 }}>
+                Tidak ada tim atau pemain yang cocok dengan “{teamSearch.trim()}”.
+              </p>
             ) : (
               <p className="section-sub" style={{ margin: 0 }}>
                 Belum ada tim yang disetujui untuk event ini.

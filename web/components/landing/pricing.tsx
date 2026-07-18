@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
@@ -100,7 +100,13 @@ export function Pricing() {
           </div>
         </div>
 
-        <div className="price-grid" ref={gridRef}>
+        {/* Drives the row's column count and max width — see .price-grid. Four
+            while loading, since the real count isn't known yet. */}
+        <div
+          className="price-grid"
+          ref={gridRef}
+          style={{ "--plan-count": plans?.length ?? 4 } as CSSProperties}
+        >
           {plansQuery.isPending
             ? [0, 1, 2, 3].map((i) => (
                 <article key={i} className="plan" aria-hidden>

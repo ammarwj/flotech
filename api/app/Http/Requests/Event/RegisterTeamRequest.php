@@ -16,6 +16,13 @@ class RegisterTeamRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Offline entry from the organizer side: the team often signed up on
+        // paper or over chat and all the organizer has is a name. On the public
+        // form the person filling it in *is* the contact, so it stays required
+        // there. The organizer routes are the ones nested under {organization};
+        // the public ones take {orgSlug}.
+        $contact = $this->route('organization') !== null ? 'nullable' : 'required';
+
         return [
             // Which competition inside the event this team is entering. Ownership
             // (does it belong to this event?) is checked in the controller, where
@@ -24,8 +31,8 @@ class RegisterTeamRequest extends FormRequest
 
             'name' => ['required', 'string', 'max:255'],
             'logo_url' => ['nullable', 'string'],
-            'contact_name' => ['required', 'string', 'max:255'],
-            'contact_phone' => ['required', 'string', 'max:20'],
+            'contact_name' => [$contact, 'string', 'max:255'],
+            'contact_phone' => [$contact, 'string', 'max:20'],
 
             // Roster and documents may be left for later and completed from the
             // participant dashboard — a manager who doesn't have the squad list

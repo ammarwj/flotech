@@ -17,6 +17,7 @@ import {
   PlanCard,
   type BillingCycle,
 } from "@/components/subscription/plan-card";
+import { PlanGrid } from "@/components/subscription/plan-grid";
 import type { Plan } from "@/types/api";
 
 export default function UpgradePage() {
@@ -52,11 +53,11 @@ export default function UpgradePage() {
     return (
       <div>
         <PageHeader title="Upgrade paket" backHref="/organizer/subscription" backLabel="Langganan" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <PlanGrid count={4}>
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full rounded-xl" />
           ))}
-        </div>
+        </PlanGrid>
       </div>
     );
   }
@@ -86,17 +87,17 @@ export default function UpgradePage() {
       />
 
       {plansQuery.isLoading && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <PlanGrid count={4}>
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full rounded-xl" />
           ))}
-        </div>
+        </PlanGrid>
       )}
       {plansQuery.isError && (
         <p className="text-sm text-[var(--danger)]">Gagal memuat paket. Pastikan API berjalan.</p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <PlanGrid count={plansQuery.data?.length ?? 0}>
         {plansQuery.data?.map((plan) => (
           <PlanCard
             key={plan.id}
@@ -111,7 +112,7 @@ export default function UpgradePage() {
             }}
           />
         ))}
-      </div>
+      </PlanGrid>
     </div>
   );
 }

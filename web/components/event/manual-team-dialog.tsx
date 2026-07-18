@@ -69,7 +69,11 @@ export function ManualTeamDialog({
   const submit = () =>
     onSubmit({
       category_id: resolvedCategoryId,
-      ...info,
+      name: info.name,
+      // Optional here: an offline entry often arrives as a team name and nothing
+      // else. Send null rather than "" so a cleared field actually clears.
+      contact_name: info.contact_name.trim() || null,
+      contact_phone: info.contact_phone.trim() || null,
       players: players
         .filter((p) => p.full_name.trim())
         .map((p) => ({
@@ -132,7 +136,7 @@ export function ManualTeamDialog({
             <Field
               id="manual-contact"
               label="Nama kontak"
-              required
+              hint="opsional"
               value={info.contact_name}
               error={fieldErrors?.contact_name}
               onChange={(v) => setInfo({ ...info, contact_name: v })}
@@ -140,7 +144,7 @@ export function ManualTeamDialog({
             <Field
               id="manual-phone"
               label="No. HP kontak"
-              required
+              hint="opsional"
               inputMode="tel"
               sanitize={phoneInput}
               value={info.contact_phone}
@@ -163,7 +167,7 @@ export function ManualTeamDialog({
           </Button>
           <Button
             onClick={submit}
-            disabled={pending || !resolvedCategoryId || !info.name.trim() || !info.contact_name.trim()}
+            disabled={pending || !resolvedCategoryId || !info.name.trim()}
           >
             {pending ? "Menyimpan…" : team ? "Simpan perubahan" : "Tambah tim"}
           </Button>
@@ -179,6 +183,7 @@ function Field({
   value,
   onChange,
   required,
+  hint,
   error,
   inputMode,
   sanitize,
@@ -188,6 +193,8 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
+  /** Muted note after the label, e.g. "opsional". */
+  hint?: string;
   error?: string;
   inputMode?: ComponentProps<typeof Input>["inputMode"];
   // Runs on every keystroke to drop characters this field doesn't accept.
@@ -198,6 +205,7 @@ function Field({
       <Label htmlFor={id} className="font-semibold">
         {label}
         {required && <span className="text-[var(--danger)]"> *</span>}
+        {hint && <span className="font-normal text-muted-foreground"> ({hint})</span>}
       </Label>
       <Input
         id={id}

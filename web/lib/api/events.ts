@@ -185,8 +185,9 @@ export interface RegisterTeamPayload {
   category_id: string;
   name: string;
   logo_url?: string | null;
-  contact_name: string;
-  contact_phone: string;
+  /** Required on the public form; optional for offline entry by the organizer. */
+  contact_name: string | null;
+  contact_phone: string | null;
   /** Optional at registration — the roster can be completed later. `id` marks an existing player when editing. */
   players?: { id?: string; full_name: string; jersey_number?: string; position?: string; photo_url?: string | null }[];
   documents?: { id?: string; file_url: string; file_name?: string; document_type?: string }[];

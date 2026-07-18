@@ -197,6 +197,28 @@ class RegistrationTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
+    public function test_contact_is_optional_only_for_manual_entry(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+        $payload = $this->teamPayload($event, ['contact_name' => null, 'contact_phone' => null]);
+
+        // Compared side by side on purpose: asserting only that the organizer
+        // route accepts a blank contact would still pass if the rule had been
+        // dropped everywhere, silently letting public registrations through
+        // with nobody to call.
+        $this->actingAs(User::factory()->create(), 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['contact_name', 'contact_phone']);
+
+        $this->actingAs($org->owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.contact_name', null)
+            ->assertJsonPath('data.contact_phone', null);
+    }
+
     public function test_manual_team_respects_event_quota(): void
     {
         $event = $this->openEvent('10', maxTeams: 1);
