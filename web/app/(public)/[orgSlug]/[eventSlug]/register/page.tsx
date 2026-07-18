@@ -17,6 +17,7 @@ import {
   ImagePlus,
 } from "lucide-react";
 
+import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import {
@@ -401,7 +402,7 @@ function RegisterTeamPage() {
                 )}
               </div>
             )}
-            <Field label="Nama tim" required value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
+            <Field label="Nama tim" required sanitize={nameInput} value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
           </CardContent>

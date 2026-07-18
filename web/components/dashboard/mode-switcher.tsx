@@ -24,7 +24,16 @@ import { useAuthStore } from "@/stores/auth-store";
  *
  * Super admins have a single surface and get a plain label instead.
  */
-export function ModeSwitcher() {
+export function ModeSwitcher({
+  onSelect,
+  fullWidth = false,
+}: {
+  onSelect?: () => void;
+  /** Stretch to fill its container, splitting the width evenly between the two
+   *  modes. Used in the mobile sheet, where an inline group left dead space on
+   *  the right; the header keeps the compact inline sizing. */
+  fullWidth?: boolean;
+} = {}) {
   const router = useRouter();
   const role = useAuthStore((s) => s.user?.role);
   const setDefaultMode = useAuthStore((s) => s.setDefaultMode);
@@ -39,6 +48,9 @@ export function ModeSwitcher() {
   }
 
   const select = (next: DashboardMode) => {
+    // Still dismiss the mobile panel when the active mode is tapped: to the user
+    // that reads as "yes, this one", not as a no-op.
+    onSelect?.();
     if (next === mode) return;
 
     router.push(MODE_HOME[next]);
@@ -54,7 +66,10 @@ export function ModeSwitcher() {
     <div
       role="group"
       aria-label="Mode dashboard"
-      className="inline-flex items-center gap-1 rounded-lg bg-muted p-1"
+      className={cn(
+        "items-center gap-1 rounded-lg bg-muted p-1",
+        fullWidth ? "flex w-full" : "inline-flex"
+      )}
     >
       {DASHBOARD_MODES.map((m) => {
         const active = m === mode;
@@ -69,6 +84,7 @@ export function ModeSwitcher() {
             title={MODE_LABEL[m]}
             className={cn(
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              fullWidth && "flex-1",
               active
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

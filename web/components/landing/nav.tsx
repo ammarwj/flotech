@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
+import { MobileMenuButton, MobileSheet, useSheetClose } from "@/components/shared/mobile-sheet";
+import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
+import { useAuthStore } from "@/stores/auth-store";
 import { LogoMark } from "./icons";
 
 // Anchors are absolute so they still reach the landing sections when the nav is
@@ -16,6 +19,9 @@ const LINKS = [
   { href: "/event", label: "Jelajahi Event" },
 ];
 
+/** Where the desktop nav links take over from the hamburger. */
+const DESKTOP_AT = 940;
+
 export function Nav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -26,17 +32,6 @@ export function Nav() {
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  const toggleTheme = () => {
-    const root = document.documentElement;
-    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    try {
-      localStorage.setItem("flo-theme", next);
-    } catch {
-      /* ignore */
-    }
-  };
 
   return (
     <header className="nav" style={{ boxShadow: scrolled ? "var(--shadow-sm)" : "none" }}>
@@ -55,46 +50,87 @@ export function Nav() {
           ))}
         </nav>
         <div className="nav-actions">
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Ganti tema">
-            <svg className="icon-moon" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <svg className="icon-sun" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-              <path
-                d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          <ThemeToggleButton />
           <PublicAuthActions />
-          <button
+          {/* `hamburger` only carries the 940px breakpoint; the look comes from
+              MobileMenuButton, same as the dashboard's. */}
+          <MobileMenuButton
             className="hamburger"
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-label="Menu"
-            aria-expanded={menuOpen}
-          >
-            <svg viewBox="0 0 24 24" fill="none">
-              <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
+            onClick={() => setMenuOpen(true)}
+            expanded={menuOpen}
+          />
         </div>
       </div>
-      <div className={`mobile-menu${menuOpen ? " open" : ""}`}>
+      {menuOpen ? <Menu onClose={() => setMenuOpen(false)} /> : null}
+    </header>
+  );
+}
+
+function Menu({ onClose }: { onClose: () => void }) {
+  // Read the store directly instead of calling useOptionalSession again: the bar
+  // renders PublicAuthActions on every public page, so the session has already
+  // been restored by the time this panel can be opened. A second call here would
+  // fire a duplicate refresh request on cold load.
+  const user = useAuthStore((s) => s.user);
+
+  return (
+    <MobileSheet
+      label="Menu"
+      closeAbove={DESKTOP_AT}
+      onClose={onClose}
+      header={
+        // Same identity block as the dashboard sheet when signed in; a guest has
+        // no name to show, so the panel just says what it is.
+        user ? (
+          <>
+            <div className="truncate text-sm font-semibold">{user.full_name}</div>
+            <div className="truncate text-xs text-muted-foreground">{user.email}</div>
+          </>
+        ) : (
+          // text-base/bold, not the name block's text-sm: signed in, the header
+          // is two lines and carries its own weight; a lone "Menu" at that size
+          // read as a caption. Matches the app's dialog titles.
+          <span className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            Menu
+          </span>
+        )
+      }
+      footer={<SheetFooter />}
+    >
+      <SheetBody />
+    </MobileSheet>
+  );
+}
+
+/** Inside the sheet, so these can dismiss it *with* the exit animation. */
+function SheetBody() {
+  const close = useSheetClose();
+
+  return (
+    <>
+      <nav className="grid">
         {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
+          <Link
+            key={l.href}
+            href={l.href}
+            onClick={close}
+            className="border-b border-border py-3 text-[15px] font-medium text-[var(--text-2)] transition-colors last:border-b-0 hover:text-foreground"
+          >
             {l.label}
           </Link>
         ))}
-        <PublicAuthActions variant="menu" />
+      </nav>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium">Tema</span>
+        <ThemeToggleButton />
       </div>
-    </header>
+    </>
   );
+}
+
+function SheetFooter() {
+  const close = useSheetClose();
+
+  return <PublicAuthActions variant="menu" onNavigate={close} />;
 }

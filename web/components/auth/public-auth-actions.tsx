@@ -29,7 +29,14 @@ function dashboardHref(user: AuthUser | null): string {
  * page, so there is nothing to redirect away from (unlike the dashboard's
  * UserMenu, which bounces to /login).
  */
-export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" | "menu" }) {
+export function PublicAuthActions({
+  variant = "inline",
+  onNavigate,
+}: {
+  variant?: "inline" | "menu";
+  /** Dismiss the surrounding mobile sheet once an action is taken. */
+  onNavigate?: () => void;
+}) {
   const router = useRouter();
   const { ready, isAuthenticated } = useOptionalSession();
   const user = useAuthStore((s) => s.user);
@@ -45,18 +52,22 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
     }
     clearAuth();
     setPending(false);
+    onNavigate?.();
     router.refresh();
   };
 
+  // In the sheet these are the panel's primary actions, so they get full-width
+  // buttons — the same shape as the dashboard sheet's "Keluar".
+  const menu = variant === "menu";
+  const cls = (kind: "primary" | "secondary") =>
+    menu ? `btn btn-${kind} btn-block` : `btn btn-${kind} btn-sm`;
+
   const guestLinks = (
     <>
-      <Link
-        href="/login"
-        className={variant === "menu" ? undefined : "btn btn-secondary btn-sm hidden sm:inline-flex"}
-      >
+      <Link href="/login" className={cls("secondary")} onClick={onNavigate}>
         Masuk
       </Link>
-      <Link href="/register" className={variant === "menu" ? undefined : "btn btn-primary btn-sm"}>
+      <Link href="/register" className={cls("primary")} onClick={onNavigate}>
         Daftar
       </Link>
     </>
@@ -68,6 +79,11 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
   // "Masuk" would flash at someone signed in, and rendering "Dashboard" before
   // `user` exists would point it at the wrong dashboard (default /organizer).
   if (!ready || (isAuthenticated && !user)) {
+    // The placeholder is there to hold the bar's width steady while the session
+    // resolves. A menu that only exists once tapped has no such shift to avoid,
+    // and reserving the space there just shows two blank rows that then jump.
+    if (variant === "menu") return null;
+
     return (
       <div className="contents" style={{ visibility: "hidden" }} aria-hidden>
         {guestLinks}
@@ -77,11 +93,18 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
 
   if (!isAuthenticated) return guestLinks;
 
-  if (variant === "menu") {
+  if (menu) {
     return (
       <>
-        <Link href={dashboardHref(user)}>Dashboard</Link>
-        <button type="button" onClick={handleLogout} disabled={pending} className="text-left">
+        <Link href={dashboardHref(user)} className={cls("primary")} onClick={onNavigate}>
+          Dashboard
+        </Link>
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={pending}
+          className={cls("secondary")}
+        >
           {pending ? "Keluar…" : "Keluar"}
         </button>
       </>
@@ -89,7 +112,7 @@ export function PublicAuthActions({ variant = "inline" }: { variant?: "inline" |
   }
 
   return (
-    <Link href={dashboardHref(user)} className="btn btn-primary btn-sm">
+    <Link href={dashboardHref(user)} className={cls("primary")}>
       Dashboard
     </Link>
   );

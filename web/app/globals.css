@@ -337,38 +337,46 @@ img { max-width: 100%; display: block; }
 [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
 
-/* hamburger */
-.hamburger {
-  display: grid; place-items: center;
-  width: 40px; height: 40px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
+/* ---- mobile sheet ---- */
+/* Enter and exit are separate animations rather than a transition: the panel is
+   unmounted when closed, so there is no "from" state for a transition to run
+   against. MobileSheet holds the exit on screen via data-closing until
+   animationend fires. */
+@keyframes sheet-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes sheet-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes sheet-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+.sheet-overlay { animation: sheet-fade-in 0.28s var(--ease) both; }
+.sheet-panel { animation: sheet-in 0.32s var(--ease) both; }
+.sheet-overlay[data-closing="true"] { animation: sheet-fade-out 0.22s var(--ease) both; }
+.sheet-panel[data-closing="true"] { animation: sheet-out 0.24s var(--ease) both; }
+
+/* Still animation-driven, just instant — animationend must keep firing or the
+   panel would never unmount for anyone who prefers reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay, .sheet-panel,
+  .sheet-overlay[data-closing="true"], .sheet-panel[data-closing="true"] {
+    animation-duration: 0.01ms;
+  }
 }
-.hamburger svg { width: 20px; height: 20px; }
+
+/* hamburger — the button itself is MobileMenuButton, styled as .theme-toggle so
+   it matches the dashboard's exactly. This class only carries the breakpoint:
+   out here the desktop nav links appear at 940px, not at Tailwind's `md`. */
 @media (min-width: 940px) { .hamburger { display: none; } }
 
-/* mobile menu */
-.mobile-menu {
-  display: none;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 24px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
+/* Under 940px the bar is only wide enough for the logo and the hamburger — a
+   375px viewport leaves 327px inside .container, and the logo alone is ~138px
+   and cannot shrink (white-space: nowrap). Everything else moves into the
+   mobile sheet, which renders the same actions. */
+@media (max-width: 939px) {
+  .nav-actions .btn,
+  /* :not(.hamburger) — the hamburger shares .theme-toggle's looks and lives in
+     .nav-actions too, so an unqualified rule hid the very button that opens the
+     sheet (it stayed clickable from JS, so only measurement caught it). */
+  .nav-actions .theme-toggle:not(.hamburger) { display: none; }
 }
-.mobile-menu.open { display: flex; }
-.mobile-menu a {
-  padding: 12px 8px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-2);
-  border-bottom: 1px solid var(--border);
-}
-.mobile-menu a:last-of-type { border-bottom: none; }
-@media (min-width: 940px) { .hamburger, .mobile-menu { display: none !important; } }
 
 /* ---- scroll reveal ---- */
 .reveal {

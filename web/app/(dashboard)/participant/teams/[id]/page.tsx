@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,7 +226,7 @@ export default function ManageTeamPage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>Nama tim</Label>
-              <Input value={info.name} onChange={(e) => setInfo({ ...info, name: e.target.value })} disabled={!editable} required />
+              <Input value={info.name} onChange={(e) => setInfo({ ...info, name: nameInput(e.target.value) })} disabled={!editable} required />
             </div>
             <div className="grid gap-2">
               <Label>Nama kontak</Label>

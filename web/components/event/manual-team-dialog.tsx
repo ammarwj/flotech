@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { rupiah } from "@/lib/labels";
+import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
@@ -123,6 +124,7 @@ export function ManualTeamDialog({
               id="manual-name"
               label="Nama tim"
               required
+              sanitize={nameInput}
               value={info.name}
               error={fieldErrors?.name}
               onChange={(v) => setInfo({ ...info, name: v })}

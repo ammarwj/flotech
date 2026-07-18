@@ -2,6 +2,7 @@ import { AuthGate } from "@/components/auth/auth-gate";
 import { ImpersonationBanner } from "@/components/auth/impersonation-banner";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { MobileMenu } from "@/components/dashboard/mobile-menu";
 import { ModeSwitcher } from "@/components/dashboard/mode-switcher";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
@@ -30,10 +31,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="md:hidden">
             <Logo />
           </div>
-          <ModeSwitcher />
+          {/* Every control below folds into MobileMenu under `md`: at 375px the
+              logo, the switcher and these two need ~490px of a 335px header. */}
+          <div className="hidden md:block">
+            <ModeSwitcher />
+          </div>
           <div className="ml-auto flex items-center gap-3">
-            <ThemeToggleButton />
-            <UserMenu />
+            <div className="hidden items-center gap-3 md:flex">
+              <ThemeToggleButton />
+              <UserMenu />
+            </div>
+            <MobileMenu />
           </div>
         </header>
         <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">

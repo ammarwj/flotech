@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
+import { nameInput } from "@/lib/name";
 import { uploadImage } from "@/lib/api/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -134,7 +135,7 @@ export function RosterEditor({
               aria-label={`Nama pemain ${i + 1}`}
               value={p.full_name}
               disabled={disabled}
-              onChange={(e) => set(i, { full_name: e.target.value })}
+              onChange={(e) => set(i, { full_name: nameInput(e.target.value) })}
             />
             <Input
               className="w-20 shrink-0"
