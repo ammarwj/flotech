@@ -25,16 +25,45 @@ Stack yang dijalankan `docker-compose.yml`:
 **VPS**: Ubuntu 22.04/24.04 (atau Debian setara), ≥ 2 vCPU, ≥ 2 GB RAM, ≥ 20 GB
 disk. Root/sudo.
 
-**Domain & DNS** — buat A record ke IP VPS untuk **kedua** nama (keduanya wajib
-resolve sebelum menjalankan `init-letsencrypt.sh`, karena satu sertifikat mencakup
-keduanya). Tidak ada `www.` — ini sudah sub-subdomain di bawah `flotech.id`:
+### 1a. Pointing domain ke VPS
 
-```
-flo-event.flotech.id    A   <IP_VPS>
-api-flo-event.flotech.id    A   <IP_VPS>
+Kedua nama wajib resolve ke IP VPS **sebelum** menerbitkan TLS (certbot verifikasi
+lewat domain). Tidak ada `www.` — ini sudah sub-subdomain di bawah `flotech.id`,
+dan `flotech.id` **tidak pakai Cloudflare**, jadi cukup A record biasa (DNS-only).
+
+**1. Ambil IP publik VPS:**
+```bash
+curl -4 ifconfig.me        # atau lihat di panel provider VPS
 ```
 
-`cdn.flo-event.id` (aset publik R2) di-CNAME ke Cloudflare R2, **bukan** ke VPS.
+**2. Buka pengelola DNS `flotech.id`** — di registrar/hosting tempat domain
+didaftarkan (mis. Niagahoster, Domainesia, Rumahweb, dst). Cari menu **DNS
+Management / Kelola DNS / DNS Records**.
+
+**3. Tambahkan dua record A.** Karena ini subdomain dari `flotech.id`, kolom
+**Name/Host** diisi bagian subdomain-nya saja:
+
+| Type | Name / Host      | Value / Points to | TTL          |
+|------|------------------|-------------------|--------------|
+| A    | `flo-event`      | `<IP_VPS>`        | 3600 (/Auto) |
+| A    | `api-flo-event`  | `<IP_VPS>`        | 3600 (/Auto) |
+
+> Format kolom Name beda-beda per panel: ada yang minta nama penuh
+> (`flo-event.flotech.id`), ada yang cukup `flo-event`. Ikuti contoh record yang
+> sudah ada di panel itu. **Jangan** aktifkan proxy/CDN — cukup A biasa.
+
+**4. Simpan, lalu tunggu propagasi** (beberapa menit sampai beberapa jam, sesuai
+TTL). Verifikasi — keduanya harus mengembalikan IP VPS:
+```bash
+dig +short flo-event.flotech.id
+dig +short api-flo-event.flotech.id
+# alternatif: nslookup flo-event.flotech.id
+```
+Jangan lanjut ke penerbitan TLS (§5) sebelum dua perintah ini mengembalikan IP
+yang benar — kalau belum, verifikasi certbot gagal.
+
+> Domain publik R2 (`R2_PUBLIC_URL`, aset gambar) di-CNAME ke Cloudflare R2 —
+> **terpisah** dari dua record di atas, bukan ke VPS.
 
 **Akun pihak ketiga yang perlu disiapkan lebih dulu:**
 - Cloudflare R2 — bucket + access key (penyimpanan file/gambar).
@@ -273,43 +302,41 @@ tidak mengekspos port host, jadi **tidak bentrok** dengan `runup_db` di
 
 ## 7. Migrasi & seeding database
 
-Migrasi wajib. Untuk deploy pertama, DB juga perlu **katalog** (cabang olahraga,
-definisi fitur, paket harga, testimoni, FAQ) — tanpa itu halaman Upgrade & landing
-kosong dan pembuatan event gagal validasi.
+Deploy pertama: **satu perintah** menjalankan migrasi + seed data master sekaligus.
+`DatabaseSeeder` sudah dibersihkan untuk produksi — hanya menyeed **data master**
+(katalog cabang olahraga, definisi fitur, paket harga, testimoni, FAQ). Data
+demo/coba-coba (akun demo `UserSeeder`, event contoh `DemoEventSeeder`) **tidak**
+ikut dijalankan.
 
 ```bash
-# Skema
-docker compose exec api php artisan migrate --force
-
-# Seed HANYA data katalog/harga/landing (aman untuk produksi)
-docker compose exec api php artisan db:seed --force --class=CatalogSeeder
-docker compose exec api php artisan db:seed --force --class=FeatureDefinitionSeeder
-docker compose exec api php artisan db:seed --force --class=PlanSeeder
-docker compose exec api php artisan db:seed --force --class=TestimonialSeeder
-docker compose exec api php artisan db:seed --force --class=FaqSeeder
+docker compose exec api php artisan migrate --seed --force
 ```
 
-> **Jangan jalankan `db:seed` polos di produksi.** `DatabaseSeeder` juga memanggil
-> `UserSeeder` (membuat akun demo dengan password literal `"password"`, termasuk
-> satu `super_admin`) dan `DemoEventSeeder` (event contoh). Semua seeder di atas
-> idempoten (`updateOrCreate`), aman diulang saat rilis berikutnya.
+Tanpa data master ini halaman Upgrade & landing kosong dan pembuatan event gagal
+validasi. Semua seeder master idempoten (`updateOrCreate`), aman diulang saat
+rilis berikutnya (`php artisan db:seed --force`).
 
 ### Buat akun super admin
 
 Butuh satu `super_admin` untuk mengelola paket, settings, testimoni, FAQ, transfer
 manual, dsb. Buat lewat tinker dengan password sendiri:
 
+Peran `super_admin` di app ini adalah **kolom `role`** di tabel users (bukan
+Spatie role), dan `password` otomatis di-hash oleh cast `hashed` — jadi isi
+password apa adanya, **jangan** `bcrypt()` (nanti dobel-hash & gagal login).
+
 ```bash
 docker compose exec api php artisan tinker
 ```
 ```php
-$u = \App\Models\User::create([
-    'name' => 'Admin',
-    'email' => 'admin@flo-event.id',
-    'password' => bcrypt('PASSWORD_KUAT_ANDA'),
+\App\Models\User::create([
+    'full_name' => 'Admin',
+    'email' => 'admin@flotech.id',
+    'password' => 'PASSWORD_KUAT_ANDA',   // di-hash otomatis (cast 'hashed')
+    'role' => 'super_admin',
+    'is_verified' => true,
     'email_verified_at' => now(),
 ]);
-$u->assignRole('super_admin');   // role dari Catalog/permission seeder
 ```
 
 ---
