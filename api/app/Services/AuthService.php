@@ -43,6 +43,22 @@ class AuthService
     }
 
     /**
+     * Issue an access token that acts as $target, marked as an impersonation
+     * session opened by $admin (claim `act_as`).
+     *
+     * Deliberately mints ONLY an access token: no UserRefreshToken row and no
+     * refresh cookie. The admin's own refresh cookie is left untouched, which is
+     * what makes "kembali ke admin" possible without re-login — the frontend just
+     * drops this token and refreshes from the admin's still-valid cookie. It also
+     * means the impersonation dies on its own (tab close, token expiry) instead
+     * of becoming a 30-day session for someone else's account.
+     */
+    public function issueImpersonationToken(User $target, User $admin): string
+    {
+        return JWTAuth::customClaims(['act_as' => $admin->id])->fromUser($target);
+    }
+
+    /**
      * Validate a refresh token, rotate it (single-use), and issue a new pair.
      *
      * @return array{access_token: string, refresh_token: string, expires_in: int}|null

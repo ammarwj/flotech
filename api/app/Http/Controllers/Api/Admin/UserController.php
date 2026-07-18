@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\AuthService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ use Illuminate\Http\Request;
  */
 class UserController extends Controller
 {
+    public function __construct(protected AuthService $auth) {}
+
     /** Paginated, searchable list with each user's org context. */
     public function index(Request $request): JsonResponse
     {
@@ -69,6 +72,42 @@ class UserController extends Controller
         $user->load(['ownedOrganizations', 'organizationMemberships.organization']);
 
         return ApiResponse::success(new UserResource($user), 'User diperbarui');
+    }
+
+    /**
+     * "Login as" — hand the super admin an access token that acts as $user, so
+     * support can reproduce a user's view without knowing their password.
+     *
+     * The response deliberately carries NO refresh cookie: the admin's own
+     * refresh cookie stays untouched so they can drop this token and refresh
+     * back into their own account. See AuthService::issueImpersonationToken().
+     */
+    public function impersonate(User $user): JsonResponse
+    {
+        /** @var User $admin */
+        $admin = auth('api')->user();
+
+        if ($user->id === $admin->id) {
+            return ApiResponse::error('Tidak bisa login sebagai akun sendiri.', null, 422);
+        }
+
+        // A super admin impersonating another super admin would let one admin act
+        // with full platform powers under someone else's name — and nothing here
+        // records it. Keep impersonation pointed at ordinary users only.
+        if ($user->role === 'super_admin') {
+            return ApiResponse::error('Tidak bisa login sebagai sesama super admin.', null, 403);
+        }
+
+        $token = $this->auth->issueImpersonationToken($user, $admin);
+
+        $user->load(['ownedOrganizations', 'organizationMemberships.organization']);
+
+        return ApiResponse::success([
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => (int) config('jwt.ttl') * 60,
+            'user' => new UserResource($user),
+        ], 'Masuk sebagai '.($user->full_name ?: $user->email));
     }
 
     public function destroy(User $user): JsonResponse

@@ -1,20 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Users, ShieldCheck, BadgeCheck, Trash2, Building2 } from "lucide-react";
+import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog } from "lucide-react";
 
 import {
   getAdminUsers,
   updateAdminUser,
   deleteAdminUser,
+  impersonateAdminUser,
   type AdminUserUpdate,
 } from "@/lib/api/admin";
 import { parseApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/stores/auth-store";
+import { MODE_HOME } from "@/lib/hooks/use-dashboard-mode";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -33,7 +36,10 @@ const orgRoleLabel = (role: string) => (role === "admin" ? "Admin" : role === "o
 
 export default function AdminUsersPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const currentUserId = useAuthStore((s) => s.user?.id);
+  const impersonating = useAuthStore((s) => s.impersonating);
+  const startImpersonation = useAuthStore((s) => s.startImpersonation);
 
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -52,6 +58,9 @@ export default function AdminUsersPage() {
   const query = useQuery({
     queryKey: ["admin-users", { q, role, page }],
     queryFn: () => getAdminUsers({ q: q || undefined, role: role || undefined, page }),
+    // The moment impersonation starts the token is no longer a super admin's, so
+    // refetching this admin-only list would just 403 while we navigate away.
+    enabled: !impersonating,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-users"] });
@@ -73,6 +82,21 @@ export default function AdminUsersPage() {
       invalidate();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menghapus user.").message),
+  });
+
+  const impersonate = useMutation({
+    mutationFn: (id: string) => impersonateAdminUser(id),
+    onSuccess: (res) => {
+      // Swapping the token + user in the store re-points the whole app: the
+      // request interceptor reads the token live and every gate reads `user`.
+      startImpersonation(res.access_token, res.user);
+      // Don't let the admin's cached data (org list, etc.) follow into the
+      // impersonated session — it's cached under keys with no user id.
+      qc.clear();
+      toast.success(`Sekarang login sebagai ${res.user.full_name || res.user.email}.`);
+      router.push(MODE_HOME[res.user.default_mode ?? "organizer"]);
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal login sebagai user ini.").message),
   });
 
   const users = query.data?.items ?? [];
@@ -142,7 +166,16 @@ export default function AdminUsersPage() {
                     remove.mutate(u.id);
                   }
                 }}
-                busy={update.isPending || remove.isPending}
+                onImpersonate={() => {
+                  if (
+                    confirm(
+                      `Login sebagai ${u.full_name || u.email}? Kamu akan keluar dari tampilan admin sampai menekan "Kembali ke admin".`
+                    )
+                  ) {
+                    impersonate.mutate(u.id);
+                  }
+                }}
+                busy={update.isPending || remove.isPending || impersonate.isPending}
               />
             ))}
           </div>
@@ -184,6 +217,7 @@ function UserCard({
   onRoleChange,
   onToggleVerified,
   onDelete,
+  onImpersonate,
   busy,
 }: {
   user: AdminUser;
@@ -191,6 +225,7 @@ function UserCard({
   onRoleChange: (role: "super_admin" | "user") => void;
   onToggleVerified: () => void;
   onDelete: () => void;
+  onImpersonate: () => void;
   busy: boolean;
 }) {
   const initial = (user.full_name || user.email || "?").charAt(0).toUpperCase();
@@ -199,6 +234,14 @@ function UserCard({
     ? "Tidak bisa menghapus akun sendiri"
     : ownsOrgs
       ? "User masih memiliki organisasi"
+      : undefined;
+
+  // Mirrors the server guard in UserController@impersonate.
+  const isSuperAdmin = user.role === "super_admin";
+  const impersonateReason = isSelf
+    ? "Kamu sudah login sebagai akun ini"
+    : isSuperAdmin
+      ? "Tidak bisa login sebagai sesama super admin"
       : undefined;
 
   return (
@@ -271,6 +314,17 @@ function UserCard({
 
         <Button size="sm" variant="outline" onClick={onToggleVerified} disabled={busy}>
           {user.is_verified ? "Batalkan verifikasi" : "Verifikasi"}
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onImpersonate}
+          disabled={busy || isSelf || isSuperAdmin}
+          title={impersonateReason}
+        >
+          <UserCog className="h-4 w-4" />
+          Login sebagai
         </Button>
 
         <Button

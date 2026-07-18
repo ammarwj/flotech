@@ -1,4 +1,5 @@
 import { AuthGate } from "@/components/auth/auth-gate";
+import { ImpersonationBanner } from "@/components/auth/impersonation-banner";
 import { SidebarNav, MobileTabBar } from "@/components/dashboard/sidebar-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { ModeSwitcher } from "@/components/dashboard/mode-switcher";
@@ -35,7 +36,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">{children}</main>
+        <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
+          <ImpersonationBanner />
+          {children}
+        </main>
       </div>
 
         {/* Bottom tab bar (mobile) */}

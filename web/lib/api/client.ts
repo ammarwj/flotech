@@ -60,9 +60,22 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
 
+      const wasImpersonating = useAuthStore.getState().impersonating;
       const newToken = await refreshAccessToken();
 
       if (newToken) {
+        // An impersonation token has no refresh token of its own — the cookie
+        // that just refreshed is the *admin's*. So a successful refresh here
+        // means the impersonation expired and we are the admin again. Reload
+        // into /admin instead of retrying, which would otherwise pair an admin
+        // token with the impersonated user still sitting in the store.
+        if (wasImpersonating) {
+          useAuthStore.getState().stopImpersonation();
+          useAuthStore.getState().setAccessToken(newToken);
+          if (typeof window !== "undefined") window.location.assign("/admin");
+          return Promise.reject(error);
+        }
+
         useAuthStore.getState().setAccessToken(newToken);
         original.headers = { ...original.headers, Authorization: `Bearer ${newToken}` };
         return apiClient(original);

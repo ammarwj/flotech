@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { ActiveSession, AdminUser, ApiEnvelope, Paginated } from "@/types/api";
+import type { ActiveSession, AdminUser, ApiEnvelope, AuthUser, Paginated } from "@/types/api";
 
 // ---- SaaS super admin ----
 
@@ -38,4 +38,18 @@ export async function updateAdminUser(id: string, payload: AdminUserUpdate): Pro
 
 export async function deleteAdminUser(id: string): Promise<void> {
   await apiClient.delete(`/admin/users/${id}`);
+}
+
+/**
+ * "Login as" this user. Returns an access token that acts as them; the admin's
+ * own refresh cookie is left in place, so `refreshAccessToken()` brings the
+ * admin back. Super admins can only impersonate ordinary users (403 otherwise).
+ */
+export async function impersonateAdminUser(
+  id: string
+): Promise<{ access_token: string; user: AuthUser }> {
+  const { data } = await apiClient.post<
+    ApiEnvelope<{ access_token: string; user: AuthUser }>
+  >(`/admin/users/${id}/impersonate`);
+  return data.data;
 }

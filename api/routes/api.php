@@ -323,6 +323,9 @@ Route::prefix('v1')->group(function () {
             Route::get('users', [AdminUserController::class, 'index']);
             Route::patch('users/{user}', [AdminUserController::class, 'update']);
             Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
+            // "Login as": mints an access token acting as this user (no refresh
+            // cookie, so the admin's own session survives). Ordinary users only.
+            Route::post('users/{user}/impersonate', [AdminUserController::class, 'impersonate']);
         });
     });
 
