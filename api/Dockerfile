@@ -9,6 +9,10 @@ RUN apk add --no-cache \
   && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
   && docker-php-ext-install -j"$(nproc)" \
     pdo_pgsql pgsql gd zip bcmath intl exif pcntl opcache \
+  # phpredis (PECL): Horizon is unreliable on predis (blocking pops), so ship
+  # the C extension and set REDIS_CLIENT=phpredis in production.
+  && pecl install redis \
+  && docker-php-ext-enable redis \
   && apk del .build-deps
 
 # Composer (from official image).
