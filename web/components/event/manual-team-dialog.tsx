@@ -1,6 +1,7 @@
 "use client";
 
 import { type ComponentProps, useState } from "react";
+import { Shield } from "lucide-react";
 
 import type { RegisterTeamPayload } from "@/lib/api/events";
 import type { EventCategory, Team } from "@/types/api";
@@ -11,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { rupiah } from "@/lib/labels";
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
+import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
 
 /**
@@ -50,6 +52,10 @@ export function ManualTeamDialog({
     contact_name: team?.contact_name ?? "",
     contact_phone: team?.contact_phone ?? "",
   });
+  const [logoUrl, setLogoUrl] = useState<string>(team?.logo_url ?? "");
+  // Blocks Save while the logo is still uploading, so the team isn't written
+  // without the URL the upload is about to produce.
+  const [logoUploading, setLogoUploading] = useState(false);
   const [categoryId, setCategoryId] = useState<string>(team?.category_id ?? "");
   const resolvedCategoryId = categoryId || categories[0]?.id || "";
   const [players, setPlayers] = useState<PlayerRow[]>(() =>
@@ -70,6 +76,7 @@ export function ManualTeamDialog({
     onSubmit({
       category_id: resolvedCategoryId,
       name: info.name,
+      logo_url: logoUrl || null,
       // Optional here: an offline entry often arrives as a team name and nothing
       // else. Send null rather than "" so a cleared field actually clears.
       contact_name: info.contact_name.trim() || null,
@@ -124,6 +131,18 @@ export function ManualTeamDialog({
                 </Select>
               </div>
             )}
+            <ImageUploadField
+              className="sm:col-span-2"
+              label="Logo tim"
+              value={logoUrl}
+              onChange={setLogoUrl}
+              onBusyChange={setLogoUploading}
+              folder="teams"
+              maxDim={512}
+              previewClassName="h-24 w-24"
+              placeholder={<Shield className="h-7 w-7 text-muted-foreground" />}
+              hint="Opsional. Maksimal 5 MB, otomatis dikonversi ke WebP. Bentuk persegi paling rapi."
+            />
             <Field
               id="manual-name"
               label="Nama tim"
@@ -167,7 +186,7 @@ export function ManualTeamDialog({
           </Button>
           <Button
             onClick={submit}
-            disabled={pending || !resolvedCategoryId || !info.name.trim()}
+            disabled={pending || logoUploading || !resolvedCategoryId || !info.name.trim()}
           >
             {pending ? "Menyimpan…" : team ? "Simpan perubahan" : "Tambah tim"}
           </Button>
