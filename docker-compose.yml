@@ -108,6 +108,13 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    # Dibuka HANYA ke loopback host — Postgres tidak boleh terekspos ke internet.
+    # Docker menulis rule iptables sendiri dan menembus ufw, jadi "5433:5432"
+    # polos akan terbuka ke publik meski firewall host bilang tertutup.
+    # Akses dari laptop lewat tunnel: ssh -L 5433:localhost:5433 user@server
+    # Di dalam flonet, port tetap 5432 (DB_HOST=db).
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
