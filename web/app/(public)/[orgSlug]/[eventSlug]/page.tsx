@@ -213,13 +213,15 @@ export default function PublicEventPage() {
       {/* ===== TABS ===== */}
       <section className="section" style={{ paddingBottom: 0 }}>
         <div className="container">
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
+          {/* Menggulir di HP, bukan membungkus jadi dua-tiga baris — pola yang
+              sama seperti MatchDayTabs. Di ≥640px kembali seperti semula. */}
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold sm:inline-flex sm:overflow-visible">
             {tabs.map(([key, label, Icon]) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
+                  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-1.5 transition-colors",
                   activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -474,7 +476,7 @@ export default function PublicEventPage() {
           {categories.length > 1 && (
             <section className="section" style={{ paddingBottom: 0 }}>
               <div className="container">
-                <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium">
+                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium sm:inline-flex sm:overflow-visible">
                   {[
                     { id: ALL_CATEGORIES, name: "Semua" },
                     ...categories.map((c) => ({ id: c.id, name: c.name })),
@@ -483,7 +485,7 @@ export default function PublicEventPage() {
                       key={c.id}
                       onClick={() => setCategoryId(c.id)}
                       className={cn(
-                        "rounded-full px-3.5 py-1.5 transition-colors",
+                        "shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 transition-colors",
                         (c.id === ALL_CATEGORIES ? isAll : c.id === selectedCategory?.id)
                           ? "bg-[var(--tint)] text-[var(--brand-700)]"
                           : "text-muted-foreground hover:text-foreground"

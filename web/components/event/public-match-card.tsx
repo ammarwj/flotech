@@ -21,6 +21,9 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
  *
  * The whole card is the button: it holds no interactive children, so there is
  * no nested click to swallow.
+ *
+ * `.match-card` is shared with the team grid on the public page, so the mobile
+ * restack in event-shell.css hangs off `--fixture` rather than the base class.
  */
 export function PublicMatchCard({
   match: m,
@@ -50,7 +53,7 @@ export function PublicMatchCard({
     <button
       type="button"
       onClick={onClick}
-      className="match-card"
+      className="match-card match-card--fixture"
       aria-label={`Detail ${m.home_team?.name ?? "TBD"} vs ${m.away_team?.name ?? "TBD"}`}
     >
       <div className="match-time">
