@@ -77,6 +77,44 @@ class Organization extends Model
         return $this->belongsTo(User::class, 'owner_id');
     }
 
+    /**
+     * Whether this user runs the organization, as opposed to merely belonging
+     * to it.
+     *
+     * Membership alone includes `operator` — the person scanning tickets at the
+     * gate or typing scores at the pitch. They may record, but they don't get
+     * to make things official: money endpoints refuse them (EnsureOrgAdmin),
+     * and a result they save stays provisional until someone here signs it off.
+     */
+    public function isAdministeredBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $user->role === 'super_admin'
+            || $this->owner_id === $user->id
+            || $this->members()->where('user_id', $user->id)->where('role', 'admin')->exists();
+    }
+
+    /** How this user relates to the organization, for the dashboard to branch on. */
+    public function roleOf(?User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        if ($this->owner_id === $user->id) {
+            return 'owner';
+        }
+
+        if ($user->role === 'super_admin') {
+            return 'admin';
+        }
+
+        return $this->members()->where('user_id', $user->id)->value('role');
+    }
+
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);

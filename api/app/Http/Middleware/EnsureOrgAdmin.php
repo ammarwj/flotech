@@ -28,14 +28,7 @@ class EnsureOrgAdmin
             return ApiResponse::error('Organisasi tidak ditemukan.', null, 404);
         }
 
-        $allowed = $user->role === 'super_admin'
-            || $org->owner_id === $user->id
-            || $org->members()
-                ->where('user_id', $user->id)
-                ->where('role', 'admin')
-                ->exists();
-
-        if (! $allowed) {
+        if (! $org->isAdministeredBy($user)) {
             return ApiResponse::error('Hanya pemilik atau admin organisasi yang bisa mengakses halaman ini.', null, 403);
         }
 

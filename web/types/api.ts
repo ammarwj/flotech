@@ -101,6 +101,11 @@ export interface Organization {
   social_links: SocialLinks;
   custom_domain: string | null;
   owner_id: string;
+  /**
+   * How the signed-in user relates to this org. An `operator` records results
+   * but cannot sign them off, so the dashboard hides ratifying controls.
+   */
+  my_role: "owner" | "admin" | "operator" | null;
   plan_id: string | null;
   plan_expires_at: string | null;
   plan?: Plan;

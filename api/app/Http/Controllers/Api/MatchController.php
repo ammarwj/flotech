@@ -509,14 +509,35 @@ class MatchController extends Controller
             $payload['away_penalty'] = null;
         }
 
-        // Entering or editing a result makes it provisional again; it only
-        // counts (standings / bracket) once confirmed.
-        $payload['confirmed_at'] = null;
+        // Whoever runs the organization signs off by the act of saving; an
+        // operator only records, and their result waits for someone who does.
+        // That is the whole point of the two-step — it costs a click exactly
+        // when there really are two people.
+        $signsOff = $this->org($request)->isAdministeredBy($request->user());
+        $autoConfirm = $signsOff
+            && $payload['status'] === 'finished'
+            && $payload['home_score'] !== null
+            && $payload['away_score'] !== null;
+
+        // Whatever this result had already pushed into the next round has to
+        // come back out before the new one goes in — otherwise editing a
+        // confirmed knockout result leaves the previous winner stranded there.
+        if ($matchModel->isConfirmed()) {
+            $this->withdrawFrom($matchModel);
+        }
+
+        $payload['confirmed_at'] = $autoConfirm ? now() : null;
         $matchModel->update($payload);
 
+        if ($autoConfirm) {
+            $this->propagateFrom($matchModel->fresh());
+        }
+
         return ApiResponse::success(
-            new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
-            $finished ? 'Hasil disimpan — menunggu konfirmasi' : 'Pertandingan diperbarui',
+            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            $finished
+                ? ($autoConfirm ? 'Hasil disimpan & dikonfirmasi' : 'Hasil disimpan — menunggu konfirmasi admin')
+                : 'Pertandingan diperbarui',
         );
     }
 
@@ -816,18 +837,45 @@ class MatchController extends Controller
         }
 
         $matchModel->update(['confirmed_at' => now()]);
-
-        $engine = $matchModel->category->engine();
-        if ($engine === 'knockout_single' || $matchModel->stage === 'knockout') {
-            $this->schedule->advanceWinner($matchModel->fresh());
-        } elseif ($engine === 'knockout_double') {
-            $this->schedule->advanceDouble($matchModel->fresh());
-        }
+        $this->propagateFrom($matchModel->fresh());
 
         return ApiResponse::success(
             new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
             'Hasil dikonfirmasi',
         );
+    }
+
+    /**
+     * Send a settled result onward: the winner into the next bracket slot.
+     *
+     * Every path that makes a result final goes through here, so confirming by
+     * hand and confirming by saving as an admin can't propagate differently.
+     */
+    protected function propagateFrom(GameMatch $match): void
+    {
+        $engine = $match->category->engine();
+
+        if ($engine === 'knockout_single' || $match->stage === 'knockout') {
+            $this->schedule->advanceWinner($match);
+        } elseif ($engine === 'knockout_double') {
+            $this->schedule->advanceDouble($match);
+        }
+    }
+
+    /**
+     * The inverse: pull back whatever this result had already sent onward.
+     *
+     * @return int matches reset
+     */
+    protected function withdrawFrom(GameMatch $match): int
+    {
+        $engine = $match->category->engine();
+
+        if ($engine === 'knockout_single' || $engine === 'knockout_double' || $match->stage === 'knockout') {
+            return $this->schedule->clearDownstream($match);
+        }
+
+        return 0;
     }
 
     /**
@@ -874,11 +922,7 @@ class MatchController extends Controller
         // forward, walked backward.
         if ($matchModel->isConfirmed()) {
             $matchModel->confirmed_at = null;
-
-            $engine = $matchModel->category->engine();
-            if ($engine === 'knockout_single' || $engine === 'knockout_double' || $matchModel->stage === 'knockout') {
-                $cleared = $this->schedule->clearDownstream($matchModel);
-            }
+            $cleared = $this->withdrawFrom($matchModel);
         }
 
         $matchModel->status = $validated['status'];

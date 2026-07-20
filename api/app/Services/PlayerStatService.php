@@ -24,6 +24,11 @@ class PlayerStatService
             ->join('players', 'players.id', '=', 'player_match_stats.player_id')
             ->join('teams', 'teams.id', '=', 'player_match_stats.team_id')
             ->where('matches.category_id', $category->id)
+            // Same gate as the standings table: a goal only counts once the
+            // result carrying it is final. Without this the leaderboard adds up
+            // provisional results — and cancelled fixtures too.
+            ->where('matches.status', 'finished')
+            ->whereNotNull('matches.confirmed_at')
             ->whereIn('player_match_stats.stat_key', $keys)
             ->groupBy('players.id', 'players.full_name', 'teams.id', 'teams.name', 'player_match_stats.stat_key')
             ->select(

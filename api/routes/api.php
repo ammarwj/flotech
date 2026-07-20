@@ -217,7 +217,11 @@ Route::prefix('v1')->group(function () {
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             // Fix a wrong seed in place, instead of rebuilding the whole bracket.
             Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
-            Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
+            // Signing a result off is what makes it count, so it belongs to
+            // whoever runs the org. An operator records; they don't ratify —
+            // otherwise saving-as-admin auto-confirms for nothing.
+            Route::middleware('org.admin')
+                ->patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
             // Scheduled / ongoing / cancelled. Finishing still goes through the
             // result endpoint, which is the only one that validates a scoreline.
             Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);

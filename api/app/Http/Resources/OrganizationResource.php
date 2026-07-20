@@ -32,6 +32,10 @@ class OrganizationResource extends JsonResource
             'social_links' => $this->socialLinksMap(),
             'custom_domain' => $this->custom_domain,
             'owner_id' => $this->owner_id,
+            // How the caller relates to this org: owner | admin | operator.
+            // The dashboard branches on it — an operator records results but
+            // cannot sign them off, so their confirm button must not render.
+            'my_role' => $this->roleOf($request->user()),
             'plan_id' => $this->plan_id,
             'plan_expires_at' => $this->plan_expires_at,
             'plan' => new PlanResource($this->whenLoaded('plan')),

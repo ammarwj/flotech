@@ -14,6 +14,8 @@ export function useActiveOrg() {
   return {
     org,
     orgId: org?.id ?? null,
+    /** Whoever runs the org: owner or admin member. Operators record only. */
+    isOrgAdmin: org?.my_role === "owner" || org?.my_role === "admin",
     isLoading: query.isLoading,
     isError: query.isError,
     hasNoOrg: query.isSuccess && (query.data?.length ?? 0) === 0,

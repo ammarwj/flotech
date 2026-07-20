@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { confirmResult } from "@/lib/api/matches";
 import { parseApiError } from "@/lib/api/errors";
+import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import type { Match } from "@/types/api";
 
@@ -26,6 +27,7 @@ export function MatchConfirmBar({
   match: Match;
 }) {
   const qc = useQueryClient();
+  const { isOrgAdmin } = useActiveOrg();
 
   const mutation = useMutation({
     mutationFn: (confirmed: boolean) => confirmResult(orgId, match.id, confirmed),
@@ -44,6 +46,11 @@ export function MatchConfirmBar({
   if (match.status !== "finished" || match.home_score === null || match.away_score === null) {
     return null;
   }
+
+  // Signing a result off belongs to whoever runs the org; the endpoint is
+  // behind org.admin, so for an operator this would be a 403 waiting to happen.
+  // They still see the badge saying the result is pending.
+  if (!isOrgAdmin) return null;
 
   if (match.confirmed) {
     return (
