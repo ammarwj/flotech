@@ -1,3 +1,5 @@
+import type { AxiosRequestConfig } from "axios";
+
 import { apiClient } from "./client";
 import type { ActiveSession, AdminUser, ApiEnvelope, AuthUser, Paginated } from "@/types/api";
 
@@ -44,12 +46,17 @@ export async function deleteAdminUser(id: string): Promise<void> {
  * "Login as" this user. Returns an access token that acts as them; the admin's
  * own refresh cookie is left in place, so `refreshAccessToken()` brings the
  * admin back. Super admins can only impersonate ordinary users (403 otherwise).
+ *
+ * `config` lets AuthGate pass the admin's token explicitly when re-entering
+ * impersonation on boot, while the store is still empty (the request
+ * interceptor only overrides Authorization when the store holds a token).
  */
 export async function impersonateAdminUser(
-  id: string
+  id: string,
+  config?: AxiosRequestConfig
 ): Promise<{ access_token: string; user: AuthUser }> {
   const { data } = await apiClient.post<
     ApiEnvelope<{ access_token: string; user: AuthUser }>
-  >(`/admin/users/${id}/impersonate`);
+  >(`/admin/users/${id}/impersonate`, undefined, config);
   return data.data;
 }

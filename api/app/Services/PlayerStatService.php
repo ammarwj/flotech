@@ -30,10 +30,11 @@ class PlayerStatService
             ->where('matches.status', 'finished')
             ->whereNotNull('matches.confirmed_at')
             ->whereIn('player_match_stats.stat_key', $keys)
-            ->groupBy('players.id', 'players.full_name', 'teams.id', 'teams.name', 'player_match_stats.stat_key')
+            ->groupBy('players.id', 'players.full_name', 'players.jersey_number', 'teams.id', 'teams.name', 'player_match_stats.stat_key')
             ->select(
                 'players.id as player_id',
                 'players.full_name as player_name',
+                'players.jersey_number as jersey_number',
                 'teams.id as team_id',
                 'teams.name as team_name',
                 'player_match_stats.stat_key',
@@ -48,6 +49,8 @@ class PlayerStatService
                 $players[$r->player_id] = [
                     'player_id' => $r->player_id,
                     'player_name' => $r->player_name,
+                    // Stays a string: "07" and "7" are different shirts.
+                    'jersey_number' => $r->jersey_number,
                     'team_id' => $r->team_id,
                     'team_name' => $r->team_name,
                     'stats' => array_fill_keys($keys, 0),

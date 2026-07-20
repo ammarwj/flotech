@@ -2,10 +2,16 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
-import { useAuthStore } from "@/stores/auth-store";
+import {
+  readPendingImpersonation,
+  useAuthStore,
+  writePendingImpersonation,
+} from "@/stores/auth-store";
 import { refreshAccessToken } from "@/lib/api/client";
+import { impersonateAdminUser } from "@/lib/api/admin";
 import { me as fetchMe } from "@/lib/api/auth";
 
 /**
@@ -20,6 +26,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
   const setAuth = useAuthStore((s) => s.setAuth);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const startImpersonation = useAuthStore((s) => s.startImpersonation);
 
   // Readiness is derived: once a token exists in memory, the shell can render.
   const ready = !!accessToken;
@@ -44,6 +51,30 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // The cookie we just exchanged is always the *admin's* — impersonation
+      // tokens have no refresh token of their own. So if this tab was acting as
+      // someone else, mint a fresh impersonation token from the stored target
+      // id instead of booting back into the admin session. This runs before
+      // `ready` flips, so no admin UI flashes on an organizer page.
+      const targetId = readPendingImpersonation();
+      if (targetId) {
+        try {
+          const res = await impersonateAdminUser(targetId, {
+            // The store is still empty, so the interceptor won't override this.
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (active) startImpersonation(res.access_token, res.user);
+          return;
+        } catch {
+          // User deleted, promoted to super admin, or we are no longer an
+          // admin: drop the id and fall through to the normal session.
+          writePendingImpersonation(null);
+          if (active) toast.error("Sesi login-sebagai berakhir.");
+        }
+      }
+
+      if (!active) return;
+
       // Setting the token flips `ready` and unblocks the shell; me() then
       // backfills the user profile.
       setAccessToken(token);
@@ -58,8 +89,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-    // setAuth/setAccessToken are stable zustand setters, so this runs once.
-  }, [router, setAuth, setAccessToken]);
+    // The zustand setters are stable, so this runs once.
+  }, [router, setAuth, setAccessToken, startImpersonation]);
 
   if (!ready) {
     return (

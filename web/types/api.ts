@@ -328,6 +328,7 @@ export interface LeaderboardRow {
   rank: number;
   player_id: string;
   player_name: string;
+  jersey_number: string | null;
   team_id: string;
   team_name: string;
   stats: Record<string, number>;

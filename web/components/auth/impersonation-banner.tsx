@@ -26,6 +26,7 @@ export function ImpersonationBanner() {
   const impersonating = useAuthStore((s) => s.impersonating);
   const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const stopImpersonation = useAuthStore((s) => s.stopImpersonation);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [pending, setPending] = useState(false);
@@ -44,12 +45,20 @@ export function ImpersonationBanner() {
         return;
       }
 
+      // Must land in the store *before* me(): the request interceptor reads the
+      // token from there, so calling me() first would still use the
+      // impersonation token and hand back the impersonated user — pairing the
+      // admin's token with role "user", which bounced /admin → /organizer →
+      // /onboarding.
+      setAccessToken(token);
+
       const admin = await fetchMe();
       setAuth(token, admin);
       stopImpersonation();
       // The impersonated user's cached queries must not follow the admin back.
       qc.clear();
-      router.push("/admin");
+      // replace, so Back doesn't return to a page rendered as the other user.
+      router.replace("/admin");
     } catch {
       toast.error("Gagal kembali ke akun admin. Coba lagi.");
     } finally {
@@ -71,8 +80,8 @@ export function ImpersonationBanner() {
           Kamu sedang login sebagai {user?.full_name || user?.email || "user ini"}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Semua tindakan di sini tercatat atas nama user tersebut. Muat ulang halaman juga akan
-          mengembalikanmu ke akun admin.
+          Semua tindakan di sini tercatat atas nama user tersebut. Gunakan tombol di samping untuk
+          kembali ke akun admin.
         </p>
       </div>
       <Button size="sm" onClick={handleReturn} disabled={pending}>

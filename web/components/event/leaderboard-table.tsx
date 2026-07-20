@@ -56,9 +56,10 @@ export function LeaderboardTable({
 
   const exportCsv = () => {
     const csv = toCsv(
-      ["Peringkat", "Pemain", "Tim", ...columns.map((c) => c.label)],
+      ["Peringkat", "No.", "Pemain", "Tim", ...columns.map((c) => c.label)],
       sorted.map((r, i) => [
         i + 1,
+        r.jersey_number ?? "",
         r.player_name,
         r.team_name,
         ...columns.map((c) => r.stats[c.key] ?? 0),
@@ -133,7 +134,14 @@ export function LeaderboardTable({
                       {initials(r.player_name)}
                     </span>
                     <div className="min-w-0">
-                      <div className="truncate font-semibold">{r.player_name}</div>
+                      <div className="truncate font-semibold">
+                        {r.jersey_number && (
+                          <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">
+                            #{r.jersey_number}
+                          </span>
+                        )}
+                        {r.player_name}
+                      </div>
                       <div className="truncate text-xs text-muted-foreground sm:hidden">
                         {r.team_name}
                       </div>
