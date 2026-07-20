@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Network, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { unplacedTeams } from "@/lib/bracket";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 import type { SeedPair, SeedingPayload } from "@/lib/api/matches";
 import type { KnockoutPlan } from "@/types/api";
@@ -12,31 +13,33 @@ import type { KnockoutPlan } from "@/types/api";
  * Build the knockout bracket of a hybrid category, either from the standings or
  * from pairings the organizer names themselves.
  *
- * Opens on the automatic plan, so the common case is "look, agree, confirm" and
- * only the ties actually in dispute need touching.
+ * Opens on automatic seeding, which is the common case: the standings already
+ * say who meets who. Switching to manual gives an empty draw to fill in, not a
+ * copy of that plan — see the pairs state below.
  */
 interface KnockoutSeedDialogProps {
   plan: KnockoutPlan | undefined;
   hasBracket: boolean;
   pending: boolean;
+  /** The venue's zone, for the per-tie kickoff inputs. */
+  tz: string;
   onClose: () => void;
   onSubmit: (payload: SeedingPayload) => void;
 }
 
 export function KnockoutSeedDialog({ open, ...props }: KnockoutSeedDialogProps & { open: boolean }) {
-  // Mounted only while open, so each open starts from the current plan.
+  // Mounted only while open, so each open starts from a clean draw.
   return open ? <Dialog {...props} /> : null;
 }
 
-function Dialog({ plan, hasBracket, pending, onClose, onSubmit }: KnockoutSeedDialogProps) {
+function Dialog({ plan, hasBracket, pending, tz, onClose, onSubmit }: KnockoutSeedDialogProps) {
   const [mode, setMode] = useState<SeedingMode>("auto");
-  const [pairs, setPairs] = useState<SeedPair[]>(() =>
-    (plan?.ties ?? []).map((tie) => ({
-      order: tie.order,
-      home_team_id: tie.home?.team?.id ?? null,
-      away_team_id: tie.away?.team?.id ?? null,
-    }))
-  );
+  // Manual starts blank rather than pre-filled with the automatic plan. Seeding
+  // the editor from it looked like the organizer had chosen those ties when
+  // they had not, and a pre-filled bracket is one accidental submit away from
+  // being built out of picks nobody made. Automatic seeding is still one click
+  // away in the mode select — that is where "use the plan" lives.
+  const [pairs, setPairs] = useState<SeedPair[]>([]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -51,7 +54,12 @@ function Dialog({ plan, hasBracket, pending, onClose, onSubmit }: KnockoutSeedDi
     .filter((t): t is NonNullable<typeof t> => !!t)
     .map((t) => ({ id: t.id, name: t.name }));
 
-  const ready = (plan?.group_matches_pending ?? 0) === 0;
+  // Two different ways the group stage can block the bracket, and "0 pending"
+  // is true of both — a category with no fixtures at all has nothing pending.
+  const noGroupSchedule = plan !== undefined && plan.group_matches_total === 0;
+  const ready = !noGroupSchedule && (plan?.group_matches_pending ?? 0) === 0;
+  // Every qualifier has to hold a slot; the backend refuses the payload otherwise.
+  const unplaced = mode === "manual" ? unplacedTeams(pool, pairs) : [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -89,8 +97,9 @@ function Dialog({ plan, hasBracket, pending, onClose, onSubmit }: KnockoutSeedDi
         <div className="grid gap-4 overflow-y-auto p-5">
           {!ready && (
             <p className="rounded-md border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2 text-xs text-[var(--warning)]">
-              Masih ada {plan?.group_matches_pending} pertandingan grup yang belum selesai atau
-              belum dikonfirmasi.
+              {noGroupSchedule
+                ? "Fase grup belum punya jadwal. Buat jadwal grup dulu — bracket disusun dari klasemen, dan klasemen kosong akan mengurutkan tim berdasarkan nama."
+                : `Masih ada ${plan?.group_matches_pending} pertandingan grup yang belum selesai atau belum dikonfirmasi.`}
             </p>
           )}
 
@@ -99,6 +108,7 @@ function Dialog({ plan, hasBracket, pending, onClose, onSubmit }: KnockoutSeedDi
             pool={pool}
             mode={mode}
             value={pairs}
+            tz={tz}
             onModeChange={setMode}
             onChange={setPairs}
             autoHint="Unggulan diambil dari klasemen grup, dan tim satu grup dihindarkan bertemu di babak pertama."
@@ -120,7 +130,7 @@ function Dialog({ plan, hasBracket, pending, onClose, onSubmit }: KnockoutSeedDi
             onClick={() =>
               onSubmit(mode === "manual" ? { seeding: "manual", pairs } : { seeding: "auto" })
             }
-            disabled={pending || !ready}
+            disabled={pending || !ready || unplaced.length > 0}
           >
             <Network className="h-4 w-4" />
             {pending ? "Membuat…" : hasBracket ? "Buat Ulang" : "Buat Bracket"}

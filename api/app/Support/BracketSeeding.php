@@ -17,6 +17,18 @@ use Illuminate\Validation\Rule;
  * cannot express "A plays B": seedOrder() mirrors it and avoidSameGroup() then
  * swaps the away sides, so the organizer would get fixtures they never chose.
  * Manual mode therefore skips both — their pairing *is* the intent.
+ *
+ * For the same reason a slot the organizer left empty stays empty: topping it up
+ * with whoever was left over hands them a tie they never picked, which is the
+ * very thing skipping seedOrder() avoids. What is *not* allowed is a team going
+ * missing — unplacedTeams() refuses a payload that drops one out of the bracket,
+ * so "empty slot" never quietly means "team forgotten".
+ *
+ * Each slot may also carry its own kickoff and venue. Those win over the slot
+ * allocator (see lockedOrders() and ScheduleService::applySchedule()); a slot
+ * that leaves them null is scheduled automatically as before.
+ *
+ * @phpstan-type Slot array{home: ?string, away: ?string, scheduled_at: ?string, venue: ?string}
  */
 class BracketSeeding
 {
@@ -33,9 +45,14 @@ class BracketSeeding
             'seeding' => ['nullable', Rule::in(['auto', 'manual'])],
             'pairs' => ['required_if:seeding,manual', 'array', 'max:'.$halfSize],
             'pairs.*.order' => ['required', 'integer', 'min:0', 'max:'.max(0, $halfSize - 1)],
-            'pairs.*.home_team_id' => ['required', 'uuid', Rule::in($pool)],
-            // A null away side is a bye, exactly as generation writes it.
+            // Both sides are optional: a slot may be sent empty on purpose, or
+            // carry nothing but a kickoff and a venue. A null away side is a
+            // bye, exactly as generation writes it.
+            'pairs.*.home_team_id' => ['nullable', 'uuid', Rule::in($pool)],
             'pairs.*.away_team_id' => ['nullable', 'uuid', 'different:pairs.*.home_team_id', Rule::in($pool)],
+            // Per-tie overrides; null means "let the allocator place it".
+            'pairs.*.scheduled_at' => ['nullable', 'date'],
+            'pairs.*.venue' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -45,13 +62,13 @@ class BracketSeeding
     }
 
     /**
-     * The validated payload as the `order => [home, away]` map the schedule
-     * service consumes, or null when seeding is automatic.
+     * The validated payload as the `order => slot` map the schedule service
+     * consumes, or null when seeding is automatic.
      *
-     * Slots the organizer left out are filled with `[null, null]`, so seeding
-     * only the two or three contentious ties is a valid request.
+     * Slots the organizer left out stay empty on every key — that is a real
+     * empty tie, not a placeholder waiting to be topped up.
      *
-     * @return array<int, array{0: ?string, 1: ?string}>|null
+     * @return array<int, Slot>|null
      */
     public static function normalize(array $validated, int $halfSize): ?array
     {
@@ -59,16 +76,98 @@ class BracketSeeding
             return null;
         }
 
-        $pairs = array_fill(0, $halfSize, [null, null]);
+        $pairs = array_fill(0, $halfSize, self::slot(null, null));
 
         foreach ($validated['pairs'] ?? [] as $pair) {
-            $pairs[$pair['order']] = [
-                $pair['home_team_id'] ?? null,
-                $pair['away_team_id'] ?? null,
-            ];
+            $home = $pair['home_team_id'] ?? null;
+            $away = $pair['away_team_id'] ?? null;
+
+            // A lone team is a bye, and generation only reads one as such when
+            // it sits at home ($home !== null && $away === null). Left as an
+            // away side it would be a tie nobody can win: not a bye, so never
+            // advanced, and no opponent will ever arrive.
+            if ($home === null && $away !== null) {
+                [$home, $away] = [$away, null];
+            }
+
+            $pairs[$pair['order']] = self::slot(
+                $home,
+                $away,
+                $pair['scheduled_at'] ?? null,
+                $pair['venue'] ?? null,
+            );
         }
 
         return $pairs;
+    }
+
+    /**
+     * One first-round slot in the shape ScheduleService writes matches from.
+     * Automatic seeding builds its slots through here too, so a single shape
+     * reaches GameMatch::create() no matter which path produced it.
+     *
+     * @return Slot
+     */
+    public static function slot(
+        ?string $home,
+        ?string $away,
+        ?string $scheduledAt = null,
+        ?string $venue = null,
+    ): array {
+        return [
+            'home' => $home,
+            'away' => $away,
+            'scheduled_at' => $scheduledAt,
+            'venue' => $venue,
+        ];
+    }
+
+    /**
+     * Teams from the eligible pool that the organizer placed nowhere.
+     *
+     * The mirror of duplicateTeam(): one catches a team used twice, this one a
+     * team used never. Leaving a *slot* empty is deliberate and allowed; losing
+     * a team out of the bracket is not, and is silent without this check.
+     *
+     * @param  array<int, array<string, mixed>>  $pairs  the raw validated pairs
+     * @param  array<int, string>|Collection<int, string>  $pool
+     * @return array<int, string> unplaced team ids, in pool order
+     */
+    public static function unplacedTeams(array $pairs, $pool): array
+    {
+        $placed = [];
+
+        foreach ($pairs as $pair) {
+            foreach ([$pair['home_team_id'] ?? null, $pair['away_team_id'] ?? null] as $id) {
+                if ($id !== null) {
+                    $placed[$id] = true;
+                }
+            }
+        }
+
+        return array_values(array_filter(
+            $pool instanceof Collection ? $pool->all() : $pool,
+            fn ($id) => ! isset($placed[$id]),
+        ));
+    }
+
+    /**
+     * First-round slots the organizer gave their own kickoff or venue, which the
+     * slot allocator must leave alone.
+     *
+     * @param  array<int, Slot>|null  $pairs  normalized slots, or null for auto seeding
+     * @return array<int, int> slot orders
+     */
+    public static function lockedOrders(?array $pairs): array
+    {
+        if ($pairs === null) {
+            return [];
+        }
+
+        return array_keys(array_filter(
+            $pairs,
+            fn (array $slot) => $slot['scheduled_at'] !== null || $slot['venue'] !== null,
+        ));
     }
 
     /**

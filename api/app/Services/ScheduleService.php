@@ -140,8 +140,8 @@ class ScheduleService
      * Group-stage fixtures are left untouched.
      *
      * @param  array<int, string>  $qualifiers  team ids, best seed first
-     * @param  array<int, array{0: ?string, 1: ?string}>|null  $pairs  the organizer's
-     *                                                                 own first-round slots, or null to seed automatically
+     * @param  array<int, array{home: ?string, away: ?string, scheduled_at: ?string, venue: ?string}>|null  $pairs
+     *                                                                                                              the organizer's own first-round slots, or null to seed automatically
      * @return int matches created
      */
     public function generateHybridKnockout(EventCategory $category, array $qualifiers, ?array $pairs = null): int
@@ -161,15 +161,19 @@ class ScheduleService
 
         $groupOf = $category->teams()->pluck('group_name', 'id')->all();
         // Manual pairings skip seedOrder()/avoidSameGroup() on purpose — there
-        // is nothing left to avoid once the organizer has named the ties.
-        $pairs = $pairs === null
-            ? $this->firstRoundPairs($size, $qualifiers, fn (string $id) => $groupOf[$id] ?? null)
-            : $this->fillEmptySlots($pairs, $qualifiers);
+        // is nothing left to avoid once the organizer has named the ties. They
+        // also keep their empty slots: see the BracketSeeding docblock.
+        $pairs ??= array_map(
+            fn (array $pair) => BracketSeeding::slot($pair[0], $pair[1]),
+            $this->firstRoundPairs($size, $qualifiers, fn (string $id) => $groupOf[$id] ?? null),
+        );
 
         $round1 = [];
-        foreach ($pairs as $o => [$home, $away]) {
-            // An empty slot pair can't happen (qualifiers ≥ 2 fill the top seeds),
-            // but a lone team means a bye: settled immediately, no opponent.
+        foreach ($pairs as $o => $slot) {
+            // Both slots empty is not a bye — manual seeding may leave a tie
+            // unfilled — but a lone team walks over: settled immediately.
+            $home = $slot['home'];
+            $away = $slot['away'];
             $bye = $home !== null && $away === null;
 
             $round1[] = GameMatch::create([
@@ -180,7 +184,10 @@ class ScheduleService
                 'order' => $o,
                 'home_team_id' => $home,
                 'away_team_id' => $away,
-                'scheduled_at' => $start->copy()->utc(),
+                'scheduled_at' => $slot['scheduled_at'] !== null
+                    ? Carbon::parse($slot['scheduled_at'])->utc()
+                    : $start->copy()->utc(),
+                'venue' => $slot['venue'],
                 'status' => $bye ? 'finished' : 'scheduled',
                 'confirmed_at' => $bye ? now() : null,
             ]);
@@ -245,44 +252,6 @@ class ScheduleService
             'scheduled_at' => $start->copy()->addDays($totalRounds - 1)->utc(),
             'status' => 'scheduled',
         ]);
-    }
-
-    /**
-     * Top up an organizer's partial seeding with the teams they left out, in
-     * slot order. Seeding only the two or three contentious ties is a valid
-     * request; the rest of the field still has to be placed somewhere.
-     *
-     * @param  array<int, array{0: ?string, 1: ?string}>  $pairs
-     * @param  array<int, string>  $pool  every team eligible for the bracket
-     * @return array<int, array{0: ?string, 1: ?string}>
-     */
-    protected function fillEmptySlots(array $pairs, array $pool): array
-    {
-        $placed = [];
-        foreach ($pairs as [$home, $away]) {
-            foreach ([$home, $away] as $id) {
-                if ($id !== null) {
-                    $placed[$id] = true;
-                }
-            }
-        }
-
-        $queue = array_values(array_filter($pool, fn ($id) => ! isset($placed[$id])));
-
-        foreach ($pairs as $o => [$home, $away]) {
-            // Fill the home side first, so a leftover single team becomes a bye
-            // rather than an away slot with nobody at home.
-            if ($home === null && $queue !== []) {
-                $home = array_shift($queue);
-            }
-            if ($away === null && $queue !== []) {
-                $away = array_shift($queue);
-            }
-
-            $pairs[$o] = [$home, $away];
-        }
-
-        return $pairs;
     }
 
     /**
@@ -477,8 +446,8 @@ class ScheduleService
      * up front (later rounds start with empty slots) and bye winners are
      * advanced immediately.
      *
-     * @param  array<int, array{0: ?string, 1: ?string}>|null  $pairs  the organizer's
-     *                                                                 own first-round slots, or null to seed by team name
+     * @param  array<int, array{home: ?string, away: ?string, scheduled_at: ?string, venue: ?string}>|null  $pairs
+     *                                                                                                              the organizer's own first-round slots, or null to seed by team name
      * @return int total matches created (bracketSize - 1)
      */
     public function generateKnockout(EventCategory $category, ?array $pairs = null): int
@@ -507,20 +476,18 @@ class ScheduleService
         $queue = $teams;
         $round1 = [];
 
-        if ($pairs !== null) {
-            $pairs = $this->fillEmptySlots($pairs, $teams);
-        }
-
         for ($o = 0; $o < $matchesR1; $o++) {
-            if ($pairs !== null) {
-                [$home, $away] = $pairs[$o];
-            } else {
-                $home = array_shift($queue);
-                $away = $o < $byes ? null : array_shift($queue);
-            }
+            // Manual slots are taken as given, empties included; automatic ones
+            // deal the field out in order, byes first.
+            $slot = $pairs[$o] ?? BracketSeeding::slot(
+                array_shift($queue),
+                $o < $byes ? null : array_shift($queue),
+            );
 
             // A lone team walks over. Both slots empty is not a bye — manual
             // seeding can leave a tie unfilled — so it stays scheduled.
+            $home = $slot['home'];
+            $away = $slot['away'];
             $bye = $home !== null && $away === null;
 
             $round1[] = GameMatch::create([
@@ -530,7 +497,10 @@ class ScheduleService
                 'order' => $o,
                 'home_team_id' => $home,
                 'away_team_id' => $away,
-                'scheduled_at' => $start->copy()->utc(),
+                'scheduled_at' => $slot['scheduled_at'] !== null
+                    ? Carbon::parse($slot['scheduled_at'])->utc()
+                    : $start->copy()->utc(),
+                'venue' => $slot['venue'],
                 'status' => $bye ? 'finished' : 'scheduled', // bye = walkover
                 'confirmed_at' => $bye ? now() : null, // byes are auto-final
             ]);
@@ -984,9 +954,15 @@ class ScheduleService
      *
      * @param  array<string, mixed>  $opts
      * @param  string|null  $stage  limit to one stage of a hybrid category
+     * @param  array<int, int>  $lockedOrders  first-round slots the organizer timed
+     *                                         themselves, which keep their kickoff and venue
      */
-    public function applySchedule(EventCategory $category, array $opts = [], ?string $stage = null): void
-    {
+    public function applySchedule(
+        EventCategory $category,
+        array $opts = [],
+        ?string $stage = null,
+        array $lockedOrders = [],
+    ): void {
         $query = $category->matches();
         if ($stage !== null) {
             $query->where('stage', $stage);
@@ -1060,6 +1036,16 @@ class ScheduleService
                     $dayIdx++;
                     $slot = 0;
                 }
+
+                // A tie the organizer timed themselves keeps what they chose.
+                // It still consumes its slot, so the fixtures around it land
+                // where they would have anyway.
+                if ($m->round === 1 && in_array($m->order, $lockedOrders, true)) {
+                    $slot++;
+
+                    continue;
+                }
+
                 $day = $days[min($dayIdx, $lastDay)];
                 $lane = $slot % $venues;
                 $time = $times[min(intdiv($slot, $venues), count($times) - 1)];

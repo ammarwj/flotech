@@ -46,6 +46,9 @@ class MatchController extends Controller
         $categoryModel = $this->category($request, $event, $category);
         // A format is a preset; the engine is what actually schedules.
         $engine = $categoryModel->engine();
+        // First-round slots the organizer timed themselves; applySchedule() below
+        // leaves those alone. Empty for every path but manual seeding.
+        $lockedOrders = [];
 
         $options = $request->validate([
             'start_date' => ['nullable', 'date'],
@@ -80,14 +83,14 @@ class MatchController extends Controller
 
             $seeding = $request->validate(BracketSeeding::validationRules($half, $approved));
 
-            if ($error = $this->seedingError($seeding)) {
+            if ($error = $this->seedingError($seeding, $approved)) {
                 return $error;
             }
 
-            $count = $this->schedule->generateKnockout(
-                $categoryModel,
-                BracketSeeding::normalize($seeding, $half),
-            );
+            $pairs = BracketSeeding::normalize($seeding, $half);
+            $lockedOrders = BracketSeeding::lockedOrders($pairs);
+
+            $count = $this->schedule->generateKnockout($categoryModel, $pairs);
         } elseif ($engine === 'knockout_double') {
             $count = $this->schedule->generateDoubleElim($categoryModel);
             if ($count === -1) {
@@ -102,7 +105,7 @@ class MatchController extends Controller
         }
 
         // Assign concrete date/time (and venue lane) to each fixture.
-        $this->schedule->applySchedule($categoryModel, $options);
+        $this->schedule->applySchedule($categoryModel, $options, null, $lockedOrders);
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
@@ -176,6 +179,11 @@ class MatchController extends Controller
             'bracket_size' => $config->bracketSize(),
             'qualifiers' => count($slots),
             'byes' => max(0, $config->bracketSize() - count($slots)),
+            // Sent alongside the pending count because zero pending means two
+            // opposite things: every group game is played, or none exists yet.
+            // generateKnockout() refuses the second, so the client needs to be
+            // able to tell them apart or it offers a button that cannot work.
+            'group_matches_total' => $categoryModel->matches()->where('stage', 'group')->count(),
             'group_matches_pending' => $pending,
             'ties' => array_map(fn ($pair, $order) => [
                 'order' => $order,
@@ -241,7 +249,7 @@ class MatchController extends Controller
         $half = intdiv($config->bracketSize(), 2);
         $seeding = $request->validate(BracketSeeding::validationRules($half, $qualifiers));
 
-        if ($error = $this->seedingError($seeding)) {
+        if ($error = $this->seedingError($seeding, $qualifiers)) {
             return $error;
         }
 
@@ -251,7 +259,7 @@ class MatchController extends Controller
             return ApiResponse::error('Butuh minimal 2 tim lolos untuk membuat bracket.', null, 422);
         }
 
-        $this->schedule->applySchedule($categoryModel, [], 'knockout');
+        $this->schedule->applySchedule($categoryModel, [], 'knockout', BracketSeeding::lockedOrders($pairs));
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
@@ -1056,9 +1064,10 @@ class MatchController extends Controller
      * keys of one row.
      *
      * @param  array<string, mixed>  $seeding  the validated payload
+     * @param  array<int, string>|\Illuminate\Support\Collection<int, string>  $pool  team ids that must all be placed
      * @return JsonResponse|null the error to return, or null when it's sound
      */
-    protected function seedingError(array $seeding): ?JsonResponse
+    protected function seedingError(array $seeding, $pool): ?JsonResponse
     {
         if (! BracketSeeding::isManual($seeding)) {
             return null;
@@ -1083,6 +1092,19 @@ class MatchController extends Controller
             return ApiResponse::error('Satu tim tidak boleh mengisi dua slot bracket.', [
                 'pairs' => ['Ada tim yang dipilih lebih dari sekali.'],
             ], 422);
+        }
+
+        // Leaving a slot empty is deliberate; leaving a team out of the bracket
+        // is not. Nothing fills the gap any more, so an unplaced team would
+        // simply never play.
+        if ($unplaced = BracketSeeding::unplacedTeams($pairs, $pool)) {
+            $names = Team::whereIn('id', $unplaced)->orderBy('name')->pluck('name')->implode(', ');
+
+            return ApiResponse::error(
+                'Semua tim harus ditempatkan di bracket. Belum ditempatkan: '.$names.'.',
+                ['pairs' => ['Ada '.count($unplaced).' tim yang belum ditempatkan.']],
+                422,
+            );
         }
 
         return null;

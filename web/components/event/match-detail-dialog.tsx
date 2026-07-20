@@ -7,6 +7,7 @@ import { MapPin, X } from "lucide-react";
 import { getPublicMatchStats } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
+import { statIcon } from "@/lib/stat-icons";
 import { useEventTimezone } from "./event-timezone";
 import { PublicStatusBadge } from "./public-status-badge";
 import { cn } from "@/lib/utils";
@@ -234,9 +235,28 @@ function SideStats({ side, columns }: { side: PublicMatchStatTeam; columns: Stat
               {used.map((c) => {
                 const v = p.stats[c.key] ?? 0;
                 if (v === 0) return null;
+                const icon = statIcon(c.key);
                 return (
-                  <span key={c.key} className="pill" title={c.label}>
-                    {v} {c.short}
+                  <span
+                    key={c.key}
+                    className="pill"
+                    title={c.label}
+                    // The icon carries no text, and the two cards differ only by
+                    // colour — the label has to reach assistive tech some way.
+                    aria-label={`${v} ${c.label}`}
+                  >
+                    {v}
+                    {icon ? (
+                      <icon.Icon
+                        className="h-3.5 w-3.5 shrink-0"
+                        style={{ color: icon.color }}
+                        fill={icon.filled ? "currentColor" : "none"}
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      // A stat key this build has no icon for — see lib/stat-icons.
+                      c.short
+                    )}
                   </span>
                 );
               })}

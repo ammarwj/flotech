@@ -278,6 +278,7 @@ class HybridFormatTest extends TestCase
             ->json('data');
 
         $this->assertSame(4, $plan['bracket_size']);   // 2 groups × top 2
+        $this->assertSame(12, $plan['group_matches_total']);
         $this->assertSame(12, $plan['group_matches_pending']);
         $this->assertCount(2, $plan['ties']);
 
@@ -289,6 +290,39 @@ class HybridFormatTest extends TestCase
 
         $this->assertContains(['Juara Grup A', 'Runner-up Grup B'], $labels);
         $this->assertContains(['Juara Grup B', 'Runner-up Grup A'], $labels);
+    }
+
+    public function test_the_plan_tells_an_unscheduled_group_stage_from_a_finished_one(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $planUrl = "/api/v1/organizations/{$org->id}/events/{$event->id}"
+            ."/categories/{$event->categories->first()->id}/knockout-plan";
+
+        // No group fixtures at all: nothing is pending, but the bracket is
+        // blocked all the same. Reading `pending` alone cannot see this, which
+        // is why the client was offered a button the backend then refused.
+        $plan = $this->actingAs($user, 'api')->getJson($planUrl)->assertOk()->json('data');
+
+        $this->assertSame(0, $plan['group_matches_total']);
+        $this->assertSame(0, $plan['group_matches_pending']);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), ['seeding' => 'auto'])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.feature', 'group_stage_incomplete');
+
+        // Same zero pending once every group game is played, but now the totals
+        // differ — that difference is the whole point of sending both.
+        [$eventDone] = $this->readyForKnockout($user, $org);
+        $donePlanUrl = "/api/v1/organizations/{$org->id}/events/{$eventDone->id}"
+            ."/categories/{$eventDone->categories->first()->id}/knockout-plan";
+
+        $donePlan = $this->actingAs($user, 'api')->getJson($donePlanUrl)->assertOk()->json('data');
+
+        $this->assertSame(0, $donePlan['group_matches_pending']);
+        $this->assertGreaterThan(0, $donePlan['group_matches_total']);
     }
 
     public function test_knockout_bracket_can_be_deleted_without_touching_the_groups(): void
@@ -690,13 +724,16 @@ class HybridFormatTest extends TestCase
         $this->assertSame($q[2], $final->home_team_id);
     }
 
-    public function test_partial_manual_seeding_fills_the_rest_of_the_field(): void
+    public function test_partial_manual_seeding_is_refused_rather_than_topped_up(): void
     {
         $user = User::factory()->create();
         $org = $this->org($user);
         [$event, $q] = $this->readyForKnockout($user, $org);
 
-        // Only the one tie the organizer cares about.
+        // Only the one tie the organizer cares about. This used to be valid:
+        // the field was topped up in slot order. It no longer is — an empty
+        // slot is now taken at face value, so filling the gap would hand them
+        // a tie they never picked, and the two teams left out would never play.
         $this->actingAs($user, 'api')
             ->postJson($this->knockoutUrl($org, $event), [
                 'seeding' => 'manual',
@@ -704,17 +741,10 @@ class HybridFormatTest extends TestCase
                     ['order' => 1, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
                 ],
             ])
-            ->assertCreated();
+            ->assertStatus(422)
+            ->assertJsonPath('errors.pairs.0', 'Ada 2 tim yang belum ditempatkan.');
 
-        $round1 = $event->matches()->where('stage', 'knockout')->where('round', 1)->orderBy('order')->get();
-
-        $this->assertSame($q[0], $round1[1]->home_team_id);
-        $this->assertSame($q[1], $round1[1]->away_team_id);
-        // The two teams left over land in the slot that was left blank.
-        $this->assertEqualsCanonicalizing(
-            [$q[2], $q[3]],
-            [$round1[0]->home_team_id, $round1[0]->away_team_id],
-        );
+        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
     }
 
     public function test_swapping_two_seeds_keeps_the_rest_of_the_bracket(): void

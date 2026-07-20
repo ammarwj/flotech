@@ -66,12 +66,20 @@ export interface SeedPair {
   order: number;
   home_team_id: string | null;
   away_team_id: string | null;
+  /** Kickoff chosen for this tie, as an offset-bearing ISO instant. */
+  scheduled_at?: string | null;
+  /** Court/pitch for this tie, free text ("Lapangan 2"). */
+  venue?: string | null;
 }
 
 /**
  * Who plays whom in the opening round. Omitted (or "auto") keeps the automatic
  * seeding: group standings for hybrid, team name for single elimination.
- * Slots left out of `pairs` are filled with whoever is left over.
+ *
+ * Under manual seeding a slot left empty stays empty — nothing is topped up —
+ * but every eligible team must be placed somewhere or the backend refuses the
+ * payload. A tie may also carry its own `scheduled_at`/`venue`, which the slot
+ * allocator then leaves untouched.
  */
 export interface SeedingPayload {
   seeding?: "auto" | "manual";

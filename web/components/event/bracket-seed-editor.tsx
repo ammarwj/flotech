@@ -1,7 +1,11 @@
 "use client";
 
+import { dialogConsequences } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { unplacedTeams } from "@/lib/bracket";
+import { fromEventInput, toEventInput, tzLabel } from "@/lib/match-dates";
 import type { SeedPair } from "@/lib/api/matches";
 
 export type SeedingMode = "auto" | "manual";
@@ -25,6 +29,7 @@ export function BracketSeedEditor({
   pool,
   mode,
   value,
+  tz,
   onModeChange,
   onChange,
   autoHint,
@@ -34,22 +39,33 @@ export function BracketSeedEditor({
   pool: SeedTeam[];
   mode: SeedingMode;
   value: SeedPair[];
+  /** The venue's zone: kickoffs are typed and read as its wall clock. */
+  tz: string;
   onModeChange: (mode: SeedingMode) => void;
   onChange: (pairs: SeedPair[]) => void;
   /** What automatic seeding does here, since it differs per engine. */
   autoHint: string;
 }) {
   const slots = Math.max(1, Math.floor(size / 2));
-  const byName = new Map(pool.map((t) => [t.id, t.name]));
+  const unplaced = unplacedTeams(pool, value);
 
   const pairAt = (order: number): SeedPair =>
-    value.find((p) => p.order === order) ?? { order, home_team_id: null, away_team_id: null };
+    value.find((p) => p.order === order) ?? {
+      order,
+      home_team_id: null,
+      away_team_id: null,
+      scheduled_at: null,
+      venue: null,
+    };
 
-  const setSide = (order: number, side: "home_team_id" | "away_team_id", id: string) => {
+  const setField = <K extends keyof SeedPair>(order: number, key: K, val: SeedPair[K]) => {
     const next = value.filter((p) => p.order !== order);
-    next.push({ ...pairAt(order), [side]: id || null });
+    next.push({ ...pairAt(order), [key]: val });
     onChange(next.sort((a, b) => a.order - b.order));
   };
+
+  const setSide = (order: number, side: "home_team_id" | "away_team_id", id: string) =>
+    setField(order, side, id || null);
 
   // A team already placed in another tie can't be picked twice — the backend
   // refuses it, so the select shouldn't offer it as if it were free.
@@ -88,36 +104,66 @@ export function BracketSeedEditor({
                 ));
 
               return (
-                <div key={order} className="flex items-center gap-2">
-                  <span className="w-6 shrink-0 text-xs font-semibold text-muted-foreground">
-                    {order + 1}.
-                  </span>
-                  <Select
-                    value={pair.home_team_id ?? ""}
-                    onChange={(e) => setSide(order, "home_team_id", e.target.value)}
-                    className="h-9 min-w-0 flex-1"
-                    aria-label={`Tim pertama pertandingan ${order + 1}`}
-                  >
-                    <option value="">—</option>
-                    {options(pair.away_team_id)}
-                  </Select>
-                  <span className="shrink-0 text-xs text-muted-foreground">vs</span>
-                  <Select
-                    value={pair.away_team_id ?? ""}
-                    onChange={(e) => setSide(order, "away_team_id", e.target.value)}
-                    className="h-9 min-w-0 flex-1"
-                    aria-label={`Tim kedua pertandingan ${order + 1}`}
-                  >
-                    <option value="">Bye</option>
-                    {options(pair.home_team_id)}
-                  </Select>
+                <div key={order} className="grid gap-1.5 border-b border-border pb-2 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 shrink-0 text-xs font-semibold text-muted-foreground">
+                      {order + 1}.
+                    </span>
+                    <Select
+                      value={pair.home_team_id ?? ""}
+                      onChange={(e) => setSide(order, "home_team_id", e.target.value)}
+                      className="h-9 min-w-0 flex-1"
+                      aria-label={`Tim pertama pertandingan ${order + 1}`}
+                    >
+                      <option value="">—</option>
+                      {options(pair.away_team_id)}
+                    </Select>
+                    <span className="shrink-0 text-xs text-muted-foreground">vs</span>
+                    <Select
+                      value={pair.away_team_id ?? ""}
+                      onChange={(e) => setSide(order, "away_team_id", e.target.value)}
+                      className="h-9 min-w-0 flex-1"
+                      aria-label={`Tim kedua pertandingan ${order + 1}`}
+                    >
+                      <option value="">Bye</option>
+                      {options(pair.home_team_id)}
+                    </Select>
+                  </div>
+                  {/* Optional overrides. Left blank, the slot allocator times
+                      this tie like any other. */}
+                  <div className="flex items-center gap-2 pl-8">
+                    <Input
+                      type="datetime-local"
+                      value={toEventInput(pair.scheduled_at ?? null, tz)}
+                      onChange={(e) =>
+                        setField(order, "scheduled_at", fromEventInput(e.target.value, tz))
+                      }
+                      className="h-8 min-w-0 flex-1 text-xs"
+                      aria-label={`Jadwal pertandingan ${order + 1}`}
+                    />
+                    <Input
+                      value={pair.venue ?? ""}
+                      onChange={(e) => setField(order, "venue", e.target.value || null)}
+                      placeholder="Lapangan"
+                      className="h-8 min-w-0 flex-1 text-xs"
+                      aria-label={`Lapangan pertandingan ${order + 1}`}
+                    />
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {unplaced.length > 0 && (
+            <p className={dialogConsequences.danger}>
+              {unplaced.length} tim belum ditempatkan: {unplaced.map((t) => t.name).join(", ")}.
+              Semua tim harus punya slot sebelum bracket dibuat.
+            </p>
+          )}
+
           <p className="text-xs text-muted-foreground">
-            Slot yang dikosongkan akan diisi otomatis dari tim yang belum ditempatkan.
-            {byName.size > 0 && ` ${byName.size} tim tersedia.`}
+            Slot yang dikosongkan tetap kosong — isi belakangan lewat editor slot di bracket.
+            Jadwal &amp; lapangan yang dibiarkan kosong ditata otomatis (jam {tzLabel(tz)}).
           </p>
         </div>
       )}

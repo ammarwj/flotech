@@ -1,3 +1,4 @@
+import type { SeedPair } from "@/lib/api/matches";
 import type { FormatEngine, Match } from "@/types/api";
 
 // Formats are admin-managed presets; what decides behaviour is the engine the
@@ -23,6 +24,21 @@ export function bracketSizeFor(teams: number): number {
   let size = 2;
   while (size < teams) size *= 2;
   return size;
+}
+
+/**
+ * Teams the organizer has placed in no slot at all. Mirrors
+ * BracketSeeding::unplacedTeams(), which rejects such a payload with a 422:
+ * an empty slot is deliberate, a team left out of the bracket never plays.
+ *
+ * Generic over the team shape so both the seed editor (rendering the warning)
+ * and its dialogs (disabling submit) can call it.
+ */
+export function unplacedTeams<T extends { id: string }>(pool: T[], pairs: SeedPair[]): T[] {
+  const placed = new Set(
+    pairs.flatMap((p) => [p.home_team_id, p.away_team_id]).filter((id): id is string => !!id)
+  );
+  return pool.filter((t) => !placed.has(t.id));
 }
 
 /**

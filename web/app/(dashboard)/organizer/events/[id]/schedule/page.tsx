@@ -623,6 +623,7 @@ export default function SchedulePage() {
           plan={planQuery.data}
           hasBracket={knockoutTies.length > 0}
           pending={knockout.isPending}
+          tz={tz}
           onClose={() => setSeedDialog(false)}
           onSubmit={(payload) => knockout.mutate(payload)}
         />

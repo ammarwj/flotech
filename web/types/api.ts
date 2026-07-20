@@ -293,6 +293,11 @@ export interface KnockoutPlan {
   bracket_size: number;
   qualifiers: number;
   byes: number;
+  /**
+   * Group fixtures that exist at all. Zero `pending` is ambiguous on its own —
+   * all played, or none scheduled — and only the second blocks the bracket.
+   */
+  group_matches_total: number;
   group_matches_pending: number;
   ties: { order: number; home: KnockoutSlot | null; away: KnockoutSlot | null }[];
 }

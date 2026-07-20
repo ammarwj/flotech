@@ -8,7 +8,7 @@ import type { SportEvent } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { bracketSizeFor } from "@/lib/bracket";
+import { bracketSizeFor, unplacedTeams } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
@@ -71,6 +71,9 @@ export function ScheduleSettingsDialog({
   if (!open) return null;
 
   const invalidWindow = dailyEnd <= dailyStart;
+  // The backend refuses a manual seeding that drops a team out of the bracket;
+  // say so before they fill the rest of the form, not after.
+  const unplaced = seedTeams && seeding === "manual" ? unplacedTeams(seedTeams, pairs) : [];
 
   const submit = () => {
     onSubmit({
@@ -188,6 +191,7 @@ export function ScheduleSettingsDialog({
                 pool={seedTeams}
                 mode={seeding}
                 value={pairs}
+                tz={event.timezone}
                 onModeChange={setSeeding}
                 onChange={setPairs}
                 autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
@@ -206,7 +210,7 @@ export function ScheduleSettingsDialog({
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Batal
           </Button>
-          <Button onClick={submit} disabled={pending || invalidWindow}>
+          <Button onClick={submit} disabled={pending || invalidWindow || unplaced.length > 0}>
             <Sparkles className="h-4 w-4" />
             {pending ? "Membuat…" : "Generate Jadwal"}
           </Button>
