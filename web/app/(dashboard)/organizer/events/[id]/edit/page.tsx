@@ -4,13 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Rocket, Trash2, Eye, CalendarClock, Images } from "lucide-react";
+import { Trash2, Eye, CalendarClock, Images } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   getEvent,
   updateEvent,
-  publishEvent,
+  updateEventStatus,
   deleteEvent,
   type EventInput,
 } from "@/lib/api/events";
@@ -21,6 +21,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EventStatusBadge } from "@/components/shared/status-badge";
+import { EventStatusPanel } from "@/components/event/event-status-panel";
+import type { EventStatus } from "@/types/api";
+
+/** Per-status confirmation copy; the API sends its own message, this is the UI's. */
+const STATUS_TOASTS: Partial<Record<EventStatus, string>> = {
+  open: "Event dipublikasikan",
+  registration_closed: "Pendaftaran ditutup",
+  ongoing: "Event ditandai sedang berlangsung",
+  finished: "Event diselesaikan",
+  cancelled: "Event dibatalkan",
+};
 
 export default function EditEventPage() {
   const router = useRouter();
@@ -54,19 +65,20 @@ export default function EditEventPage() {
     },
   });
 
-  const publish = useMutation({
-    mutationFn: () => publishEvent(orgId!, eventId),
-    onSuccess: () => {
-      toast.success("Event berhasil dipublikasikan", {
-        description: "Pendaftaran tim kini terbuka.",
-        action: {
-          label: "Lihat daftar",
-          onClick: () => router.push("/organizer/events"),
-        },
+  const changeStatus = useMutation({
+    mutationFn: (status: EventStatus) => updateEventStatus(orgId!, eventId, status),
+    onSuccess: (updated) => {
+      toast.success(STATUS_TOASTS[updated.status] ?? "Status event diperbarui", {
+        description:
+          updated.status === "open"
+            ? "Halaman event tayang dan pendaftaran tim terbuka."
+            : updated.status === "finished"
+              ? "Dana tertahan dicairkan ke saldo organizer."
+              : undefined,
       });
       refresh();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal mempublikasikan event.").message),
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengubah status event.").message),
   });
 
   const remove = useMutation({
@@ -117,12 +129,6 @@ export default function EditEventPage() {
                 </a>
               </Button>
             )}
-            {ev.status === "draft" && (
-              <Button onClick={() => publish.mutate()} disabled={publish.isPending}>
-                <Rocket className="h-4 w-4" />
-                {publish.isPending ? "Mempublikasikan…" : "Publikasikan"}
-              </Button>
-            )}
             <Button asChild variant="outline">
               <Link href={`/organizer/events/${eventId}/schedule`}>
                 <CalendarClock className="h-4 w-4" />
@@ -143,15 +149,11 @@ export default function EditEventPage() {
         }
       />
 
-      {ev.status === "draft" && (
-        <div className="mb-5 flex items-start gap-2 rounded-md border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-4 py-3 text-sm text-[var(--warning)]">
-          <Eye className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Event ini masih <b>draf</b> dan belum bisa dilihat publik. Klik{" "}
-            <b>Publikasikan</b> agar halaman event &amp; pendaftaran tim aktif.
-          </span>
-        </div>
-      )}
+      <EventStatusPanel
+        event={ev}
+        pending={changeStatus.isPending}
+        onChange={(status) => changeStatus.mutate(status)}
+      />
 
       <EventForm
         initial={ev}

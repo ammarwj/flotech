@@ -399,6 +399,11 @@ export interface SportEvent {
   /** The sport itself, embedded so the UI needn't look it up. */
   sport: SportDef | null;
   status: EventStatus;
+  /**
+   * Statuses this event may move to next, straight from the backend's
+   * transition table. Empty = terminal (finished or cancelled).
+   */
+  next_statuses: EventStatus[];
   start_date: string | null;
   end_date: string | null;
   /** The venue's zone. Kickoff times are UTC instants; this is what they mean. */

@@ -25,6 +25,10 @@ class EventResource extends JsonResource
             // The sport itself, so the client doesn't have to look it up.
             'sport' => $this->sportDefinition(),
             'status' => $this->status,
+            // Where this event may go next, so the dashboard renders exactly the
+            // moves the API will accept instead of keeping its own copy of the
+            // transition table. Empty = terminal.
+            'next_statuses' => $this->nextStatuses(),
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
             // Kickoff times are UTC on the wire; this is the zone they mean.

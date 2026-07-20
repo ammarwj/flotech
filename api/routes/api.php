@@ -183,6 +183,8 @@ Route::prefix('v1')->group(function () {
             // Event CRUD + registrations management.
             Route::apiResource('events', EventController::class);
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
+            // Status moves through its own guarded verb, never the form save.
+            Route::patch('events/{event}/status', [EventController::class, 'updateStatus']);
             Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
             // Offline registration: teams that signed up on paper or over chat.
             Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);

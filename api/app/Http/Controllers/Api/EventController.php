@@ -15,6 +15,7 @@ use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class EventController extends Controller
 {
@@ -57,7 +58,6 @@ class EventController extends Controller
     public function update(UpdateEventRequest $request, string $organization, string $event): JsonResponse
     {
         $model = $this->find($request, $event);
-        $wasFinished = $model->status === 'finished';
 
         $data = $request->validated();
         $categories = $data['categories'] ?? null;
@@ -69,14 +69,67 @@ class EventController extends Controller
             $this->syncCategories($model, $categories);
         }
 
+        return ApiResponse::success(new EventResource($model->load('categories')), 'Event diperbarui');
+    }
+
+    /**
+     * Move the event to its next status.
+     *
+     * The only door: `status` is deliberately absent from UpdateEventRequest,
+     * so the transition table can't be walked around by saving the form. It
+     * matters because reaching `finished` releases the ticket and registration
+     * money the platform holds for this organizer — an irreversible payout, not
+     * a field edit.
+     */
+    public function updateStatus(Request $request, string $organization, string $event): JsonResponse
+    {
+        $model = $this->find($request, $event);
+
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(array_keys(Event::TRANSITIONS))],
+        ]);
+
+        if (! $model->canTransitionTo($validated['status'])) {
+            return ApiResponse::error(
+                $model->nextStatuses() === []
+                    ? 'Event yang sudah selesai atau dibatalkan tidak bisa diubah lagi.'
+                    : 'Status itu tidak bisa dicapai dari status event saat ini.',
+                ['status' => ['Perpindahan status tidak diizinkan.']],
+                422,
+            );
+        }
+
+        return $this->transition($model, $validated['status']);
+    }
+
+    /**
+     * Apply a status the caller has already established is allowed, and settle
+     * whatever that status owes.
+     */
+    protected function transition(Event $model, string $status): JsonResponse
+    {
+        $model->update(['status' => $status]);
+
         // Closing an event releases the ticket & registration money the
         // platform has been holding for this organizer.
-        if (! $wasFinished && $model->status === 'finished') {
+        if ($status === 'finished') {
             ReleaseEventFundsJob::dispatch($model->id)->afterCommit();
         }
 
-        return ApiResponse::success(new EventResource($model->load('categories')), 'Event diperbarui');
+        return ApiResponse::success(
+            new EventResource($model->load('categories')),
+            self::STATUS_MESSAGES[$status] ?? 'Status event diperbarui',
+        );
     }
+
+    /** @var array<string, string> */
+    protected const STATUS_MESSAGES = [
+        'open' => 'Event dipublikasikan — pendaftaran tim dibuka',
+        'registration_closed' => 'Pendaftaran ditutup',
+        'ongoing' => 'Event ditandai sedang berlangsung',
+        'finished' => 'Event diselesaikan — dana tertahan dicairkan',
+        'cancelled' => 'Event dibatalkan',
+    ];
 
     /**
      * Full-replace the event's categories from the submitted list. Rows carrying
@@ -146,12 +199,20 @@ class EventController extends Controller
         return ApiResponse::success(null, 'Event dihapus');
     }
 
+    /**
+     * Publish a draft. Kept as its own verb because that is how the dashboard
+     * words it, but it goes through the same transition table as everything
+     * else rather than writing the status itself.
+     */
     public function publish(Request $request, string $organization, string $event): JsonResponse
     {
         $model = $this->find($request, $event);
-        $model->update(['status' => 'open']);
 
-        return ApiResponse::success(new EventResource($model), 'Event dipublikasikan');
+        if (! $model->canTransitionTo('open')) {
+            return ApiResponse::error('Event ini sudah dipublikasikan.', ['status' => ['Sudah tidak berstatus draf.']], 422);
+        }
+
+        return $this->transition($model, 'open');
     }
 
     protected function org(Request $request): Organization

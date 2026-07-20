@@ -32,7 +32,8 @@ export type EventInput = Partial<
     SportEvent,
     | "name"
     | "sport_type"
-    | "status"
+    // No "status": transitions go through updateEventStatus(), which is the
+    // only path the backend still accepts them on.
     | "start_date"
     | "end_date"
     | "timezone"
@@ -87,9 +88,19 @@ export async function deleteEvent(orgId: string, eventId: string): Promise<void>
   await apiClient.delete(`/organizations/${orgId}/events/${eventId}`);
 }
 
-export async function publishEvent(orgId: string, eventId: string): Promise<SportEvent> {
-  const { data } = await apiClient.post<ApiEnvelope<SportEvent>>(
-    `/organizations/${orgId}/events/${eventId}/publish`
+/**
+ * Move the event to its next status. The backend enforces which moves are legal
+ * and publishes the remaining ones as `next_statuses`; the form save cannot
+ * change status at all.
+ */
+export async function updateEventStatus(
+  orgId: string,
+  eventId: string,
+  status: EventStatus
+): Promise<SportEvent> {
+  const { data } = await apiClient.patch<ApiEnvelope<SportEvent>>(
+    `/organizations/${orgId}/events/${eventId}/status`,
+    { status }
   );
   return data.data;
 }

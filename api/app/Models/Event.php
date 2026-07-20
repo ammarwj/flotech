@@ -12,6 +12,26 @@ class Event extends Model
 {
     use HasUuids;
 
+    /**
+     * Which status an event may move to next, keyed by where it is now.
+     *
+     * Skipping forward is allowed on purpose — a one-day tournament is closed
+     * the moment it ends, and nobody wants to march it through every step. Only
+     * one move goes backwards (reopening registration); `finished` and
+     * `cancelled` are terminal, because closing an event releases the funds the
+     * platform was holding and there is no undo for that.
+     *
+     * @var array<string, array<int, string>>
+     */
+    public const TRANSITIONS = [
+        'draft' => ['open', 'cancelled'],
+        'open' => ['registration_closed', 'ongoing', 'finished', 'cancelled'],
+        'registration_closed' => ['open', 'ongoing', 'finished', 'cancelled'],
+        'ongoing' => ['finished', 'cancelled'],
+        'finished' => [],
+        'cancelled' => [],
+    ];
+
     protected $fillable = [
         'organization_id',
         'name',
@@ -99,6 +119,21 @@ class Event extends Model
     public function isSetBased(): bool
     {
         return Catalog::isSetBased($this->sport_type);
+    }
+
+    /**
+     * Statuses this event may move to from where it stands.
+     *
+     * @return array<int, string>
+     */
+    public function nextStatuses(): array
+    {
+        return self::TRANSITIONS[$this->status] ?? [];
+    }
+
+    public function canTransitionTo(string $status): bool
+    {
+        return in_array($status, $this->nextStatuses(), true);
     }
 
     public function isRegistrationOpen(): bool

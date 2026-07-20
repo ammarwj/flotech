@@ -143,7 +143,7 @@ class WalletReleaseTest extends TestCase
         Carbon::setTestNow('2026-07-20 12:00:00');
 
         $this->actingAs($user, 'api')
-            ->patchJson("/api/v1/organizations/{$org->id}/events/{$event->id}", ['status' => 'finished'])
+            ->patchJson("/api/v1/organizations/{$org->id}/events/{$event->id}/status", ['status' => 'finished'])
             ->assertOk();
 
         $this->assertDatabaseHas('wallets', [
