@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { confirmResult } from "@/lib/api/matches";
@@ -10,8 +10,11 @@ import { Button } from "@/components/ui/button";
 import type { Match } from "@/types/api";
 
 /**
- * Confirm / unconfirm a match result. A result only counts toward standings and
- * bracket progression once confirmed.
+ * The confirm / unconfirm button for a match result. A result only counts toward
+ * standings and bracket progression once confirmed.
+ *
+ * It states nothing — MatchStatusBadge says whether a result is final or still
+ * waiting. This is only the action.
  */
 export function MatchConfirmBar({
   orgId,
@@ -35,37 +38,33 @@ export function MatchConfirmBar({
     onError: (err) => toast.error(parseApiError(err, "Gagal memperbarui konfirmasi.").message),
   });
 
-  if (match.status !== "finished") return null;
+  // Mirrors GameMatch::isFinished() — status alone isn't enough. A walkover is
+  // finished with no scores, and confirmResult() 422s on those, so offering the
+  // button there would be offering a guaranteed error.
+  if (match.status !== "finished" || match.home_score === null || match.away_score === null) {
+    return null;
+  }
 
   if (match.confirmed) {
     return (
-      <div className="flex items-center gap-3 text-xs">
-        <span className="inline-flex items-center gap-1 font-medium text-[var(--success)]">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          Hasil final
-        </span>
-        <button
-          type="button"
-          onClick={() => mutation.mutate(false)}
-          disabled={mutation.isPending}
-          className="text-muted-foreground underline hover:text-foreground disabled:opacity-50"
-        >
-          Batalkan
-        </button>
-      </div>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => mutation.mutate(false)}
+        disabled={mutation.isPending}
+        className="text-muted-foreground"
+      >
+        {/* "konfirmasi", not a bare "Batalkan": this sits beside a "Batalkan
+            pertandingan" action that means something else entirely. */}
+        Batalkan konfirmasi
+      </Button>
     );
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="inline-flex items-center gap-1 text-xs text-[var(--warning)]">
-        <Clock className="h-3.5 w-3.5" />
-        Menunggu konfirmasi
-      </span>
-      <Button size="sm" variant="outline" onClick={() => mutation.mutate(true)} disabled={mutation.isPending}>
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Konfirmasi
-      </Button>
-    </div>
+    <Button size="sm" variant="outline" onClick={() => mutation.mutate(true)} disabled={mutation.isPending}>
+      <CheckCircle2 className="h-3.5 w-3.5" />
+      Konfirmasi
+    </Button>
   );
 }

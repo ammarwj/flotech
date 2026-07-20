@@ -250,6 +250,10 @@ img { max-width: 100%; display: block; }
 .badge-warning { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
 .badge-live { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
 .badge-live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: pulse 1.4s infinite; }
+.badge-neutral { background: var(--bg-soft); color: var(--text-muted); }
+/* A called-off fixture: the danger tint says "not happening", the muted text
+   keeps it from shouting louder than a live one. */
+.badge-cancelled { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--text-muted); }
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
   70% { box-shadow: 0 0 0 6px transparent; }

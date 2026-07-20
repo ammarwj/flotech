@@ -4,6 +4,7 @@ import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
 import { timeOf, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
+import { PublicStatusBadge } from "./public-status-badge";
 import type { Match } from "@/types/api";
 
 /** Team crest: real logo when uploaded, gradient fallback otherwise. */
@@ -40,7 +41,7 @@ export function PublicMatchCard({
 }) {
   const tz = useEventTimezone();
   const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
-  const live = m.status === "ongoing";
+  const cancelled = m.status === "cancelled";
   const time = timeOf(m.scheduled_at, tz);
   const winner = done ? matchWinnerId(m) : null;
   const metaLabel = m.group_name
@@ -53,20 +54,14 @@ export function PublicMatchCard({
     <button
       type="button"
       onClick={onClick}
-      className="match-card match-card--fixture"
+      className={cn("match-card match-card--fixture", cancelled && "match-card--cancelled")}
       aria-label={`Detail ${m.home_team?.name ?? "TBD"} vs ${m.away_team?.name ?? "TBD"}`}
     >
+      {/* The kickoff time always stays — the status chip lives in the meta
+          column so a live or cancelled fixture doesn't lose when it was due. */}
       <div className="match-time">
-        {live ? (
-          <span className="badge badge-live">
-            <span className="dot" /> LIVE
-          </span>
-        ) : (
-          <>
-            <b>{time ?? "TBD"}</b>
-            {time && <small>{tzLabel(tz)}</small>}
-          </>
-        )}
+        <b>{time ?? "TBD"}</b>
+        {time && <small>{tzLabel(tz)}</small>}
       </div>
       <div className="match-teams">
         <div className={cn("match-team", winner && winner !== m.home_team_id && "lose")}>
@@ -81,6 +76,7 @@ export function PublicMatchCard({
         </div>
       </div>
       <div className="match-meta">
+        <PublicStatusBadge status={m.status} />
         {categoryLabel && <small className="pill">{categoryLabel}</small>}
         <small>{metaLabel}</small>
         {wentToPenalties(m) ? (

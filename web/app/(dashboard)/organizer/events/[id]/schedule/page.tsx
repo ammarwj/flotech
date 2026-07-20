@@ -69,7 +69,7 @@ import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
-import { MatchConfirmBar } from "@/components/event/match-confirm-bar";
+import { MatchCardHeader } from "@/components/event/match-card-header";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
 import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
 import { SlotTeamsDialog } from "@/components/event/slot-teams-dialog";
@@ -712,13 +712,37 @@ function MatchCard({
     </Button>
   );
 
-  // Walkover (bye): one team present, no opponent, already settled.
+  // Cancelled: read-only. The score row below hardcodes `status: "finished"` on
+  // save, so leaving it live would let one click un-cancel the fixture through
+  // the other endpoint — the two doors would disagree in the UI.
+  if (match.status === "cancelled") {
+    return (
+      <Card className="p-3 opacity-60">
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
+          <span className="text-xs">
+            {match.home_score !== null && match.away_score !== null
+              ? `${match.home_score}–${match.away_score}`
+              : "vs"}
+          </span>
+          <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
+          {removeBtn}
+        </div>
+      </Card>
+    );
+  }
+
+  // Walkover (bye): one team present, no opponent, already settled. The
+  // "Menang WO" badge in the header says so — no second label here.
   if (match.home_team && !match.away_team && match.status === "finished") {
     return (
-      <Card className="flex items-center gap-3 p-3 text-sm">
-        <span className="flex-1 font-semibold">{match.home_team.name}</span>
-        <span className="text-xs text-muted-foreground">menang otomatis (bye)</span>
-        {removeBtn}
+      <Card className="p-3 text-sm">
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <div className="mt-3 flex items-center gap-3">
+          <span className="flex-1 font-semibold">{match.home_team.name}</span>
+          {removeBtn}
+        </div>
       </Card>
     );
   }
@@ -727,7 +751,8 @@ function MatchCard({
   if (!match.home_team || !match.away_team) {
     return (
       <Card className="p-3">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
           <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
@@ -744,13 +769,15 @@ function MatchCard({
   if (setBased) {
     return (
       <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-        <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <div className="mt-3">
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        </div>
         <div className="mt-3 border-t border-border pt-3">
           <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
         </div>
         <div className="mt-2 border-t border-border pt-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-1">
               <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
                 <Goal className="h-4 w-4" />
@@ -776,7 +803,10 @@ function MatchCard({
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
     <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-      <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+      <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+      <div className="mt-3">
+        <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+      </div>
       <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
         <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
         <Input
@@ -839,12 +869,6 @@ function MatchCard({
               ? "Pemenang adu penalti yang lolos ke babak berikutnya."
               : "Skor imbang — isi hasil penalti, tidak boleh sama."}
           </p>
-        </div>
-      )}
-
-      {match.status === "finished" && (
-        <div className="mt-2 border-t border-border pt-2">
-          <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
         </div>
       )}
       {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}

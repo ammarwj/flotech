@@ -174,6 +174,27 @@ export async function confirmResult(
   return data.data;
 }
 
+/**
+ * Move a fixture between scheduled / ongoing / cancelled.
+ *
+ * It cannot reach "finished" — a match is finished by saving its score through
+ * updateMatchResult(), which is the only endpoint that validates a scoreline.
+ * This one never touches scores, sets or penalties, so a running score survives
+ * being marked ongoing. Withdrawing a confirmed knockout result also withdraws
+ * the team it had sent into the next round.
+ */
+export async function updateMatchStatus(
+  orgId: string,
+  matchId: string,
+  status: Exclude<MatchStatus, "finished">
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/status`,
+    { status }
+  );
+  return data.data;
+}
+
 export async function getStandings(
   orgId: string,
   eventId: string,
@@ -185,6 +206,11 @@ export async function getStandings(
   return data.data;
 }
 
+/**
+ * The scoreline door. Sending this always rebuilds the result, so anything left
+ * out is cleared — that is why a status-only change goes through
+ * {@link updateMatchStatus} instead.
+ */
 export interface MatchResultPayload {
   home_score?: number | null;
   away_score?: number | null;

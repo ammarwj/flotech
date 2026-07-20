@@ -1,5 +1,6 @@
 import type {
   EventStatus,
+  MatchStatus,
   SubscriptionStatus,
   TeamStatus,
   TicketOrderStatus,
@@ -15,6 +16,13 @@ export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
   draft: "Draf",
   open: "Pendaftaran Dibuka",
   registration_closed: "Pendaftaran Ditutup",
+  ongoing: "Berlangsung",
+  finished: "Selesai",
+  cancelled: "Dibatalkan",
+};
+
+export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
+  scheduled: "Terjadwal",
   ongoing: "Berlangsung",
   finished: "Selesai",
   cancelled: "Dibatalkan",

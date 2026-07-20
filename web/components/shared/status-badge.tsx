@@ -9,6 +9,7 @@ import {
 } from "@/lib/labels";
 import type {
   EventStatus,
+  Match,
   SubscriptionStatus,
   TeamStatus,
   TicketOrderStatus,
@@ -46,6 +47,44 @@ export function EventStatusBadge({ status }: { status: EventStatus }) {
       {EVENT_STATUS_LABELS[status]}
     </Badge>
   );
+}
+
+/**
+ * A fixture's state in one chip.
+ *
+ * It takes the whole match, not a bare status, because the state an organizer
+ * needs is not a function of `status` alone: a finished result still has to say
+ * whether it counts yet, and a walkover is a finish nobody played. So
+ * MATCH_STATUS_LABELS.finished ("Selesai") is never rendered here — a finished
+ * match always resolves to one of three truer things.
+ *
+ * The confirmation wording is lifted verbatim from MatchConfirmBar, which now
+ * keeps only its buttons: one place states, one place acts.
+ */
+export function MatchStatusBadge({ match }: { match: Match }) {
+  if (match.status === "cancelled") return <Badge variant="danger">Dibatalkan</Badge>;
+
+  if (match.status === "ongoing") {
+    return (
+      <Badge variant="info" dot>
+        Berlangsung
+      </Badge>
+    );
+  }
+
+  if (match.status === "finished") {
+    // A lone team with no opponent walked over; there is no scoreline to confirm.
+    if (match.home_team_id && !match.away_team_id) {
+      return <Badge variant="neutral">Menang WO</Badge>;
+    }
+    return match.confirmed ? (
+      <Badge variant="success">Hasil final</Badge>
+    ) : (
+      <Badge variant="warning">Menunggu konfirmasi</Badge>
+    );
+  }
+
+  return <Badge variant="neutral">Terjadwal</Badge>;
 }
 
 const WITHDRAWAL_VARIANT: Record<WithdrawalStatus, Variant> = {

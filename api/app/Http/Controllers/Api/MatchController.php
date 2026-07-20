@@ -831,6 +831,74 @@ class MatchController extends Controller
     }
 
     /**
+     * Move a fixture between scheduled / ongoing / cancelled.
+     *
+     * `finished` is deliberately absent from the accepted values rather than
+     * merely guarded: updateResult() stays the only way to finish a match, and
+     * it still validates the scoreline. There is no code path where the two
+     * doors can disagree, which a transition table would not have given us.
+     *
+     * This endpoint **never writes scores, sets or penalties** — that is why it
+     * exists. updateResult() rebuilds its payload from scratch and nulls
+     * whatever the request left out, so using it for a status-only change would
+     * silently wipe a running scoreline.
+     *
+     * Invariant it upholds: `confirmed_at !== null` implies `status ===
+     * 'finished'`. StandingService filters on exactly that pair, so a stale
+     * confirmation on a cancelled match would be invisible today and a bug the
+     * moment either filter is relaxed.
+     */
+    public function updateStatus(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+
+        $validated = $request->validate(
+            ['status' => ['required', Rule::in(['scheduled', 'ongoing', 'cancelled'])]],
+            ['status.in' => 'Pertandingan diselesaikan dengan menyimpan skor, bukan dari sini.'],
+        );
+
+        // Nothing to do — and saying so early keeps a double-click from walking
+        // the bracket a second time and clearing a slot that was already reset.
+        if ($matchModel->status === $validated['status']) {
+            return ApiResponse::success(
+                new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+                'Status pertandingan tidak berubah',
+            );
+        }
+
+        $cleared = 0;
+
+        // A confirmed result has already pushed its winner into the next round.
+        // Every status reachable here means "that result is no longer final", so
+        // the winner has to come back out — the same edges confirmResult() walks
+        // forward, walked backward.
+        if ($matchModel->isConfirmed()) {
+            $matchModel->confirmed_at = null;
+
+            $engine = $matchModel->category->engine();
+            if ($engine === 'knockout_single' || $engine === 'knockout_double' || $matchModel->stage === 'knockout') {
+                $cleared = $this->schedule->clearDownstream($matchModel);
+            }
+        }
+
+        $matchModel->status = $validated['status'];
+        $matchModel->save();
+
+        $message = match ($validated['status']) {
+            'ongoing' => 'Pertandingan dimulai',
+            'cancelled' => 'Pertandingan dibatalkan',
+            default => 'Pertandingan dikembalikan ke terjadwal',
+        };
+
+        return ApiResponse::success(
+            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            $cleared > 0
+                ? "{$message} — {$cleared} pertandingan babak berikutnya direset"
+                : $message,
+        );
+    }
+
+    /**
      * Delete a fixture (manual or generated). Player stats and goals cascade
      * with the match at the database level.
      */

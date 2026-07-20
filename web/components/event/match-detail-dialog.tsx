@@ -8,6 +8,7 @@ import { getPublicMatchStats } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
+import { PublicStatusBadge } from "./public-status-badge";
 import { cn } from "@/lib/utils";
 import type { Match, PublicMatchStatTeam, StatColumn } from "@/types/api";
 
@@ -82,11 +83,7 @@ export function MatchDetailDialog({
                     ? `Babak ${match.round}`
                     : `Pekan ${match.round}`}
               </span>
-              {match.status === "ongoing" && (
-                <span className="badge badge-live">
-                  <span className="dot" /> LIVE
-                </span>
-              )}
+              <PublicStatusBadge status={match.status} />
             </div>
             <h3 className="mt-1 text-base font-bold">
               {match.home_team?.name ?? "TBD"} vs {match.away_team?.name ?? "TBD"}

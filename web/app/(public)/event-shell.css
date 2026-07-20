@@ -110,6 +110,9 @@
   transition: border-color 0.2s, box-shadow 0.2s;
   width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
 }
+/* Opacity only — no strike-through on the team names. A struck-out name reads
+   as a deleted entity; the badge already says the fixture was called off. */
+.match-card--cancelled { opacity: 0.65; }
 .match-card:hover { border-color: var(--brand-500); box-shadow: var(--shadow-sm); }
 .match-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
 .match-time { text-align: center; }

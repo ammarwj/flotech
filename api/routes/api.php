@@ -218,6 +218,9 @@ Route::prefix('v1')->group(function () {
             // Fix a wrong seed in place, instead of rebuilding the whole bracket.
             Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
+            // Scheduled / ongoing / cancelled. Finishing still goes through the
+            // result endpoint, which is the only one that validates a scoreline.
+            Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);

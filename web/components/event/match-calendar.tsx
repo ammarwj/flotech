@@ -4,10 +4,24 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { dateKeyOf } from "@/lib/match-dates";
+import { MATCH_STATUS_LABELS } from "@/lib/labels";
 import { matchScoreText } from "@/lib/scoring";
 import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
-import type { Match } from "@/types/api";
+import type { Match, MatchStatus } from "@/types/api";
+
+/**
+ * Chip tint per status. Deliberately not the <Badge> component: it is 22px tall
+ * at text-xs, and a day cell holds three of these at 11px.
+ */
+const CHIP: Record<MatchStatus, string> = {
+  scheduled: "bg-[var(--tint)] text-[var(--brand-700)]",
+  // No pulse. The animated dot belongs to the single LIVE badge on the public
+  // page; a month grid of them is noise.
+  ongoing: "bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] text-[var(--danger)]",
+  finished: "bg-[var(--bg-soft)] text-[var(--text-2)]",
+  cancelled: "bg-[var(--bg-soft)] text-[var(--text-muted)] line-through opacity-60",
+};
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const MONTHS = [
@@ -114,16 +128,29 @@ export function MatchCalendar({ matches }: { matches: Match[] }) {
               <div className="grid gap-1">
                 {list.slice(0, 3).map((m) => {
                   const sc = matchScoreText(m);
-                  const done = m.home_score !== null && m.away_score !== null;
+                  // Scores alone aren't "done" — a cancelled fixture keeps its
+                  // scoreline, and rendering it would claim the match happened.
+                  const done =
+                    m.status === "finished" && m.home_score !== null && m.away_score !== null;
                   return (
                     <div
                       key={m.id}
-                      title={`${m.home_team?.name ?? "TBD"} ${done ? sc.main : "vs"} ${m.away_team?.name ?? "TBD"}`}
-                      className="truncate rounded bg-[var(--tint)] px-1.5 py-1 text-[11px] leading-tight text-[var(--brand-700)]"
+                      // "+N lagi" hides the overflow, so hover is often the only
+                      // way to read a chip — the status belongs in there.
+                      title={`${m.home_team?.name ?? "TBD"} ${done ? sc.main : "vs"} ${m.away_team?.name ?? "TBD"} · ${MATCH_STATUS_LABELS[m.status]}`}
+                      className={cn(
+                        "flex items-center gap-1 truncate rounded px-1.5 py-1 text-[11px] leading-tight",
+                        CHIP[m.status]
+                      )}
                     >
-                      {m.home_team?.name ?? "TBD"}{" "}
-                      <span className="font-bold">{done ? sc.main : "v"}</span>{" "}
-                      {m.away_team?.name ?? "TBD"}
+                      {m.status === "ongoing" && (
+                        <span aria-hidden className="h-[5px] w-[5px] shrink-0 rounded-full bg-current" />
+                      )}
+                      <span className="truncate">
+                        {m.home_team?.name ?? "TBD"}{" "}
+                        <span className="font-bold">{done ? sc.main : "v"}</span>{" "}
+                        {m.away_team?.name ?? "TBD"}
+                      </span>
                     </div>
                   );
                 })}
