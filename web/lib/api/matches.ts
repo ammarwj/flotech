@@ -28,6 +28,12 @@ export async function getMatches(
 export interface CreateMatchPayload {
   home_team_id: string;
   away_team_id: string;
+  /**
+   * Files the fixture under the group stage so it counts in that group's table.
+   * Hybrid only, and both teams must already be drawn into that group. Omitted
+   * = a loose fixture that reaches no group table.
+   */
+  group_name?: string | null;
   /** ISO kickoff time; null when undecided. */
   scheduled_at?: string | null;
   venue?: string | null;

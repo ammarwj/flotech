@@ -175,6 +175,7 @@ function CategoryEditor({
   index,
   canRemove,
   isHybrid,
+  isSingleElim,
   nameError,
   onChange,
   onRemove,
@@ -183,6 +184,8 @@ function CategoryEditor({
   index: number;
   canRemove: boolean;
   isHybrid: boolean;
+  /** Single elimination has no config card, but it can still play for third. */
+  isSingleElim: boolean;
   nameError?: string;
   onChange: (patch: Partial<CategoryDraft>) => void;
   onRemove: () => void;
@@ -244,6 +247,27 @@ function CategoryEditor({
           value={cat.bracket_config}
           onChange={(config) => onChange({ bracket_config: config })}
         />
+      )}
+
+      {/* The only bracket setting single elimination has, so it gets a lone
+          checkbox rather than a card of its own. */}
+      {isSingleElim && (
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
+            checked={cat.bracket_config?.third_place ?? false}
+            onChange={(e) =>
+              onChange({ bracket_config: { ...cat.bracket_config, third_place: e.target.checked } })
+            }
+          />
+          <span>
+            <span className="font-medium">Perebutan juara 3</span>
+            <span className="block text-xs text-muted-foreground">
+              Dua tim yang kalah di semifinal bermain sekali lagi.
+            </span>
+          </span>
+        </label>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -586,6 +610,7 @@ export function EventForm({
               index={i}
               canRemove={categories.length > 1}
               isHybrid={engineOf(c.tournament_format) === "hybrid"}
+              isSingleElim={engineOf(c.tournament_format) === "knockout_single"}
               nameError={catErrors[c._key]}
               onChange={(patch) => updateCat(c._key, patch)}
               onRemove={() => removeCat(c._key)}

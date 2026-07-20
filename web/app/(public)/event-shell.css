@@ -64,6 +64,18 @@
 .ehero-cta .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.4); }
 .ehero-cta .btn-secondary:hover { border-color: #fff; color: #fff; background: rgba(255,255,255,0.18); }
 
+/* Strip kontrol: tab bar, pill kategori, dan panel di bawahnya satu kelompok.
+   Ritme 96px milik .section itu untuk memisahkan band landing page — dipakai
+   di sini ia terbaca sebagai lubang di antara baris yang justru saling terkait.
+   Tanpa padding-bottom: jarak ke bawah diatur padding atas elemen berikutnya. */
+.etabs   { padding-top: 28px; }
+.efilter { padding-top: 12px; }
+.ebanner { padding-top: 28px; }
+@media (max-width: 700px) {
+  .etabs, .ebanner { padding-top: 20px; }
+  .efilter { padding-top: 10px; }
+}
+
 /* countdown */
 .countdown {
   background: rgba(255,255,255,0.1);

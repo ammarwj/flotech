@@ -52,6 +52,31 @@ export function downstreamImpact(match: Match, bracket: Match[]): number {
   return cleared;
 }
 
+export const THIRD_PLACE_LABEL = "Perebutan Juara 3";
+
+/** The play-off between the beaten semifinalists, not a round of the draw. */
+export const isThirdPlace = (m: Match) => m.bracket === "third_place";
+
+/**
+ * What phase a fixture belongs to, in words a spectator recognises.
+ *
+ * The round *number* means nothing on its own — "Babak 2" is Semifinal in a
+ * four-team draw and the Round of 16 in a thirty-two-team one. Only the number
+ * of ties in that round says which, so the whole list has to be in hand.
+ */
+export function phaseLabel(m: Match, all: Match[], knockout = false): string {
+  if (isThirdPlace(m)) return THIRD_PLACE_LABEL;
+  if (m.group_name) return `Grup ${m.group_name}`;
+
+  if (!knockout && m.stage !== "knockout") return `Pekan ${m.round}`;
+
+  const inRound = all.filter(
+    (x) => x.round === m.round && x.stage === m.stage && !isThirdPlace(x)
+  ).length;
+
+  return knockoutRoundLabel(inRound || 1);
+}
+
 /** Human label for a knockout round based on how many matches it holds. */
 export function knockoutRoundLabel(matchesInRound: number): string {
   switch (matchesInRound) {
@@ -133,9 +158,14 @@ export function buildMatchSections(
       const leg = list[0]?.leg ?? 1;
       out.push([leg > 1 ? `Fase Grup · Matchday ${round} (Leg 2)` : `Fase Grup · Matchday ${round}`, list]);
     }
-    for (const [, list] of groupByRound(matches.filter((m) => m.stage === "knockout"))) {
+    // The third-place tie shares the final's round; counting it would turn a
+    // one-match final into a two-match "Semifinal".
+    const ko = matches.filter((m) => m.stage === "knockout");
+    for (const [, list] of groupByRound(ko.filter((m) => !isThirdPlace(m)))) {
       out.push([`Knockout · ${knockoutRoundLabel(list.length)}`, list]);
     }
+    const thirdKo = ko.filter(isThirdPlace);
+    if (thirdKo.length) out.push([`Knockout · ${THIRD_PLACE_LABEL}`, thirdKo]);
 
     // Fixtures added by hand carry no stage, so they belong to neither loop
     // above — without this they'd vanish from the list entirely.
@@ -172,7 +202,12 @@ export function buildMatchSections(
     return out;
   }
 
-  return groupByRound(matches).map(
+  const third = matches.filter(isThirdPlace);
+  const sections = groupByRound(matches.filter((m) => !isThirdPlace(m))).map(
     ([round, list]) => [knockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`, list] as [string, Match[]]
   );
+
+  if (third.length) sections.push([THIRD_PLACE_LABEL, third]);
+
+  return sections;
 }

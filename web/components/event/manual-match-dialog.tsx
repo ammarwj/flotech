@@ -20,6 +20,11 @@ import type { Team } from "@/types/api";
 interface ManualMatchDialogProps {
   /** Approved teams of the selected category. */
   teams: Team[];
+  /**
+   * The groups this category runs, if any. Empty for league and knockout —
+   * they have no groups, so the picker is not offered at all.
+   */
+  groups?: string[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateMatchPayload) => void;
@@ -30,8 +35,9 @@ export function ManualMatchDialog({ open, ...props }: ManualMatchDialogProps & {
   return open ? <Dialog {...props} /> : null;
 }
 
-function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
+function Dialog({ teams, groups = [], pending, onClose, onSubmit }: ManualMatchDialogProps) {
   const tz = useEventTimezone();
+  const [group, setGroup] = useState("");
   const [home, setHome] = useState("");
   const [away, setAway] = useState("");
   const [when, setWhen] = useState("");
@@ -43,12 +49,17 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Picking a group narrows the pairing to its own teams: the backend refuses a
+  // group fixture between teams of different groups, so offering them would be
+  // offering a guaranteed error.
+  const selectable = group === "" ? teams : teams.filter((t) => t.group_name === group);
   const canSave = home !== "" && away !== "" && home !== away;
 
   const submit = () =>
     onSubmit({
       home_team_id: home,
       away_team_id: away,
+      group_name: group || null,
       // What the organizer typed is the venue's wall clock, not their own.
       scheduled_at: fromEventInput(when, tz),
       venue: venue.trim() || null,
@@ -92,6 +103,36 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
             </p>
           ) : (
             <>
+              {groups.length > 0 && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="manual-group" className="font-semibold">
+                    Fase
+                  </Label>
+                  <Select
+                    id="manual-group"
+                    value={group}
+                    onChange={(e) => {
+                      setGroup(e.target.value);
+                      // The old pair may not belong to the new group.
+                      setHome("");
+                      setAway("");
+                    }}
+                  >
+                    <option value="">Pertandingan tambahan (di luar grup)</option>
+                    {groups.map((g) => (
+                      <option key={g} value={g}>
+                        Fase Grup · Grup {g}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {group
+                      ? `Dihitung di klasemen Grup ${group}. Hanya tim Grup ${group} yang bisa dipilih.`
+                      : "Tidak masuk klasemen grup mana pun."}
+                  </p>
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="manual-home" className="font-semibold">
@@ -99,7 +140,7 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
                   </Label>
                   <Select id="manual-home" value={home} onChange={(e) => setHome(e.target.value)}>
                     <option value="">Pilih tim…</option>
-                    {teams.map((t) => (
+                    {selectable.map((t) => (
                       <option key={t.id} value={t.id} disabled={t.id === away}>
                         {t.name}
                       </option>
@@ -112,7 +153,7 @@ function Dialog({ teams, pending, onClose, onSubmit }: ManualMatchDialogProps) {
                   </Label>
                   <Select id="manual-away" value={away} onChange={(e) => setAway(e.target.value)}>
                     <option value="">Pilih tim…</option>
-                    {teams.map((t) => (
+                    {selectable.map((t) => (
                       <option key={t.id} value={t.id} disabled={t.id === home}>
                         {t.name}
                       </option>

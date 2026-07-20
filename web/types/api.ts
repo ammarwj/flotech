@@ -220,6 +220,8 @@ export interface BracketConfig {
   };
   /** Entry round of the knockout stage; omitted = sized from the qualifiers. */
   knockout_start?: KnockoutRound | null;
+  /** Play an extra tie between the beaten semifinalists. */
+  third_place?: boolean;
   draw_method?: DrawMethod;
   tiebreakers?: Tiebreaker[];
 }
@@ -240,7 +242,12 @@ export interface MatchTeamRef {
   logo_url: string | null;
 }
 
-export type BracketSide = "winners" | "losers" | "grand_final";
+/**
+ * Which side of a double-elimination draw a fixture sits on, plus the
+ * third-place play-off — which reuses this column to mark itself apart from the
+ * final it shares a round with.
+ */
+export type BracketSide = "winners" | "losers" | "grand_final" | "third_place";
 
 /** Stage of a hybrid event; null for the single-stage formats. */
 export type MatchStage = "group" | "knockout" | null;

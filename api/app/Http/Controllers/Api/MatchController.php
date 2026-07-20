@@ -298,9 +298,13 @@ class MatchController extends Controller
 
     /**
      * Add a single fixture by hand, for organizers who already have their own
-     * schedule instead of auto-generating one. Created as a generic fixture
-     * (stage null): for a league it flows into the standings once its result is
-     * confirmed; it never drives a knockout bracket.
+     * schedule instead of auto-generating one.
+     *
+     * Without `group_name` it is a generic fixture (stage null): for a league it
+     * flows into the standings once its result is confirmed, and it never drives
+     * a knockout bracket. Naming a group instead files it under the group stage,
+     * where it counts toward that group's table — which is why both teams have
+     * to already belong to that group.
      */
     public function storeManual(Request $request, string $organization, string $event, string $category): JsonResponse
     {
@@ -313,21 +317,64 @@ class MatchController extends Controller
             return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk menambah pertandingan.', null, 422);
         }
 
+        $groups = $categoryModel->engine() === 'hybrid'
+            ? HybridConfig::fromCategory($categoryModel)->groupNames()
+            : [];
+
         $data = $request->validate([
             'home_team_id' => ['required', 'uuid', Rule::in($approved)],
             'away_team_id' => ['required', 'uuid', 'different:home_team_id', Rule::in($approved)],
+            // Naming a group promotes the fixture into the group stage, where it
+            // counts toward that group's table. Only hybrid has groups at all.
+            'group_name' => ['nullable', 'string', Rule::in($groups)],
             'scheduled_at' => ['nullable', 'date'],
             'venue' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $group = $data['group_name'] ?? null;
+
+        if ($group !== null) {
+            // A group fixture between teams of different groups would put a
+            // result into a table neither of them plays in. The draw decides
+            // who is in which group; this only records a match inside one.
+            $outsiders = $categoryModel->teams()
+                ->whereIn('id', [$data['home_team_id'], $data['away_team_id']])
+                ->where(fn ($q) => $q->whereNull('group_name')->orWhere('group_name', '!=', $group))
+                ->pluck('name');
+
+            if ($outsiders->isNotEmpty()) {
+                return ApiResponse::error(
+                    "Tim ini bukan peserta Grup {$group}: ".$outsiders->join(', ').'. Ubah lewat Undian Grup dulu.',
+                    ['group_name' => ['Kedua tim harus berada di grup yang sama.']],
+                    422,
+                );
+            }
+        }
+
+        // A grouped fixture joins the last matchday rather than starting a new
+        // one; adding three would otherwise sprout three headings. Round is
+        // presentation only — standings never read it.
+        $round = $group === null
+            ? 1
+            : (int) ($categoryModel->matches()->where('stage', 'group')->max('round') ?: 1);
+
+        $siblings = $categoryModel->matches();
+
+        if ($group === null) {
+            $siblings->whereNull('stage');
+        } else {
+            $siblings->where('stage', 'group')->where('round', $round);
+        }
+
         $match = GameMatch::create([
             'event_id' => $categoryModel->event_id,
             'category_id' => $categoryModel->id,
-            'stage' => null,
-            'round' => 1,
+            'stage' => $group === null ? null : 'group',
+            'group_name' => $group,
+            'round' => $round,
             'leg' => 1,
-            // Keep manual fixtures in insertion order within the null stage.
-            'order' => (int) $categoryModel->matches()->whereNull('stage')->max('order') + 1,
+            // Keep manual fixtures in insertion order within their bucket.
+            'order' => (int) $siblings->max('order') + 1,
             'home_team_id' => $data['home_team_id'],
             'away_team_id' => $data['away_team_id'],
             'scheduled_at' => $data['scheduled_at'] ?? null,
@@ -857,6 +904,9 @@ class MatchController extends Controller
 
         if ($engine === 'knockout_single' || $match->stage === 'knockout') {
             $this->schedule->advanceWinner($match);
+            // A semifinal also sends its loser sideways, when the category
+            // plays for third place.
+            $this->schedule->advanceLoser($match);
         } elseif ($engine === 'knockout_double') {
             $this->schedule->advanceDouble($match);
         }

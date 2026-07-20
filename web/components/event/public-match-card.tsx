@@ -28,15 +28,19 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
  */
 export function PublicMatchCard({
   match: m,
-  knockout,
   categoryLabel,
+  phase,
   onClick,
 }: {
   match: Match;
-  /** A tie that must produce a winner — changes the round label wording. */
-  knockout: boolean;
   /** Which category this fixture belongs to; only shown in the combined list. */
   categoryLabel?: string;
+  /**
+   * Phase in words — "Grup A", "Perempat Final", "Perebutan Juara 3". Computed
+   * by the caller because it needs the whole round to know which one it is: a
+   * round number alone can't tell a semifinal from a Round of 16.
+   */
+  phase: string;
   onClick: () => void;
 }) {
   const tz = useEventTimezone();
@@ -44,11 +48,6 @@ export function PublicMatchCard({
   const cancelled = m.status === "cancelled";
   const time = timeOf(m.scheduled_at, tz);
   const winner = done ? matchWinnerId(m) : null;
-  const metaLabel = m.group_name
-    ? `Grup ${m.group_name}`
-    : knockout || m.stage === "knockout"
-      ? `Babak ${m.round}`
-      : `Pekan ${m.round}`;
 
   return (
     <button
@@ -78,7 +77,7 @@ export function PublicMatchCard({
       <div className="match-meta">
         <PublicStatusBadge status={m.status} />
         {categoryLabel && <small className="pill">{categoryLabel}</small>}
-        <small>{metaLabel}</small>
+        <small>{phase}</small>
         {wentToPenalties(m) ? (
           <small>
             Pen {m.home_penalty}–{m.away_penalty}

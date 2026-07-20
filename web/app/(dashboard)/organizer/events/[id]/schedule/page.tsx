@@ -44,8 +44,10 @@ import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  isThirdPlace,
+  phaseLabel,
 } from "@/lib/bracket";
-import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
@@ -238,6 +240,14 @@ export default function SchedulePage() {
   });
 
   const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
+
+  // Only when it says something the section heading doesn't: a matchday mixes
+  // the groups, and a knockout round number isn't a name. A league fixture's
+  // "Pekan 3" would just repeat its own heading, so it gets no chip.
+  const phaseOf = (m: Match) =>
+    m.group_name || m.stage === "knockout" || isKnockout || isThirdPlace(m)
+      ? phaseLabel(m, matches, isKnockout)
+      : undefined;
   const knockoutTies = knockoutMatches(matches);
 
   // Who a bracket slot may be handed to. A hybrid bracket only accepts the
@@ -538,6 +548,7 @@ export default function SchedulePage() {
                           eventId={eventId}
                           setBased={setBased}
                           knockout={isKnockout || m.stage === "knockout"}
+                          phase={phaseOf(m)}
                         />
                       ))}
                     </div>
@@ -576,6 +587,7 @@ export default function SchedulePage() {
         key={String(manualDialog)}
         open={manualDialog}
         teams={approvedTeams}
+        groups={isHybrid ? groupNames(config) : []}
         pending={addManual.isPending}
         onClose={() => setManualDialog(false)}
         onSubmit={(payload) => addManual.mutate(payload)}
@@ -642,6 +654,7 @@ function MatchCard({
   eventId,
   setBased,
   knockout,
+  phase,
 }: {
   match: Match;
   orgId: string;
@@ -649,6 +662,8 @@ function MatchCard({
   setBased: boolean;
   /** A tie that must produce a winner — level scores go to penalties. */
   knockout: boolean;
+  /** "Grup A", "Semifinal" — omitted when it would only repeat the heading. */
+  phase?: string;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -718,7 +733,7 @@ function MatchCard({
   if (match.status === "cancelled") {
     return (
       <Card className="p-3 opacity-60">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
           <span className="text-xs">
@@ -738,7 +753,7 @@ function MatchCard({
   if (match.home_team && !match.away_team && match.status === "finished") {
     return (
       <Card className="p-3 text-sm">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
         <div className="mt-3 flex items-center gap-3">
           <span className="flex-1 font-semibold">{match.home_team.name}</span>
           {removeBtn}
@@ -751,7 +766,7 @@ function MatchCard({
   if (!match.home_team || !match.away_team) {
     return (
       <Card className="p-3">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
@@ -769,7 +784,7 @@ function MatchCard({
   if (setBased) {
     return (
       <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
         <div className="mt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
         </div>
@@ -803,7 +818,7 @@ function MatchCard({
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
     <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-      <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
+      <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
       <div className="mt-3">
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
       </div>

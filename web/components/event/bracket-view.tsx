@@ -1,6 +1,13 @@
 import { Pencil } from "lucide-react";
 
-import { knockoutRoundLabel, matchWinnerId, crestGradient, groupByRound, wentToPenalties } from "@/lib/bracket";
+import {
+  knockoutRoundLabel,
+  matchWinnerId,
+  crestGradient,
+  groupByRound,
+  isThirdPlace,
+  wentToPenalties,
+} from "@/lib/bracket";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -55,7 +62,10 @@ export function BracketView({
    */
   onEditSlot?: (match: Match) => void;
 }) {
-  const rounds = groupByRound(matches);
+  // The third-place tie shares the final's round but is not part of the tree —
+  // drawing it there would give the final column two cells and a connector to
+  // nowhere. The schedule list shows it under its own heading instead.
+  const rounds = groupByRound(matches.filter((m) => !isThirdPlace(m)));
   if (rounds.length === 0) return null;
 
   // Hand-added friendlies share round 1 with a single-elimination bracket, but

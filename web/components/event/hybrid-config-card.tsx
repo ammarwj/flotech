@@ -252,6 +252,20 @@ export function HybridConfigCard({
                 ))}
               </Select>
             </div>
+            <label className="flex cursor-pointer items-start gap-2 self-end pb-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
+                checked={c.third_place}
+                onChange={(e) => set({ third_place: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">Perebutan juara 3</span>
+                <span className="block text-xs text-muted-foreground">
+                  Dua tim yang kalah di semifinal bermain sekali lagi.
+                </span>
+              </span>
+            </label>
             <div className="grid gap-1.5">
               <Label className="font-semibold">Metode undian grup</Label>
               <Select

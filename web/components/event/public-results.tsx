@@ -8,6 +8,7 @@ import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  phaseLabel,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -126,7 +127,7 @@ export function PublicResults({
                   <PublicMatchCard
                     key={m.id}
                     match={m}
-                    knockout={isKnockout}
+                    phase={phaseLabel(m, matches, isKnockout)}
                     onClick={() => setOpenMatch(m)}
                   />
                 ))}
@@ -151,6 +152,7 @@ export function PublicResults({
       {openMatch && (
         <MatchDetailDialog
           match={openMatch}
+          phase={phaseLabel(openMatch, matches, isKnockout)}
           orgSlug={orgSlug}
           eventSlug={eventSlug}
           onClose={() => setOpenMatch(null)}

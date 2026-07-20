@@ -45,8 +45,12 @@ export default function PublicEventPage() {
   const [tab, setTab] = useState<TabKey>("info");
   const [openTeam, setOpenTeam] = useState<PublicTeam | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
-  // Which category's schedule/standings/bracket the competition tabs show.
+  // Which category's schedule/standings/bracket the competition tabs show —
+  // always a real category, never "Semua".
   const [categoryId, setCategoryId] = useState<string>("");
+  // "Semua" only applies to the schedule, so it is kept apart from the category
+  // choice: switching tabs must not throw away the category the user picked.
+  const [scheduleAll, setScheduleAll] = useState(false);
 
   const query = useQuery({
     queryKey: ["public-event", params.orgSlug, params.eventSlug],
@@ -93,11 +97,7 @@ export default function PublicEventPage() {
   const sportColor = colorOf(ev.sport_type);
 
   const categories = ev.categories ?? [];
-  // "Semua" only means something with more than one category to combine.
-  const isAll = categoryId === ALL_CATEGORIES && categories.length > 1;
-  const selectedCategory = isAll
-    ? null
-    : (categories.find((c) => c.id === categoryId) ?? categories[0] ?? null);
+  const selectedCategory = categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
   const selectedEngine = selectedCategory?.engine ?? null;
   // Preselect the viewed category on the registration form.
   const registerHref = selectedCategory
@@ -110,24 +110,22 @@ export default function PublicEventPage() {
     ["info", "Info", Info],
     ["teams", "Tim Peserta", Users],
     ["schedule", "Jadwal", CalendarClock],
-    // Klasemen, bracket and the leaderboard are all per-category — a bracket
-    // belongs to exactly one — so "Semua" offers the schedule alone.
-    ...(isAll
-      ? []
-      : ([
-          ...(isKnockoutFormat(selectedEngine)
-            ? [["bracket", "Bracket", Network]]
-            : isHybridFormat(selectedEngine)
-              ? [
-                  ["standings", "Klasemen", ListOrdered],
-                  ["bracket", "Bracket", Network],
-                ]
-              : [["standings", "Klasemen", ListOrdered]]),
-          ["stats", "Statistik", Goal],
-        ] as [TabKey, string, typeof Info][])),
+    ...(isKnockoutFormat(selectedEngine)
+      ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
+      : isHybridFormat(selectedEngine)
+        ? ([
+            ["standings", "Klasemen", ListOrdered],
+            ["bracket", "Bracket", Network],
+          ] as [TabKey, string, typeof Info][])
+        : ([["standings", "Klasemen", ListOrdered]] as [TabKey, string, typeof Info][])),
+    ["stats", "Statistik", Goal],
   ];
-  // Switching to "Semua" from a tab that just disappeared would blank the page.
+  // A category switch can retire the tab being viewed (league → knockout drops
+  // Klasemen), which would otherwise blank the page.
   const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
+  // Klasemen, bracket and the leaderboard are all per-category — a bracket
+  // belongs to exactly one — so "Semua" is offered on the schedule alone.
+  const isAll = scheduleAll && activeTab === "schedule" && categories.length > 1;
 
   return (
     // Kickoff times render in the venue's zone, so every visitor reads the same
@@ -211,11 +209,13 @@ export default function PublicEventPage() {
       </header>
 
       {/* ===== TABS ===== */}
-      <section className="section" style={{ paddingBottom: 0 }}>
+      <section className="etabs">
         <div className="container">
           {/* Menggulir di HP, bukan membungkus jadi dua-tiga baris — pola yang
-              sama seperti MatchDayTabs. Di ≥640px kembali seperti semula. */}
-          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold sm:inline-flex sm:overflow-visible">
+              sama seperti MatchDayTabs. inline-flex di semua lebar: kalau block
+              (flex), pil-nya melar 100% dan menyisakan ruang kosong di kanan
+              saat isinya sedikit. */}
+          <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold sm:overflow-visible">
             {tabs.map(([key, label, Icon]) => (
               <button
                 key={key}
@@ -237,7 +237,7 @@ export default function PublicEventPage() {
       {activeTab === "info" && (
         <>
           {ev.banner_url && (
-            <section className="section" style={{ paddingBottom: 0 }}>
+            <section className="ebanner">
               <div className="container">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -251,7 +251,7 @@ export default function PublicEventPage() {
           )}
 
           {/* ===== CONTENT ===== */}
-          <section className="section">
+          <section className="section" style={{ paddingTop: 48 }}>
             <div className="container elayout">
               {/* main */}
               <div>
@@ -471,22 +471,29 @@ export default function PublicEventPage() {
       )}
 
       {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
-      {activeTab !== "info" && activeTab !== "teams" && (selectedCategory || isAll) && (
+      {activeTab !== "info" && activeTab !== "teams" && selectedCategory && (
         <>
           {categories.length > 1 && (
-            <section className="section" style={{ paddingBottom: 0 }}>
+            <section className="efilter">
               <div className="container">
-                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium sm:inline-flex sm:overflow-visible">
+                <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium sm:overflow-visible">
                   {[
-                    { id: ALL_CATEGORIES, name: "Semua" },
+                    ...(activeTab === "schedule" ? [{ id: ALL_CATEGORIES, name: "Semua" }] : []),
                     ...categories.map((c) => ({ id: c.id, name: c.name })),
                   ].map((c) => (
                     <button
                       key={c.id}
-                      onClick={() => setCategoryId(c.id)}
+                      onClick={() => {
+                        if (c.id === ALL_CATEGORIES) {
+                          setScheduleAll(true);
+                          return;
+                        }
+                        setScheduleAll(false);
+                        setCategoryId(c.id);
+                      }}
                       className={cn(
                         "shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 transition-colors",
-                        (c.id === ALL_CATEGORIES ? isAll : c.id === selectedCategory?.id)
+                        (c.id === ALL_CATEGORIES ? isAll : !isAll && c.id === selectedCategory?.id)
                           ? "bg-[var(--tint)] text-[var(--brand-700)]"
                           : "text-muted-foreground hover:text-foreground"
                       )}

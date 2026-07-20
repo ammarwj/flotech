@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 
 import { getPublicMatches } from "@/lib/api/matches";
-import { isKnockout as isKnockoutFormat } from "@/lib/bracket";
+import { isKnockout as isKnockoutFormat, phaseLabel } from "@/lib/bracket";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { MatchDayTabs } from "./match-day-tabs";
@@ -17,7 +17,7 @@ import type { EventCategory, Match } from "@/types/api";
  *
  * Standings, brackets and the leaderboard have no combined form (a bracket
  * belongs to exactly one category), so this panel is schedule-only and the
- * parent hides those tabs while it is showing.
+ * parent offers the "Semua" pill on the schedule tab alone.
  */
 export function PublicAllSchedule({
   orgSlug,
@@ -48,10 +48,17 @@ export function PublicAllSchedule({
   // Which category a fixture came from is known from the query it arrived in —
   // no need for the API to label each match.
   const byMatchId = new Map<string, EventCategory>();
+  // Phase has to be worked out inside one category's fixtures: the combined
+  // list mixes categories, and "how many ties are in this round" is only
+  // meaningful within the draw it belongs to.
+  const phaseById = new Map<string, string>();
   const matches: Match[] = [];
   results.forEach((r, i) => {
-    for (const m of r.data ?? []) {
+    const own = r.data ?? [];
+    const knockout = isKnockoutFormat(categories[i]?.engine ?? null);
+    for (const m of own) {
       byMatchId.set(m.id, categories[i]);
+      phaseById.set(m.id, phaseLabel(m, own, knockout));
       matches.push(m);
     }
   });
@@ -85,7 +92,7 @@ export function PublicAllSchedule({
                     <PublicMatchCard
                       key={m.id}
                       match={m}
-                      knockout={isKnockoutFormat(category?.engine ?? null)}
+                      phase={phaseById.get(m.id) ?? ""}
                       categoryLabel={category?.name}
                       onClick={() => setOpen({ match: m, categoryLabel: category?.name ?? "" })}
                     />
@@ -100,6 +107,7 @@ export function PublicAllSchedule({
       {open && (
         <MatchDetailDialog
           match={open.match}
+          phase={phaseById.get(open.match.id) ?? ""}
           orgSlug={orgSlug}
           eventSlug={eventSlug}
           categoryLabel={open.categoryLabel || undefined}

@@ -24,6 +24,7 @@ export function MatchDetailDialog({
   orgSlug,
   eventSlug,
   categoryLabel,
+  phase,
   onClose,
 }: {
   match: Match;
@@ -31,6 +32,8 @@ export function MatchDetailDialog({
   eventSlug: string;
   /** Shown when the fixture was opened from the combined "Semua" list. */
   categoryLabel?: string;
+  /** Phase in words, resolved by the caller — see PublicMatchCard. */
+  phase: string;
   onClose: () => void;
 }) {
   const tz = useEventTimezone();
@@ -76,13 +79,7 @@ export function MatchDetailDialog({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               {categoryLabel && <span className="pill">{categoryLabel}</span>}
-              <span>
-                {match.group_name
-                  ? `Grup ${match.group_name}`
-                  : match.stage === "knockout"
-                    ? `Babak ${match.round}`
-                    : `Pekan ${match.round}`}
-              </span>
+              <span>{phase}</span>
               <PublicStatusBadge status={match.status} />
             </div>
             <h3 className="mt-1 text-base font-bold">

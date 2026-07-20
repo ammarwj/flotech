@@ -22,6 +22,7 @@ export const DEFAULT_HYBRID: HybridConfig = {
   points: { win: 3, draw: 1, lose: 0 },
   qualification: { top_per_group: 2, best_runners_up: 0, best_thirds: 0 },
   knockout_start: null,
+  third_place: false,
   draw_method: "random",
   tiebreakers: [],
 };

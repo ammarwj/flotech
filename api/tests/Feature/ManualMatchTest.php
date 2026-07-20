@@ -227,4 +227,136 @@ class ManualMatchTest extends TestCase
 
         $this->assertSame(1, $event->matches()->count());
     }
+
+    /**
+     * A hybrid event whose teams are already drawn into groups — the state a
+     * manual group fixture needs to exist in.
+     */
+    private function hybridEvent(Organization $org): Event
+    {
+        $event = $org->events()->create([
+            'name' => 'Hybrid Cup',
+            'slug' => 'hybrid-cup-'.uniqid(),
+            'sport_type' => 'mini_soccer',
+            'status' => 'open',
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-30',
+        ]);
+
+        $category = $event->categories()->create([
+            'name' => 'Umum',
+            'slug' => 'umum',
+            'tournament_format' => 'hybrid',
+            'registration_fee' => 0,
+            'sort_order' => 0,
+            'bracket_config' => ['groups' => 2, 'teams_per_group' => 2],
+        ]);
+
+        foreach (['A', 'A', 'B', 'B'] as $i => $group) {
+            $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => "Team {$group}".($i + 1),
+                'group_name' => $group,
+                'status' => 'approved',
+                'contact_name' => 'PIC',
+                'contact_phone' => '0800',
+            ]);
+        }
+
+        return $event->load('categories');
+    }
+
+    public function test_a_manual_fixture_can_join_a_group_and_reach_its_table(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        [$home, $away] = $event->teams()->where('group_name', 'A')->pluck('id')->all();
+
+        $matchId = $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $home,
+                'away_team_id' => $away,
+                'group_name' => 'A',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.stage', 'group')
+            ->assertJsonPath('data.group_name', 'A')
+            ->json('data.id');
+
+        // The point of naming a group: the result counts in that group's table,
+        // which a stage-null fixture never would.
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/matches/{$matchId}", [
+                'status' => 'finished', 'home_score' => 3, 'away_score' => 0,
+            ])
+            ->assertOk();
+
+        $rows = $this->actingAs($user, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/standings")
+            ->assertOk()
+            ->json('data');
+
+        $winner = collect($rows)->firstWhere('team.id', $home);
+        $this->assertSame(1, $winner['played']);
+        $this->assertSame(3, $winner['points']);
+        $this->assertSame('A', $winner['group_name']);
+    }
+
+    public function test_a_group_fixture_is_refused_when_the_teams_are_in_different_groups(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $fromA = $event->teams()->where('group_name', 'A')->value('id');
+        $fromB = $event->teams()->where('group_name', 'B')->value('id');
+
+        // Otherwise the result would land in a table one of them doesn't play in.
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $fromA,
+                'away_team_id' => $fromB,
+                'group_name' => 'A',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('group_name');
+
+        $this->assertSame(0, $event->matches()->count());
+    }
+
+    public function test_an_unknown_group_is_refused(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        [$home, $away] = $event->teams()->where('group_name', 'A')->pluck('id')->all();
+
+        // Only the groups the config actually defines (2 groups → A and B).
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $home,
+                'away_team_id' => $away,
+                'group_name' => 'Z',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('group_name');
+    }
+
+    public function test_a_league_fixture_cannot_be_given_a_group(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->leagueEvent($org);
+        [$home, $away] = $event->teams()->orderBy('name')->pluck('id')->all();
+
+        // A league has no groups at all, so there is nothing valid to send.
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $home,
+                'away_team_id' => $away,
+                'group_name' => 'A',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('group_name');
+    }
 }

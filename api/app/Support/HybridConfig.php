@@ -34,6 +34,8 @@ class HybridConfig
         /** Entry round for the knockout stage, or null to size it automatically. */
         public readonly ?string $knockoutStart = null,
         public readonly string $drawMethod = 'random',
+        /** Play an extra tie between the beaten semifinalists. */
+        public readonly bool $thirdPlace = false,
         /** @var array<int, string> */
         public readonly array $tiebreakers = ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'drawing_lots'],
     ) {}
@@ -82,6 +84,7 @@ class HybridConfig
                 ? $raw['draw_method']
                 : ($drawMethods[0] ?? 'random'),
             tiebreakers: $tiebreakers ?: $known,
+            thirdPlace: (bool) ($raw['third_place'] ?? false),
         );
     }
 
@@ -156,6 +159,7 @@ class HybridConfig
             'bracket_config.qualification.best_thirds' => ['nullable', 'integer', 'min:0', 'max:32'],
             'bracket_config.knockout_start' => ['nullable', 'in:'.implode(',', array_keys(Catalog::roundSizes()))],
             'bracket_config.draw_method' => ['nullable', 'in:'.implode(',', Catalog::keys('draw_method'))],
+            'bracket_config.third_place' => ['nullable', 'boolean'],
             'bracket_config.tiebreakers' => ['nullable', 'array'],
             'bracket_config.tiebreakers.*' => ['in:'.implode(',', Catalog::keys('tiebreaker'))],
         ];

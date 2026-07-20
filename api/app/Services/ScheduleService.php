@@ -200,6 +200,10 @@ class ScheduleService
             }
         }
 
+        if ($config->thirdPlace) {
+            $this->createThirdPlace($category, 'knockout', $size, $totalRounds, $start);
+        }
+
         foreach ($round1 as $m) {
             if ($m->home_team_id !== null && $m->away_team_id === null) {
                 $this->advanceWinner($m->fresh());
@@ -207,6 +211,40 @@ class ScheduleService
         }
 
         return $category->matches()->where('stage', 'knockout')->count();
+    }
+
+    /**
+     * The tie between the two beaten semifinalists.
+     *
+     * It shares the final's round on purpose — it is played the same day and
+     * belongs beside it — and is told apart by `bracket = 'third_place'`, the
+     * column double elimination already uses to name a side of the draw. That
+     * keeps it out of the winner-advancement maths, which only ever looks at
+     * `order = intdiv(child order, 2)`, i.e. order 0.
+     *
+     * Needs semifinals to exist at all, so a bracket of two has none.
+     */
+    protected function createThirdPlace(
+        EventCategory $category,
+        ?string $stage,
+        int $size,
+        int $totalRounds,
+        Carbon $start,
+    ): void {
+        if ($size < 4) {
+            return;
+        }
+
+        GameMatch::create([
+            'event_id' => $category->event_id,
+            'category_id' => $category->id,
+            'stage' => $stage,
+            'bracket' => 'third_place',
+            'round' => $totalRounds,
+            'order' => 1,
+            'scheduled_at' => $start->copy()->addDays($totalRounds - 1)->utc(),
+            'status' => 'scheduled',
+        ]);
     }
 
     /**
@@ -513,6 +551,10 @@ class ScheduleService
             }
         }
 
+        if (HybridConfig::fromCategory($category)->thirdPlace) {
+            $this->createThirdPlace($category, null, $bracketSize, $totalRounds, $start);
+        }
+
         // Push bye teams into round 2.
         foreach ($round1 as $m) {
             if ($m->home_team_id !== null && $m->away_team_id === null) {
@@ -542,10 +584,7 @@ class ScheduleService
             return; // final has no parent
         }
 
-        $parent = $this->sameStage($match)
-            ->where('round', $match->round + 1)
-            ->where('order', intdiv($match->order, 2))
-            ->first();
+        $parent = $this->parentOf($match);
 
         if (! $parent) {
             return;
@@ -558,6 +597,105 @@ class ScheduleService
             $parent->away_team_id = $winner;
         }
         $parent->save();
+    }
+
+    /**
+     * The tie a match's winner moves into, or null for the final.
+     *
+     * Excludes the third-place tie: it shares the final's round but is nobody's
+     * parent, and a stray match on `order` would send a semifinal's winner into
+     * it instead of the final.
+     */
+    protected function parentOf(GameMatch $match): ?GameMatch
+    {
+        return $this->sameStage($match)
+            ->where('round', $match->round + 1)
+            ->where('order', intdiv($match->order, 2))
+            ->where(fn ($q) => $q->whereNull('bracket')->orWhere('bracket', '!=', 'third_place'))
+            ->first();
+    }
+
+    /** The third-place tie of this match's stage, if the category plays one. */
+    protected function thirdPlaceTie(GameMatch $match): ?GameMatch
+    {
+        return $this->sameStage($match)->where('bracket', 'third_place')->first();
+    }
+
+    /**
+     * Drop a beaten semifinalist into the third-place tie.
+     *
+     * The mirror of advanceWinner(): a semifinal sends its winner up to the
+     * final and its loser sideways to here, so the two always run together.
+     */
+    public function advanceLoser(GameMatch $match): void
+    {
+        $third = $this->thirdPlaceTie($match);
+
+        // Only the round that feeds the final does this — the third-place tie
+        // sits at the final's round, so its feeders are one below.
+        if (! $third || $match->round !== $third->round - 1 || $match->bracket === 'third_place') {
+            return;
+        }
+
+        $loser = $this->loserOf($match);
+        if ($loser === null) {
+            return;
+        }
+
+        // Same convention as the bracket above it: the lower-ordered semifinal
+        // takes the home slot.
+        if ($match->order % 2 === 0) {
+            $third->home_team_id = $loser;
+        } else {
+            $third->away_team_id = $loser;
+        }
+        $third->save();
+    }
+
+    /**
+     * Take a beaten semifinalist back out of the third-place tie.
+     *
+     * @return int 1 when a slot was emptied, 0 otherwise
+     */
+    protected function withdrawLoser(GameMatch $match): int
+    {
+        $third = $this->thirdPlaceTie($match);
+
+        if (! $third || $match->round !== $third->round - 1 || $match->bracket === 'third_place') {
+            return 0;
+        }
+
+        $slot = $match->order % 2 === 0 ? 'home_team_id' : 'away_team_id';
+
+        if ($third->{$slot} === null) {
+            return 0;
+        }
+
+        // Same reasoning as the bracket above: the scoreline goes with the team.
+        $third->update([
+            $slot => null,
+            'home_score' => null,
+            'away_score' => null,
+            'home_penalty' => null,
+            'away_penalty' => null,
+            'sets' => null,
+            'status' => 'scheduled',
+            'confirmed_at' => null,
+        ]);
+
+        return 1;
+    }
+
+    /** The side that lost, or null when the tie produced no winner. */
+    protected function loserOf(GameMatch $match): ?string
+    {
+        $winner = $this->winnerOf($match);
+
+        if ($winner === null) {
+            return null;
+        }
+
+        return $winner === $match->home_team_id ? $match->away_team_id : $match->home_team_id;
     }
 
     /**
@@ -574,11 +712,13 @@ class ScheduleService
         $maxRound = (int) $this->sameStage($match)->max('round');
         $cursor = $match;
 
+        // A semifinal sends its loser sideways as well as its winner up, so
+        // withdrawing one has to withdraw both — otherwise the third-place tie
+        // keeps a team the semifinal no longer says belongs there.
+        $cleared += $this->withdrawLoser($match);
+
         while ($cursor->round < $maxRound) {
-            $parent = $this->sameStage($cursor)
-                ->where('round', $cursor->round + 1)
-                ->where('order', intdiv($cursor->order, 2))
-                ->first();
+            $parent = $this->parentOf($cursor);
 
             if (! $parent) {
                 break;
