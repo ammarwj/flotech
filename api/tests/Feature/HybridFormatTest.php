@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\StandingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -558,5 +559,209 @@ class HybridFormatTest extends TestCase
                 'status' => 'finished', 'home_score' => 2, 'away_score' => 2,
             ])
             ->assertOk();
+    }
+
+    /**
+     * A hybrid event whose groups have all been played, ready for the bracket.
+     *
+     * @return array{0: Event, 1: array<int, string>} the event and its qualifiers, best seed first
+     */
+    private function readyForKnockout(User $user, Organization $org, array $config = [], int $teams = 8): array
+    {
+        $event = $this->hybridEvent($org, $config, $teams);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
+            ->assertCreated();
+        $this->finishGroupStage($event);
+
+        $qualifiers = app(StandingService::class)->qualifiers($event->categories->first());
+
+        return [$event, array_values($qualifiers)];
+    }
+
+    private function knockoutUrl(Organization $org, Event $event): string
+    {
+        return "/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout";
+    }
+
+    public function test_manual_seeding_uses_the_organizer_pairings(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event, $q] = $this->readyForKnockout($user, $org);
+
+        // Automatic seeding mirrors 1-v-4 and 2-v-3; pairing the top two seeds
+        // against each other is something it would never produce, so a bracket
+        // that comes back this way can only have honoured the payload.
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
+                    ['order' => 1, 'home_team_id' => $q[2], 'away_team_id' => $q[3]],
+                ],
+            ])
+            ->assertCreated();
+
+        $round1 = $event->matches()->where('stage', 'knockout')->where('round', 1)->orderBy('order')->get();
+
+        $this->assertCount(2, $round1);
+        $this->assertSame($q[0], $round1[0]->home_team_id);
+        $this->assertSame($q[1], $round1[0]->away_team_id);
+        $this->assertSame($q[2], $round1[1]->home_team_id);
+        $this->assertSame($q[3], $round1[1]->away_team_id);
+    }
+
+    public function test_manual_seeding_rejects_a_team_that_did_not_qualify(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event, $q] = $this->readyForKnockout($user, $org);
+
+        $eliminated = $event->teams()->whereNotIn('id', $q)->value('id');
+        $this->assertNotNull($eliminated);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $eliminated, 'away_team_id' => $q[1]],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('pairs.0.home_team_id');
+
+        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
+    }
+
+    public function test_manual_seeding_rejects_a_duplicated_team(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event, $q] = $this->readyForKnockout($user, $org);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
+                    ['order' => 1, 'home_team_id' => $q[0], 'away_team_id' => $q[3]],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('pairs');
+
+        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
+    }
+
+    public function test_manual_seeding_bye_is_auto_finished_and_advanced(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // 3 groups of 3, winners only → 3 qualifiers in a bracket of 4.
+        [$event, $q] = $this->readyForKnockout($user, $org, [
+            'groups' => 3,
+            'teams_per_group' => 3,
+            'qualification' => ['top_per_group' => 1],
+        ], teams: 9);
+
+        $this->assertCount(3, $q);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $q[2], 'away_team_id' => null],
+                    ['order' => 1, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
+                ],
+            ])
+            ->assertCreated();
+
+        // The organizer chose who gets the bye — not the top seed, as auto would.
+        $bye = $event->matches()->where('stage', 'knockout')->where('round', 1)->where('order', 0)->first();
+        $this->assertSame($q[2], $bye->home_team_id);
+        $this->assertNull($bye->away_team_id);
+        $this->assertSame('finished', $bye->status);
+        $this->assertNotNull($bye->confirmed_at);
+
+        // Byes advance on generation, manual seeding included.
+        $final = $event->matches()->where('stage', 'knockout')->where('round', 2)->first();
+        $this->assertSame($q[2], $final->home_team_id);
+    }
+
+    public function test_partial_manual_seeding_fills_the_rest_of_the_field(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event, $q] = $this->readyForKnockout($user, $org);
+
+        // Only the one tie the organizer cares about.
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 1, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
+                ],
+            ])
+            ->assertCreated();
+
+        $round1 = $event->matches()->where('stage', 'knockout')->where('round', 1)->orderBy('order')->get();
+
+        $this->assertSame($q[0], $round1[1]->home_team_id);
+        $this->assertSame($q[1], $round1[1]->away_team_id);
+        // The two teams left over land in the slot that was left blank.
+        $this->assertEqualsCanonicalizing(
+            [$q[2], $q[3]],
+            [$round1[0]->home_team_id, $round1[0]->away_team_id],
+        );
+    }
+
+    public function test_swapping_two_seeds_keeps_the_rest_of_the_bracket(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event] = $this->readyForKnockout($user, $org);
+
+        $this->actingAs($user, 'api')->postJson($this->knockoutUrl($org, $event))->assertCreated();
+
+        $ties = $event->matches()->where('stage', 'knockout')->where('round', 1)->orderBy('order')->get();
+        [$first, $second] = [$ties[0], $ties[1]];
+        $mine = $first->home_team_id;
+        $theirs = $second->home_team_id;
+
+        // Every qualifier is already placed, so correcting a seed in a hybrid
+        // bracket always means exchanging two of them.
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/matches/{$first->id}/teams", [
+                'home_team_id' => $theirs,
+                'away_team_id' => $first->away_team_id,
+            ])
+            ->assertOk();
+
+        $this->assertSame($theirs, $first->fresh()->home_team_id);
+        $this->assertSame($mine, $second->fresh()->home_team_id);
+        // The group stage is none of this endpoint's business.
+        $this->assertSame(12, $event->matches()->where('stage', 'group')->count());
+    }
+
+    public function test_auto_seeding_is_unchanged_when_asked_for_explicitly(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        [$event, $q] = $this->readyForKnockout($user, $org);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->knockoutUrl($org, $event), ['seeding' => 'auto'])
+            ->assertCreated();
+
+        // Same invariant the no-payload path asserts: group mates stay apart.
+        foreach ($event->matches()->where('stage', 'knockout')->where('round', 1)->get() as $m) {
+            $this->assertNotNull($m->away_team_id);
+            $this->assertNotSame(
+                Team::find($m->home_team_id)->group_name,
+                Team::find($m->away_team_id)->group_name,
+            );
+        }
     }
 }

@@ -14,6 +14,44 @@ export function isHybrid(engine: FormatEngine | null | undefined): boolean {
   return engine === "hybrid";
 }
 
+/**
+ * Bracket size for a field of `teams`: the next power of two, at least 2.
+ * Mirrors BracketSeeding::sizeFor() — single elimination has no knockout-plan
+ * endpoint to read the size from, so the seed editor works it out itself.
+ */
+export function bracketSizeFor(teams: number): number {
+  let size = 2;
+  while (size < teams) size *= 2;
+  return size;
+}
+
+/**
+ * How many later fixtures would lose their teams (and results) if this
+ * first-round slot changed hands. Mirrors ScheduleService::clearDownstream():
+ * walk the same (round + 1, order / 2) edges and stop at the first slot nobody
+ * ever advanced into.
+ */
+export function downstreamImpact(match: Match, bracket: Match[]): number {
+  const maxRound = bracket.reduce((max, m) => Math.max(max, m.round), 0);
+  let cleared = 0;
+  let cursor = match;
+
+  while (cursor.round < maxRound) {
+    const parent = bracket.find(
+      (m) => m.round === cursor.round + 1 && m.order === Math.floor(cursor.order / 2)
+    );
+    if (!parent) break;
+
+    const fed = cursor.order % 2 === 0 ? parent.home_team_id : parent.away_team_id;
+    if (!fed) break;
+
+    cleared++;
+    cursor = parent;
+  }
+
+  return cleared;
+}
+
 /** Human label for a knockout round based on how many matches it holds. */
 export function knockoutRoundLabel(matchesInRound: number): string {
   switch (matchesInRound) {

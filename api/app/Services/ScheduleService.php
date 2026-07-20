@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\EventCategory;
 use App\Models\GameMatch;
+use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -139,9 +140,11 @@ class ScheduleService
      * Group-stage fixtures are left untouched.
      *
      * @param  array<int, string>  $qualifiers  team ids, best seed first
+     * @param  array<int, array{0: ?string, 1: ?string}>|null  $pairs  the organizer's
+     *                                                                 own first-round slots, or null to seed automatically
      * @return int matches created
      */
-    public function generateHybridKnockout(EventCategory $category, array $qualifiers): int
+    public function generateHybridKnockout(EventCategory $category, array $qualifiers, ?array $pairs = null): int
     {
         $config = HybridConfig::fromCategory($category);
         $size = $config->bracketSize();
@@ -157,7 +160,11 @@ class ScheduleService
         $start = $this->knockoutStart($category);
 
         $groupOf = $category->teams()->pluck('group_name', 'id')->all();
-        $pairs = $this->firstRoundPairs($size, $qualifiers, fn (string $id) => $groupOf[$id] ?? null);
+        // Manual pairings skip seedOrder()/avoidSameGroup() on purpose — there
+        // is nothing left to avoid once the organizer has named the ties.
+        $pairs = $pairs === null
+            ? $this->firstRoundPairs($size, $qualifiers, fn (string $id) => $groupOf[$id] ?? null)
+            : $this->fillEmptySlots($pairs, $qualifiers);
 
         $round1 = [];
         foreach ($pairs as $o => [$home, $away]) {
@@ -200,6 +207,44 @@ class ScheduleService
         }
 
         return $category->matches()->where('stage', 'knockout')->count();
+    }
+
+    /**
+     * Top up an organizer's partial seeding with the teams they left out, in
+     * slot order. Seeding only the two or three contentious ties is a valid
+     * request; the rest of the field still has to be placed somewhere.
+     *
+     * @param  array<int, array{0: ?string, 1: ?string}>  $pairs
+     * @param  array<int, string>  $pool  every team eligible for the bracket
+     * @return array<int, array{0: ?string, 1: ?string}>
+     */
+    protected function fillEmptySlots(array $pairs, array $pool): array
+    {
+        $placed = [];
+        foreach ($pairs as [$home, $away]) {
+            foreach ([$home, $away] as $id) {
+                if ($id !== null) {
+                    $placed[$id] = true;
+                }
+            }
+        }
+
+        $queue = array_values(array_filter($pool, fn ($id) => ! isset($placed[$id])));
+
+        foreach ($pairs as $o => [$home, $away]) {
+            // Fill the home side first, so a leftover single team becomes a bye
+            // rather than an away slot with nobody at home.
+            if ($home === null && $queue !== []) {
+                $home = array_shift($queue);
+            }
+            if ($away === null && $queue !== []) {
+                $away = array_shift($queue);
+            }
+
+            $pairs[$o] = [$home, $away];
+        }
+
+        return $pairs;
     }
 
     /**
@@ -394,9 +439,11 @@ class ScheduleService
      * up front (later rounds start with empty slots) and bye winners are
      * advanced immediately.
      *
+     * @param  array<int, array{0: ?string, 1: ?string}>|null  $pairs  the organizer's
+     *                                                                 own first-round slots, or null to seed by team name
      * @return int total matches created (bracketSize - 1)
      */
-    public function generateKnockout(EventCategory $category): int
+    public function generateKnockout(EventCategory $category, ?array $pairs = null): int
     {
         $teams = $category->teams()
             ->where('status', 'approved')
@@ -409,10 +456,7 @@ class ScheduleService
             return 0;
         }
 
-        $bracketSize = 1;
-        while ($bracketSize < $n) {
-            $bracketSize *= 2;
-        }
+        $bracketSize = $pairs !== null ? 2 * count($pairs) : BracketSeeding::sizeFor($n);
         $totalRounds = (int) log($bracketSize, 2);
         $byes = $bracketSize - $n;
 
@@ -425,9 +469,21 @@ class ScheduleService
         $queue = $teams;
         $round1 = [];
 
+        if ($pairs !== null) {
+            $pairs = $this->fillEmptySlots($pairs, $teams);
+        }
+
         for ($o = 0; $o < $matchesR1; $o++) {
-            $home = array_shift($queue);
-            $away = $o < $byes ? null : array_shift($queue);
+            if ($pairs !== null) {
+                [$home, $away] = $pairs[$o];
+            } else {
+                $home = array_shift($queue);
+                $away = $o < $byes ? null : array_shift($queue);
+            }
+
+            // A lone team walks over. Both slots empty is not a bye — manual
+            // seeding can leave a tie unfilled — so it stays scheduled.
+            $bye = $home !== null && $away === null;
 
             $round1[] = GameMatch::create([
                 'event_id' => $category->event_id,
@@ -437,8 +493,8 @@ class ScheduleService
                 'home_team_id' => $home,
                 'away_team_id' => $away,
                 'scheduled_at' => $start->copy()->utc(),
-                'status' => $away === null ? 'finished' : 'scheduled', // bye = walkover
-                'confirmed_at' => $away === null ? now() : null, // byes are auto-final
+                'status' => $bye ? 'finished' : 'scheduled', // bye = walkover
+                'confirmed_at' => $bye ? now() : null, // byes are auto-final
             ]);
         }
 
@@ -502,6 +558,62 @@ class ScheduleService
             $parent->away_team_id = $winner;
         }
         $parent->save();
+    }
+
+    /**
+     * Undo every slot a match's winner reached, after its teams changed.
+     *
+     * Walks the same positional edges as advanceWinner(), upward, until it hits
+     * one nothing ever travelled through.
+     *
+     * @return int matches reset
+     */
+    public function clearDownstream(GameMatch $match): int
+    {
+        $cleared = 0;
+        $maxRound = (int) $this->sameStage($match)->max('round');
+        $cursor = $match;
+
+        while ($cursor->round < $maxRound) {
+            $parent = $this->sameStage($cursor)
+                ->where('round', $cursor->round + 1)
+                ->where('order', intdiv($cursor->order, 2))
+                ->first();
+
+            if (! $parent) {
+                break;
+            }
+
+            $slot = $cursor->order % 2 === 0 ? 'home_team_id' : 'away_team_id';
+
+            // Nobody ever came up this edge, so no ancestor holds a team that
+            // arrived by it. Walking on regardless would empty slots belonging
+            // to the other half of the bracket.
+            if ($parent->{$slot} === null) {
+                break;
+            }
+
+            // The scoreline has to go with the team: a result recorded against
+            // someone no longer in the fixture still hands winnerOf() a winner,
+            // and that phantom keeps propagating on the next confirm. Emptying
+            // it is also what guarantees the grandparent slot is already null,
+            // which is exactly what the next iteration checks.
+            $parent->update([
+                $slot => null,
+                'home_score' => null,
+                'away_score' => null,
+                'home_penalty' => null,
+                'away_penalty' => null,
+                'sets' => null,
+                'status' => 'scheduled',
+                'confirmed_at' => null,
+            ]);
+
+            $cleared++;
+            $cursor = $parent;
+        }
+
+        return $cleared;
     }
 
     /**

@@ -27,14 +27,17 @@ import {
   generateKnockout,
   deleteKnockout,
   updateMatchResult,
+  updateMatchTeams,
   createMatch,
   deleteMatch,
   type DrawPayload,
   type ScheduleOptions,
   type CreateMatchPayload,
+  type MatchTeamsPayload,
+  type SeedingPayload,
 } from "@/lib/api/matches";
 import { getEvent, getRegistrations } from "@/lib/api/events";
-import { parseApiError } from "@/lib/api/errors";
+import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import {
   buildMatchSections,
   isKnockout as isKnockoutFormat,
@@ -68,6 +71,8 @@ import { MatchCalendar } from "@/components/event/match-calendar";
 import { MatchConfirmBar } from "@/components/event/match-confirm-bar";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
 import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
+import { SlotTeamsDialog } from "@/components/event/slot-teams-dialog";
+import { KnockoutSeedDialog } from "@/components/event/knockout-seed-dialog";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -82,6 +87,10 @@ export default function SchedulePage() {
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
   const [manualDialog, setManualDialog] = useState(false);
+  const [seedDialog, setSeedDialog] = useState(false);
+  // The bracket slot being re-seated, plus any inline errors it came back with.
+  const [slotMatch, setSlotMatch] = useState<Match | null>(null);
+  const [slotErrors, setSlotErrors] = useState<FieldErrors>({});
   const [dateKey, setDateKey] = useState<string | null>(null);
 
   const eventQuery = useQuery({
@@ -155,7 +164,8 @@ export default function SchedulePage() {
   };
 
   const generate = useMutation({
-    mutationFn: (options: ScheduleOptions) => generateSchedule(orgId!, eventId, catId!, options),
+    mutationFn: (options: ScheduleOptions & SeedingPayload) =>
+      generateSchedule(orgId!, eventId, catId!, options),
     onSuccess: (created) => {
       toast.success(`Jadwal dibuat: ${created.length} pertandingan`);
       setScheduleDialog(false);
@@ -177,13 +187,30 @@ export default function SchedulePage() {
   });
 
   const knockout = useMutation({
-    mutationFn: () => generateKnockout(orgId!, eventId, catId!),
+    mutationFn: (seeding?: SeedingPayload) => generateKnockout(orgId!, eventId, catId!, seeding),
     onSuccess: () => {
       toast.success("Bracket knockout dibuat dari tim yang lolos fase grup");
       setTab("bracket");
+      setSeedDialog(false);
       refreshEventData();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuat bracket.").message),
+  });
+
+  const editSlot = useMutation({
+    mutationFn: (payload: MatchTeamsPayload) => updateMatchTeams(orgId!, slotMatch!.id, payload),
+    onSuccess: () => {
+      toast.success("Tim di slot bracket diperbarui");
+      setSlotMatch(null);
+      setSlotErrors({});
+      refreshEventData();
+    },
+    onError: (err) => {
+      const { message, fieldErrors } = parseApiError(err, "Gagal mengganti tim.");
+      setSlotErrors(fieldErrors);
+      // Field-level problems are already spelled out beside the select.
+      if (Object.keys(fieldErrors).length === 0) toast.error(message);
+    },
   });
 
   const dropKnockout = useMutation({
@@ -210,6 +237,20 @@ export default function SchedulePage() {
 
   const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
   const knockoutTies = knockoutMatches(matches);
+
+  // Who a bracket slot may be handed to. A hybrid bracket only accepts the
+  // group qualifiers — which is exactly who already holds its slots — while
+  // single elimination accepts any approved team, late entries included.
+  const slotPool = isHybrid
+    ? [
+        ...new Map(
+          knockoutTies
+            .flatMap((m) => [m.home_team, m.away_team])
+            .filter((t): t is NonNullable<typeof t> => !!t)
+            .map((t) => [t.id, { id: t.id, name: t.name }]),
+        ).values(),
+      ]
+    : approvedTeams;
 
   // The list view shows one matchday at a time; round/group headings are kept
   // inside the day, so a fixture never loses its context.
@@ -374,7 +415,7 @@ export default function SchedulePage() {
               <Skeleton className="h-40 w-full rounded-xl" />
             )}
             <div className="flex justify-end">
-              <Button onClick={() => knockout.mutate()} disabled={knockout.isPending}>
+              <Button onClick={() => setSeedDialog(true)} disabled={knockout.isPending}>
                 <Sparkles className="h-4 w-4" />
                 {knockout.isPending ? "Membuat…" : "Buat Bracket Knockout"}
               </Button>
@@ -384,9 +425,14 @@ export default function SchedulePage() {
           <div className="grid gap-3">
             <Card className="overflow-x-auto p-4 md:p-6">
               {isDouble ? (
+                // Double elimination propagates losers too, so a slot edit
+                // would have two topologies to unwind — not offered yet.
                 <DoubleBracketView matches={matches} />
               ) : (
-                <BracketView matches={isHybrid ? knockoutTies : matches} />
+                <BracketView
+                  matches={isHybrid ? knockoutTies : matches}
+                  onEditSlot={setSlotMatch}
+                />
               )}
             </Card>
             {isHybrid && (
@@ -416,7 +462,7 @@ export default function SchedulePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => knockout.mutate()}
+                  onClick={() => setSeedDialog(true)}
                   disabled={knockout.isPending || dropKnockout.isPending}
                 >
                   <Sparkles className="h-4 w-4" />
@@ -536,6 +582,7 @@ export default function SchedulePage() {
           open={scheduleDialog}
           hasMatches={matches.length > 0}
           pending={generate.isPending}
+          seedTeams={engine === "knockout_single" ? approvedTeams : undefined}
           onClose={() => setScheduleDialog(false)}
           onSubmit={(options) => generate.mutate(options)}
         />
@@ -550,6 +597,33 @@ export default function SchedulePage() {
           pending={draw.isPending}
           onClose={() => setDrawDialog(false)}
           onSubmit={(payload) => draw.mutate(payload)}
+        />
+      )}
+
+      {isHybrid && (
+        <KnockoutSeedDialog
+          open={seedDialog}
+          plan={planQuery.data}
+          hasBracket={knockoutTies.length > 0}
+          pending={knockout.isPending}
+          onClose={() => setSeedDialog(false)}
+          onSubmit={(payload) => knockout.mutate(payload)}
+        />
+      )}
+
+      {slotMatch && (
+        <SlotTeamsDialog
+          open
+          match={slotMatch}
+          bracket={isHybrid ? knockoutTies : matches}
+          teams={slotPool}
+          pending={editSlot.isPending}
+          fieldErrors={slotErrors}
+          onClose={() => {
+            setSlotMatch(null);
+            setSlotErrors({});
+          }}
+          onSubmit={(payload) => editSlot.mutate(payload)}
         />
       )}
     </div>

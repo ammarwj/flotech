@@ -55,6 +55,23 @@ export async function deleteMatch(orgId: string, matchId: string): Promise<null>
   return data.data;
 }
 
+/** One first-round bracket slot. A null away side is a bye. */
+export interface SeedPair {
+  order: number;
+  home_team_id: string | null;
+  away_team_id: string | null;
+}
+
+/**
+ * Who plays whom in the opening round. Omitted (or "auto") keeps the automatic
+ * seeding: group standings for hybrid, team name for single elimination.
+ * Slots left out of `pairs` are filled with whoever is left over.
+ */
+export interface SeedingPayload {
+  seeding?: "auto" | "manual";
+  pairs?: SeedPair[];
+}
+
 export interface ScheduleOptions {
   /** Date of the first matchday (YYYY-MM-DD); defaults to the event start. */
   start_date?: string | null;
@@ -76,7 +93,7 @@ export async function generateSchedule(
   orgId: string,
   eventId: string,
   categoryId: string,
-  options?: ScheduleOptions
+  options?: ScheduleOptions & SeedingPayload
 ): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
     `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/schedule`,
@@ -123,10 +140,12 @@ export async function getKnockoutPlan(
 export async function generateKnockout(
   orgId: string,
   eventId: string,
-  categoryId: string
+  categoryId: string,
+  seeding?: SeedingPayload
 ): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
-    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout`
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout`,
+    seeding ?? {}
   );
   return data.data;
 }
@@ -215,6 +234,29 @@ export async function updateMatchSchedule(
 ): Promise<Match> {
   const { data } = await apiClient.patch<ApiEnvelope<Match>>(
     `/organizations/${orgId}/matches/${matchId}/schedule`,
+    payload
+  );
+  return data.data;
+}
+
+export interface MatchTeamsPayload {
+  home_team_id: string | null;
+  /** null makes the slot a bye. */
+  away_team_id: string | null;
+}
+
+/**
+ * Replace the teams in a first-round bracket slot. Anything the previous
+ * occupant reached in later rounds is reset — the response message says how
+ * many fixtures that was.
+ */
+export async function updateMatchTeams(
+  orgId: string,
+  matchId: string,
+  payload: MatchTeamsPayload
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/teams`,
     payload
   );
   return data.data;

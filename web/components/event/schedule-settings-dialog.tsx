@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, Sparkles, X } from "lucide-react";
 
-import type { ScheduleOptions } from "@/lib/api/matches";
+import type { ScheduleOptions, SeedPair, SeedingPayload } from "@/lib/api/matches";
 import type { SportEvent } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { bracketSizeFor } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
+import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -29,6 +31,7 @@ export function ScheduleSettingsDialog({
   open,
   hasMatches,
   pending,
+  seedTeams,
   onClose,
   onSubmit,
 }: {
@@ -36,8 +39,14 @@ export function ScheduleSettingsDialog({
   open: boolean;
   hasMatches: boolean;
   pending: boolean;
+  /**
+   * Approved teams, when this category is a single-elimination bracket whose
+   * opening round the organizer may seed by hand. Omitted for every other
+   * engine — league fixtures and hybrid group stages have no seeding.
+   */
+  seedTeams?: SeedTeam[];
   onClose: () => void;
-  onSubmit: (options: ScheduleOptions) => void;
+  onSubmit: (options: ScheduleOptions & SeedingPayload) => void;
 }) {
   const [startDate, setStartDate] = useState(event.start_date ?? "");
   const [dailyStart, setDailyStart] = useState("15:00");
@@ -48,6 +57,8 @@ export function ScheduleSettingsDialog({
   const [venues, setVenues] = useState("1");
   const [maxPerDay, setMaxPerDay] = useState("");
   const [spread, setSpread] = useState(true);
+  const [seeding, setSeeding] = useState<SeedingMode>("auto");
+  const [pairs, setPairs] = useState<SeedPair[]>([]);
 
   // Close on Escape while the dialog is open.
   useEffect(() => {
@@ -71,6 +82,8 @@ export function ScheduleSettingsDialog({
       venues: Number(venues) || 1,
       max_per_day: maxPerDay === "" ? null : Number(maxPerDay),
       spread,
+      // Only sent when this engine can be seeded and the organizer chose to.
+      ...(seedTeams && seeding === "manual" ? { seeding, pairs } : {}),
     });
   };
 
@@ -83,7 +96,7 @@ export function ScheduleSettingsDialog({
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-start gap-3 border-b border-border p-5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
@@ -106,7 +119,7 @@ export function ScheduleSettingsDialog({
           </button>
         </div>
 
-        <div className="grid gap-4 p-5">
+        <div className="grid gap-4 overflow-y-auto p-5">
           <Field label="Mulai tanggal" hint="Hari pertandingan pertama.">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
@@ -167,6 +180,20 @@ export function ScheduleSettingsDialog({
               </span>
             </span>
           </label>
+
+          {seedTeams && seedTeams.length >= 2 && (
+            <div className="border-t border-border pt-4">
+              <BracketSeedEditor
+                size={bracketSizeFor(seedTeams.length)}
+                pool={seedTeams}
+                mode={seeding}
+                value={pairs}
+                onModeChange={setSeeding}
+                onChange={setPairs}
+                autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
+              />
+            </div>
+          )}
 
           {hasMatches && (
             <p className="rounded-md border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2 text-xs text-[var(--warning)]">

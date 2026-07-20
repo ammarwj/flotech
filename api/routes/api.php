@@ -213,6 +213,8 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
+            // Fix a wrong seed in place, instead of rebuilding the whole bracket.
+            Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
             Route::patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);

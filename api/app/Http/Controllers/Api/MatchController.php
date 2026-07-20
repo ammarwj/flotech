@@ -16,6 +16,7 @@ use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
 use App\Support\ApiResponse;
+use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
 use App\Support\MatchScoring;
 use Illuminate\Database\Eloquent\Collection;
@@ -74,7 +75,19 @@ class MatchController extends Controller
         } elseif ($engine === 'league') {
             $count = $this->schedule->generateRoundRobin($categoryModel);
         } elseif ($engine === 'knockout_single') {
-            $count = $this->schedule->generateKnockout($categoryModel);
+            $approved = $categoryModel->teams()->where('status', 'approved')->pluck('id');
+            $half = intdiv(BracketSeeding::sizeFor($approved->count()), 2);
+
+            $seeding = $request->validate(BracketSeeding::validationRules($half, $approved));
+
+            if ($error = $this->seedingError($seeding)) {
+                return $error;
+            }
+
+            $count = $this->schedule->generateKnockout(
+                $categoryModel,
+                BracketSeeding::normalize($seeding, $half),
+            );
         } elseif ($engine === 'knockout_double') {
             $count = $this->schedule->generateDoubleElim($categoryModel);
             if ($count === -1) {
@@ -220,7 +233,21 @@ class MatchController extends Controller
             );
         }
 
-        if ($this->schedule->generateHybridKnockout($categoryModel, $qualifiers) === 0) {
+        // The pool is the qualifiers, not every approved team: this endpoint
+        // builds the bracket out of who came through the groups, and its own
+        // guards above already refuse to run until every group game is final.
+        // Getting a non-qualifier into the bracket is a results problem, and
+        // its fix is the slot editor, not seeding.
+        $half = intdiv($config->bracketSize(), 2);
+        $seeding = $request->validate(BracketSeeding::validationRules($half, $qualifiers));
+
+        if ($error = $this->seedingError($seeding)) {
+            return $error;
+        }
+
+        $pairs = BracketSeeding::normalize($seeding, $half);
+
+        if ($this->schedule->generateHybridKnockout($categoryModel, $qualifiers, $pairs) === 0) {
             return ApiResponse::error('Butuh minimal 2 tim lolos untuk membuat bracket.', null, 422);
         }
 
@@ -228,7 +255,8 @@ class MatchController extends Controller
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
-            'Bracket knockout dibuat: '.count($qualifiers).' tim lolos',
+            'Bracket knockout dibuat: '.count($qualifiers).' tim lolos'
+                .($pairs !== null ? ' (seeding manual)' : ''),
             201,
         );
     }
@@ -517,6 +545,254 @@ class MatchController extends Controller
     }
 
     /**
+     * Replace the teams in a first-round bracket slot, for a seed that came out
+     * wrong. Everything the old occupant reached downstream is undone first.
+     *
+     * Deliberately not part of updateResult(): every guard in there is written
+     * assuming the teams are fixed, so a swap posted alongside a scoreline
+     * would land in a state none of them anticipate.
+     */
+    public function updateTeams(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+        $category = $matchModel->category;
+        $engine = $category->engine();
+
+        if ($engine === 'knockout_double') {
+            return ApiResponse::error(
+                'Bracket double elimination belum bisa diedit manual.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        // Hybrid keeps its bracket under stage 'knockout'; single elimination
+        // has no stages at all. Anything else is a group or league fixture.
+        $isBracket = $engine === 'knockout_single'
+            ? $matchModel->stage === null
+            : $matchModel->stage === 'knockout';
+
+        if (! $isBracket) {
+            return ApiResponse::error(
+                'Hanya slot bracket knockout yang bisa diubah timnya.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        if ($matchModel->round !== 1) {
+            return ApiResponse::error(
+                'Tim di babak lanjutan ditentukan oleh hasil babak sebelumnya — ubah pasangan di babak pertama.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        // A single-elimination bracket shares (stage null, round 1) with the
+        // hand-added friendlies of storeManual(), whose order keeps counting
+        // past the bracket. Those are not slots — delete and re-add instead.
+        if ($matchModel->stage === null && $matchModel->order >= $this->bracketSlotCount($matchModel)) {
+            return ApiResponse::error(
+                'Pertandingan tambahan bukan bagian dari bracket — hapus lalu tambahkan ulang.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        // Keyed on the scoreline, not on status: a bye is written finished and
+        // confirmed with no scores, and "the bye went to the wrong team" is one
+        // of the seeding mistakes this endpoint exists to fix.
+        if ($matchModel->home_score !== null || $matchModel->away_score !== null || $matchModel->sets !== null) {
+            return ApiResponse::error(
+                'Hasil pertandingan ini sudah diisi — hapus hasilnya dulu sebelum mengganti tim.',
+                null,
+                422,
+            );
+        }
+
+        $pool = $engine === 'knockout_single'
+            ? $category->teams()->where('status', 'approved')->pluck('id')->all()
+            : $this->standings->qualifiers($category);
+
+        $data = $request->validate([
+            'home_team_id' => ['nullable', 'uuid', Rule::in($pool)],
+            'away_team_id' => ['nullable', 'uuid', 'different:home_team_id', Rule::in($pool)],
+        ]);
+
+        $home = $data['home_team_id'] ?? null;
+        $away = $data['away_team_id'] ?? null;
+
+        if ($home === null && $away === null) {
+            return ApiResponse::error('Slot harus punya minimal satu tim.', [
+                'home_team_id' => ['Pilih tim untuk slot ini.'],
+            ], 422);
+        }
+
+        if ($home === null) {
+            return ApiResponse::error('Isi tim di slot pertama; slot kedua yang dikosongkan berarti bye.', [
+                'home_team_id' => ['Pilih tim untuk slot pertama.'],
+            ], 422);
+        }
+
+        // Picking a team that already has a slot swaps the two, rather than
+        // being refused. In a full bracket every eligible team is placed
+        // somewhere, so a plain replacement would have nothing to offer — what
+        // the organizer actually wants is to move two seeds past each other,
+        // and doing it here keeps the results that a regenerate would burn.
+        $vacated = $this->displaceOccupants($matchModel, $home, $away);
+
+        if ($vacated instanceof JsonResponse) {
+            return $vacated;
+        }
+
+        // Clear first, then re-advance: the other way round would empty the very
+        // slot a walkover just filled.
+        $cleared = $this->schedule->clearDownstream($matchModel);
+
+        foreach ($vacated as $donor) {
+            $cleared += $this->schedule->clearDownstream($donor);
+        }
+
+        $this->reseat($matchModel, $home, $away);
+
+        foreach ($vacated as $donor) {
+            $this->reseat($donor, $donor->home_team_id, $donor->away_team_id);
+        }
+
+        return ApiResponse::success(
+            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            $cleared > 0
+                ? "Tim diperbarui — {$cleared} pertandingan babak berikutnya direset"
+                : 'Tim di slot bracket diperbarui',
+        );
+    }
+
+    /**
+     * Hand the outgoing teams of $match to whichever first-round slots the
+     * incoming ones are being taken from.
+     *
+     * The donors come back with their new occupants set but *unsaved*, so the
+     * caller can clear their descendants before the change lands.
+     *
+     * @return \Illuminate\Support\Collection<int, GameMatch>|JsonResponse the donors, or the error to return
+     */
+    protected function displaceOccupants(GameMatch $match, ?string $home, ?string $away)
+    {
+        $outgoing = [$match->home_team_id, $match->away_team_id];
+        $donors = collect();
+
+        foreach ([$home, $away] as $side => $incoming) {
+            // Already in this tie: no other slot is involved.
+            if ($incoming === null || in_array($incoming, $outgoing, true)) {
+                continue;
+            }
+
+            $donor = $donors->first(fn ($m) => in_array($incoming, [$m->home_team_id, $m->away_team_id], true))
+                ?? $this->bracketSlots($match)->first(
+                    fn ($m) => in_array($incoming, [$m->home_team_id, $m->away_team_id], true)
+                );
+
+            if (! $donor) {
+                continue; // the team is unplaced — a straight replacement
+            }
+
+            if ($donor->home_score !== null || $donor->away_score !== null || $donor->sets !== null) {
+                return ApiResponse::error(
+                    'Tim itu sudah bermain di slot lain — tukar hanya bisa sebelum salah satunya dimainkan.',
+                    [$side === 0 ? 'home_team_id' : 'away_team_id' => ['Slot asal tim ini sudah punya hasil.']],
+                    422,
+                );
+            }
+
+            // The team leaving this slot takes the incoming one's place.
+            $replacement = $outgoing[$side] ?? null;
+            if ($donor->home_team_id === $incoming) {
+                $donor->home_team_id = $replacement;
+            } else {
+                $donor->away_team_id = $replacement;
+            }
+
+            // A slot may never hold an away team with nobody at home; that is
+            // the shape the request validation refuses, so don't create it.
+            if ($donor->home_team_id === null) {
+                $donor->home_team_id = $donor->away_team_id;
+                $donor->away_team_id = null;
+            }
+
+            $donors = $donors->reject(fn ($m) => $m->is($donor))->push($donor);
+        }
+
+        return $donors;
+    }
+
+    /**
+     * Seat a pair in a bracket slot, dropping any result it held. A lone team
+     * is a walkover, written exactly as generation writes one, and goes
+     * straight through to the next round.
+     */
+    protected function reseat(GameMatch $match, ?string $home, ?string $away): void
+    {
+        $bye = $home !== null && $away === null;
+
+        $match->update([
+            'home_team_id' => $home,
+            'away_team_id' => $away,
+            'home_score' => null,
+            'away_score' => null,
+            'home_penalty' => null,
+            'away_penalty' => null,
+            'sets' => null,
+            'status' => $bye ? 'finished' : 'scheduled',
+            'confirmed_at' => $bye ? now() : null,
+        ]);
+
+        if ($bye) {
+            $this->schedule->advanceWinner($match->fresh());
+        }
+    }
+
+    /**
+     * The other first-round slots of this match's bracket.
+     *
+     * A single-elimination bracket shares `stage null, round 1` with the manual
+     * extra fixtures of storeManual(), whose order keeps counting past the
+     * bracket — without the cut-off a friendly would be treated as a slot and
+     * get its teams shuffled.
+     *
+     * @return Collection<int, GameMatch>
+     */
+    protected function bracketSlots(GameMatch $match)
+    {
+        $query = $match->category->matches()
+            ->where('round', 1)
+            ->whereKeyNot($match->id);
+
+        if ($match->stage === null) {
+            $query->whereNull('stage')->where('order', '<', $this->bracketSlotCount($match));
+        } else {
+            $query->where('stage', $match->stage);
+        }
+
+        return $query->orderBy('order')->get();
+    }
+
+    /**
+     * First-round slots in the bracket this match belongs to.
+     *
+     * Derived from how tall the bracket is rather than from the team count, so
+     * it stays right when teams are approved or withdrawn after generation.
+     */
+    protected function bracketSlotCount(GameMatch $match): int
+    {
+        $query = $match->category->matches();
+        $maxRound = (int) ($match->stage === null
+            ? $query->whereNull('stage')->max('round')
+            : $query->where('stage', $match->stage)->max('round'));
+
+        return intdiv(2 ** max(1, $maxRound), 2);
+    }
+
+    /**
      * Confirm (finalize) or unconfirm a result. Confirming a knockout match
      * pushes the winner/loser onward.
      */
@@ -607,6 +883,44 @@ class MatchController extends Controller
             if ($assists > $goals) {
                 return "Assist ({$assists}) tidak boleh lebih banyak dari gol tim ({$goals}) — satu gol maksimal satu assist.";
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * The checks on a manual seeding payload that validation rules can't state:
+     * `Rule::in` can't see across slots, and `distinct` can't reach two sibling
+     * keys of one row.
+     *
+     * @param  array<string, mixed>  $seeding  the validated payload
+     * @return JsonResponse|null the error to return, or null when it's sound
+     */
+    protected function seedingError(array $seeding): ?JsonResponse
+    {
+        if (! BracketSeeding::isManual($seeding)) {
+            return null;
+        }
+
+        $pairs = $seeding['pairs'] ?? [];
+
+        if ($pairs === []) {
+            return ApiResponse::error('Isi minimal satu pasangan untuk seeding manual.', [
+                'pairs' => ['Pasangan babak pertama wajib diisi.'],
+            ], 422);
+        }
+
+        $orders = array_column($pairs, 'order');
+        if (count($orders) !== count(array_unique($orders))) {
+            return ApiResponse::error('Setiap slot bracket hanya boleh diisi sekali.', [
+                'pairs' => ['Ada slot yang dikirim lebih dari sekali.'],
+            ], 422);
+        }
+
+        if (BracketSeeding::duplicateTeam($pairs) !== null) {
+            return ApiResponse::error('Satu tim tidak boleh mengisi dua slot bracket.', [
+                'pairs' => ['Ada tim yang dipilih lebih dari sekali.'],
+            ], 422);
         }
 
         return null;
