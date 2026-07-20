@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck } from "lucide-react";
+import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3 } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
@@ -159,6 +159,12 @@ export default function EventsPage() {
                   <Link href={`/organizer/events/${ev.id}/tickets`}>
                     <Ticket className="h-4 w-4" />
                     Tiket
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/stats`}>
+                    <BarChart3 className="h-4 w-4" />
+                    Statistik
                   </Link>
                 </Button>
                 {/* Always shown, not just while the gateway is off: manual

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
+use App\Http\Controllers\Api\Admin\ViewStatController as AdminViewStatController;
 use App\Http\Controllers\Api\Admin\WalletController as AdminWalletController;
 use App\Http\Controllers\Api\Admin\WithdrawalController as AdminWithdrawalController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -22,11 +23,13 @@ use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
+use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
+use App\Http\Controllers\Api\Public\EventViewController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
@@ -122,6 +125,11 @@ Route::prefix('v1')->group(function () {
     Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
         Route::get('/', [PublicEventController::class, 'show']);
 
+        // Page-view beacon, fired once per tab session by the public page.
+        // The only unauthenticated endpoint that writes, hence the throttle —
+        // there is deliberately no global one.
+        Route::post('view', [EventViewController::class, 'store'])->middleware('throttle:30,1');
+
         // Signing up needs an account: the team is tied to the manager who filed
         // it, and that link is the only way they reach it in "Tim Saya" later.
         // A team registered anonymously would belong to nobody.
@@ -165,6 +173,11 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);
+
+            // Public page traffic. Aggregates with no personal data in them, so
+            // `tenant` is enough — same call as the ticket report below.
+            Route::get('view-stats', [EventViewStatController::class, 'organization']);
+            Route::get('events/{event}/view-stats', [EventViewStatController::class, 'event']);
 
             // Billing. Like the wallet, this is money: `tenant` alone would let
             // an `operator` member switch the plan or read the invoices.
@@ -295,6 +308,11 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('feature-definitions', FeatureDefinitionController::class)
                 ->parameters(['feature-definitions' => 'feature_definition'])
                 ->except(['show']);
+
+            // Public page traffic across the whole platform.
+            Route::get('view-stats', [AdminViewStatController::class, 'index']);
+            Route::get('view-stats/organizations', [AdminViewStatController::class, 'organizations']);
+            Route::get('view-stats/events', [AdminViewStatController::class, 'events']);
 
             // Landing page content.
             Route::apiResource('testimonials', TestimonialController::class)->except(['show']);

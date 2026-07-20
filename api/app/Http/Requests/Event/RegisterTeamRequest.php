@@ -39,12 +39,22 @@ class RegisterTeamRequest extends FormRequest
             // in hand yet should still be able to claim a slot. A player row that
             // *is* sent still needs a name.
             'players' => ['nullable', 'array'],
+            // Load-bearing, not decoration: validated() drops any key without a
+            // rule, so leaving this out strips the id from every row. Sync then
+            // reads them all as new, recreates them, and deletes the originals —
+            // and player_match_stats cascades on that delete, so an organizer
+            // editing a team to add its crest would silently erase every goal it
+            // has ever scored. MyTeamController declares the same rule.
+            'players.*.id' => ['nullable', 'string'],
             'players.*.full_name' => ['required', 'string', 'max:255'],
             'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:50'],
             'players.*.photo_url' => ['nullable', 'string'],
 
             'documents' => ['nullable', 'array'],
+            // Same contract as the roster: without the id every document is
+            // re-uploaded as a new row and loses its uploaded_at.
+            'documents.*.id' => ['nullable', 'string'],
             'documents.*.file_url' => ['required', 'string'],
             'documents.*.file_name' => ['nullable', 'string', 'max:255'],
             'documents.*.document_type' => ['nullable', 'string', 'max:100'],

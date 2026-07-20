@@ -140,6 +140,12 @@ class Organization extends Model
         return $this->hasMany(CertificateTemplate::class);
     }
 
+    /** Daily public page traffic across every event of this organization. */
+    public function viewDaily(): HasMany
+    {
+        return $this->hasMany(EventViewDaily::class);
+    }
+
     public function certificates(): HasMany
     {
         return $this->hasMany(Certificate::class);

@@ -82,6 +82,9 @@ export const WALLET_TX_STATUS_LABELS: Record<WalletTxStatus, string> = {
 export const rupiah = (n: number) =>
   (n < 0 ? "-Rp " : "Rp ") + new Intl.NumberFormat("id-ID").format(Math.abs(n));
 
+/** Thousands-separated count: 1284 → "1.284". */
+export const angka = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+
 /**
  * Abbreviated amount for the marketing pricing table: 149000 → "149rb",
  * 1430000 → "1,43jt". Lossy by design — never use it for an amount being billed.

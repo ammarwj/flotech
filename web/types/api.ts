@@ -974,3 +974,55 @@ export interface AdminUser {
   owned_organizations: { id: string; name: string }[];
   memberships: { organization_id: string; organization_name: string | null; role: string }[];
 }
+
+// ---- Public page traffic ----
+
+/** One day of a traffic trend. Trends are always gap-free, so `views` may be 0. */
+export interface ViewTrendPoint {
+  date: string;
+  views: number;
+  unique_visitors: number;
+}
+
+export interface ViewTotals {
+  views: number;
+  unique_visitors: number;
+}
+
+export interface EventViewStats {
+  totals: ViewTotals;
+  trend: ViewTrendPoint[];
+}
+
+export interface OrgEventViews {
+  event_id: string;
+  name: string;
+  slug: string;
+  status: string;
+  views: number;
+  unique_visitors: number;
+}
+
+/** Organizer-wide traffic: totals, trend, and a row per event. */
+export interface OrgViewStats extends EventViewStats {
+  events: OrgEventViews[];
+}
+
+export interface OrgViewBreakdown {
+  organization_id: string;
+  name: string;
+  slug: string;
+  views: number;
+  unique_visitors: number;
+  events_count: number;
+}
+
+export interface EventViewBreakdown {
+  event_id: string;
+  name: string;
+  slug: string;
+  organization_id: string;
+  organization_name: string;
+  views: number;
+  unique_visitors: number;
+}

@@ -10,20 +10,32 @@ import {
   SlidersHorizontal,
   Settings2,
   Trophy,
+  BarChart3,
 } from "lucide-react";
 
 import { getAdminPlans } from "@/lib/api/plans";
+import { getAdminViewStats, LIVE_STATS_OPTIONS } from "@/lib/api/views";
+import { angka } from "@/lib/labels";
 import { useAuthStore } from "@/stores/auth-store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
 
 export default function AdminOverviewPage() {
   const user = useAuthStore((s) => s.user);
   const plansQuery = useQuery({ queryKey: ["admin-plans"], queryFn: getAdminPlans });
+  const viewsQuery = useQuery({
+    queryKey: ["admin-view-stats"],
+    queryFn: getAdminViewStats,
+    ...LIVE_STATS_OPTIONS,
+  });
 
   const planCount = plansQuery.data?.length ?? 0;
   const activePlans = plansQuery.data?.filter((p) => p.is_active).length ?? 0;
+  // The card shows the window the trend covers, not the all-time total, so the
+  // number matches the chart on /admin/visitors.
+  const recentViews = viewsQuery.data?.trend.reduce((sum, p) => sum + p.views, 0) ?? 0;
 
   return (
     <div>
@@ -38,18 +50,25 @@ export default function AdminOverviewPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Total paket</span>
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
-              <CreditCard className="h-[18px] w-[18px]" />
-            </span>
-          </div>
-          <div className="mt-3 text-3xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-            {plansQuery.isLoading ? "…" : planCount}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{activePlans} paket aktif</p>
-        </Card>
+        <StatCard
+          label="Total paket"
+          value={planCount}
+          icon={CreditCard}
+          loading={plansQuery.isLoading}
+          hint={`${activePlans} paket aktif`}
+        />
+        <StatCard
+          label="Kunjungan 30 hari"
+          value={angka(recentViews)}
+          icon={BarChart3}
+          color="var(--accent-purple)"
+          loading={viewsQuery.isLoading}
+          hint={
+            <Link href="/admin/visitors" className="text-[var(--brand-600)] hover:underline">
+              Lihat statistik pengunjung
+            </Link>
+          }
+        />
       </div>
 
       <Card className="mt-6 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">

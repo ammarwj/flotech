@@ -31,6 +31,8 @@ use Throwable;
 
 class PublicEventController extends Controller
 {
+    use Concerns\ResolvesPublicEvent;
+
     public function __construct(
         protected PlanGate $gate,
         protected RegistrationService $registration,
@@ -292,19 +294,6 @@ class PublicEventController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * Resolve a published event by org + event slug (404 for drafts).
-     */
-    protected function resolve(string $orgSlug, string $eventSlug): Event
-    {
-        $org = Organization::where('slug', $orgSlug)->firstOrFail();
-
-        return $org->events()
-            ->where('slug', $eventSlug)
-            ->where('status', '!=', 'draft')
-            ->firstOrFail();
     }
 
     /**

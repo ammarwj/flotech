@@ -13,6 +13,7 @@ import { PublicAllSchedule } from "@/components/event/public-all-schedule";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
+import { ViewBeacon } from "@/components/event/view-beacon";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
@@ -131,6 +132,10 @@ export default function PublicEventPage() {
     // Kickoff times render in the venue's zone, so every visitor reads the same
     // clock the organizer set — not their own.
     <EventTimezoneProvider timezone={ev.timezone}>
+      {/* Counts this visit for the organizer. Only reached once the event
+          resolved, so a bad slug never reports traffic. */}
+      <ViewBeacon orgSlug={params.orgSlug} eventSlug={params.eventSlug} />
+
       {/* ===== HERO ===== */}
       <header className="ehero">
         <div className="container ehero-inner">

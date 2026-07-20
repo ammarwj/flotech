@@ -19,6 +19,7 @@ import {
   MessageSquareQuote,
   HelpCircle,
   Activity,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -75,6 +76,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/config-options", label: "Opsi Konfigurasi", icon: Settings2, mobile: true },
   { href: "/admin/settings", label: "Pengaturan Platform", icon: Settings },
   { href: "/admin/active-sessions", label: "Sesi Aktif", icon: Activity },
+  { href: "/admin/visitors", label: "Statistik Pengunjung", icon: BarChart3 },
 ];
 
 /** Pick the navigation set for the signed-in user's role and current mode. */

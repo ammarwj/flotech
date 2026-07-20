@@ -110,6 +110,12 @@ class Event extends Model
         return $this->hasMany(Ticket::class);
     }
 
+    /** Daily public page traffic. Written only by EventViewService. */
+    public function viewDaily(): HasMany
+    {
+        return $this->hasMany(EventViewDaily::class);
+    }
+
     /** Catalog entry for this event's sport (name, colour, scoring, stats). */
     public function sportDefinition(): ?array
     {
