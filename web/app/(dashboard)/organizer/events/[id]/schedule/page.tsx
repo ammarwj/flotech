@@ -38,6 +38,7 @@ import {
 } from "@/lib/api/matches";
 import { getEvent, getRegistrations } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import {
   buildMatchSections,
   isKnockout as isKnockoutFormat,
@@ -80,6 +81,7 @@ type Tab = "schedule" | "standings" | "bracket" | "stats";
 
 export default function SchedulePage() {
   const { orgId } = useActiveOrg();
+  const confirm = useConfirm();
   const { id: eventId } = useParams<{ id: string }>();
   const [tab, setTab] = useState<Tab | null>(null);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -442,16 +444,19 @@ export default function SchedulePage() {
                   size="sm"
                   onClick={() => {
                     // Spell out what's at stake: a bracket with results entered
-                    // is not the same undo as one generated a minute ago.
+                    // is not the same undo as one generated a minute ago. No
+                    // strip at all when nothing has been played — an empty
+                    // warning teaches people to skip the real ones.
                     const played = knockoutTies.filter((m) => m.status === "finished").length;
-                    const warning = played > 0 ? `\n\n${played} hasil pertandingan akan ikut hilang.` : "";
-                    if (
-                      window.confirm(
-                        `Hapus bracket knockout? Fase grup dan hasilnya tetap aman.${warning}`,
-                      )
-                    ) {
-                      dropKnockout.mutate();
-                    }
+                    void confirm({
+                      title: "Hapus bracket knockout?",
+                      description: "Fase grup dan hasilnya tetap aman.",
+                      consequences:
+                        played > 0 ? `${played} hasil pertandingan akan ikut hilang.` : undefined,
+                      confirmLabel: "Hapus bracket",
+                      tone: "danger",
+                      icon: Trash2,
+                    }).then((ok) => ok && dropKnockout.mutate());
                   }}
                   disabled={dropKnockout.isPending || knockout.isPending}
                   className="text-muted-foreground hover:text-[var(--danger)]"
@@ -646,6 +651,7 @@ function MatchCard({
   knockout: boolean;
 }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [home, setHome] = useState(match.home_score?.toString() ?? "");
   const [away, setAway] = useState(match.away_score?.toString() ?? "");
   const [homePen, setHomePen] = useState(match.home_penalty?.toString() ?? "");
@@ -688,9 +694,15 @@ function MatchCard({
     <Button
       size="sm"
       variant="ghost"
-      onClick={() => {
-        if (window.confirm("Hapus pertandingan ini?")) del.mutate();
-      }}
+      onClick={() =>
+        void confirm({
+          title: "Hapus pertandingan ini?",
+          description: "Jadwal dan skor yang sudah diisi ikut terhapus.",
+          confirmLabel: "Hapus",
+          tone: "danger",
+          icon: Trash2,
+        }).then((ok) => ok && del.mutate())
+      }
       disabled={del.isPending}
       aria-label="Hapus pertandingan"
       title="Hapus pertandingan"

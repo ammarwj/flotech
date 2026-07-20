@@ -354,7 +354,7 @@ function RegistrationCard({
             </div>
           </div>
         </button>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
           <Button size="sm" variant="outline" onClick={onEdit} aria-label={`Ubah tim ${team.name}`}>
             <Pencil className="h-4 w-4" />
             Ubah

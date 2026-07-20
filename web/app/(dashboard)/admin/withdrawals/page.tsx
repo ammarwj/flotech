@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Banknote, Copy } from "lucide-react";
+import { Banknote, Copy, XCircle } from "lucide-react";
+
+import { usePrompt } from "@/components/shared/confirm-provider";
 
 import {
   completeWithdrawal,
@@ -35,6 +37,7 @@ const dateTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 export default function AdminWithdrawalsPage() {
+  const prompt = usePrompt();
   const qc = useQueryClient();
   const [tab, setTab] = useState<WithdrawalStatus>("pending");
   const [completing, setCompleting] = useState<Withdrawal | null>(null);
@@ -77,9 +80,19 @@ export default function AdminWithdrawalsPage() {
     onError: fail("Gagal menolak penarikan."),
   });
 
-  const reject = (w: Withdrawal) => {
-    const reason = window.prompt(`Alasan menolak penarikan ${w.reference}?`);
-    if (reason?.trim()) rejectMutation.mutate({ id: w.id, reason: reason.trim() });
+  const reject = async (w: Withdrawal) => {
+    const reason = await prompt({
+      title: "Tolak penarikan?",
+      description: `Dana penarikan ${w.reference} dikembalikan ke saldo organizer.`,
+      label: "Alasan menolak",
+      placeholder: "Alasan ini dikirim ke organizer",
+      multiline: true,
+      confirmLabel: "Tolak penarikan",
+      tone: "danger",
+      icon: XCircle,
+    });
+    if (!reason) return;
+    rejectMutation.mutate({ id: w.id, reason });
   };
 
   const copy = (text: string) => {
@@ -183,7 +196,7 @@ export default function AdminWithdrawalsPage() {
                       variant="ghost"
                       size="sm"
                       disabled={rejectMutation.isPending}
-                      onClick={() => reject(w)}
+                      onClick={() => void reject(w)}
                     >
                       Tolak
                     </Button>

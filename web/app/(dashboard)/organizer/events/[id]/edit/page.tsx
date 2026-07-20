@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { EventStatusPanel } from "@/components/event/event-status-panel";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import type { EventStatus } from "@/types/api";
 
 /** Per-status confirmation copy; the API sends its own message, this is the UI's. */
@@ -39,6 +40,7 @@ export default function EditEventPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { org, orgId } = useActiveOrg();
+  const confirm = useConfirm();
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const eventQuery = useQuery({
@@ -112,6 +114,29 @@ export default function EditEventPage() {
 
   const ev = eventQuery.data;
 
+  // Deleting an event cascades all the way down — categories, and through them
+  // every team and match — so the dialog names what actually goes with it
+  // rather than asking "yakin?".
+  const confirmDelete = async () => {
+    const ok = await confirm({
+      title: "Hapus event ini?",
+      description: `"${ev.name}" dihapus permanen beserta seluruh isinya.`,
+      tone: "danger",
+      icon: Trash2,
+      confirmLabel: "Hapus event",
+      consequences: (
+        <ul className="grid gap-1">
+          <li>{ev.categories.length} kategori kompetisi</li>
+          <li>{ev.teams_count ?? 0} tim terdaftar</li>
+          <li>Seluruh jadwal &amp; hasil pertandingan</li>
+          <li>Kategori tiket beserta data penjualannya</li>
+          <li>Foto galeri &amp; sponsor</li>
+        </ul>
+      ),
+    });
+    if (ok) remove.mutate();
+  };
+
   return (
     <div>
       <PageHeader
@@ -141,7 +166,11 @@ export default function EditEventPage() {
                 Galeri & Sponsor
               </Link>
             </Button>
-            <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDelete()}
+              disabled={remove.isPending}
+            >
               <Trash2 className="h-4 w-4" />
               Hapus
             </Button>

@@ -131,7 +131,10 @@ export default function EventsPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2">
+              {/* Six nowrap buttons are ~620px; the card has ~288px on a phone.
+                  Full width first so they wrap inside the card instead of
+                  stretching it past the viewport. */}
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 {ev.status !== "draft" && org?.slug && (
                   <Button asChild size="sm" variant="outline">
                     <a href={`/${org.slug}/${ev.slug}`} target="_blank" rel="noopener noreferrer">

@@ -28,6 +28,7 @@ import {
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { isTicketingEnabled, getTicketLimit } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,7 @@ export default function EventTicketsPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { org, orgId } = useActiveOrg();
+  const confirm = useConfirm();
 
   const [editing, setEditing] = useState<TicketCategory | null>(null);
   const [creating, setCreating] = useState(false);
@@ -293,7 +295,7 @@ export default function EventTicketsPage() {
                   {cat.benefits.length > 0 && <span>{cat.benefits.join(" · ")}</span>}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 <Button
                   size="sm"
                   variant="outline"
@@ -309,9 +311,15 @@ export default function EventTicketsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    if (confirm(`Hapus kategori “${cat.name}”?`)) deleteMut.mutate(cat.id);
-                  }}
+                  onClick={() =>
+                    void confirm({
+                      title: "Hapus kategori tiket?",
+                      description: `Kategori "${cat.name}" dihapus dari halaman event.`,
+                      confirmLabel: "Hapus kategori",
+                      tone: "danger",
+                      icon: Trash2,
+                    }).then((ok) => ok && deleteMut.mutate(cat.id))
+                  }
                   disabled={deleteMut.isPending || cat.sold > 0}
                   title={cat.sold > 0 ? "Tidak bisa dihapus karena sudah ada tiket terjual" : undefined}
                 >

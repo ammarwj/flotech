@@ -100,7 +100,10 @@ export function HybridConfigCard({
         title="Konfigurasi Grup + Knockout"
         description="Struktur grup, aturan lolos, dan bracket knockout dibuat otomatis dari sini."
       />
-      <CardContent className="grid gap-5">
+      {/* This card sits three boxes deep (main → Card → CategoryEditor → here),
+          and at 360px the stacked padding leaves under 200px for the fields.
+          Tighter below sm buys ~28px of it back. */}
+      <CardContent className="grid gap-5 p-4 pt-0 sm:p-6 sm:pt-0">
         <Sub title="Struktur grup">
           <div className="grid gap-4 sm:grid-cols-3">
             <NumField
@@ -276,12 +279,15 @@ export function HybridConfigCard({
             {c.tiebreakers.map((t, i) => (
               <li
                 key={t}
-                className="flex items-center gap-3 rounded-md border border-border bg-[var(--bg-soft)] px-3 py-2"
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-[var(--bg-soft)] px-3 py-2 sm:gap-3"
               >
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-card text-xs font-bold">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-sm font-medium">{catalog.tiebreakerLabel(t)}</span>
+                {/* min-w-0: a flex item defaults to min-width:auto and refuses to
+                    shrink below its content, which would push the reorder
+                    buttons out of the box on a phone. */}
+                <span className="min-w-0 flex-1 text-sm font-medium">{catalog.tiebreakerLabel(t)}</span>
                 <button
                   type="button"
                   onClick={() => moveTiebreaker(i, -1)}

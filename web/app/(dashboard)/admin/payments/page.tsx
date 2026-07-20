@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, ReceiptText } from "lucide-react";
+import { AlertTriangle, ReceiptText, RotateCcw } from "lucide-react";
+
+import { usePrompt } from "@/components/shared/confirm-provider";
 
 import { getAdminPayments, refundPayment } from "@/lib/api/admin-wallet";
 import { parseApiError } from "@/lib/api/errors";
@@ -27,6 +29,7 @@ const dateTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 export default function AdminPaymentsPage() {
+  const prompt = usePrompt();
   const qc = useQueryClient();
   const [tab, setTab] = useState("paid");
 
@@ -47,11 +50,21 @@ export default function AdminPaymentsPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal melakukan refund.").message),
   });
 
-  const refund = (row: AdminPayment) => {
-    const reason = window.prompt(
-      `Refund ${rupiah(row.amount)} dari ${row.payer ?? "pembeli"}?\n\nIni membatalkan pesanan dan menarik kembali saldo organizer — uang ke pembeli TIDAK otomatis dikembalikan.\n\nAlasan refund:`
-    );
-    if (reason?.trim()) refundMutation.mutate({ row, reason: reason.trim() });
+  const refund = async (row: AdminPayment) => {
+    const reason = await prompt({
+      title: `Refund ${rupiah(row.amount)}?`,
+      description: `Pesanan dari ${row.payer ?? "pembeli"} dibatalkan dan saldo organizer dikoreksi.`,
+      consequences:
+        "Uang ke pembeli TIDAK otomatis dikembalikan — lakukan refund manual di dashboard Midtrans.",
+      label: "Alasan refund",
+      placeholder: "mis. pembeli batal hadir",
+      multiline: true,
+      confirmLabel: "Refund",
+      tone: "danger",
+      icon: RotateCcw,
+    });
+    if (!reason) return;
+    refundMutation.mutate({ row, reason });
   };
 
   const items = query.data ?? [];
@@ -132,7 +145,7 @@ export default function AdminPaymentsPage() {
                   variant="destructive"
                   size="sm"
                   disabled={refundMutation.isPending}
-                  onClick={() => refund(row)}
+                  onClick={() => void refund(row)}
                 >
                   Refund
                 </Button>

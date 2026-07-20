@@ -19,6 +19,7 @@ import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ type DocRow = { id?: string; file_name: string; file_url: string };
 const LOCKED = ["rejected", "disqualified", "withdrawn"];
 
 export default function ManageTeamPage() {
+  const confirm = useConfirm();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -342,11 +344,16 @@ export default function ManageTeamPage() {
               type="button"
               variant="ghost"
               className="text-[var(--danger)] hover:text-[var(--danger)]"
-              onClick={() => {
-                if (confirm("Tarik tim ini dari turnamen? Tindakan ini tidak bisa dibatalkan.")) {
-                  withdraw.mutate();
-                }
-              }}
+              onClick={() =>
+                void confirm({
+                  title: "Tarik tim dari turnamen?",
+                  description: "Tim ini keluar dari daftar peserta dan pendaftarannya dibatalkan.",
+                  consequences: "Tindakan ini tidak bisa dibatalkan.",
+                  confirmLabel: "Tarik tim",
+                  tone: "danger",
+                  icon: LogOut,
+                }).then((ok) => ok && withdraw.mutate())
+              }
               disabled={withdraw.isPending}
             >
               <LogOut className="h-4 w-4" />

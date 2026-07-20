@@ -44,7 +44,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <MobileMenu />
           </div>
         </header>
-        <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
+        {/* clip, not hidden: `overflow: hidden` on either axis makes this a
+            scroll container, and a scroll container becomes the scrollport for
+            sticky descendants — the event form's sticky footer and its lg:sticky
+            aside would quietly stop sticking. `clip` cuts without that. A net
+            under the real fixes, not a substitute for them. */}
+        <main className="flex-1 overflow-x-clip px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-8">
           <ImpersonationBanner />
           {children}
         </main>

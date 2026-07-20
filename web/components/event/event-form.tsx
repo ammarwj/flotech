@@ -191,7 +191,7 @@ function CategoryEditor({
   const free = !cat.registration_fee || cat.registration_fee <= 0;
 
   return (
-    <div className="grid gap-4 rounded-lg border border-border p-4">
+    <div className="grid gap-4 rounded-lg border border-border p-3 sm:p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-muted-foreground">Kategori {index + 1}</p>
         {canRemove && (
@@ -752,7 +752,7 @@ export function EventForm({
         <FieldError message={attestError} />
       </div>
 
-      <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-3 rounded-xl border border-border bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-xl border border-border bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         {cancelHref && (
           <Button asChild variant="ghost" size="lg">
             <Link href={cancelHref}>Batal</Link>

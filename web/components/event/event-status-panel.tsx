@@ -2,6 +2,7 @@
 
 import { Check, CheckCircle2, DoorClosed, DoorOpen, PlayCircle, Rocket, XCircle } from "lucide-react";
 
+import { useConfirm, type ConfirmOptions } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,12 @@ const phaseIndexOf = (status: EventStatus) =>
 /** How each move is worded, and what it costs that can't be undone. */
 const MOVES: Record<
   EventStatus,
-  { label: string; icon: typeof Rocket; confirm?: string } | null
+  {
+    label: string;
+    icon: typeof Rocket;
+    /** Present when the move needs confirming; the icon is reused from above. */
+    confirm?: Omit<ConfirmOptions, "icon">;
+  } | null
 > = {
   draft: null, // nothing returns to draft
   open: { label: "Buka Pendaftaran", icon: DoorOpen },
@@ -38,14 +44,23 @@ const MOVES: Record<
   finished: {
     label: "Selesaikan Event",
     icon: CheckCircle2,
-    confirm:
-      "Selesaikan event ini?\n\nDana tertahan dari tiket & pendaftaran langsung dicairkan ke saldo, dan status tidak bisa dikembalikan lagi.",
+    confirm: {
+      title: "Selesaikan event ini?",
+      description: "Status tidak bisa dikembalikan lagi.",
+      consequences: "Dana tertahan dari tiket & pendaftaran langsung dicairkan ke saldo.",
+      confirmLabel: "Selesaikan event",
+    },
   },
   cancelled: {
     label: "Batalkan Event",
     icon: XCircle,
-    confirm:
-      "Batalkan event ini?\n\nDana tertahan tidak akan dicairkan, dan status tidak bisa dikembalikan lagi.",
+    confirm: {
+      title: "Batalkan event ini?",
+      description: "Halaman event ditandai dibatalkan dan status tidak bisa dikembalikan.",
+      consequences: "Dana tertahan tidak akan dicairkan.",
+      confirmLabel: "Batalkan event",
+      tone: "danger",
+    },
   },
 };
 
@@ -121,6 +136,7 @@ export function EventStatusPanel({
   pending: boolean;
   onChange: (status: EventStatus) => void;
 }) {
+  const confirm = useConfirm();
   const next = event.next_statuses ?? [];
   const cancelled = event.status === "cancelled";
 
@@ -131,9 +147,9 @@ export function EventStatusPanel({
   // Hapus would be two buttons for one intention.
   const canCancel = next.includes("cancelled") && event.status !== "draft";
 
-  const act = (status: EventStatus) => {
+  const act = async (status: EventStatus) => {
     const move = MOVES[status];
-    if (move?.confirm && !window.confirm(move.confirm)) return;
+    if (move?.confirm && !(await confirm({ ...move.confirm, icon: move.icon }))) return;
     onChange(status);
   };
 
@@ -150,7 +166,7 @@ export function EventStatusPanel({
         variant={variant}
         size="sm"
         disabled={pending}
-        onClick={() => act(status)}
+        onClick={() => void act(status)}
         className={variant === "ghost" ? "text-muted-foreground" : undefined}
       >
         <Icon className="h-4 w-4" />
@@ -185,7 +201,7 @@ export function EventStatusPanel({
                   variant="ghost"
                   size="sm"
                   disabled={pending}
-                  onClick={() => act("cancelled")}
+                  onClick={() => void act("cancelled")}
                   className="text-muted-foreground hover:text-[var(--danger)]"
                 >
                   Batalkan

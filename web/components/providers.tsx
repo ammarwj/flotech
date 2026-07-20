@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+import { ConfirmProvider } from "@/components/shared/confirm-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -21,7 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ConfirmProvider>{children}</ConfirmProvider>
       <Toaster />
     </QueryClientProvider>
   );

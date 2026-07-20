@@ -6,7 +6,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog } from "lucide-react";
+import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog, UserCheck } from "lucide-react";
+
+import { useConfirm } from "@/components/shared/confirm-provider";
 
 import {
   getAdminUsers,
@@ -35,6 +37,7 @@ const roleLabel = (role: string) => (role === "super_admin" ? "Super Admin" : "P
 const orgRoleLabel = (role: string) => (role === "admin" ? "Admin" : role === "operator" ? "Operator" : role);
 
 export default function AdminUsersPage() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const router = useRouter();
   const currentUserId = useAuthStore((s) => s.user?.id);
@@ -161,20 +164,26 @@ export default function AdminUsersPage() {
                 onToggleVerified={() =>
                   update.mutate({ id: u.id, payload: { is_verified: !u.is_verified } })
                 }
-                onDelete={() => {
-                  if (confirm(`Hapus akun ${u.full_name || u.email}? Tindakan ini permanen.`)) {
-                    remove.mutate(u.id);
-                  }
-                }}
-                onImpersonate={() => {
-                  if (
-                    confirm(
-                      `Login sebagai ${u.full_name || u.email}? Kamu akan keluar dari tampilan admin sampai menekan "Kembali ke admin".`
-                    )
-                  ) {
-                    impersonate.mutate(u.id);
-                  }
-                }}
+                onDelete={() =>
+                  void confirm({
+                    title: "Hapus akun ini?",
+                    description: `${u.full_name || u.email} kehilangan akses ke seluruh platform.`,
+                    consequences: "Penghapusan permanen dan tidak bisa dibatalkan.",
+                    confirmLabel: "Hapus akun",
+                    tone: "danger",
+                    icon: Trash2,
+                  }).then((ok) => ok && remove.mutate(u.id))
+                }
+                onImpersonate={() =>
+                  void confirm({
+                    title: "Login sebagai pengguna ini?",
+                    description: `Kamu akan melihat platform sebagai ${u.full_name || u.email}.`,
+                    consequences:
+                      'Tampilan admin tidak tersedia sampai kamu menekan "Kembali ke admin".',
+                    confirmLabel: "Login sebagai pengguna",
+                    icon: UserCheck,
+                  }).then((ok) => ok && impersonate.mutate(u.id))
+                }
                 busy={update.isPending || remove.isPending || impersonate.isPending}
               />
             ))}
