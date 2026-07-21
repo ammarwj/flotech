@@ -10,6 +10,7 @@ import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { PublicResults, type ResultsTab } from "@/components/event/public-results";
 import { PublicAllSchedule } from "@/components/event/public-all-schedule";
+import { PillTabs } from "@/components/event/pill-tabs";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
@@ -19,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
-import { cn } from "@/lib/utils";
 import type { PublicTeam } from "@/types/api";
 import "../../event-shell.css";
 
@@ -228,25 +228,11 @@ export default function PublicEventPage() {
       {/* ===== TABS ===== */}
       <section className="etabs">
         <div className="container">
-          {/* Menggulir di HP, bukan membungkus jadi dua-tiga baris — pola yang
-              sama seperti MatchDayTabs. inline-flex di semua lebar: kalau block
-              (flex), pil-nya melar 100% dan menyisakan ruang kosong di kanan
-              saat isinya sedikit. */}
-          <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold sm:overflow-visible">
-            {tabs.map(([key, label, Icon]) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-1.5 transition-colors",
-                  activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
+            activeKey={activeTab}
+            onSelect={(key) => setTab(key as TabKey)}
+          />
         </div>
       </section>
 
@@ -493,32 +479,24 @@ export default function PublicEventPage() {
           {tabCategories.length > 1 && (
             <section className="efilter">
               <div className="container">
-                <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium sm:overflow-visible">
-                  {[
-                    ...(activeTab === "schedule" ? [{ id: ALL_CATEGORIES, name: "Semua" }] : []),
-                    ...tabCategories.map((c) => ({ id: c.id, name: c.name })),
-                  ].map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        if (c.id === ALL_CATEGORIES) {
-                          setScheduleAll(true);
-                          return;
-                        }
-                        setScheduleAll(false);
-                        setCategoryId(c.id);
-                      }}
-                      className={cn(
-                        "shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 transition-colors",
-                        (c.id === ALL_CATEGORIES ? isAll : !isAll && c.id === selectedCategory?.id)
-                          ? "bg-[var(--tint)] text-[var(--brand-700)]"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
+                <PillTabs
+                  tone="tint"
+                  items={[
+                    ...(activeTab === "schedule"
+                      ? [{ key: ALL_CATEGORIES, label: "Semua" }]
+                      : []),
+                    ...tabCategories.map((c) => ({ key: c.id, label: c.name })),
+                  ]}
+                  activeKey={isAll ? ALL_CATEGORIES : (selectedCategory?.id ?? "")}
+                  onSelect={(key) => {
+                    if (key === ALL_CATEGORIES) {
+                      setScheduleAll(true);
+                      return;
+                    }
+                    setScheduleAll(false);
+                    setCategoryId(key);
+                  }}
+                />
               </div>
             </section>
           )}

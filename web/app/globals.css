@@ -1108,3 +1108,14 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
 .bkt-third-head { text-align: left; }
 .bkt-third-card { position: relative; max-width: 260px; }
 .bkt-third-card + .bkt-third-card { margin-top: 10px; }
+
+/* ============================================================
+   Pill strip (PillTabs — public event tabs & category filter).
+   Only the scrollbar lives here; the rest is utilities on the
+   component. A native bar would draw straight across the strip's
+   rounded end, and it only ever appears on a phone, where the
+   strip is one scrolling row. The affordance that replaces it is
+   PillTabs scrolling the active pill into view.
+   ============================================================ */
+.pill-strip { scrollbar-width: none; }
+.pill-strip::-webkit-scrollbar { display: none; }

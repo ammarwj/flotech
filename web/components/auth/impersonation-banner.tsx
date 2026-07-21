@@ -68,23 +68,31 @@ export function ImpersonationBanner() {
 
   return (
     <Card
-      className="mb-5 flex flex-wrap items-start gap-3 p-4"
+      className="mb-4 flex flex-col gap-3 p-3 sm:mb-5 sm:flex-row sm:items-center sm:p-4"
       style={{
         borderColor: `color-mix(in srgb, var(--warning) 45%, transparent)`,
         background: `color-mix(in srgb, var(--warning) 8%, transparent)`,
       }}
     >
-      <UserCog className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]" />
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">
-          Kamu sedang login sebagai {user?.full_name || user?.email || "user ini"}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Semua tindakan di sini tercatat atas nama user tersebut. Gunakan tombol di samping untuk
-          kembali ke akun admin.
-        </p>
+      <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:gap-3">
+        <UserCog className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)] sm:h-5 sm:w-5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold sm:text-base">
+            Login sebagai {user?.full_name || user?.email || "user ini"}
+          </p>
+          {/* Detail panjang hanya di layar lebar: di mobile kartunya jadi setinggi
+              setengah viewport dan tombolnya terdorong jauh ke bawah. */}
+          <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
+            Semua tindakan di sini tercatat atas nama user tersebut.
+          </p>
+        </div>
       </div>
-      <Button size="sm" onClick={handleReturn} disabled={pending}>
+      <Button
+        size="sm"
+        className="w-full shrink-0 sm:w-auto"
+        onClick={handleReturn}
+        disabled={pending}
+      >
         {pending ? "Kembali…" : "Kembali ke admin"}
       </Button>
     </Card>

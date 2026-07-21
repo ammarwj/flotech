@@ -64,6 +64,7 @@ import { GroupStandings } from "@/components/event/group-standings";
 import { GroupDrawDialog } from "@/components/event/group-draw-dialog";
 import { KnockoutPlanView } from "@/components/event/knockout-plan-view";
 import { MatchDayTabs } from "@/components/event/match-day-tabs";
+import { PillTabs } from "@/components/event/pill-tabs";
 import { BracketView } from "@/components/event/bracket-view";
 import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
@@ -341,44 +342,26 @@ export default function SchedulePage() {
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Kategori
           </span>
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium">
-            {categories.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setCategoryId(c.id);
-                  // Tabs and matchday differ per category — recompute defaults.
-                  setTab(null);
-                  setDateKey(null);
-                }}
-                className={cn(
-                  "rounded-full px-3.5 py-1.5 transition-colors",
-                  c.id === selectedCategory?.id
-                    ? "bg-[var(--tint)] text-[var(--brand-700)]"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            tone="tint"
+            items={categories.map((c) => ({ key: c.id, label: c.name }))}
+            activeKey={selectedCategory?.id ?? ""}
+            onSelect={(key) => {
+              setCategoryId(key);
+              // Tabs and matchday differ per category — recompute defaults.
+              setTab(null);
+              setDateKey(null);
+            }}
+          />
         </div>
       )}
 
-      <div className="mb-6 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
-        {tabs.map(([key, label, Icon]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
-              activeTab === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div className="mb-6">
+        <PillTabs
+          items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
+          activeKey={activeTab}
+          onSelect={(key) => setTab(key as Tab)}
+        />
       </div>
 
       {matchesQuery.isLoading ? (
@@ -539,8 +522,13 @@ export default function SchedulePage() {
                     <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       {label}
                     </h3>
-                    {/* Wide screens fit two fixtures side by side. */}
-                    <div className="grid items-start gap-3 xl:grid-cols-2">
+                    {/* Wide screens fit two fixtures side by side. grid-cols-1
+                        is load-bearing on phones: an implicit `auto` track is
+                        sized by its widest child's min-content, so one card that
+                        refuses to shrink drags the whole page wider than the
+                        viewport. minmax(0,1fr) — what grid-cols-* compiles to —
+                        caps that. */}
+                    <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
                       {list.map((m) => (
                         <MatchCard
                           key={m.id}
@@ -862,7 +850,7 @@ function MatchCard({
       <div className="mt-3">
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
       </div>
-      <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
         <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
         <Input
           type="number"
@@ -882,19 +870,24 @@ function MatchCard({
           aria-label={`Skor ${match.away_team.name}`}
         />
         <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
-        {removeBtn}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setShowGoals((v) => !v)}
-          aria-label="Statistik pemain"
-          title="Statistik pemain"
-        >
-          <Goal className="h-4 w-4" />
-        </Button>
-        <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
-        </Button>
+        {/* The actions travel as one block. Left loose in the wrapping row they
+            break up one at a time, so a phone gets "Simpan" stranded on a line
+            by itself while the scoreline keeps the other two. */}
+        <div className="ml-auto flex items-center gap-3">
+          {removeBtn}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowGoals((v) => !v)}
+            aria-label="Statistik pemain"
+            title="Statistik pemain"
+          >
+            <Goal className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
+          </Button>
+        </div>
       </div>
 
       {needsPenalties && (
