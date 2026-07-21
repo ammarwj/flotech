@@ -11,6 +11,7 @@ import {
   phaseLabel,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { scoreColumnLegend } from "@/lib/scoring";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
@@ -150,11 +151,19 @@ export function PublicResults({
                 category={{ uses_rubbers: !!usesRubbers }}
               />
             ) : (
+              // Same as the organizer view: a standalone league has no next
+              // stage, so the green bar marks the leader and nothing else.
               <StandingsTable
                 standings={standingsQuery.data ?? []}
-                highlight={2}
+                highlight={1}
                 category={{ uses_rubbers: !!usesRubbers }}
               />
+            )}
+            {(standingsQuery.data?.length ?? 0) > 0 && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {!isHybrid && "Baris hijau = juara klasemen. "}
+                {scoreColumnLegend({ uses_rubbers: !!usesRubbers })}
+              </p>
             )}
           </div>
         )}

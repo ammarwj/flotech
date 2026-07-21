@@ -1,7 +1,14 @@
 import { scoreColumnLabels } from "@/lib/scoring";
 import type { EventCategory, Standing } from "@/types/api";
 
-/** League table. `highlight` marks the top N rows (e.g. playoff qualifiers). */
+/**
+ * League table. `highlight` marks the top N rows in green.
+ *
+ * What N means is the caller's business, and it differs by format: in a hybrid
+ * group it's "qualifies for the knockout", in a standalone league there is no
+ * next stage to qualify for (generateKnockout() is hybrid-only, 422 otherwise)
+ * so the only thing worth marking is the leader.
+ */
 export function StandingsTable({
   standings,
   highlight = 0,

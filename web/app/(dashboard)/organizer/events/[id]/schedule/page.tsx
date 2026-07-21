@@ -51,7 +51,7 @@ import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
-import { isSetBased } from "@/lib/scoring";
+import { isSetBased, scoreColumnLegend } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -578,15 +578,21 @@ export default function SchedulePage() {
               category={selectedCategory}
             />
           ) : (
+            // A standalone league ends at the table — nothing follows it to
+            // qualify for — so only the leader is marked. Two green rows here
+            // would promise a knockout stage this format cannot produce.
             <StandingsTable
               standings={standingsQuery.data ?? []}
-              highlight={2}
+              highlight={1}
               category={selectedCategory}
             />
           )}
           {(standingsQuery.data?.length ?? 0) > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
-              M: main · M/S/K: menang/seri/kalah · GM/GK: gol masuk/kemasukan · SG: selisih gol.
+              {/* GroupStandings prints its own "lolos ke knockout" legend, so the
+                  green one here belongs to the standalone league only. */}
+              {!isHybrid && "Baris hijau = juara klasemen. "}
+              {scoreColumnLegend(selectedCategory)}
             </p>
           )}
         </div>

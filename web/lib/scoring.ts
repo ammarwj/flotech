@@ -55,6 +55,24 @@ export function scoreColumnLabels(category: Pick<EventCategory, "uses_rubbers"> 
     : { for: "GM", against: "GK", diff: "SG" };
 }
 
+/**
+ * The legend under a standings table, spelling out the abbreviations above.
+ *
+ * Lives here rather than in the page because the words follow the columns: a
+ * squad tie's for/against count partai, so a hardcoded "gol masuk/kemasukan"
+ * reads as a bug the moment the category uses rubbers.
+ */
+export function scoreColumnLegend(
+  category: Pick<EventCategory, "uses_rubbers"> | null | undefined
+): string {
+  const cols = scoreColumnLabels(category);
+  const [forWord, againstWord, diffWord] = usesRubbers(category)
+    ? ["partai menang", "partai kalah", "selisih partai"]
+    : ["gol masuk", "gol kemasukan", "selisih gol"];
+
+  return `M: main · M/S/K: menang/seri/kalah · ${cols.for}/${cols.against}: ${forWord}/${againstWord} · ${cols.diff}: ${diffWord}.`;
+}
+
 /** "Dimas / Ammar", falling back to a placeholder while the lineup is unset. */
 export function rubberLineup(names: string[] | null | undefined): string {
   return names?.length ? names.join(" / ") : "—";
