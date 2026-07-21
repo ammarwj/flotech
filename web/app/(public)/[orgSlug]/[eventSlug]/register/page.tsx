@@ -36,7 +36,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
+import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
+import { participantLabel } from "@/lib/scoring";
 
 type DocRow = { file_name: string; file_url: string };
 
@@ -73,6 +74,10 @@ function RegisterTeamPage() {
     categories[0]?.id ||
     "";
   const selectedCategory = categories.find((c) => c.id === resolvedCategoryId) ?? null;
+  // Tunggal/ganda entries have no team name or crest — they *are* their players,
+  // and the backend derives the name from the roster.
+  const rosterSize = selectedCategory?.roster_size ?? null;
+  const isFixed = typeof rosterSize === "number";
 
   const [players, setPlayers] = useState<PlayerRow[]>([emptyPlayer()]);
   const [docs, setDocs] = useState<DocRow[]>([]);
@@ -119,10 +124,14 @@ function RegisterTeamPage() {
 
   const mutation = useMutation({
     mutationFn: () => {
+      const roster = isFixed ? fixedRoster(players, rosterSize) : players;
       const payload: RegisterTeamPayload = {
         category_id: resolvedCategoryId,
         ...team,
-        players: players
+        // A placeholder the backend overwrites with the players' names.
+        name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : team.name,
+        logo_url: isFixed ? "" : team.logo_url,
+        players: roster
           .filter((p) => p.full_name.trim())
           .map((p) => ({
             full_name: p.full_name,
@@ -137,7 +146,9 @@ function RegisterTeamPage() {
     onSuccess: (res) => {
       // Paid registration fee → hand off to Midtrans before showing success.
       if (!res.mock && res.redirect_url) {
-        window.location.href = res.redirect_url;
+        // assign() rather than `location.href = …`: identical redirect, but a
+        // method call instead of a write the React compiler rejects.
+        window.location.assign(res.redirect_url);
       }
     },
     onError: (err) =>
@@ -329,6 +340,7 @@ function RegisterTeamPage() {
             <CardTitle>Informasi Tim</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
+            {!isFixed && (
             <div className="flex items-center gap-4 sm:col-span-2">
               <input
                 ref={logoInputRef}
@@ -372,6 +384,7 @@ function RegisterTeamPage() {
                 <span className="text-xs text-muted-foreground">PNG / JPG, maks 2 MB.</span>
               </div>
             </div>
+            )}
             {categories.length > 0 && (
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="category" className="font-semibold">
@@ -385,7 +398,8 @@ function RegisterTeamPage() {
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} — {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                        {c.name} · {participantLabel(c.participant_type)} —{" "}
+                        {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
                       </option>
                     ))}
                   </Select>
@@ -402,7 +416,9 @@ function RegisterTeamPage() {
                 )}
               </div>
             )}
-            <Field label="Nama tim" required sanitize={nameInput} value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
+            {!isFixed && (
+              <Field label="Nama tim" required sanitize={nameInput} value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
+            )}
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
           </CardContent>
@@ -411,14 +427,28 @@ function RegisterTeamPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Daftar Pemain <span className="font-normal text-muted-foreground">(opsional)</span>
+              {isFixed ? (
+                rosterSize === 1 ? "Data Peserta" : "Data Pasangan"
+              ) : (
+                <>
+                  Daftar Pemain{" "}
+                  <span className="font-normal text-muted-foreground">(opsional)</span>
+                </>
+              )}
             </CardTitle>
             <CardDescription>
-              Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Tim Saya.
+              {isFixed
+                ? "Nama pendaftaran diambil dari sini — mis. “Dimas / Ammar”."
+                : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Tim Saya."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <RosterEditor players={players} onChange={setPlayers} sport={event?.sport_type} />
+            <RosterEditor
+              players={isFixed ? fixedRoster(players, rosterSize) : players}
+              onChange={setPlayers}
+              sport={event?.sport_type}
+              size={rosterSize}
+            />
           </CardContent>
         </Card>
 
@@ -489,7 +519,15 @@ function RegisterTeamPage() {
           <Button
             type="submit"
             size="lg"
-            disabled={!sessionReady || !resolvedCategoryId || !agreed || mutation.isPending || uploading || logoUploading}
+            disabled={
+              !sessionReady ||
+              !resolvedCategoryId ||
+              !agreed ||
+              mutation.isPending ||
+              uploading ||
+              logoUploading ||
+              (isFixed && !fixedRoster(players, rosterSize).every((p) => p.full_name.trim()))
+            }
           >
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
           </Button>

@@ -34,6 +34,13 @@ class MatchResource extends JsonResource
             'home_penalty' => $this->home_penalty,
             'away_penalty' => $this->away_penalty,
             'sets' => $this->sets,
+            // A squad tie carries its partai instead of a run of sets; home/away
+            // score above is how many of them each side won. Each partai is
+            // handed its parent back so it can name its lineup from the rosters
+            // already loaded here, rather than querying for them itself.
+            'rubbers' => $this->whenLoaded('rubbers', fn () => RubberResource::collection(
+                $this->rubbers->each(fn ($rubber) => $rubber->setRelation('match', $this->resource)),
+            )),
             'status' => $this->status,
             'confirmed' => $this->confirmed_at !== null,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),

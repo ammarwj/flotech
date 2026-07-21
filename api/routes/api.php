@@ -28,12 +28,13 @@ use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
-use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\EventViewController;
+use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\RegistrationController;
+use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TicketCategoryController;
@@ -241,6 +242,12 @@ Route::prefix('v1')->group(function () {
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
+
+            // Partai of a squad tie (badminton beregu & co). The tie's scoreline
+            // is rolled up from these, never posted to matches/{match} directly.
+            Route::get('matches/{match}/rubbers', [RubberController::class, 'index']);
+            Route::put('matches/{match}/rubbers', [RubberController::class, 'sync']);
+            Route::patch('rubbers/{rubber}', [RubberController::class, 'update']);
 
             // Tickets & check-in (Phase 3).
             Route::get('events/{event}/ticket-categories', [TicketCategoryController::class, 'index']);

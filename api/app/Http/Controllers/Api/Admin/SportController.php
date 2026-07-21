@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SportRequest;
 use App\Http\Resources\SportResource;
 use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\Player;
 use App\Models\Sport;
 use App\Models\SportStat;
@@ -48,6 +49,21 @@ class SportController extends Controller
                 ['slug' => ['Sudah dipakai event.']],
                 422,
             );
+        }
+
+        // Same reasoning as positions: a mode still held by a category cannot be
+        // withdrawn. Its rosters were built to that shape (one player, a pair),
+        // and usesRubbers()/rosterSize() would start reading them as squads.
+        if (isset($data['participant_modes'])) {
+            $orphaned = $this->modesInUse($sport, array_diff(Sport::MODES, $data['participant_modes']));
+
+            if ($orphaned !== []) {
+                return ApiResponse::error(
+                    'Mode peserta '.implode(', ', $orphaned).' masih dipakai kategori event.',
+                    ['participant_modes' => ['Masih dipakai kategori event.']],
+                    422,
+                );
+            }
         }
 
         $sport->update($data);
@@ -160,6 +176,25 @@ class SportController extends Controller
     protected function inUse(Sport $sport): bool
     {
         return Event::where('sport_type', $sport->slug)->exists();
+    }
+
+    /**
+     * Which of these participant modes a category of this sport still declares.
+     *
+     * @param  array<int, string>  $modes
+     * @return array<int, string>
+     */
+    protected function modesInUse(Sport $sport, array $modes): array
+    {
+        if ($modes === []) {
+            return [];
+        }
+
+        return EventCategory::whereIn('participant_type', $modes)
+            ->whereHas('event', fn ($q) => $q->where('sport_type', $sport->slug))
+            ->distinct()
+            ->pluck('participant_type')
+            ->all();
     }
 
     /**

@@ -3,7 +3,7 @@
 import { StandingsTable } from "@/components/event/standings-table";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { HybridConfig } from "@/lib/hybrid";
-import type { Standing } from "@/types/api";
+import type { EventCategory, Standing } from "@/types/api";
 
 /**
  * One table per group, with the automatic qualifying places highlighted. Extra
@@ -13,9 +13,12 @@ import type { Standing } from "@/types/api";
 export function GroupStandings({
   standings,
   config,
+  category,
 }: {
   standings: Standing[];
   config: HybridConfig;
+  /** Passed straight through — decides the for/against column labels. */
+  category?: Pick<EventCategory, "uses_rubbers"> | null;
 }) {
   const { tiebreakerLabel } = useCatalog();
   const groups = new Map<string, Standing[]>();
@@ -45,6 +48,7 @@ export function GroupStandings({
           <StandingsTable
             standings={groups.get(name)!}
             highlight={name === "-" ? 0 : config.qualification.top_per_group}
+            category={category}
           />
         </section>
       ))}

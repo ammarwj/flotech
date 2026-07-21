@@ -98,32 +98,44 @@ export default function PublicEventPage() {
   const sportColor = colorOf(ev.sport_type);
 
   const categories = ev.categories ?? [];
-  const selectedCategory = categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
-  const selectedEngine = selectedCategory?.engine ?? null;
-  // Preselect the viewed category on the registration form.
-  const registerHref = selectedCategory
-    ? `${base}/register?category=${selectedCategory.slug}`
-    : `${base}/register`;
 
-  // Top-level tabs: Info + the match panels appropriate to the selected
-  // category's format. A hybrid category has both a group table and a bracket.
+  // Which categories a panel can actually show anything for. An event may mix
+  // formats — a badminton event runs Tunggal as a league and Ganda as a knockout
+  // — so the tab decides which categories are on offer, not the other way round.
+  // Deriving the tabs from the *selection* instead made Bracket and Klasemen
+  // vanish the moment you picked a category that lacks one.
+  const categoriesFor = (key: TabKey) =>
+    key === "bracket"
+      ? categories.filter((c) => isKnockoutFormat(c.engine) || isHybridFormat(c.engine))
+      : key === "standings"
+        ? categories.filter((c) => !isKnockoutFormat(c.engine))
+        : categories;
+
+  // Top-level tabs: Info + whichever match panels *any* category can fill.
   const tabs: [TabKey, string, typeof Info][] = [
     ["info", "Info", Info],
     ["teams", "Tim Peserta", Users],
     ["schedule", "Jadwal", CalendarClock],
-    ...(isKnockoutFormat(selectedEngine)
+    ...(categoriesFor("standings").length > 0
+      ? ([["standings", "Klasemen", ListOrdered]] as [TabKey, string, typeof Info][])
+      : []),
+    ...(categoriesFor("bracket").length > 0
       ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
-      : isHybridFormat(selectedEngine)
-        ? ([
-            ["standings", "Klasemen", ListOrdered],
-            ["bracket", "Bracket", Network],
-          ] as [TabKey, string, typeof Info][])
-        : ([["standings", "Klasemen", ListOrdered]] as [TabKey, string, typeof Info][])),
+      : []),
     ["stats", "Statistik", Goal],
   ];
-  // A category switch can retire the tab being viewed (league → knockout drops
-  // Klasemen), which would otherwise blank the page.
   const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
+
+  // The chips for this tab, and the category actually being shown. Switching to
+  // Bracket while a league category is picked lands on the first category that
+  // has a bracket rather than on an empty panel.
+  const tabCategories = categoriesFor(activeTab);
+  const selectedCategory =
+    tabCategories.find((c) => c.id === categoryId) ?? tabCategories[0] ?? null;
+  // Preselect the viewed category on the registration form.
+  const registerHref = selectedCategory
+    ? `${base}/register?category=${selectedCategory.slug}`
+    : `${base}/register`;
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll = scheduleAll && activeTab === "schedule" && categories.length > 1;
@@ -478,13 +490,13 @@ export default function PublicEventPage() {
       {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
       {activeTab !== "info" && activeTab !== "teams" && selectedCategory && (
         <>
-          {categories.length > 1 && (
+          {tabCategories.length > 1 && (
             <section className="efilter">
               <div className="container">
                 <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-medium sm:overflow-visible">
                   {[
                     ...(activeTab === "schedule" ? [{ id: ALL_CATEGORIES, name: "Semua" }] : []),
-                    ...categories.map((c) => ({ id: c.id, name: c.name })),
+                    ...tabCategories.map((c) => ({ id: c.id, name: c.name })),
                   ].map((c) => (
                     <button
                       key={c.id}
@@ -524,6 +536,7 @@ export default function PublicEventPage() {
               categorySlug={selectedCategory!.slug}
               engine={selectedCategory!.engine}
               bracketConfig={selectedCategory!.bracket_config}
+              usesRubbers={selectedCategory!.uses_rubbers}
               activeTab={activeTab}
             />
           )}

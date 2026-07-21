@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Support\HybridConfig;
+use App\Support\MatchScoring;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -178,6 +179,10 @@ class StandingService
                 'goals_for' => 0,
                 'goals_against' => 0,
                 'goal_diff' => 0,
+                // Set points across every partai, for squad ties only — two
+                // squads can split a tie 3-3 and this is what separates them.
+                'points_for' => 0,
+                'points_against' => 0,
                 'points' => 0,
                 'fair_play' => 0,
             ];
@@ -198,7 +203,46 @@ class StandingService
             }
         }
 
+        foreach ($this->rubberPoints($category) as $teamId => $totals) {
+            if (isset($rows[$teamId])) {
+                $rows[$teamId]['points_for'] = $totals['for'];
+                $rows[$teamId]['points_against'] = $totals['against'];
+            }
+        }
+
         return $rows;
+    }
+
+    /**
+     * Every set point a squad scored and conceded across the partai of its ties.
+     *
+     * Read straight off match_rubbers rather than from the tie scoreline, since
+     * "3-0" says nothing about how close the partai were — which is the entire
+     * point of the tiebreaker.
+     *
+     * @return array<string, array{for: int, against: int}> team id => totals
+     */
+    protected function rubberPoints(EventCategory $category): array
+    {
+        if (! $category->usesRubbers()) {
+            return [];
+        }
+
+        $matches = $this->countingMatches($category)->load('rubbers');
+        $out = [];
+
+        foreach ($matches as $match) {
+            $tally = MatchScoring::rubberPoints($match->rubbers);
+
+            foreach (['home' => 'away', 'away' => 'home'] as $side => $other) {
+                $teamId = $match->{"{$side}_team_id"};
+
+                $out[$teamId]['for'] = ($out[$teamId]['for'] ?? 0) + $tally[$side];
+                $out[$teamId]['against'] = ($out[$teamId]['against'] ?? 0) + $tally[$other];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -330,6 +374,8 @@ class StandingService
             ],
             'goal_difference' => $b['goal_diff'] <=> $a['goal_diff'],
             'goals_scored' => $b['goals_for'] <=> $a['goals_for'],
+            // Squad ties: the aggregate set points behind the partai count.
+            'rubber_points' => ($b['points_for'] - $b['points_against']) <=> ($a['points_for'] - $a['points_against']),
             // Fewer disciplinary points ranks higher.
             'fair_play' => $a['fair_play'] <=> $b['fair_play'],
             // A stable "draw": random-looking but the same every time it's shown.

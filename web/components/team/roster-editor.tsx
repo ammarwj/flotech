@@ -26,6 +26,15 @@ export type PlayerRow = {
 
 export const emptyPlayer = (): PlayerRow => ({ full_name: "", jersey_number: "", position: "" });
 
+/**
+ * Pin a roster to the exact length a singles/doubles category requires, padding
+ * with blanks and dropping the surplus. Called wherever such an entry is edited,
+ * so the form can only ever produce a roster the backend will accept.
+ */
+export function fixedRoster(players: PlayerRow[], size: number): PlayerRow[] {
+  return Array.from({ length: size }, (_, i) => players[i] ?? emptyPlayer());
+}
+
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
 function photoShown(p: PlayerRow): string | null {
   return p.photo_preview ?? (p.photo_url && /^https?:\/\//.test(p.photo_url) ? p.photo_url : null);
@@ -42,14 +51,22 @@ export function RosterEditor({
   onChange,
   sport,
   disabled,
+  size,
 }: {
   players: PlayerRow[];
   onChange: (players: PlayerRow[]) => void;
   /** Sport slug — decides which positions may be picked. */
   sport?: string | null;
   disabled?: boolean;
+  /**
+   * Exactly how many players this entry has (1 tunggal, 2 ganda), or null for a
+   * squad whose size is the organizer's business. A fixed roster is not a list
+   * to grow: the rows are the entry, so there is nothing to add or remove.
+   */
+  size?: number | null;
 }) {
   const { positionsFor } = useCatalog();
+  const fixed = typeof size === "number";
 
   // The admin defines these per sport (sport_positions). A sport with none has
   // nothing to offer, and the API rejects any position on its rosters — so the
@@ -131,7 +148,7 @@ export function RosterEditor({
               )}
             </div>
             <Input
-              placeholder="Nama pemain"
+              placeholder={fixed && size > 1 ? `Pemain ${i + 1}` : "Nama pemain"}
               aria-label={`Nama pemain ${i + 1}`}
               value={p.full_name}
               disabled={disabled}
@@ -147,7 +164,7 @@ export function RosterEditor({
               // A jersey number is digits only — drop letters/symbols as they type or paste.
               onChange={(e) => set(i, { jersey_number: e.target.value.replace(/\D/g, "") })}
             />
-            {positions.length > 0 && (
+            {positions.length > 0 && !fixed && (
               <Select
                 className="w-36 shrink-0"
                 aria-label={`Posisi pemain ${i + 1}`}
@@ -163,7 +180,7 @@ export function RosterEditor({
                 ))}
               </Select>
             )}
-            {!disabled && (
+            {!disabled && !fixed && (
               <Button
                 type="button"
                 size="icon"
@@ -179,7 +196,7 @@ export function RosterEditor({
         );
       })}
 
-      {!disabled && (
+      {!disabled && !fixed && (
         <Button
           type="button"
           size="sm"

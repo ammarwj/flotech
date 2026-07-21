@@ -13,7 +13,8 @@ import { rupiah } from "@/lib/labels";
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
-import { RosterEditor, emptyPlayer, type PlayerRow } from "@/components/team/roster-editor";
+import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
+import { participantLabel } from "@/lib/scoring";
 
 /**
  * Enter (or fix) a team the organizer took in offline — over WhatsApp, on paper,
@@ -58,6 +59,11 @@ export function ManualTeamDialog({
   const [logoUploading, setLogoUploading] = useState(false);
   const [categoryId, setCategoryId] = useState<string>(team?.category_id ?? "");
   const resolvedCategoryId = categoryId || categories[0]?.id || "";
+  const category = categories.find((c) => c.id === resolvedCategoryId);
+  // Tunggal/ganda: the entry *is* its players, so it has no name or crest of its
+  // own — the backend derives one from the roster.
+  const rosterSize = category?.roster_size ?? null;
+  const isFixed = typeof rosterSize === "number";
   const [players, setPlayers] = useState<PlayerRow[]>(() =>
     team?.players?.length
       ? team.players.map((p) => ({
@@ -72,16 +78,22 @@ export function ManualTeamDialog({
 
   if (!open) return null;
 
+  const roster = isFixed ? fixedRoster(players, rosterSize) : players;
+  // Every slot filled is the same rule the backend enforces on a fixed roster.
+  const rosterReady = isFixed ? roster.every((p) => p.full_name.trim()) : true;
+
   const submit = () =>
     onSubmit({
       category_id: resolvedCategoryId,
-      name: info.name,
-      logo_url: logoUrl || null,
+      // A placeholder for a fixed roster — the backend overwrites it with the
+      // players' names, which is the only name such an entry has.
+      name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : info.name,
+      logo_url: isFixed ? null : logoUrl || null,
       // Optional here: an offline entry often arrives as a team name and nothing
       // else. Send null rather than "" so a cleared field actually clears.
       contact_name: info.contact_name.trim() || null,
       contact_phone: info.contact_phone.trim() || null,
-      players: players
+      players: roster
         .filter((p) => p.full_name.trim())
         .map((p) => ({
           id: p.id,
@@ -125,12 +137,14 @@ export function ManualTeamDialog({
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} — {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                      {c.name} · {participantLabel(c.participant_type)} —{" "}
+                      {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
                     </option>
                   ))}
                 </Select>
               </div>
             )}
+            {!isFixed && (
             <ImageUploadField
               className="sm:col-span-2"
               label="Logo tim"
@@ -143,15 +157,18 @@ export function ManualTeamDialog({
               placeholder={<Shield className="h-7 w-7 text-muted-foreground" />}
               hint="Opsional. Maksimal 5 MB, otomatis dikonversi ke WebP. Bentuk persegi paling rapi."
             />
-            <Field
-              id="manual-name"
-              label="Nama tim"
-              required
-              sanitize={nameInput}
-              value={info.name}
-              error={fieldErrors?.name}
-              onChange={(v) => setInfo({ ...info, name: v })}
-            />
+            )}
+            {!isFixed && (
+              <Field
+                id="manual-name"
+                label="Nama tim"
+                required
+                sanitize={nameInput}
+                value={info.name}
+                error={fieldErrors?.name}
+                onChange={(v) => setInfo({ ...info, name: v })}
+              />
+            )}
             <Field
               id="manual-contact"
               label="Nama kontak"
@@ -174,9 +191,30 @@ export function ManualTeamDialog({
 
           <div className="grid gap-2">
             <Label className="font-semibold">
-              Daftar pemain <span className="font-normal text-muted-foreground">(opsional)</span>
+              {isFixed ? (
+                rosterSize === 1 ? (
+                  "Nama peserta"
+                ) : (
+                  "Pasangan"
+                )
+              ) : (
+                <>
+                  Daftar pemain{" "}
+                  <span className="font-normal text-muted-foreground">(opsional)</span>
+                </>
+              )}
             </Label>
-            <RosterEditor players={players} onChange={setPlayers} sport={sport} />
+            <RosterEditor
+              players={roster}
+              onChange={setPlayers}
+              sport={sport}
+              size={rosterSize}
+            />
+            {isFixed && (
+              <p className="text-xs text-muted-foreground">
+                Nama peserta diambil dari sini — mis. “Dimas / Ammar”.
+              </p>
+            )}
           </div>
         </div>
 
@@ -186,7 +224,12 @@ export function ManualTeamDialog({
           </Button>
           <Button
             onClick={submit}
-            disabled={pending || logoUploading || !resolvedCategoryId || !info.name.trim()}
+            disabled={
+              pending ||
+              logoUploading ||
+              !resolvedCategoryId ||
+              (isFixed ? !rosterReady : !info.name.trim())
+            }
           >
             {pending ? "Menyimpan…" : team ? "Simpan perubahan" : "Tambah tim"}
           </Button>

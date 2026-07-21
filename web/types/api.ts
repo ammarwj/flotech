@@ -180,6 +180,8 @@ export interface SportDef {
   color: string;
   icon: string | null;
   scoring: "goal" | "set";
+  /** Entrant shapes this sport can be run with. Squad-only for most sports. */
+  participant_modes: ParticipantType[];
   default_match_minutes: number;
   stats: SportStatDef[];
   positions: SportPositionDef[];
@@ -272,11 +274,47 @@ export interface Match {
   away_penalty: number | null;
   /** Per-set scores for set-based sports; null for goal-based sports. */
   sets: { home: number; away: number }[] | null;
+  /**
+   * The partai a squad tie is played over. Present only for a category that
+   * uses them, in which case home/away_score above is how many each side won
+   * and `sets` is null — a tie has no single run of sets.
+   */
+  rubbers?: MatchRubber[];
   status: MatchStatus;
   /** True once the result is confirmed (counts toward standings/bracket). */
   confirmed: boolean;
   scheduled_at: string | null;
   venue: string | null;
+}
+
+/** What one entrant of a category is. */
+export type ParticipantType = "single" | "double" | "team";
+
+/** A row of a category's partai template. */
+export interface RubberFormatRow {
+  label: string;
+  type: "single" | "double";
+}
+
+/**
+ * One partai of a squad tie: "Ganda Putra — Dimas/Ammar vs Ucang/Devan,
+ * 21-16 / 22-20". home/away_score are sets won in this partai.
+ */
+export interface MatchRubber {
+  id: string;
+  match_id: string;
+  order: number;
+  label: string;
+  type: "single" | "double";
+  home_player_ids: string[];
+  away_player_ids: string[];
+  /** Lineup names, when the rosters were loaded alongside. */
+  home_players: string[] | null;
+  away_players: string[] | null;
+  sets: { home: number; away: number }[] | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: "scheduled" | "finished" | "walkover";
 }
 
 /** A place in the knockout bracket, e.g. "Juara Grup A" — and who holds it now. */
@@ -398,6 +436,14 @@ export interface EventCategory {
   event_id: string;
   name: string;
   slug: string;
+  /** What one entrant is: a lone player, a pair, or a squad. */
+  participant_type: ParticipantType;
+  /** Template of partai a squad tie is played over; null unless it uses them. */
+  rubber_format: RubberFormatRow[] | null;
+  /** Derived server-side — needs the sport, which lives on the event. */
+  uses_rubbers: boolean;
+  /** Players an entrant has: 1 tunggal, 2 ganda, null for a squad. */
+  roster_size: number | null;
   tournament_format: TournamentFormat;
   /** The engine the format runs on — branch on this, not the format key. */
   engine: FormatEngine | null;

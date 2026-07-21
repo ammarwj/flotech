@@ -8,6 +8,7 @@ use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
+use App\Models\EventCategory;
 use App\Models\Organization;
 use App\Services\Catalog;
 use App\Services\PlanGate;
@@ -16,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class EventController extends Controller
 {
@@ -23,7 +25,13 @@ class EventController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $events = $this->org($request)->events()->with('categories')->withCount('teams')->latest()->get();
+        $events = $this->org($request)->events()
+            // Each category's own count, not just the event's: the event form
+            // locks a category's participant_type once entrants exist.
+            ->with(['categories' => fn ($q) => $q->withCount('teams')])
+            ->withCount('teams')
+            ->latest()
+            ->get();
 
         return ApiResponse::success(EventResource::collection($events));
     }
@@ -52,7 +60,11 @@ class EventController extends Controller
 
     public function show(Request $request, string $organization, string $event): JsonResponse
     {
-        return ApiResponse::success(new EventResource($this->find($request, $event)->load('categories')->loadCount('teams')));
+        return ApiResponse::success(new EventResource(
+            $this->find($request, $event)
+                ->load(['categories' => fn ($q) => $q->withCount('teams')])
+                ->loadCount('teams'),
+        ));
     }
 
     public function update(UpdateEventRequest $request, string $organization, string $event): JsonResponse
@@ -139,9 +151,12 @@ class EventController extends Controller
      * 2 legs) — what the organizer sent still wins.
      *
      * @param  array<int, array<string, mixed>>  $categories
+     *
+     * @throws ValidationException
      */
     protected function syncCategories(Event $event, array $categories): void
     {
+        $modes = Catalog::participantModes($event->sport_type);
         $keep = [];
 
         foreach (array_values($categories) as $i => $cat) {
@@ -151,17 +166,26 @@ class EventController extends Controller
                 $bracket = [...$defaults, ...($bracket ?? [])];
             }
 
+            $existing = ! empty($cat['id']) ? $event->categories()->find($cat['id']) : null;
+            $participantType = $this->participantTypeFor($cat, $existing, $modes, $i);
+
             $attributes = [
                 'name' => $cat['name'],
                 'slug' => $this->uniqueCategorySlug($event, $cat['slug'] ?? $cat['name'], $cat['id'] ?? null),
+                'participant_type' => $participantType,
                 'tournament_format' => $cat['tournament_format'],
                 'bracket_config' => $bracket,
+                // A template only means something for a squad tie on a sport that
+                // also fields lone players. Storing one anywhere else would leave
+                // usesRubbers() reading a config no code path can act on.
+                'rubber_format' => $participantType === 'team' && in_array('single', $modes, true)
+                    ? ($cat['rubber_format'] ?? null) ?: null
+                    : null,
                 'registration_fee' => $cat['registration_fee'] ?? 0,
                 'max_teams' => $cat['max_teams'] ?? null,
                 'sort_order' => $i,
             ];
 
-            $existing = ! empty($cat['id']) ? $event->categories()->find($cat['id']) : null;
             if ($existing) {
                 $existing->update($attributes);
                 $keep[] = $existing->id;
@@ -171,6 +195,41 @@ class EventController extends Controller
         }
 
         $event->categories()->whereNotIn('id', $keep)->delete();
+    }
+
+    /**
+     * The entrant shape this category is saved with.
+     *
+     * Two things can go wrong and both are validation errors, not silent
+     * coercions. The sport may not field this shape at all (a football category
+     * cannot be "ganda"); and the shape may no longer be free to change, because
+     * teams have already registered against it — their rosters were built to it
+     * (exactly one player, exactly two) and their names derived from it, so
+     * flipping it retroactively invalidates entries that are already paid for.
+     * Same snapshot reasoning as `payment_method` on an order.
+     *
+     * @param  array<string, mixed>  $cat
+     * @param  array<int, string>  $modes
+     *
+     * @throws ValidationException
+     */
+    protected function participantTypeFor(array $cat, ?EventCategory $existing, array $modes, int $i): string
+    {
+        $type = $cat['participant_type'] ?? $existing?->participant_type ?? 'team';
+
+        if (! in_array($type, $modes, true)) {
+            throw ValidationException::withMessages([
+                "categories.{$i}.participant_type" => 'Cabang olahraga ini tidak mendukung jenis peserta tersebut.',
+            ]);
+        }
+
+        if ($existing && $type !== $existing->participant_type && $existing->teams()->exists()) {
+            throw ValidationException::withMessages([
+                "categories.{$i}.participant_type" => 'Jenis peserta tidak bisa diubah karena sudah ada peserta terdaftar.',
+            ]);
+        }
+
+        return $type;
     }
 
     protected function uniqueCategorySlug(Event $event, string $source, ?string $ignoreId): string

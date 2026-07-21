@@ -11,7 +11,8 @@ import { statIcon } from "@/lib/stat-icons";
 import { useEventTimezone } from "./event-timezone";
 import { PublicStatusBadge } from "./public-status-badge";
 import { cn } from "@/lib/utils";
-import type { Match, PublicMatchStatTeam, StatColumn } from "@/types/api";
+import { rubberLineup, setsText } from "@/lib/scoring";
+import type { Match, MatchRubber, PublicMatchStatTeam, StatColumn } from "@/types/api";
 
 /**
  * Read-only detail of one fixture: the scoreline, then who did what. The stats
@@ -137,6 +138,16 @@ export function MatchDetailDialog({
         </div>
 
         <div className="overflow-y-auto p-4">
+          {/* A squad tie: the "3 – 0" above is these partai counted up, so the
+              breakdown is the result — it goes before the player stats. */}
+          {match.rubbers && match.rubbers.length > 0 && (
+            <div className="mb-5 flex flex-col gap-2">
+              {match.rubbers.map((rubber) => (
+                <RubberLine key={rubber.id} rubber={rubber} />
+              ))}
+            </div>
+          )}
+
           {query.isLoading ? (
             <p className="section-sub" style={{ margin: 0 }}>
               Memuat statistik…
@@ -159,6 +170,28 @@ export function MatchDetailDialog({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** One partai: its label, the two lineups, and the set scores. */
+function RubberLine({ rubber }: { rubber: MatchRubber }) {
+  const played = rubber.home_score !== null && rubber.away_score !== null;
+
+  return (
+    <div className="rounded-xl border border-border p-2.5 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold">{rubber.label}</span>
+        <span className="shrink-0 tabular-nums" style={{ color: "var(--text-muted)" }}>
+          {played ? `${rubber.home_score} – ${rubber.away_score}` : "belum dimainkan"}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" style={{ color: "var(--text-muted)" }}>
+        <span>
+          {rubberLineup(rubber.home_players)} vs {rubberLineup(rubber.away_players)}
+        </span>
+        {played && <span className="tabular-nums">· {setsText(rubber.sets)}</span>}
       </div>
     </div>
   );

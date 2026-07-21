@@ -30,5 +30,6 @@ class DatabaseSeeder extends Seeder
         // fake transactions into production. For local dev/testing, run explicitly:
         //   php artisan db:seed --class=UserSeeder
         //   php artisan db:seed --class=DemoEventSeeder
+        //   php artisan db:seed --class=BadmintonDemoSeeder  (tunggal/ganda/beregu)
     }
 }

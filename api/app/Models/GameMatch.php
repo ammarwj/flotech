@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\RubberService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -77,9 +78,31 @@ class GameMatch extends Model
         );
     }
 
+    /**
+     * A squad tie is born with the partai its category's template calls for.
+     *
+     * Hooked here rather than at each call site because fixtures are created in
+     * ten places (ScheduleService's league/knockout/hybrid paths, manual entry,
+     * bracket seeding) and every one of them would have to remember. The service
+     * no-ops for every category that isn't a racket-sport squad tie.
+     *
+     * Model events are the hook, so anything running WithoutModelEvents (the
+     * seeders) has to call RubberService::seedFor() itself — same caveat that
+     * makes Catalog::flush() explicit there.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn (GameMatch $match) => app(RubberService::class)->seedFor($match));
+    }
+
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    public function rubbers(): HasMany
+    {
+        return $this->hasMany(MatchRubber::class, 'match_id')->orderBy('order');
     }
 
     public function category(): BelongsTo

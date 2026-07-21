@@ -32,6 +32,20 @@ class SportSeeder extends Seeder
             ['position_key' => 'forward', 'label' => 'Penyerang'],
         ];
 
+        // Racket sports are entered three ways: one player, a pair, or a squad
+        // whose ties are played over several partai. Everything else fields a
+        // squad and nothing else.
+        $racketModes = ['single', 'double', 'team'];
+        $racketStats = [
+            ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS'],
+            ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
+            ['stat_key' => 'winners', 'label' => 'Winner', 'short' => 'WIN'],
+        ];
+        $racketPositions = [
+            ['position_key' => 'singles', 'label' => 'Tunggal'],
+            ['position_key' => 'doubles', 'label' => 'Ganda'],
+        ];
+
         $sports = [
             [
                 'slug' => 'football', 'name' => 'Sepak Bola', 'color' => '#1E6FFF', 'icon' => '⚽',
@@ -63,24 +77,29 @@ class SportSeeder extends Seeder
             ],
             [
                 'slug' => 'badminton', 'name' => 'Badminton', 'color' => '#DB2777', 'icon' => '🏸',
-                'scoring' => 'set', 'default_match_minutes' => 30,
+                'scoring' => 'set', 'participant_modes' => $racketModes, 'default_match_minutes' => 30,
                 'stats' => [
                     ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS'],
                     ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
                 ],
-                'positions' => [
-                    ['position_key' => 'singles', 'label' => 'Tunggal'],
-                    ['position_key' => 'doubles', 'label' => 'Ganda'],
-                ],
+                'positions' => $racketPositions,
             ],
             [
-                'slug' => 'padel', 'name' => 'Padel', 'color' => '#D97706', 'icon' => '🎾',
-                'scoring' => 'set', 'default_match_minutes' => 40,
-                'stats' => [
-                    ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS'],
-                    ['stat_key' => 'aces', 'label' => 'Ace', 'short' => 'ACE'],
-                    ['stat_key' => 'winners', 'label' => 'Winner', 'short' => 'WIN'],
-                ],
+                'slug' => 'tennis', 'name' => 'Tenis', 'color' => '#65A30D', 'icon' => '🎾',
+                'scoring' => 'set', 'participant_modes' => $racketModes, 'default_match_minutes' => 90,
+                'stats' => $racketStats,
+                'positions' => $racketPositions,
+            ],
+            [
+                'slug' => 'table_tennis', 'name' => 'Tenis Meja', 'color' => '#0891B2', 'icon' => '🏓',
+                'scoring' => 'set', 'participant_modes' => $racketModes, 'default_match_minutes' => 30,
+                'stats' => $racketStats,
+                'positions' => $racketPositions,
+            ],
+            [
+                'slug' => 'padel', 'name' => 'Padel', 'color' => '#D97706', 'icon' => '🥎',
+                'scoring' => 'set', 'participant_modes' => $racketModes, 'default_match_minutes' => 40,
+                'stats' => $racketStats,
                 'positions' => [
                     ['position_key' => 'drive', 'label' => 'Drive'],
                     ['position_key' => 'reves', 'label' => 'Reves'],
@@ -111,7 +130,12 @@ class SportSeeder extends Seeder
 
             $sport = Sport::updateOrCreate(
                 ['slug' => $data['slug']],
-                [...$data, 'is_active' => true, 'sort_order' => $order],
+                [
+                    ...$data,
+                    'participant_modes' => $data['participant_modes'] ?? ['team'],
+                    'is_active' => true,
+                    'sort_order' => $order,
+                ],
             );
 
             foreach ($stats as $statOrder => $stat) {

@@ -111,7 +111,9 @@ class PublicEventController extends Controller
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         $matches = $category->matches()
-            ->with(['homeTeam', 'awayTeam'])
+            ->with($category->usesRubbers()
+                ? ['homeTeam.players', 'awayTeam.players', 'rubbers']
+                : ['homeTeam', 'awayTeam'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

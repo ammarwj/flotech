@@ -31,6 +31,10 @@ class SportRequest extends FormRequest
             'color' => ['nullable', 'string', 'max:20'],
             'icon' => ['nullable', 'string', 'max:8'],
             'scoring' => ['nullable', Rule::in(Sport::SCORING)],
+            // A sport must be enterable somehow; 'team' is what every existing
+            // one is, so an empty list is a mistake rather than a meaningful state.
+            'participant_modes' => ['nullable', 'array', 'min:1'],
+            'participant_modes.*' => [Rule::in(Sport::MODES)],
             'default_match_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],

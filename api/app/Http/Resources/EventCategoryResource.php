@@ -21,6 +21,11 @@ class EventCategoryResource extends JsonResource
             'event_id' => $this->event_id,
             'name' => $this->name,
             'slug' => $this->slug,
+            'participant_type' => $this->participant_type,
+            'rubber_format' => $this->rubber_format,
+            // Derived, not stored: needs the sport, which lives on the event.
+            'uses_rubbers' => $this->usesRubbers(),
+            'roster_size' => $this->rosterSize(),
             'tournament_format' => $this->tournament_format,
             'engine' => $this->engine(),
             'registration_fee' => (float) $this->registration_fee,

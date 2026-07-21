@@ -23,6 +23,7 @@ class SportResource extends JsonResource
             'color' => $this->color,
             'icon' => $this->icon,
             'scoring' => $this->scoring,
+            'participant_modes' => $this->participantModes(),
             'default_match_minutes' => (int) $this->default_match_minutes,
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) $this->sort_order,

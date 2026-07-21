@@ -4,10 +4,12 @@ import type {
   BracketConfig,
   EventStatus,
   Paginated,
+  ParticipantType,
   PayRegistrationResult,
   PublicEvent,
   PublicEventListItem,
   RegisterTeamResult,
+  RubberFormatRow,
   SportEvent,
   Team,
   TeamStatus,
@@ -21,6 +23,10 @@ export interface EventCategoryInput {
   id?: string;
   name: string;
   slug?: string;
+  /** What one entrant is; omitted means a squad, as every category used to be. */
+  participant_type?: ParticipantType;
+  /** Partai a squad tie is played over; only stored for a racket-sport squad. */
+  rubber_format?: RubberFormatRow[] | null;
   tournament_format: TournamentFormat;
   registration_fee?: number;
   max_teams?: number | null;

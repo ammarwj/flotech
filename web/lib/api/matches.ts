@@ -5,6 +5,7 @@ import type {
   KnockoutPlan,
   Leaderboard,
   Match,
+  MatchRubber,
   MatchStatsData,
   MatchStatus,
   PublicMatchStats,
@@ -370,6 +371,64 @@ export async function getPublicMatchStats(
 ): Promise<PublicMatchStats> {
   const { data } = await apiClient.get<ApiEnvelope<PublicMatchStats>>(
     `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}/stats`
+  );
+  return data.data;
+}
+
+// ---- Partai of a squad tie ----
+
+export interface RubberSyncRow {
+  /** Load-bearing: without it the backend recreates every partai and the
+   *  scores recorded against them are lost. */
+  id?: string;
+  label: string;
+  type: "single" | "double";
+}
+
+export interface RubberScorePayload {
+  home_player_ids?: string[];
+  away_player_ids?: string[];
+  sets?: { home: number; away: number }[] | null;
+}
+
+/** Both writes return the rolled-up tie alongside its partai. */
+export interface RubberSaveResult {
+  match: Match;
+  rubbers: MatchRubber[];
+}
+
+export async function getRubbers(orgId: string, matchId: string): Promise<MatchRubber[]> {
+  const { data } = await apiClient.get<ApiEnvelope<MatchRubber[]>>(
+    `/organizations/${orgId}/matches/${matchId}/rubbers`
+  );
+  return data.data;
+}
+
+/** Replace the tie's partai list — rows without an id are new, omitted ones are deleted. */
+export async function syncRubbers(
+  orgId: string,
+  matchId: string,
+  rubbers: RubberSyncRow[]
+): Promise<RubberSaveResult> {
+  const { data } = await apiClient.put<ApiEnvelope<RubberSaveResult>>(
+    `/organizations/${orgId}/matches/${matchId}/rubbers`,
+    { rubbers }
+  );
+  return data.data;
+}
+
+/**
+ * Record one partai. The tie's own scoreline is rolled up from these — there is
+ * no endpoint that takes "3-0" directly.
+ */
+export async function updateRubber(
+  orgId: string,
+  rubberId: string,
+  payload: RubberScorePayload
+): Promise<RubberSaveResult> {
+  const { data } = await apiClient.patch<ApiEnvelope<RubberSaveResult>>(
+    `/organizations/${orgId}/rubbers/${rubberId}`,
+    payload
   );
   return data.data;
 }

@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { participantLabel, participantModes } from "@/lib/scoring";
+import type { ParticipantType } from "@/types/api";
 
 type SportForm = {
   slug: string;
@@ -30,10 +32,14 @@ type SportForm = {
   color: string;
   icon: string;
   scoring: "goal" | "set";
+  participant_modes: ParticipantType[];
   default_match_minutes: number;
   is_active: boolean;
   sort_order: number;
 };
+
+/** Entrant shapes, in the order they read as an escalation. */
+const MODES: ParticipantType[] = ["single", "double", "team"];
 
 const EMPTY: SportForm = {
   slug: "",
@@ -41,6 +47,8 @@ const EMPTY: SportForm = {
   color: "#1E6FFF",
   icon: "",
   scoring: "goal",
+  // Every sport fields a squad; racket sports add the other two.
+  participant_modes: ["team"],
   default_match_minutes: 60,
   is_active: true,
   sort_order: 0,
@@ -133,6 +141,7 @@ export default function AdminSportsPage() {
       color: sport.color,
       icon: sport.icon ?? "",
       scoring: sport.scoring,
+      participant_modes: participantModes(sport),
       default_match_minutes: sport.default_match_minutes,
       is_active: sport.is_active,
       sort_order: sport.sort_order,
@@ -216,6 +225,36 @@ export default function AdminSportsPage() {
               <option value="set">Per set (voli, badminton, padel)</option>
             </Select>
           </div>
+        </div>
+
+        <div className="grid gap-1.5">
+          <Label>Jenis peserta</Label>
+          <div className="flex flex-wrap gap-4">
+            {MODES.map((mode) => {
+              const checked = form.participant_modes.includes(mode);
+              return (
+                <label key={mode} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[var(--brand-600)]"
+                    checked={checked}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        participant_modes: e.target.checked
+                          ? MODES.filter((m) => m === mode || form.participant_modes.includes(m))
+                          : form.participant_modes.filter((m) => m !== mode),
+                      })
+                    }
+                  />
+                  {participantLabel(mode)}
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Cabang raket bisa ketiganya. Mode yang sudah dipakai kategori event tidak bisa dilepas.
+          </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">

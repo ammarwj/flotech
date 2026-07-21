@@ -22,6 +22,7 @@ class TeamRosterService
      */
     public function syncPlayers(Team $team, array $players): void
     {
+        $this->assertRosterSize($team, $players);
         $this->assertPositionsExist($team, $players);
 
         $keepIds = [];
@@ -47,6 +48,60 @@ class TeamRosterService
         }
 
         $team->players()->whereKeyNot($keepIds)->delete();
+
+        $this->syncDerivedName($team, $players);
+    }
+
+    /**
+     * A singles entrant is one player and a doubles entrant is exactly two —
+     * the category says so, and there is nothing else the entry could be.
+     *
+     * Note this also makes the roster *mandatory* for those two, unlike a squad
+     * which may claim a slot and fill its list in later: the entry has no name
+     * of its own until the players are known (see syncDerivedName).
+     *
+     * @param  array<int, array<string, mixed>>  $players
+     *
+     * @throws ValidationException
+     */
+    private function assertRosterSize(Team $team, array $players): void
+    {
+        $size = $team->category?->rosterSize();
+
+        if ($size === null || count($players) === $size) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'players' => $size === 1
+                ? 'Kategori tunggal diisi tepat 1 pemain.'
+                : 'Kategori ganda diisi tepat 2 pemain.',
+        ]);
+    }
+
+    /**
+     * A singles/doubles entry has no team name — it *is* its players ("Dimas",
+     * "Dimas / Ammar"). Deriving it here, on the one write path all three roster
+     * flows share, is what lets every reader stay untouched: standings, brackets,
+     * match cards, certificates and the public pages all keep reading
+     * `teams.name` and get the right thing.
+     *
+     * @param  array<int, array<string, mixed>>  $players
+     */
+    private function syncDerivedName(Team $team, array $players): void
+    {
+        if ($team->category?->rosterSize() === null) {
+            return;
+        }
+
+        $name = implode(' / ', array_map(
+            fn ($row) => trim((string) $row['full_name']),
+            $players,
+        ));
+
+        if ($name !== '' && $name !== $team->name) {
+            $team->update(['name' => $name]);
+        }
     }
 
     /**

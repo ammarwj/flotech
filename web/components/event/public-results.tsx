@@ -38,6 +38,7 @@ export function PublicResults({
   categorySlug,
   engine,
   bracketConfig,
+  usesRubbers,
   activeTab,
 }: {
   orgSlug: string;
@@ -47,6 +48,8 @@ export function PublicResults({
   /** The engine the category's format runs on — decides which panels make sense. */
   engine: FormatEngine | null;
   bracketConfig?: BracketConfig | null;
+  /** Squad ties: the table counts partai, not goals. */
+  usesRubbers?: boolean;
   activeTab: ResultsTab;
 }) {
   const catalog = useCatalog();
@@ -141,9 +144,17 @@ export function PublicResults({
         ) : (
           <div style={{ maxWidth: isHybrid ? 1120 : 760 }}>
             {isHybrid ? (
-              <GroupStandings standings={standingsQuery.data ?? []} config={config} />
+              <GroupStandings
+                standings={standingsQuery.data ?? []}
+                config={config}
+                category={{ uses_rubbers: !!usesRubbers }}
+              />
             ) : (
-              <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+              <StandingsTable
+                standings={standingsQuery.data ?? []}
+                highlight={2}
+                category={{ uses_rubbers: !!usesRubbers }}
+              />
             )}
           </div>
         )}

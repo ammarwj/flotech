@@ -27,8 +27,10 @@ class EventCategory extends Model
         'event_id',
         'name',
         'slug',
+        'participant_type',
         'tournament_format',
         'bracket_config',
+        'rubber_format',
         'registration_fee',
         'max_teams',
         'sort_order',
@@ -38,6 +40,7 @@ class EventCategory extends Model
     {
         return [
             'bracket_config' => 'array',
+            'rubber_format' => 'array',
             'registration_fee' => 'decimal:2',
             'max_teams' => 'integer',
             'sort_order' => 'integer',
@@ -67,6 +70,44 @@ class EventCategory extends Model
     public function engine(): ?string
     {
         return Catalog::engineOf($this->tournament_format);
+    }
+
+    public function isSingle(): bool
+    {
+        return $this->participant_type === 'single';
+    }
+
+    public function isDouble(): bool
+    {
+        return $this->participant_type === 'double';
+    }
+
+    /**
+     * How many players an entrant of this category has, or null when it fields a
+     * squad and the size is the organizer's business.
+     */
+    public function rosterSize(): ?int
+    {
+        return match ($this->participant_type) {
+            'single' => 1,
+            'double' => 2,
+            default => null,
+        };
+    }
+
+    /**
+     * Whether a fixture here is a tie played over several partai rather than one
+     * scoreline.
+     *
+     * All three conditions matter. A squad category on a sport that never fields
+     * lone players (volleyball, football) is an ordinary team match, and a squad
+     * category whose organizer never set a template has nothing to generate.
+     */
+    public function usesRubbers(): bool
+    {
+        return $this->participant_type === 'team'
+            && in_array('single', Catalog::participantModes($this->sport_type), true)
+            && ! empty($this->rubber_format);
     }
 
     /** Catalog entry for the event's sport (name, colour, scoring, stats). */

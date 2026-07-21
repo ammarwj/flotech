@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
-import { RosterEditor, type PlayerRow } from "@/components/team/roster-editor";
+import { RosterEditor, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 
 type DocRow = { id?: string; file_name: string; file_url: string };
 
@@ -42,6 +42,10 @@ export default function ManageTeamPage() {
   const query = useQuery({ queryKey: ["my-team", params.id], queryFn: () => getMyTeam(params.id) });
   const team = query.data;
   const editable = team ? !LOCKED.includes(team.status) : false;
+  // Tunggal/ganda: the entry is its players, so the roster is a fixed pair of
+  // slots and there is no team name to type.
+  const rosterSize = team?.category?.roster_size ?? null;
+  const isFixed = typeof rosterSize === "number";
 
   const [info, setInfo] = useState({ name: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([]);
@@ -101,9 +105,13 @@ export default function ManageTeamPage() {
 
   const save = useMutation({
     mutationFn: () => {
+      const roster = isFixed ? fixedRoster(players, rosterSize) : players;
       const payload: UpdateMyTeamPayload = {
         ...info,
-        players: players
+        // A tunggal/ganda entry is its players — the backend renames it from the
+        // roster, so what travels here is only a placeholder.
+        name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : info.name,
+        players: roster
           .filter((p) => p.full_name.trim())
           .map((p) => ({
             id: p.id,
@@ -226,10 +234,12 @@ export default function ManageTeamPage() {
             <CardTitle>Informasi Tim</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Nama tim</Label>
-              <Input value={info.name} onChange={(e) => setInfo({ ...info, name: nameInput(e.target.value) })} disabled={!editable} required />
-            </div>
+            {!isFixed && (
+              <div className="grid gap-2">
+                <Label>Nama tim</Label>
+                <Input value={info.name} onChange={(e) => setInfo({ ...info, name: nameInput(e.target.value) })} disabled={!editable} required />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Nama kontak</Label>
               <Input value={info.contact_name} onChange={(e) => setInfo({ ...info, contact_name: e.target.value })} disabled={!editable} />
@@ -250,9 +260,14 @@ export default function ManageTeamPage() {
           <CardHeader className="flex-row items-center justify-between">
             <div>
               <CardTitle className="inline-flex items-center gap-2">
-                <Users className="h-4 w-4" /> Daftar Pemain
+                <Users className="h-4 w-4" />{" "}
+                {isFixed ? (rosterSize === 1 ? "Data Peserta" : "Data Pasangan") : "Daftar Pemain"}
               </CardTitle>
-              <CardDescription>Tambah, ubah, atau hapus pemain di roster.</CardDescription>
+              <CardDescription>
+                {isFixed
+                  ? "Nama pendaftaran diambil dari sini — mis. “Dimas / Ammar”."
+                  : "Tambah, ubah, atau hapus pemain di roster."}
+              </CardDescription>
               {players.length === 0 && (
                 <p className="mt-1 text-sm text-[var(--warning)]">
                   Roster masih kosong — lengkapi sebelum turnamen dimulai.
@@ -262,10 +277,11 @@ export default function ManageTeamPage() {
           </CardHeader>
           <CardContent>
             <RosterEditor
-              players={players}
+              players={isFixed ? fixedRoster(players, rosterSize) : players}
               onChange={setPlayers}
               sport={team.event?.sport_type}
               disabled={!editable}
+              size={rosterSize}
             />
           </CardContent>
         </Card>

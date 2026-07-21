@@ -32,6 +32,10 @@ class ConfigOptionSeeder extends Seeder
                 'meta' => ['comparator' => 'goal_difference']],
             ['group' => 'tiebreaker', 'key' => 'goals_scored', 'label' => 'Gol Memasukkan',
                 'meta' => ['comparator' => 'goals_scored']],
+            // Squad ties (badminton beregu & co): aggregate set points, which is
+            // what separates two squads that split their ties.
+            ['group' => 'tiebreaker', 'key' => 'rubber_points', 'label' => 'Selisih Poin Partai',
+                'meta' => ['comparator' => 'rubber_points']],
             ['group' => 'tiebreaker', 'key' => 'fair_play', 'label' => 'Fair Play',
                 'meta' => ['comparator' => 'fair_play']],
             ['group' => 'tiebreaker', 'key' => 'drawing_lots', 'label' => 'Undian',

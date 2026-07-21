@@ -33,13 +33,21 @@ class CatalogTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(6, $data['sports']);
+        $this->assertCount(8, $data['sports']);
         $this->assertSame('football', $data['sports'][0]['slug']);
         $this->assertSame('goal', $data['sports'][0]['stats'][0]['role']);
         $this->assertSame('set', collect($data['sports'])->firstWhere('slug', 'volleyball')['scoring']);
 
+        // Entrant shapes travel with the sport: racket sports field a lone
+        // player, a pair, or a squad; everything else only ever a squad.
+        $this->assertSame(['team'], collect($data['sports'])->firstWhere('slug', 'volleyball')['participant_modes']);
+        $this->assertSame(
+            ['single', 'double', 'team'],
+            collect($data['sports'])->firstWhere('slug', 'badminton')['participant_modes'],
+        );
+
         $this->assertCount(4, $data['tournament_formats']);
-        $this->assertCount(5, $data['tiebreakers']);
+        $this->assertCount(6, $data['tiebreakers']);
         $this->assertCount(4, $data['sponsor_tiers']);
         $this->assertSame('hybrid', collect($data['tournament_formats'])->firstWhere('key', 'hybrid')['meta']['engine']);
     }

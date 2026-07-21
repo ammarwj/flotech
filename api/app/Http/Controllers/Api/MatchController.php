@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Team;
 use App\Services\Catalog;
 use App\Services\GroupDrawService;
+use App\Services\MatchResultService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
@@ -36,6 +37,7 @@ class MatchController extends Controller
         protected StandingService $standings,
         protected PlayerStatService $stats,
         protected GroupDrawService $draw,
+        protected MatchResultService $results,
     ) {}
 
     /**
@@ -489,6 +491,17 @@ class MatchController extends Controller
         $matchModel = $this->match($request, $match);
         $eventModel = $matchModel->event;
 
+        // A squad tie has no scoreline of its own — it is the count of partai
+        // won. Accepting one here would let a hand-typed 3-0 sit on top of
+        // partai that say otherwise, and the next partai edit would overwrite it.
+        if ($matchModel->category->usesRubbers()) {
+            return ApiResponse::error(
+                'Skor pertandingan beregu diisi per partai.',
+                ['rubbers' => ['Isi skor lewat daftar partai.']],
+                422,
+            );
+        }
+
         $base = $request->validate([
             'status' => ['required', Rule::in(['scheduled', 'ongoing', 'finished', 'cancelled'])],
             'scheduled_at' => ['nullable', 'date'],
@@ -574,19 +587,7 @@ class MatchController extends Controller
             && $payload['home_score'] !== null
             && $payload['away_score'] !== null;
 
-        // Whatever this result had already pushed into the next round has to
-        // come back out before the new one goes in — otherwise editing a
-        // confirmed knockout result leaves the previous winner stranded there.
-        if ($matchModel->isConfirmed()) {
-            $this->withdrawFrom($matchModel);
-        }
-
-        $payload['confirmed_at'] = $autoConfirm ? now() : null;
-        $matchModel->update($payload);
-
-        if ($autoConfirm) {
-            $this->propagateFrom($matchModel->fresh());
-        }
+        $this->results->apply($matchModel, $payload, $autoConfirm);
 
         return ApiResponse::success(
             new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
@@ -901,39 +902,20 @@ class MatchController extends Controller
     }
 
     /**
-     * Send a settled result onward: the winner into the next bracket slot.
-     *
-     * Every path that makes a result final goes through here, so confirming by
-     * hand and confirming by saving as an admin can't propagate differently.
+     * Bracket propagation lives in MatchResultService — a tie rolled up from its
+     * partai finishes through the same edges, so there is one copy of it.
      */
     protected function propagateFrom(GameMatch $match): void
     {
-        $engine = $match->category->engine();
-
-        if ($engine === 'knockout_single' || $match->stage === 'knockout') {
-            $this->schedule->advanceWinner($match);
-            // A semifinal also sends its loser sideways, when the category
-            // plays for third place.
-            $this->schedule->advanceLoser($match);
-        } elseif ($engine === 'knockout_double') {
-            $this->schedule->advanceDouble($match);
-        }
+        $this->results->propagate($match);
     }
 
     /**
-     * The inverse: pull back whatever this result had already sent onward.
-     *
      * @return int matches reset
      */
     protected function withdrawFrom(GameMatch $match): int
     {
-        $engine = $match->category->engine();
-
-        if ($engine === 'knockout_single' || $engine === 'knockout_double' || $match->stage === 'knockout') {
-            return $this->schedule->clearDownstream($match);
-        }
-
-        return 0;
+        return $this->results->withdraw($match);
     }
 
     /**
@@ -1116,12 +1098,7 @@ class MatchController extends Controller
      */
     protected function isKnockoutTie(GameMatch $match): bool
     {
-        if ($match->stage === 'group') {
-            return false;
-        }
-
-        return in_array($match->category->engine(), ['knockout_single', 'knockout_double'], true)
-            || $match->stage === 'knockout';
+        return $this->results->isKnockoutTie($match);
     }
 
     /**
@@ -1130,7 +1107,11 @@ class MatchController extends Controller
     protected function orderedMatches(EventCategory $category)
     {
         return $category->matches()
-            ->with(['homeTeam', 'awayTeam'])
+            // Rosters ride along so a squad tie can name its lineups without a
+            // query per partai — see MatchResource.
+            ->with($category->usesRubbers()
+                ? ['homeTeam.players', 'awayTeam.players', 'rubbers']
+                : ['homeTeam', 'awayTeam'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

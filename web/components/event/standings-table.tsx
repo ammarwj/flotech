@@ -1,7 +1,19 @@
-import type { Standing } from "@/types/api";
+import { scoreColumnLabels } from "@/lib/scoring";
+import type { EventCategory, Standing } from "@/types/api";
 
 /** League table. `highlight` marks the top N rows (e.g. playoff qualifiers). */
-export function StandingsTable({ standings, highlight = 0 }: { standings: Standing[]; highlight?: number }) {
+export function StandingsTable({
+  standings,
+  highlight = 0,
+  category,
+}: {
+  standings: Standing[];
+  highlight?: number;
+  /** Decides whether the for/against columns count goals or partai. */
+  category?: Pick<EventCategory, "uses_rubbers"> | null;
+}) {
+  const cols = scoreColumnLabels(category);
+
   if (standings.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -17,7 +29,7 @@ export function StandingsTable({ standings, highlight = 0 }: { standings: Standi
           <tr className="bg-[var(--surface-2)] text-xs uppercase tracking-wide text-muted-foreground">
             <th className="w-10 px-2 py-3 text-center font-semibold">#</th>
             <th className="px-3 py-3 text-left font-semibold">Tim</th>
-            {["M", "M", "S", "K", "GM", "GK", "SG"].map((h, i) => (
+            {["M", "M", "S", "K", cols.for, cols.against, cols.diff].map((h, i) => (
               <th key={i} className="px-2 py-3 text-center font-semibold">
                 {h}
               </th>

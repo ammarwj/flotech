@@ -70,6 +70,7 @@ import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
+import { RubberScoreEditor } from "@/components/event/rubber-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
 import { MatchCardHeader } from "@/components/event/match-card-header";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
@@ -547,6 +548,7 @@ export default function SchedulePage() {
                           orgId={orgId!}
                           eventId={eventId}
                           setBased={setBased}
+                          rubbers={!!selectedCategory?.uses_rubbers}
                           knockout={isKnockout || m.stage === "knockout"}
                           phase={phaseOf(m)}
                         />
@@ -570,9 +572,17 @@ export default function SchedulePage() {
       ) : (
         <div className={isHybrid ? undefined : "max-w-3xl"}>
           {isHybrid ? (
-            <GroupStandings standings={standingsQuery.data ?? []} config={config} />
+            <GroupStandings
+              standings={standingsQuery.data ?? []}
+              config={config}
+              category={selectedCategory}
+            />
           ) : (
-            <StandingsTable standings={standingsQuery.data ?? []} highlight={2} />
+            <StandingsTable
+              standings={standingsQuery.data ?? []}
+              highlight={2}
+              category={selectedCategory}
+            />
           )}
           {(standingsQuery.data?.length ?? 0) > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
@@ -654,6 +664,7 @@ function MatchCard({
   orgId,
   eventId,
   setBased,
+  rubbers,
   knockout,
   phase,
 }: {
@@ -661,6 +672,8 @@ function MatchCard({
   orgId: string;
   eventId: string;
   setBased: boolean;
+  /** A squad tie: scored per partai, never as one scoreline. */
+  rubbers: boolean;
   /** A tie that must produce a winner — level scores go to penalties. */
   knockout: boolean;
   /** "Grup A", "Semifinal" — omitted when it would only repeat the heading. */
@@ -775,6 +788,26 @@ function MatchCard({
         </div>
         <div className="mt-3 flex items-start justify-between gap-2 border-t border-border pt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+          {removeBtn}
+        </div>
+      </Card>
+    );
+  }
+
+  // A squad tie (badminton beregu & co): several partai, each scored per set,
+  // and the tie's own scoreline is what they add up to. Checked before the
+  // plain set-based branch, which such a category would otherwise fall into.
+  if (rubbers) {
+    return (
+      <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
+        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <div className="mt-3">
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        </div>
+        <div className="mt-3 border-t border-border pt-3">
+          <RubberScoreEditor orgId={orgId} eventId={eventId} match={match} />
+        </div>
+        <div className="mt-2 flex items-center justify-end border-t border-border pt-2">
           {removeBtn}
         </div>
       </Card>

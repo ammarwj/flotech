@@ -33,14 +33,23 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
-import type { SportEvent } from "@/types/api";
+import { participantLabel, participantModes } from "@/lib/scoring";
+import { RubberFormatEditor } from "@/components/event/rubber-format-editor";
+import type { ParticipantType, SportEvent } from "@/types/api";
 
 /** A category being edited; `_key` is a stable local id for React lists only. */
-type CategoryDraft = EventCategoryInput & { _key: string };
+type CategoryDraft = EventCategoryInput & {
+  /** Stable local id for React lists only. */
+  _key: string;
+  /** Entrants already registered, when this category exists server-side. */
+  _teamsCount?: number;
+};
 
 const newCategory = (tournament_format = ""): CategoryDraft => ({
   _key: crypto.randomUUID(),
   name: "",
+  // A squad is what a category has always been; racket sports opt into the rest.
+  participant_type: "team",
   tournament_format,
   registration_fee: 0,
   max_teams: undefined,
@@ -176,6 +185,8 @@ function CategoryEditor({
   canRemove,
   isHybrid,
   isSingleElim,
+  modes,
+  locked,
   nameError,
   onChange,
   onRemove,
@@ -184,6 +195,10 @@ function CategoryEditor({
   index: number;
   canRemove: boolean;
   isHybrid: boolean;
+  /** Entrant shapes the chosen sport can be run in. */
+  modes: ParticipantType[];
+  /** Entrants already registered — the shape can no longer change. */
+  locked: boolean;
   /** Single elimination has no config card, but it can still play for third. */
   isSingleElim: boolean;
   nameError?: string;
@@ -241,6 +256,45 @@ function CategoryEditor({
           </Select>
         </div>
       </div>
+
+      {/* Only worth asking when there's a choice: most sports field a squad and
+          nothing else, so the row would be a dropdown with one option. */}
+      {modes.length > 1 && (
+        <div className="grid gap-2 sm:max-w-[calc(50%-0.5rem)]">
+          <Label className="font-semibold">Jenis peserta</Label>
+          <Select
+            value={cat.participant_type ?? "team"}
+            disabled={locked}
+            onChange={(e) => {
+              const participant_type = e.target.value as ParticipantType;
+              // A template only means something for a squad tie; drop it when
+              // the category stops being one, matching what the backend stores.
+              onChange({
+                participant_type,
+                rubber_format: participant_type === "team" ? cat.rubber_format : null,
+              });
+            }}
+          >
+            {modes.map((m) => (
+              <option key={m} value={m}>
+                {participantLabel(m)}
+              </option>
+            ))}
+          </Select>
+          <FieldHint>
+            {locked
+              ? "Tidak bisa diubah — sudah ada peserta terdaftar."
+              : "Tunggal = 1 pemain, Ganda = 2 pemain, Tim = beregu."}
+          </FieldHint>
+        </div>
+      )}
+
+      {modes.includes("single") && (cat.participant_type ?? "team") === "team" && (
+        <RubberFormatEditor
+          value={cat.rubber_format}
+          onChange={(rubber_format) => onChange({ rubber_format })}
+        />
+      )}
 
       {isHybrid && (
         <HybridConfigCard
@@ -356,10 +410,14 @@ export function EventForm({
           _key: c.id,
           id: c.id,
           name: c.name,
+          participant_type: c.participant_type ?? "team",
+          rubber_format: c.rubber_format,
           tournament_format: c.tournament_format,
           registration_fee: c.registration_fee,
           max_teams: c.max_teams ?? undefined,
           bracket_config: c.bracket_config ?? undefined,
+          // Only known for a saved category, and only used to lock the shape.
+          _teamsCount: c.teams_count,
         }))
       : [newCategory()]
   );
@@ -480,6 +538,9 @@ export function EventForm({
     const cleanedCategories: EventCategoryInput[] = categories.map((c) => ({
       id: c.id,
       name: c.name!.trim(),
+      participant_type: c.participant_type ?? "team",
+      // Drop blank template rows rather than posting partai with no name.
+      rubber_format: c.rubber_format?.filter((r) => r.label.trim()) ?? null,
       tournament_format: c.tournament_format || fallbackFormat,
       registration_fee: c.registration_fee ?? 0,
       max_teams: c.max_teams ?? null,
@@ -611,6 +672,8 @@ export function EventForm({
               canRemove={categories.length > 1}
               isHybrid={engineOf(c.tournament_format) === "hybrid"}
               isSingleElim={engineOf(c.tournament_format) === "knockout_single"}
+              modes={participantModes(sports.find((s) => s.slug === sportValue))}
+              locked={(c._teamsCount ?? 0) > 0}
               nameError={catErrors[c._key]}
               onChange={(patch) => updateCat(c._key, patch)}
               onRemove={() => removeCat(c._key)}

@@ -50,6 +50,7 @@ class Catalog
                     'color' => $s->color,
                     'icon' => $s->icon,
                     'scoring' => $s->scoring,
+                    'participant_modes' => $s->participantModes(),
                     'default_match_minutes' => $s->default_match_minutes,
                     'stats' => $s->stats->map(fn ($stat) => [
                         'key' => $stat->stat_key,
@@ -172,6 +173,19 @@ class Catalog
     public static function isSetBased(?string $slug): bool
     {
         return (self::sport($slug)['scoring'] ?? 'goal') === 'set';
+    }
+
+    /**
+     * The entrant shapes this sport can be run with. Squad-only for an unknown
+     * sport, which is the safe answer: it is what every category already is.
+     *
+     * @return array<int, string>
+     */
+    public static function participantModes(?string $slug): array
+    {
+        $modes = self::sport($slug)['participant_modes'] ?? null;
+
+        return $modes ?: ['team'];
     }
 
     /**
