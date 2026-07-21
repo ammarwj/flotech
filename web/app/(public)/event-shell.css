@@ -138,8 +138,43 @@
 .match-team > .truncate { min-width: 0; }
 .match-team .crest { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; }
 .match-team .sc { margin-left: auto; font-family: var(--font-display); font-weight: 800; font-size: 17px; font-variant-numeric: tabular-nums; }
+/* Per-set columns (badminton/voli/tenis), read as a scoreboard: the two rows of
+   a fixture share one column grid, so a column can be read down to compare a
+   single set. Fixed cell width and tabular figures are what keep them aligned.
+
+   `margin-left:auto` moves here from `.sc` — the trailing group now starts at
+   the sets, and two auto margins would split the free space between them. */
+.match-sets { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+.set-cell {
+  min-width: 19px; text-align: right;
+  font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+  color: var(--text-muted); opacity: 0.75;
+}
+/* The one rule that gives the figures structure: the side that took the set
+   reads solid. Applied per cell, so a set won inside a lost match still shows. */
+.set-cell--won { color: var(--text); opacity: 1; font-weight: 600; }
+/* Wide enough that the sets never read as peers of the match score, which is
+   the far larger figure that closes the row. */
+.match-team .match-sets + .sc { margin-left: 16px; }
 .match-team.lose { color: var(--text-muted); }
 .match-team.lose .sc { color: var(--text-muted); }
+
+/* Partai of a squad tie, listed under the two squad names. Sits inside
+   `.match-teams` so it stays in the middle column on desktop and inherits the
+   full-width `teams` area on mobile, without a grid area of its own. */
+.match-rubbers {
+  display: grid; gap: 5px;
+  padding-top: 9px; margin-top: 3px;
+  border-top: 1px solid var(--border);
+}
+.rubber-line { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.rubber-label { font-size: 12px; font-weight: 600; color: var(--text-muted); min-width: 0; }
+.rubber-sets { margin-left: auto; display: flex; gap: 10px; flex-shrink: 0; }
+.rubber-set {
+  font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--text-muted); opacity: 0.75;
+}
+.rubber-dash { padding: 0 1px; }
 .match-meta { text-align: right; display: grid; gap: 6px; justify-items: end; }
 .match-meta small { font-size: 12px; color: var(--text-muted); }
 
@@ -168,6 +203,10 @@
   .match-card--fixture .match-teams { grid-area: teams; }
   /* Boleh membungkus: venue panjang turun ke baris berikutnya alih-alih
      menggencet apa pun. */
+  /* Tighter cells so a five-set volleyball row still leaves the names room. */
+  .match-sets { gap: 4px; }
+  .set-cell { min-width: 17px; font-size: 12px; }
+  .match-team .match-sets + .sc { margin-left: 12px; }
   .match-card--fixture .match-meta {
     grid-area: meta;
     display: flex;
