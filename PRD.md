@@ -1,6 +1,6 @@
 # 📋 Product Requirements Document (PRD)
 ## flo-event — Sports Event Management SaaS Platform
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Tanggal:** Juli 2026
 **Status:** Draft
 **Penulis:** Product Team
@@ -70,15 +70,19 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 ### 1.5 Cabang Olahraga (Tahap Awal)
 
-| Ikon | Cabang | Format Didukung |
-|------|--------|----------------|
-| ⚽ | Sepak Bola | Liga, Knockout, Hybrid, Grup + Playoff |
-| 🥅 | Futsal | Liga, Knockout, Hybrid |
-| 🏸 | Badminton | Liga, Knockout, Round Robin |
-| 🎾 | Padel | Liga, Knockout, Round Robin |
-| 🏐 | Voli | Liga, Knockout, Pool Play |
+| Ikon | Cabang | Format Didukung | Jenis Peserta |
+|------|--------|----------------|---------------|
+| ⚽ | Sepak Bola | Liga, Knockout, Hybrid, Grup + Playoff | Tim |
+| 🥅 | Futsal | Liga, Knockout, Hybrid | Tim |
+| 🏐 | Voli | Liga, Knockout, Pool Play | Tim |
+| 🏸 | Badminton | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
+| 🎾 | Tenis | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
+| 🏓 | Tenis Meja | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
+| 🥎 | Padel | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
 
 > Daftar ini **bukan lagi hardcode**. Cabang olahraga, format turnamen, kolom statistik, tiebreaker, metode undian, dan tier sponsor kini tersimpan di database dan dikelola Super Admin (lihat §4.16). Menambah cabang baru tidak butuh deploy — selama **engine**-nya (liga / knockout / hybrid) sudah ada di kode.
+
+> **Jenis peserta** juga data, bukan kode: kolom `sports.participant_modes` menentukan bentuk peserta yang boleh dipakai cabang tersebut. Cabang raket menerima ketiganya; cabang beregu lain hanya "Tim". Lihat §4.23.
 
 ### 1.6 Value Proposition
 
@@ -212,6 +216,14 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Setiap tim dan setiap pertandingan **milik satu kategori** (`teams.category_id`, `matches.category_id`); pendaftaran wajib menyebut kategori
 - Batas tim per kategori berlaku terpisah dari **cap tim per event** milik paket (FR-02); keduanya dicek saat registrasi
 
+#### FR-23: Jenis Peserta & Pertandingan Beregu (Partai)
+- Kategori mendeklarasikan **bentuk pesertanya**: `tunggal` (1 pemain), `ganda` (2 pemain), atau `tim` (skuad) — divalidasi terhadap `sports.participant_modes` cabang yang dipakai
+- Peserta tunggal/ganda **tidak punya nama sendiri**: namanya diturunkan dari roster (`"Dimas / Ammar"`), dan form pendaftaran menyesuaikan (tanpa nama tim & logo, jumlah pemain terkunci)
+- **Jenis peserta dikunci** begitu ada peserta terdaftar — mengubahnya membuat roster & nama yang sudah tersimpan tidak valid
+- Kategori beregu pada cabang raket dimainkan sebagai **tie berisi beberapa partai** (mis. Ganda Putra → Tunggal Putra → Ganda Campuran); daftar partai adalah template di kategori dan bisa disesuaikan per pertandingan
+- **Skor tie diturunkan, bukan diketik**: `Spanyol 3-0 Argentina` = jumlah partai yang dimenangkan; tiap partai punya lineup (dipilih dari roster) dan skor set sendiri
+- Klasemen beregu memakai partai sebagai pengganti gol, dengan **agregat poin set** sebagai tiebreaker tambahan
+
 ### 2.2 Non-Functional Requirements
 
 | Kategori | Requirement |
@@ -342,7 +354,7 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 **Alur:**
 1. Peserta buka landing page → klik "Daftar" (bisa langsung ke kategori tertentu via `?category=slug`)
 2. **Pilih kategori kompetisi** (§4.22) — biaya registrasi mengikuti kategori; jika event hanya punya satu kategori, ia terpilih otomatis
-3. Isi form registrasi (field dikonfigurasi organizer)
+3. Isi form registrasi (field dikonfigurasi organizer). **Bentuk form mengikuti jenis peserta kategori** (§4.23): tunggal minta satu nama, ganda minta dua, tim minta nama tim + skuad
 4. Input data tim + roster pemain + upload dokumen (langsung ke R2 via signed URL)
 5. Generate invoice → peserta bayar (jika berbayar)
 6. Organizer approve/reject
@@ -357,6 +369,8 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 **Data Tim:** nama, logo (R2), kontak kapten (nama + telepon)
 
 **Data Pemain:** nama, nomor punggung, posisi, tanggal lahir, foto (R2). **Posisi dipilih dari master posisi per cabang** (§4.16) — tersimpan sebagai `position_key`, bukan teks bebas.
+
+**Peserta tunggal & ganda** (§4.23) memakai tabel yang sama: satu entri berisi 1 atau 2 pemain, tanpa nama tim dan tanpa logo. Namanya **diturunkan dari roster** (`"Dimas"`, `"Dimas / Ammar"`) di satu tempat — layanan roster yang dipakai ketiga alur pendaftaran — sehingga klasemen, bracket, kartu pertandingan, sertifikat, dan halaman publik membacanya seperti nama tim biasa.
 
 **Kontrol:** tim manager edit data hingga deadline, organizer dapat lock roster dan diskualifikasi tim
 
@@ -379,9 +393,10 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 | Cabang | Data yang Diinput |
 |--------|------------------|
 | Sepak Bola / Futsal | Skor, pencetak gol (menit), assist, kartu kuning/merah |
-| Badminton | Skor set (21-poin), pemenang per game |
+| Badminton / Tenis / Tenis Meja | Skor set (21-poin), pemenang per game |
 | Padel | Skor game per set, tie-break |
 | Voli | Skor set (25-poin), set ke-5 (15-poin) |
+| **Kategori beregu (raket)** | **Per partai**: lineup tiap sisi + skor set. Skor tie dihitung otomatis dari partai yang dimenangkan (§4.23) |
 
 **Workflow:**
 ```
@@ -389,6 +404,8 @@ Operator Input → [Pending Konfirmasi] → Admin Review → [Dikonfirmasi]
                                                           ↓
                                            Klasemen & Statistik auto-update
 ```
+
+Kategori beregu **tidak menerima skor tie yang diketik langsung** — endpoint hasil menolaknya. Satu-satunya pintu adalah daftar partai, supaya skor tie tak pernah bertentangan dengan partai di bawahnya. Tie yang sudah dikonfirmasi harus dibatalkan konfirmasinya sebelum partainya bisa diubah, karena pemenangnya sudah didudukkan di babak berikutnya.
 
 ---
 
@@ -400,7 +417,10 @@ Klasemen, leaderboard, dan bracket dihitung **per kategori** (§4.22). Aturan de
 |--------|--------|------|-------|-----------|
 | Sepak Bola / Futsal | 3 poin | 1 | 0 | Selisih gol → Gol masuk → Head-to-head |
 | Voli | 3 (3-0/3-1) atau 2 (3-2) | — | 1 (2-3) atau 0 | Rasio set → Rasio poin |
-| Badminton / Padel | 2 | — | 0 | Rasio game → Rasio poin |
+| Badminton / Tenis / Tenis Meja / Padel | 2 | — | 0 | Rasio game → Rasio poin |
+| Kategori beregu (raket) | 3 | 1 | 0 | Head-to-head → Selisih partai → **Selisih poin partai** |
+
+Untuk kategori beregu, kolom "gol memasukkan/kemasukan" pada tabel klasemen **membaca partai** — 3-0 berarti tiga partai dimenangkan, bukan tiga gol. Judul kolomnya ikut berubah (PM / PK / SP) supaya tidak menyesatkan. Dua regu yang berbagi tie 3-3 dipisahkan oleh **agregat poin seluruh set** (tiebreaker `rubber_points`).
 
 ---
 
@@ -645,13 +665,59 @@ Satu akun bisa memakai dua "topi": **Organizer** (mengelola event miliknya) dan 
 
 Sebuah event nyata jarang berupa satu turnamen tunggal — satu penyelenggara sering menjalankan **U-17, Putri, dan Open sekaligus** di bawah satu acara. flo-event memodelkannya sebagai **kategori kompetisi**: setiap event punya satu atau lebih kategori, dan hampir semua yang dulu melekat di event kini melekat di kategori.
 
-- **Yang pindah ke kategori:** `tournament_format`, `bracket_config`, `registration_fee`, dan `max_teams`. Yang tetap di event: cabang olahraga, tanggal, lokasi, jendela registrasi, dan banner — semua kategori berbagi ini.
+- **Yang pindah ke kategori:** `tournament_format`, `bracket_config`, `registration_fee`, dan `max_teams` — ditambah `participant_type` dan `rubber_format` (§4.23). Yang tetap di event: cabang olahraga, tanggal, lokasi, jendela registrasi, dan banner — semua kategori berbagi ini.
 - **Event baru selalu punya minimal satu kategori.** Form buat/edit event mengelola daftar kategori (tambah/hapus); event yang tak jadi multi-kategori cukup memakai satu kategori dan pengalamannya nyaris tak berubah bagi organizer maupun peserta (kategori tunggal terpilih otomatis, tanpa dropdown).
 - **Registrasi menyebut kategori.** `teams.category_id` wajib; biaya yang ditagih adalah biaya kategori tersebut. Batas tim dicek berlapis: **cap kategori** (`event_categories.max_teams`) lalu **cap paket per event** (FR-02).
 - **Kompetisi berjalan per kategori.** Jadwal, undian grup, bracket, klasemen, dan leaderboard semuanya di-scope ke satu kategori — endpoint schedule/standings/leaderboard menerima slug kategori. Dashboard organizer dan halaman publik menampilkan **pemilih kategori** saat event punya lebih dari satu.
 - **Menghapus kategori** ikut menghapus tim dan pertandingannya (cascade), jadi UI mengonfirmasi sebelum menyimpan penghapusan.
 
 > **Migrasi data lama:** event yang sudah ada sebelum fitur ini otomatis mendapat satu kategori berisi format/biaya/cap lamanya, dan seluruh tim & pertandingannya dipetakan ke kategori itu — tidak ada event tanpa kategori.
+
+---
+
+### 4.23 Jenis Peserta & Pertandingan Beregu (Partai)
+
+Cabang raket tidak selalu dimainkan beregu. Satu turnamen badminton lazimnya menjalankan **Tunggal Putra, Ganda Putra, dan Beregu** sekaligus — tiga bentuk peserta yang berbeda di bawah satu acara. Yang mendeklarasikan bentuk itu adalah **kategori**, karena kategori badminton di dunia nyata memang sudah bernama demikian.
+
+#### Tiga bentuk peserta
+
+| Jenis | Isi satu entri | Nama entri | Contoh |
+|-------|----------------|------------|--------|
+| **Tunggal** | 1 pemain | diturunkan dari pemain | `Dimas` |
+| **Ganda** | 2 pemain | diturunkan dari pasangan | `Dimas / Ammar` |
+| **Tim** | skuad (bebas) | diketik organizer/peserta | `Spanyol` |
+
+- Bentuk yang boleh dipilih dibatasi `sports.participant_modes`. Kategori "Ganda" pada cabang futsal ditolak (422) — futsal hanya mengenal "Tim".
+- **Tunggal dan ganda memakai struktur data yang sama dengan tim** (satu entri berisi 1–2 pemain). Konsekuensinya seluruh mesin turnamen — penjadwalan, undian, bracket, klasemen, pembayaran, dompet, sertifikat — berjalan apa adanya tanpa cabang kode baru.
+- **Jenis peserta dikunci setelah ada peserta terdaftar.** Mengubah "ganda" jadi "tunggal" akan menyisakan entri berisi dua pemain di undian tunggal, dengan nama yang diturunkan memakai aturan yang sudah tidak berlaku. Pola snapshot yang sama dipakai `payment_method` pada order.
+
+#### Tie beregu: satu pertandingan, beberapa partai
+
+Pertandingan beregu **bukan satu skor**. `Spanyol 3-0 Argentina` adalah jumlah partai yang dimenangkan:
+
+```
+Spanyol vs Argentina
+  1. Ganda Putra     Dimas/Ammar  vs Ucang/Devan   21-16 / 22-20
+  2. Tunggal Putra   Dimas        vs Ucang         15-21 / 21-18 / 24-22
+  3. Ganda Campuran  Jo/Yolan     vs Ucang/Ratih   22-15 / 23-21
+  ─────────────────────────────────────────────────────────────────
+  Spanyol 3 - 0 Argentina
+```
+
+- **Daftar partai adalah template di kategori** (`rubber_format`): organizer menyusunnya sekali (label + tunggal/ganda), lalu setiap pertandingan yang dibuat **lahir sudah membawa partai-partai itu**. Masih bisa ditambah/dihapus per pertandingan — sebuah tie boleh menambah partai penentu.
+- **Lineup dipilih dari roster** kedua regu, bukan diketik bebas, sehingga tersambung ke statistik pemain dan sertifikat. Tunggal mengisi 1 slot, ganda 2 slot; pemain harus anggota regu yang bertanding.
+- **Skor tie diturunkan.** Setiap kali sebuah partai disimpan, skor tie dihitung ulang dari partai-partainya. Tie dianggap selesai saat semua partainya dimainkan.
+- Tie yang berakhir **imbang** (mis. 2-2) sah di liga dan bernilai 1 poin; di knockout ia menunggu organizer karena tidak ada pemenang untuk didudukkan di babak berikutnya.
+- Hanya kategori **bertipe "tim" pada cabang yang juga mengenal tunggal** yang memakai partai — voli beregu tetap satu deret set seperti biasa.
+
+#### Panel kompetisi di halaman publik
+
+Satu event bisa mencampur format (Tunggal = liga, Ganda = knockout), jadi **tab menentukan kategori mana yang ditawarkan**, bukan sebaliknya:
+
+- Tab **Klasemen** hadir selama ada kategori berformat liga/hybrid; chip kategorinya hanya menampilkan kategori tersebut.
+- Tab **Bracket** hadir selama ada kategori knockout/hybrid; kategori liga tidak muncul di sana.
+- Event yang **seluruh kategorinya liga** tidak menampilkan tab Bracket sama sekali, dan sebaliknya — tidak ada panel kosong.
+- Bar filter kategori disembunyikan bila hanya satu kategori yang relevan untuk tab itu.
 
 ---
 
@@ -1210,7 +1276,7 @@ events (
   organization_id     UUID REFERENCES organizations(id),
   name                VARCHAR(255) NOT NULL,
   slug                VARCHAR(100) NOT NULL,
-  sport_type          ENUM('football','futsal','badminton','padel','volleyball'),
+  sport_type          VARCHAR(30),                   -- sports.slug (katalog, §7.6) — bukan enum lagi
   status              ENUM('draft','open','registration_closed','ongoing','finished','cancelled') DEFAULT 'draft',
   start_date          DATE NOT NULL,
   end_date            DATE NOT NULL,
@@ -1231,10 +1297,16 @@ events (
 event_categories (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id          UUID REFERENCES events(id) ON DELETE CASCADE,
-  name              VARCHAR(255) NOT NULL,           -- "U-17" | "Putri" | "Open"
+  name              VARCHAR(255) NOT NULL,           -- "U-17" | "Putri" | "Tunggal Putra"
   slug              VARCHAR(100) NOT NULL,
+  -- Bentuk satu peserta (§4.23). Default 'team' = perilaku sebelum fitur ini.
+  -- Dikunci begitu kategori punya peserta.
+  participant_type  VARCHAR(10) DEFAULT 'team',      -- single | double | team
   tournament_format VARCHAR(20),                     -- league | knockout_single | knockout_double | hybrid
   bracket_config    JSONB,
+  -- Template partai untuk tie beregu; NULL kalau kategori ini bukan beregu raket.
+  -- [{"label":"Ganda Putra","type":"double"}, ...]
+  rubber_format     JSONB,
   registration_fee  DECIMAL(12,2) DEFAULT 0,
   max_teams         INT,
   sort_order        SMALLINT DEFAULT 0,
@@ -1248,6 +1320,8 @@ teams (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id          UUID REFERENCES events(id),
   category_id       UUID REFERENCES event_categories(id) ON DELETE CASCADE,
+  -- Untuk kategori tunggal/ganda, name DITURUNKAN dari roster ("Dimas / Ammar")
+  -- dan logo_url selalu NULL — entri itu adalah pemainnya (§4.23).
   name              VARCHAR(255) NOT NULL,
   logo_url          TEXT,
   contact_name      VARCHAR(255),
@@ -1308,6 +1382,26 @@ matches (
   notes             TEXT,
   created_at        TIMESTAMP DEFAULT NOW(),
   updated_at        TIMESTAMP DEFAULT NOW()
+)
+
+-- MATCH RUBBERS — partai dalam satu tie beregu (§4.23). Skor tie
+-- (matches.score_home/away) = jumlah partai yang dimenangkan tiap sisi, dan
+-- matches.score_detail SELALU NULL untuk tie — tiap partai menyimpan set-nya sendiri.
+match_rubbers (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id          UUID REFERENCES matches(id) ON DELETE CASCADE,
+  "order"           SMALLINT DEFAULT 0,              -- urutan partai dalam tie
+  label             VARCHAR(255),                    -- "Ganda Putra"
+  type              VARCHAR(10),                     -- single | double
+  home_player_ids   JSONB,                           -- uuid[] dari roster tim home
+  away_player_ids   JSONB,
+  sets              JSONB,                           -- [{"home":21,"away":16}, ...]
+  home_score        SMALLINT,                        -- set yang dimenangkan (turunan dari sets)
+  away_score        SMALLINT,
+  status            VARCHAR(20) DEFAULT 'scheduled', -- scheduled | finished | walkover
+  created_at        TIMESTAMP DEFAULT NOW(),
+  updated_at        TIMESTAMP DEFAULT NOW(),
+  UNIQUE(match_id, "order")
 )
 
 -- MATCH EVENTS
@@ -1552,10 +1646,13 @@ Vokabuler turnamen dan kebijakan platform yang dikelola Super Admin (§4.16, §3
 -- SPORTS — cabang olahraga (dulu hardcode)
 sports (
   id                    UUID PK,
-  key                   VARCHAR(20) UNIQUE,   -- football | futsal | badminton | ...
+  key                   VARCHAR(20) UNIQUE,   -- football | futsal | badminton | tennis | ...
   name                  VARCHAR(50),
   color, icon,
   is_set_based          BOOLEAN,              -- badminton/voli: skor per set
+  -- Bentuk peserta yang boleh dipakai kategori cabang ini (§4.23).
+  -- Default ["team"]; cabang raket ["single","double","team"].
+  participant_modes     JSONB,
   default_match_minutes INT,
   is_active             BOOLEAN,
   sort_order            INT
@@ -1677,6 +1774,7 @@ CREATE INDEX idx_teams_category_id    ON teams(category_id);
 CREATE INDEX idx_matches_event_id     ON matches(event_id);
 CREATE INDEX idx_matches_category_id  ON matches(category_id);
 CREATE INDEX idx_matches_date         ON matches(match_date);
+CREATE UNIQUE INDEX idx_rubbers_order  ON match_rubbers(match_id, "order");
 CREATE INDEX idx_standings_event_id   ON standings(event_id);
 CREATE INDEX idx_player_stats_event   ON player_stats(event_id);
 CREATE INDEX idx_tickets_qr           ON tickets(qr_code);
@@ -2439,9 +2537,11 @@ Verifikasi publik:  flo-event.id/verify/CERT-2026-07-0001
 
 *Dokumen ini adalah living document yang diperbarui setiap sprint.*
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Last Updated:** Juli 2026
 **Next Review:** Agustus 2026
 **Owner:** Product Team flo-event
+
+**Changelog v1.2.0** — Jenis peserta tunggal / ganda / tim per kategori dan pertandingan beregu berbasis partai untuk cabang raket (FR-23 / §4.23); Tenis & Tenis Meja masuk katalog cabang; tiebreaker `rubber_points`; tab Klasemen/Bracket di halaman publik kini menyaring kategori, bukan menghilang.
 
 **Changelog v1.1.0** — Hybrid format (grup → playoff, undian pot, adu penalti) & media event; katalog cabang olahraga / format / statistik dipindah ke database dan dikelola Super Admin; dompet organizer & penarikan dana (FR-17), pengaturan platform (FR-18), galeri & sponsor (FR-19).
