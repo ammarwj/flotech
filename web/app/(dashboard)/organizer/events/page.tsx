@@ -97,7 +97,15 @@ export default function EventsPage() {
         />
       )}
 
-      <div className="grid gap-3">
+      {/* grid-cols-1, not a bare `grid`: an implicit `auto` track sizes to
+          max-content and is allowed to exceed its container, so the card — whose
+          max-content is the icon, name, badge and meta row all on one nowrap
+          line — was drawn wider than the phone. `grid-cols-1` is
+          `minmax(0, 1fr)`, which caps the track at the container. The overflow
+          never showed as a scrollbar because the dashboard's `main` clips it,
+          and clipping happens at the padding box: the card simply ran to the
+          right edge of the screen while the left kept its px-5. */}
+      <div className="grid grid-cols-1 gap-3">
         {events?.map((ev) => {
           const color = sportColor(ev.sport_type);
           return (
@@ -114,7 +122,11 @@ export default function EventsPage() {
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                    {/* min-w-0: `truncate` alone cannot shrink a flex item —
+                        its automatic minimum size is the full nowrap text, so a
+                        long event name pushes past the card instead of
+                        ellipsing. */}
+                    <span className="min-w-0 truncate font-semibold" style={{ fontFamily: "var(--font-display)" }}>
                       {ev.name}
                     </span>
                     <EventStatusBadge status={ev.status} />

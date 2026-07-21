@@ -103,7 +103,9 @@ export function RosterEditor({
       {players.map((p, i) => {
         const shown = photoShown(p);
         return (
-          <div key={p.id ?? `new-${i}`} className="flex items-center gap-2">
+          // Wraps on a narrow form: number, position and the remove button drop
+          // to a second line rather than squeezing the name field to nothing.
+          <div key={p.id ?? `new-${i}`} className="flex flex-wrap items-center gap-2">
             {/* Optional profile photo. A label wrapping a hidden input keeps it a
                 single self-contained control per row. */}
             <div className="relative h-9 w-9 shrink-0">
@@ -148,6 +150,11 @@ export function RosterEditor({
               )}
             </div>
             <Input
+              // flex-1 rather than the default w-full: in a wrapping row a
+              // 100%-wide item claims a whole line to itself. min-w keeps the
+              // name readable — it forces the row to wrap instead of shrinking
+              // the one field that matters down to a few characters.
+              className="min-w-[10rem] flex-1"
               placeholder={fixed && size > 1 ? `Pemain ${i + 1}` : "Nama pemain"}
               aria-label={`Nama pemain ${i + 1}`}
               value={p.full_name}

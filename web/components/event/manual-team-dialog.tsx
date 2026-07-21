@@ -124,7 +124,10 @@ export function ManualTeamDialog({
         </div>
 
         <div className="grid gap-4 p-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* grid-cols-1 is load-bearing below sm: an implicit `auto` track is
+              sized by its widest child's min-content, so the roster row used to
+              stretch the form past the dialog and scroll it sideways. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {categories.length > 0 && (
               <div className="grid gap-2 sm:col-span-2">
                 <Label htmlFor="manual-category" className="font-semibold">

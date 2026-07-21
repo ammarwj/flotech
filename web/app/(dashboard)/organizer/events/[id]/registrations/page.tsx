@@ -190,13 +190,17 @@ export default function RegistrationsPage() {
       {teams && teams.length > 0 && (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
+            {/* Same rule as PillTabs, which this rail is the compact cousin of:
+                scrolls sideways on a phone, wraps from sm up. Left as a plain
+                inline-flex it spilled "Ditolak" straight out of the rounded
+                border on a 390px screen. */}
+            <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold sm:flex-wrap">
               {FILTERS.map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setFilter(key)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors",
+                    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 transition-colors",
                     filter === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
