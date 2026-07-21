@@ -1,6 +1,7 @@
 import { Pencil } from "lucide-react";
 
 import {
+  THIRD_PLACE_LABEL,
   knockoutRoundLabel,
   matchWinnerId,
   crestGradient,
@@ -46,6 +47,57 @@ function Side({
   );
 }
 
+/**
+ * One tie of the draw. Lives outside BracketView because the third-place strip
+ * below the tree shows the same card — scoreline, bye, shootout and all.
+ */
+function MatchCell({
+  match: m,
+  onEditSlot,
+}: {
+  match: Match;
+  /** Renders the seed-correction affordance. Omitted where a slot is fed. */
+  onEditSlot?: (match: Match) => void;
+}) {
+  const winner = matchWinnerId(m);
+  const decided = winner !== null;
+  // A lone team is a real "Bye" only once the match is settled.
+  const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
+  const pens = wentToPenalties(m);
+
+  return (
+    <div className="bkt-match">
+      {onEditSlot && (
+        <button
+          type="button"
+          onClick={() => onEditSlot(m)}
+          aria-label="Ganti tim di slot ini"
+          title="Ganti tim"
+          className="absolute -right-2 -top-2 z-10 grid h-6 w-6 place-items-center rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-[var(--shadow-sm)] transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/slot:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+      <Side
+        name={m.home_team?.name ?? null}
+        logoUrl={m.home_team?.logo_url}
+        score={m.home_score}
+        penalty={pens ? m.home_penalty : null}
+        isWinner={winner === m.home_team_id}
+        decided={decided}
+      />
+      <Side
+        name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
+        logoUrl={m.away_team?.logo_url}
+        score={m.away_score}
+        penalty={pens ? m.away_penalty : null}
+        isWinner={winner === m.away_team_id}
+        decided={decided}
+      />
+    </div>
+  );
+}
+
 /** Single-elimination bracket: one column per round, joined by connector lines. */
 export function BracketView({
   matches,
@@ -68,6 +120,10 @@ export function BracketView({
   const rounds = groupByRound(matches.filter((m) => !isThirdPlace(m)));
   if (rounds.length === 0) return null;
 
+  // Drawn as a strip under the tree instead. The backend never creates one for a
+  // bracket of two, so it always has a tree above it.
+  const third = matches.filter(isThirdPlace);
+
   // Hand-added friendlies share round 1 with a single-elimination bracket, but
   // their order keeps counting past it — they are not slots and the backend
   // refuses to re-seat them.
@@ -75,62 +131,46 @@ export function BracketView({
   const slotCount = 2 ** Math.max(1, maxRound) / 2;
 
   return (
-    <div className="bkt">
-      {rounds.map(([round, list]) => (
-        <div key={round} className="bkt-col">
-          <div className="bkt-head">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
-          <div className="bkt-body">
-            {list.map((m) => {
-              const winner = matchWinnerId(m);
-              const decided = winner !== null;
-              // A lone team is a real "Bye" only once the match is settled.
-              const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
-              const pens = wentToPenalties(m);
-              // The backend refuses a slot whose result is already in, so the
-              // affordance must not appear there either.
-              const editable =
-                onEditSlot &&
-                m.round === 1 &&
-                m.order < slotCount &&
-                m.home_score === null &&
-                m.away_score === null;
-              return (
-                <div key={m.id} className="bkt-cell group/slot">
-                  <div className="bkt-match">
-                    {editable && (
-                      <button
-                        type="button"
-                        onClick={() => onEditSlot(m)}
-                        aria-label="Ganti tim di slot ini"
-                        title="Ganti tim"
-                        className="absolute -right-2 -top-2 z-10 grid h-6 w-6 place-items-center rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-[var(--shadow-sm)] transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/slot:opacity-100"
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                    )}
-                    <Side
-                      name={m.home_team?.name ?? null}
-                      logoUrl={m.home_team?.logo_url}
-                      score={m.home_score}
-                      penalty={pens ? m.home_penalty : null}
-                      isWinner={winner === m.home_team_id}
-                      decided={decided}
-                    />
-                    <Side
-                      name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
-                      logoUrl={m.away_team?.logo_url}
-                      score={m.away_score}
-                      penalty={pens ? m.away_penalty : null}
-                      isWinner={winner === m.away_team_id}
-                      decided={decided}
-                    />
+    <div className="bkt-wrap">
+      <div className="bkt">
+        {rounds.map(([round, list]) => (
+          <div key={round} className="bkt-col">
+            <div className="bkt-head">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
+            <div className="bkt-body">
+              {list.map((m) => {
+                // The backend refuses a slot whose result is already in, so the
+                // affordance must not appear there either.
+                const editable =
+                  onEditSlot &&
+                  m.round === 1 &&
+                  m.order < slotCount &&
+                  m.home_score === null &&
+                  m.away_score === null;
+                return (
+                  <div key={m.id} className="bkt-cell group/slot">
+                    <MatchCell match={m} onEditSlot={editable ? onEditSlot : undefined} />
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
+        ))}
+      </div>
+
+      {third.length > 0 && (
+        // No onEditSlot: both slots are filled by advanceLoser(), so a team put
+        // here by hand would be overwritten the moment a semifinal is confirmed.
+        <div className="bkt-third">
+          {/* Shares .bkt-head so the heading never drifts from the column
+              labels above it. */}
+          <div className="bkt-head bkt-third-head">{THIRD_PLACE_LABEL}</div>
+          {third.map((m) => (
+            <div key={m.id} className="bkt-third-card">
+              <MatchCell match={m} />
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

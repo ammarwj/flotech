@@ -1081,3 +1081,15 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
    cell (bye carrying a team forward) must not dangle a vertical. */
 .bkt-col:not(:last-child) .bkt-body:has(.bkt-cell:only-child) .bkt-cell::after,
 .bkt-col:not(:last-child) .bkt-cell:nth-child(odd):last-child::before { display: none; }
+
+/* Third-place play-off. Kept outside .bkt on purpose: the connectors above key
+   off :last-child and "every card gets a lead-in line", so a column for it
+   would have to undo both. Outside the tree it also stays put while the
+   bracket scrolls sideways. */
+.bkt-wrap { display: block; }
+.bkt-third { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--border); }
+/* Type comes from .bkt-head, worn alongside this class — only the alignment
+   differs, since the strip is not a centred column. */
+.bkt-third-head { text-align: left; }
+.bkt-third-card { position: relative; max-width: 260px; }
+.bkt-third-card + .bkt-third-card { margin-top: 10px; }
