@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog, UserCheck } from "lucide-react";
+import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog, UserCheck, KeyRound } from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
 
@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import type { AdminUser } from "@/types/api";
 
@@ -48,6 +49,9 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
   const [page, setPage] = useState(1);
+  // The user whose password dialog is open. One dialog for the whole list, not
+  // one per card — mounting 20 hidden dialogs to show at most one is waste.
+  const [resetting, setResetting] = useState<AdminUser | null>(null);
 
   // Debounce the search box so we don't fire a request per keystroke.
   useEffect(() => {
@@ -109,7 +113,7 @@ export default function AdminUsersPage() {
     <>
       <PageHeader
         title="Manajemen User"
-        description="Semua pengguna platform. Ubah role, tandai verifikasi, atau hapus akun."
+        description="Semua pengguna platform. Ubah role, tandai verifikasi, reset password, atau hapus akun."
       />
 
       {/* Filters */}
@@ -174,6 +178,7 @@ export default function AdminUsersPage() {
                     icon: Trash2,
                   }).then((ok) => ok && remove.mutate(u.id))
                 }
+                onResetPassword={() => setResetting(u)}
                 onImpersonate={() =>
                   void confirm({
                     title: "Login sebagai pengguna ini?",
@@ -188,6 +193,17 @@ export default function AdminUsersPage() {
               />
             ))}
           </div>
+
+          {resetting && (
+            <ResetPasswordDialog
+              // Keyed by user so the dialog's local field state can never carry
+              // a half-typed password over to the next user opened.
+              key={resetting.id}
+              user={resetting}
+              open
+              onOpenChange={(next) => !next && setResetting(null)}
+            />
+          )}
 
           {meta && meta.last_page > 1 && (
             <div className="mt-4 flex items-center justify-between text-sm">
@@ -226,6 +242,7 @@ function UserCard({
   onRoleChange,
   onToggleVerified,
   onDelete,
+  onResetPassword,
   onImpersonate,
   busy,
 }: {
@@ -234,6 +251,7 @@ function UserCard({
   onRoleChange: (role: "super_admin" | "user") => void;
   onToggleVerified: () => void;
   onDelete: () => void;
+  onResetPassword: () => void;
   onImpersonate: () => void;
   busy: boolean;
 }) {
@@ -251,6 +269,13 @@ function UserCard({
     ? "Kamu sudah login sebagai akun ini"
     : isSuperAdmin
       ? "Tidak bisa login sebagai sesama super admin"
+      : undefined;
+
+  // Mirrors UserController@resetPassword, which refuses the same two targets.
+  const resetReason = isSelf
+    ? "Ubah password sendiri lewat halaman Akun Saya"
+    : isSuperAdmin
+      ? "Tidak bisa mereset password sesama super admin"
       : undefined;
 
   return (
@@ -323,6 +348,17 @@ function UserCard({
 
         <Button size="sm" variant="outline" onClick={onToggleVerified} disabled={busy}>
           {user.is_verified ? "Batalkan verifikasi" : "Verifikasi"}
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onResetPassword}
+          disabled={busy || isSelf || isSuperAdmin}
+          title={resetReason}
+        >
+          <KeyRound className="h-4 w-4" />
+          Reset password
         </Button>
 
         <Button

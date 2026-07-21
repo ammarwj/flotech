@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\UpdatePreferencesRequest;
@@ -13,6 +14,7 @@ use App\Services\AuthService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
@@ -105,6 +107,36 @@ class AuthController extends Controller
         $user->update(['default_mode' => $request->string('default_mode')]);
 
         return ApiResponse::success(new UserResource($user), 'Preferensi disimpan');
+    }
+
+    /**
+     * Change the signed-in user's own password.
+     *
+     * Every other device is signed out (their refresh tokens are revoked), the
+     * caller's own session is spared — a password change that also logged you
+     * out of the tab you changed it in would look like a failure. The one that
+     * survives is identified by the refresh cookie on this very request, so
+     * "spare the current device" can't be spoofed by a body field.
+     */
+    public function updatePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = auth('api')->user();
+
+        $user->forceFill([
+            'password' => $request->string('password'),
+            // Any "remember me" cookie was minted against the old password.
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        $others = $this->auth->revokeAllFor($user, $request->cookie(self::REFRESH_COOKIE));
+
+        return ApiResponse::success(
+            ['revoked_sessions' => $others],
+            $others > 0
+                ? "Password diperbarui. {$others} sesi di perangkat lain telah dikeluarkan."
+                : 'Password berhasil diperbarui.',
+        );
     }
 
     /**

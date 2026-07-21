@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { LogOut, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/dashboard/mode-switcher";
@@ -87,6 +88,15 @@ function Body({ superAdmin }: { superAdmin: boolean }) {
         <span className="text-sm font-medium">Tema</span>
         <ThemeToggleButton />
       </div>
+
+      {/* Account settings live outside every mode's nav, so this panel is the
+          only route to them on a phone — MobileTabBar only renders nav items. */}
+      <Button variant="outline" className="w-full justify-start" asChild onClick={close}>
+        <Link href="/account">
+          <UserRound className="h-4 w-4" />
+          Akun Saya
+        </Link>
+      </Button>
     </>
   );
 }

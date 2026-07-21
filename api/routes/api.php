@@ -113,6 +113,8 @@ Route::prefix('v1')->group(function () {
             Route::patch('preferences', [AuthController::class, 'updatePreferences']);
             Route::post('logout', [AuthController::class, 'logout']);
             Route::post('email/resend', [EmailVerificationController::class, 'resend']);
+            // Change my own password (asks for the current one).
+            Route::patch('password', [AuthController::class, 'updatePassword']);
         });
     });
 
@@ -365,6 +367,9 @@ Route::prefix('v1')->group(function () {
             // "Login as": mints an access token acting as this user (no refresh
             // cookie, so the admin's own session survives). Ordinary users only.
             Route::post('users/{user}/impersonate', [AdminUserController::class, 'impersonate']);
+            // Support reset: set a user's password without knowing the old one.
+            // Ordinary users only, same as impersonate.
+            Route::post('users/{user}/password', [AdminUserController::class, 'resetPassword']);
         });
     });
 

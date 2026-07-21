@@ -34,7 +34,11 @@ const STAT_ICONS: Record<string, StatIcon> = {
   // No icon set has a real "assist" glyph — a boot is the usual stand-in for
   // the pass. It leans on the label like the cards do.
   assists: { Icon: IconShoe },
-  yellow_cards: { Icon: RectangleVertical, color: "var(--warning)", filled: true },
+  // Hex, bukan token: `--warning` terlalu oranye untuk dibaca sebagai kartu, dan
+  // token baru di `:root` yang cuma dirujuk dari inline style di sini akan
+  // dibuang Tailwind (custom property tanpa `var()` di CSS di-prune) — hasilnya
+  // warna invalid dan ikonnya mewarisi warna teks sekitarnya.
+  yellow_cards: { Icon: RectangleVertical, color: "#FACC15", filled: true },
   red_cards: { Icon: RectangleVertical, color: "var(--danger)", filled: true },
   points: { Icon: Target },
   aces: { Icon: Zap },

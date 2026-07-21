@@ -60,3 +60,20 @@ export async function impersonateAdminUser(
   >(`/admin/users/${id}/impersonate`, undefined, config);
   return data.data;
 }
+
+/**
+ * Set a user's password for them (support path — no current password needed).
+ * All of that user's sessions are revoked server-side. Ordinary users only, the
+ * same restriction as impersonation (403 otherwise).
+ */
+export async function resetAdminUserPassword(
+  id: string,
+  password: string,
+  password_confirmation: string
+): Promise<string> {
+  const { data } = await apiClient.post<ApiEnvelope<null>>(`/admin/users/${id}/password`, {
+    password,
+    password_confirmation,
+  });
+  return data.message;
+}

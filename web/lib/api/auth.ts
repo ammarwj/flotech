@@ -44,6 +44,27 @@ export async function updateDefaultMode(
   return data.data;
 }
 
+export interface ChangePasswordPayload {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+}
+
+/**
+ * Change the signed-in user's password. The server signs every *other* device
+ * out and reports how many — this session's token stays valid, so there is
+ * nothing to re-store here.
+ */
+export async function changePassword(
+  payload: ChangePasswordPayload
+): Promise<{ message: string; revoked: number }> {
+  const { data } = await apiClient.patch<ApiEnvelope<{ revoked_sessions: number }>>(
+    "/auth/password",
+    payload
+  );
+  return { message: data.message, revoked: data.data.revoked_sessions };
+}
+
 export async function forgotPassword(email: string): Promise<string> {
   const { data } = await apiClient.post<ApiEnvelope<null>>("/auth/forgot-password", { email });
   return data.message;

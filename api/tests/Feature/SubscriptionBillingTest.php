@@ -6,6 +6,8 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Notifications\SubscriptionActivated;
+use App\Services\BillingDocumentService;
 use App\Services\SubscriptionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -93,6 +95,45 @@ class SubscriptionBillingTest extends TestCase
         $this->assertSame($receipt, $subscription->receipt_number);
         $this->assertEquals($paidAt, $subscription->paid_at);
         $this->assertSame('bank_transfer', $subscription->payment_type);
+    }
+
+    /**
+     * The activation mail carries both documents. Attaching only the receipt
+     * leaves a gap: checkout mails the invoice only while the bill is still
+     * outstanding, so an instantly-activated subscription (this test's path,
+     * and every gateway-less setup) would produce a receipt referencing an
+     * invoice number the organizer never received.
+     */
+    public function test_activation_mail_attaches_the_invoice_as_well_as_the_receipt(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $plan = $this->plan();
+
+        $id = $this->checkout($user, $org, $plan)['subscription']['id'];
+        $subscription = Subscription::findOrFail($id);
+
+        $mail = (new SubscriptionActivated($subscription))->toMail($user);
+        $names = array_column($mail->rawAttachments, 'name');
+
+        $docs = app(BillingDocumentService::class);
+        $this->assertSame(
+            [$docs->filename('invoice', $subscription), $docs->filename('receipt', $subscription)],
+            $names,
+            'Both documents must be attached, invoice first.',
+        );
+
+        // Real PDFs, not empty strings — filename alone would pass on a broken render.
+        foreach ($mail->rawAttachments as $attachment) {
+            $this->assertStringStartsWith('%PDF', $attachment['data']);
+            $this->assertSame('application/pdf', $attachment['options']['mime']);
+        }
+
+        // Both numbers are named in the body, so the mail stands on its own even
+        // if the attachments are stripped by a mail client.
+        $rendered = (string) $mail->render();
+        $this->assertStringContainsString($subscription->invoice_number, $rendered);
+        $this->assertStringContainsString($subscription->receipt_number, $rendered);
     }
 
     public function test_invoice_pdf_downloads_and_receipt_requires_payment(): void

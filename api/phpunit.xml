@@ -18,6 +18,14 @@
         </include>
     </source>
     <php>
+        <!-- dompdf peaks around 40 MB while rendering, and the whole suite runs
+             in one process that is already carrying 200+ booted applications by
+             the time the billing tests run — together that overruns PHP's 128M
+             CLI default and kills the run mid-test with a bare "Premature end of
+             PHP process". Peak does not grow with the number of documents
+             rendered (two PDFs cost the same peak as one), so this is headroom
+             for the suite, not a symptom of a leak. -->
+        <ini name="memory_limit" value="512M"/>
         <!-- HEADS UP: a <env> entry here does NOT win over a variable that
              already exists in the process environment, and the api container
              exports most of these for real (DB_CONNECTION=pgsql,

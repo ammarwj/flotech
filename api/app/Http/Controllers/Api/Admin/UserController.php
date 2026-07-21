@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ResetUserPasswordRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -10,6 +11,7 @@ use App\Services\AuthService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 /**
  * Super-admin management of platform users.
@@ -108,6 +110,39 @@ class UserController extends Controller
             'expires_in' => (int) config('jwt.ttl') * 60,
             'user' => new UserResource($user),
         ], 'Masuk sebagai '.($user->full_name ?: $user->email));
+    }
+
+    /**
+     * Set a user's password on their behalf — the support path for someone who
+     * lost their email or never received the reset link.
+     *
+     * Same target restriction as impersonate(), for the same reason: handing one
+     * super admin the keys to another's account is a silent takeover of the
+     * whole platform, and nothing here records who did it. A super admin changes
+     * their own password from /account like everyone else, which is also why
+     * self is refused rather than special-cased — that path asks for the current
+     * password, and this one deliberately doesn't.
+     */
+    public function resetPassword(ResetUserPasswordRequest $request, User $user): JsonResponse
+    {
+        if ($user->id === auth('api')->id()) {
+            return ApiResponse::error('Ubah password akun sendiri lewat halaman Akun Saya.', null, 422);
+        }
+
+        if ($user->role === 'super_admin') {
+            return ApiResponse::error('Tidak bisa mereset password sesama super admin.', null, 403);
+        }
+
+        $user->forceFill([
+            'password' => $request->string('password'),
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        // Every session of theirs dies: a reset that left the old sessions alive
+        // would be useless for the case this exists for (a compromised account).
+        $this->auth->revokeAllFor($user);
+
+        return ApiResponse::success(null, 'Password user direset. Sampaikan password barunya lewat kanal yang aman.');
     }
 
     public function destroy(User $user): JsonResponse

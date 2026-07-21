@@ -91,6 +91,28 @@ class AuthService
             ->update(['revoked_at' => Carbon::now()]);
     }
 
+    /**
+     * Revoke every refresh token of $user, optionally sparing the one that made
+     * the request — "sign out my other devices".
+     *
+     * This is what makes a password change mean something: the new password
+     * alone would not stop a session someone else already holds, because a
+     * refresh token is a bearer credential that never re-checks the password.
+     *
+     * Access tokens already handed out are NOT killed (JWT is stateless), so a
+     * stolen session survives at most one `jwt.ttl` window — the refresh that
+     * would have extended it into 30 more days is what dies here.
+     *
+     * @return int rows revoked
+     */
+    public function revokeAllFor(User $user, ?string $exceptPlain = null): int
+    {
+        return UserRefreshToken::where('user_id', $user->id)
+            ->whereNull('revoked_at')
+            ->when($exceptPlain, fn ($q, $plain) => $q->where('token_hash', '!=', $this->hash($plain)))
+            ->update(['revoked_at' => Carbon::now()]);
+    }
+
     protected function hash(string $plain): string
     {
         return hash('sha256', $plain);
