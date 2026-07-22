@@ -268,7 +268,6 @@ export default function PublicEventPage() {
                 </p>
 
                 {ev.photos && <PhotoGallery photos={ev.photos} />}
-                {ev.sponsors && <SponsorStrip sponsors={ev.sponsors} />}
               </div>
 
               {/* sidebar */}
@@ -519,6 +518,16 @@ export default function PublicEventPage() {
             />
           )}
         </>
+      )}
+
+      {/* ===== SPONSORS & PARTNERS ===== */}
+      {/* Lifted out of the Info tab so it shows on every tab, above the CTA. */}
+      {ev.sponsors && ev.sponsors.length > 0 && (
+        <section className="section" style={{ paddingTop: 0, paddingBottom: ev.registration_is_open ? 48 : undefined }}>
+          <div className="container">
+            <SponsorStrip sponsors={ev.sponsors} />
+          </div>
+        </section>
       )}
 
       {/* ===== REGISTER CTA ===== */}

@@ -20,7 +20,7 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
 
   return (
     <>
-      <div className="esection-title" style={{ marginTop: 40 }}>
+      <div className="esection-title">
         <h2 className="section-title" style={{ margin: 0 }}>
           Sponsor &amp; Partner
         </h2>
