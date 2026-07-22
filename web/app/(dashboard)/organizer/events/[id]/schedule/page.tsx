@@ -273,7 +273,20 @@ export default function SchedulePage() {
     dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
   const activeDateGroup = dateGroups.find((g) => g.key === activeDateKey);
   const daySections = sections
-    .map(([label, list]) => [label, list.filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)] as [string, Match[]])
+    .map(([label, list]) => [
+      label,
+      list
+        .filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)
+        // Earliest kickoff first — the API orders by round/insertion, so without
+        // this the top card is just whichever fixture was created first, not the
+        // one that starts first. Unscheduled fixtures sink to the bottom; equal
+        // times keep their section order (Array.sort is stable).
+        .sort((a, b) => {
+          const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
+          const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
+          return ta - tb;
+        }),
+    ] as [string, Match[]])
     .filter(([, list]) => list.length > 0);
 
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
