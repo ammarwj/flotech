@@ -13,7 +13,7 @@ class PlayerStatService
     /**
      * @return array{columns: array<int, array{key: string, label: string, short: string}>, primary: string, rows: array<int, array<string, mixed>>}
      */
-    public function leaderboard(EventCategory $category, int $limit = 100): array
+    public function leaderboard(EventCategory $category, ?int $limit = null): array
     {
         $columns = Catalog::statColumns($category->sport_type);
         $keys = array_column($columns, 'key');
@@ -63,7 +63,14 @@ class PlayerStatService
 
         usort($rows, fn ($a, $b) => [$b['stats'][$primary], $a['player_name']] <=> [$a['stats'][$primary], $b['player_name']]);
 
-        $rows = array_slice($rows, 0, $limit);
+        // The public table re-sorts client-side by ANY column (top scorer, most
+        // cards…), so it needs every player who did something. Truncating by the
+        // primary stat here would silently drop discipline-only players (0 goals)
+        // from the "most red cards" view. Cap only when a caller asks for one; the
+        // pool is already bounded by the category's rosters.
+        if ($limit !== null) {
+            $rows = array_slice($rows, 0, $limit);
+        }
         foreach ($rows as $i => &$row) {
             $row['rank'] = $i + 1;
         }
