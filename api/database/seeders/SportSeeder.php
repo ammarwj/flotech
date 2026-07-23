@@ -121,6 +121,27 @@ class SportSeeder extends Seeder
                     ['position_key' => 'libero', 'label' => 'Libero'],
                 ],
             ],
+            [
+                // One running score per team (98-92), so 'goal' scoring — same shape
+                // as football, not sets. The leaderboard ranks by the 'goal'-role
+                // stat, which here is Poin: the points leader is the top scorer.
+                'slug' => 'basketball', 'name' => 'Basket', 'color' => '#EA580C', 'icon' => '🏀',
+                'scoring' => 'goal', 'default_match_minutes' => 40,
+                'stats' => [
+                    ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS', 'role' => 'goal'],
+                    ['stat_key' => 'assists', 'label' => 'Assist', 'short' => 'AST', 'role' => 'assist'],
+                    ['stat_key' => 'rebounds', 'label' => 'Rebound', 'short' => 'REB'],
+                    ['stat_key' => 'steals', 'label' => 'Steal', 'short' => 'STL'],
+                    ['stat_key' => 'blocks', 'label' => 'Blok', 'short' => 'BLK'],
+                ],
+                'positions' => [
+                    ['position_key' => 'point_guard', 'label' => 'Point Guard'],
+                    ['position_key' => 'shooting_guard', 'label' => 'Shooting Guard'],
+                    ['position_key' => 'small_forward', 'label' => 'Small Forward'],
+                    ['position_key' => 'power_forward', 'label' => 'Power Forward'],
+                    ['position_key' => 'center', 'label' => 'Center'],
+                ],
+            ],
         ];
 
         foreach ($sports as $order => $data) {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { TeamCombobox } from "./team-combobox";
 import type { CreateMatchPayload } from "@/lib/api/matches";
 import { fromEventInput, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
@@ -18,8 +19,16 @@ import type { Team } from "@/types/api";
  * category can be paired; the result is entered later on the match card.
  */
 interface ManualMatchDialogProps {
-  /** Approved teams of the selected category. */
+  /**
+   * Approved teams of the selected category. Used only for the "need 2 teams"
+   * guard and the count — the pickers below search the server, so this array is
+   * never rendered as a list (a large tournament would make it unusable).
+   */
   teams: Team[];
+  /** Scope for the server-side team search in the pickers. */
+  orgId: string;
+  eventId: string;
+  categoryId: string;
   /**
    * The groups this category runs, if any. Empty for league and knockout —
    * they have no groups, so the picker is not offered at all.
@@ -35,7 +44,16 @@ export function ManualMatchDialog({ open, ...props }: ManualMatchDialogProps & {
   return open ? <Dialog {...props} /> : null;
 }
 
-function Dialog({ teams, groups = [], pending, onClose, onSubmit }: ManualMatchDialogProps) {
+function Dialog({
+  teams,
+  orgId,
+  eventId,
+  categoryId,
+  groups = [],
+  pending,
+  onClose,
+  onSubmit,
+}: ManualMatchDialogProps) {
   const tz = useEventTimezone();
   const [group, setGroup] = useState("");
   const [home, setHome] = useState("");
@@ -49,10 +67,6 @@ function Dialog({ teams, groups = [], pending, onClose, onSubmit }: ManualMatchD
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Picking a group narrows the pairing to its own teams: the backend refuses a
-  // group fixture between teams of different groups, so offering them would be
-  // offering a guaranteed error.
-  const selectable = group === "" ? teams : teams.filter((t) => t.group_name === group);
   const canSave = home !== "" && away !== "" && home !== away;
 
   const submit = () =>
@@ -138,27 +152,31 @@ function Dialog({ teams, groups = [], pending, onClose, onSubmit }: ManualMatchD
                   <Label htmlFor="manual-home" className="font-semibold">
                     Tim tuan rumah<span className="text-[var(--danger)]"> *</span>
                   </Label>
-                  <Select id="manual-home" value={home} onChange={(e) => setHome(e.target.value)}>
-                    <option value="">Pilih tim…</option>
-                    {selectable.map((t) => (
-                      <option key={t.id} value={t.id} disabled={t.id === away}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </Select>
+                  <TeamCombobox
+                    id="manual-home"
+                    orgId={orgId}
+                    eventId={eventId}
+                    categoryId={categoryId}
+                    group={group || undefined}
+                    value={home}
+                    onChange={setHome}
+                    excludeId={away || undefined}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="manual-away" className="font-semibold">
                     Tim tamu<span className="text-[var(--danger)]"> *</span>
                   </Label>
-                  <Select id="manual-away" value={away} onChange={(e) => setAway(e.target.value)}>
-                    <option value="">Pilih tim…</option>
-                    {selectable.map((t) => (
-                      <option key={t.id} value={t.id} disabled={t.id === home}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </Select>
+                  <TeamCombobox
+                    id="manual-away"
+                    orgId={orgId}
+                    eventId={eventId}
+                    categoryId={categoryId}
+                    group={group || undefined}
+                    value={away}
+                    onChange={setAway}
+                    excludeId={home || undefined}
+                  />
                 </div>
               </div>
 

@@ -604,6 +604,9 @@ export default function SchedulePage() {
         key={String(manualDialog)}
         open={manualDialog}
         teams={approvedTeams}
+        orgId={orgId!}
+        eventId={eventId}
+        categoryId={catId!}
         groups={isHybrid ? groupNames(config) : []}
         pending={addManual.isPending}
         onClose={() => setManualDialog(false)}

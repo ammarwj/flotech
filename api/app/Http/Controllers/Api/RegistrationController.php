@@ -32,11 +32,34 @@ class RegistrationController extends Controller
      */
     public function index(Request $request, string $organization, string $event): JsonResponse
     {
-        $teams = $this->event($request, $event)
+        $query = $this->event($request, $event)
             ->teams()
             ->with(['players', 'documents', 'category'])
-            ->latest('registered_at')
-            ->get();
+            ->latest('registered_at');
+
+        // Optional server-side filters. The manual-match team picker uses these to
+        // search by name instead of shipping every registration to the browser
+        // (a tournament can have hundreds of teams). With no params the query is
+        // unchanged, so the standings/draw/registrations pages keep the full list.
+        if (($search = trim((string) $request->query('search', ''))) !== '') {
+            // LOWER(...) LIKE keeps it case-insensitive on both pgsql (prod) and
+            // sqlite (tests); Postgres LIKE alone is case-sensitive. Escape the
+            // pattern wildcards so a literal % / _ in the query stays literal.
+            $needle = '%'.addcslashes(mb_strtolower($search), '%_\\').'%';
+            $query->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$needle]);
+        }
+        if (($categoryId = $request->query('category_id')) !== null) {
+            $query->where('category_id', $categoryId);
+        }
+        if (($status = $request->query('status')) !== null) {
+            $query->where('status', $status);
+        }
+        if (($group = $request->query('group')) !== null) {
+            $query->where('group_name', $group);
+        }
+
+        $limit = (int) $request->query('limit', 0);
+        $teams = $limit > 0 ? $query->limit($limit)->get() : $query->get();
 
         return ApiResponse::success(TeamResource::collection($teams));
     }

@@ -118,6 +118,42 @@ export async function getRegistrations(orgId: string, eventId: string): Promise<
   return data.data;
 }
 
+export interface RegistrationSearchParams {
+  /** Case-insensitive substring match on the team name. */
+  search?: string;
+  categoryId?: string;
+  status?: TeamStatus;
+  /** Narrow to one group (hybrid formats); pass null/undefined for all. */
+  group?: string | null;
+  /** Cap the result set — the team picker only needs a page of matches. */
+  limit?: number;
+}
+
+/**
+ * Server-side registration search. Same endpoint as {@link getRegistrations},
+ * but the backend filters by name/category/status/group so a picker never has
+ * to load every team of a large tournament into the browser.
+ */
+export async function searchRegistrations(
+  orgId: string,
+  eventId: string,
+  params: RegistrationSearchParams = {}
+): Promise<Team[]> {
+  const { data } = await apiClient.get<ApiEnvelope<Team[]>>(
+    `/organizations/${orgId}/events/${eventId}/registrations`,
+    {
+      params: {
+        search: params.search?.trim() || undefined,
+        category_id: params.categoryId || undefined,
+        status: params.status || undefined,
+        group: params.group || undefined,
+        limit: params.limit || undefined,
+      },
+    }
+  );
+  return data.data;
+}
+
 /**
  * Enter a team the organizer collected outside the app (WhatsApp, paper, cash).
  * The API approves it on arrival and settles it as paid — see

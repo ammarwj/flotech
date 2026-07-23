@@ -232,4 +232,52 @@ class RegistrationTest extends TestCase
             ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations", $this->teamPayload($event, ['name' => 'Other']))
             ->assertStatus(422);
     }
+
+    public function test_registration_index_search_filters_by_name(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+        $category = $event->categories->first();
+
+        foreach (['Garuda FC', 'Elang Muda', 'Garuda United'] as $name) {
+            $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => $name,
+                'status' => 'approved',
+                'registered_at' => Carbon::now(),
+            ]);
+        }
+
+        // Case-insensitive substring — "garuda" must match both Garuda teams and
+        // nothing else, so the picker never has to load the full list.
+        $names = $this->actingAs($org->owner, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations?search=garuda")
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->json('data.*.name');
+
+        $this->assertEqualsCanonicalizing(['Garuda FC', 'Garuda United'], $names);
+    }
+
+    public function test_registration_index_without_filters_returns_all(): void
+    {
+        $event = $this->openEvent();
+        $org = $event->organization;
+        $category = $event->categories->first();
+
+        foreach (['A', 'B', 'C'] as $name) {
+            $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => $name,
+                'status' => 'approved',
+                'registered_at' => Carbon::now(),
+            ]);
+        }
+
+        // The standings/draw pages rely on the unfiltered list staying complete.
+        $this->actingAs($org->owner, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations")
+            ->assertOk()
+            ->assertJsonCount(3, 'data');
+    }
 }
