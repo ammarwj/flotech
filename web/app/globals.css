@@ -1039,9 +1039,16 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   font-weight: 700; color: var(--text-muted);
 }
-.bkt-body { flex: 1; display: flex; flex-direction: column; }
+/* Equal rows via `grid-auto-rows: 1fr`, not flex `flex:1` cells. Both give every
+   cell the same slot — which the connectors below depend on — but a flex cell's
+   basis is 0, so the column's intrinsic height came out as 64px × cells and
+   ignored how tall the cards actually are. A card carrying .bkt-sets is half
+   again taller than that and overflowed onto the card below it. An fr row is
+   floored at its own content, so the tallest card in the tree sets the slot and
+   nothing can spill out of one. */
+.bkt-body { flex: 1; display: grid; grid-auto-rows: 1fr; }
 .bkt-cell {
-  flex: 1; min-height: 64px; position: relative;
+  min-height: 64px; position: relative;
   display: flex; flex-direction: column; justify-content: center; padding: 6px 0;
 }
 
