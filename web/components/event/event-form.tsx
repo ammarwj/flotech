@@ -33,9 +33,9 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
-import { participantLabel, participantModes } from "@/lib/scoring";
+import { participantLabel, participantModes, standingsContextOf } from "@/lib/scoring";
 import { RubberFormatEditor } from "@/components/event/rubber-format-editor";
-import type { ParticipantType, SportEvent } from "@/types/api";
+import type { ParticipantType, SportDef, SportEvent } from "@/types/api";
 
 /** A category being edited; `_key` is a stable local id for React lists only. */
 type CategoryDraft = EventCategoryInput & {
@@ -185,7 +185,7 @@ function CategoryEditor({
   canRemove,
   isHybrid,
   isSingleElim,
-  modes,
+  sport,
   locked,
   nameError,
   onChange,
@@ -195,8 +195,8 @@ function CategoryEditor({
   index: number;
   canRemove: boolean;
   isHybrid: boolean;
-  /** Entrant shapes the chosen sport can be run in. */
-  modes: ParticipantType[];
+  /** The event's sport — decides the entrant shapes and the standings shape. */
+  sport: SportDef | undefined;
   /** Entrants already registered — the shape can no longer change. */
   locked: boolean;
   /** Single elimination has no config card, but it can still play for third. */
@@ -207,6 +207,9 @@ function CategoryEditor({
 }) {
   const { tournament_formats } = useCatalog();
   const free = !cat.registration_fee || cat.registration_fee <= 0;
+  const modes = participantModes(sport);
+  // The category isn't saved yet, so the server hasn't derived this for us.
+  const context = standingsContextOf(cat, sport);
 
   return (
     <div className="grid gap-4 rounded-lg border border-border p-3 sm:p-4">
@@ -299,6 +302,7 @@ function CategoryEditor({
       {isHybrid && (
         <HybridConfigCard
           value={cat.bracket_config}
+          context={context}
           onChange={(config) => onChange({ bracket_config: config })}
         />
       )}
@@ -672,7 +676,7 @@ export function EventForm({
               canRemove={categories.length > 1}
               isHybrid={engineOf(c.tournament_format) === "hybrid"}
               isSingleElim={engineOf(c.tournament_format) === "knockout_single"}
-              modes={participantModes(sports.find((s) => s.slug === sportValue))}
+              sport={sports.find((s) => s.slug === sportValue)}
               locked={(c._teamsCount ?? 0) > 0}
               nameError={catErrors[c._key]}
               onChange={(patch) => updateCat(c._key, patch)}

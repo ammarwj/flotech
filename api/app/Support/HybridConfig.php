@@ -8,12 +8,13 @@ use App\Services\Catalog;
 /**
  * Format configuration for an event, stored in `events.bracket_config`.
  *
- * Everything is optional — the defaults describe a plain single round-robin
- * with 3/1/0 points, so league events can read the same object without ever
- * having been configured.
+ * Everything is optional — the defaults describe a plain single round-robin, so
+ * league events can read the same object without ever having been configured.
  *
  * The *vocabulary* (which knockout rounds, tiebreakers and draw methods exist)
- * comes from the catalog, so an admin can rename, reorder or disable them.
+ * comes from the catalog, so an admin can rename, reorder or disable them. Both
+ * that vocabulary and the points defaults follow the standings context: a
+ * badminton event is offered "Selisih Game", never "Selisih Gol".
  */
 class HybridConfig
 {
@@ -42,22 +43,30 @@ class HybridConfig
 
     public static function fromCategory(EventCategory $category): self
     {
-        return self::fromArray(is_array($category->bracket_config) ? $category->bracket_config : []);
+        return self::fromArray(
+            is_array($category->bracket_config) ? $category->bracket_config : [],
+            $category->standingsContext(),
+        );
     }
 
     /**
      * @param  array<string, mixed>  $raw
+     * @param  string  $context  standings shape: goal | set | rubber. Decides
+     *                           which tiebreakers exist and what the points
+     *                           default to when the event never set them.
      */
-    public static function fromArray(array $raw): self
+    public static function fromArray(array $raw, string $context = 'goal'): self
     {
         $points = is_array($raw['points'] ?? null) ? $raw['points'] : [];
         $qual = is_array($raw['qualification'] ?? null) ? $raw['qualification'] : [];
 
-        $known = Catalog::keys('tiebreaker');
+        $known = Catalog::tiebreakerKeys($context);
         $drawMethods = Catalog::keys('draw_method');
         $rounds = array_keys(Catalog::roundSizes());
 
-        // Keep only tiebreakers the catalog still offers, in the event's order.
+        // Keep only tiebreakers the catalog still offers *for this context*, in
+        // the event's order. A football event that later changed sport keeps no
+        // "Selisih Gol" it can no longer compute.
         $tiebreakers = array_values(array_intersect(
             is_array($raw['tiebreakers'] ?? null) ? $raw['tiebreakers'] : $known,
             $known,
@@ -65,15 +74,22 @@ class HybridConfig
 
         $homeAway = (bool) ($raw['home_away'] ?? false);
 
+        // A singles/doubles match cannot end level — there is no draw to award
+        // a point for — so the default there is a plain 1 per win. Squad ties
+        // *can* finish 1-1, so they keep football's 3/1/0.
+        $defaults = $context === 'set'
+            ? ['win' => 1, 'draw' => 0, 'lose' => 0]
+            : ['win' => 3, 'draw' => 1, 'lose' => 0];
+
         return new self(
             groups: max(1, (int) ($raw['groups'] ?? 4)),
             teamsPerGroup: max(2, (int) ($raw['teams_per_group'] ?? 4)),
             homeAway: $homeAway,
             // Home & away implies two legs; an explicit `legs` still wins.
             legs: max(1, min(2, (int) ($raw['legs'] ?? ($homeAway ? 2 : 1)))),
-            pointsWin: (int) ($points['win'] ?? 3),
-            pointsDraw: (int) ($points['draw'] ?? 1),
-            pointsLose: (int) ($points['lose'] ?? 0),
+            pointsWin: (int) ($points['win'] ?? $defaults['win']),
+            pointsDraw: (int) ($points['draw'] ?? $defaults['draw']),
+            pointsLose: (int) ($points['lose'] ?? $defaults['lose']),
             topPerGroup: max(1, min(3, (int) ($qual['top_per_group'] ?? 2))),
             bestRunnersUp: max(0, (int) ($qual['best_runners_up'] ?? 0)),
             bestThirds: max(0, (int) ($qual['best_thirds'] ?? 0)),

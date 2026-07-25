@@ -24,7 +24,10 @@ import {
   generateSchedule,
   drawGroups,
   getKnockoutPlan,
+  saveKnockoutPlan,
+  resetKnockoutPlan,
   generateKnockout,
+  shuffleBracket,
   deleteKnockout,
   updateMatchResult,
   updateMatchTeams,
@@ -34,6 +37,7 @@ import {
   type ScheduleOptions,
   type CreateMatchPayload,
   type MatchTeamsPayload,
+  type PlannedTie,
   type SeedingPayload,
 } from "@/lib/api/matches";
 import { getEvent, getRegistrations } from "@/lib/api/events";
@@ -49,9 +53,14 @@ import {
 } from "@/lib/bracket";
 import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
-import { dateKeyOf, defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
+import {
+  dateKeyOf,
+  defaultDateKey,
+  fullDateLabel,
+  groupByDate,
+} from "@/lib/match-dates";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
-import { isSetBased, scoreColumnLegend } from "@/lib/scoring";
+import { isSetBased, standingsContextOf, standingsLegend } from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +86,7 @@ import { MatchCardHeader } from "@/components/event/match-card-header";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
 import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
 import { SlotTeamsDialog } from "@/components/event/slot-teams-dialog";
-import { KnockoutSeedDialog } from "@/components/event/knockout-seed-dialog";
+import { KnockoutPlanDialog } from "@/components/event/knockout-plan-dialog";
 import { cn } from "@/lib/utils";
 import type { Match } from "@/types/api";
 
@@ -93,7 +102,7 @@ export default function SchedulePage() {
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
   const [manualDialog, setManualDialog] = useState(false);
-  const [seedDialog, setSeedDialog] = useState(false);
+  const [planDialog, setPlanDialog] = useState(false);
   // The bracket slot being re-seated, plus any inline errors it came back with.
   const [slotMatch, setSlotMatch] = useState<Match | null>(null);
   const [slotErrors, setSlotErrors] = useState<FieldErrors>({});
@@ -111,7 +120,8 @@ export default function SchedulePage() {
   // Each category runs its own format, so the schedule/standings/bracket below
   // are all scoped to the one the organizer has selected.
   const categories = eventQuery.data?.categories ?? [];
-  const selectedCategory = categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
+  const selectedCategory =
+    categories.find((c) => c.id === categoryId) ?? categories[0] ?? null;
   const catId = selectedCategory?.id;
 
   const matchesQuery = useQuery({
@@ -139,9 +149,13 @@ export default function SchedulePage() {
   const isDouble = isDoubleElim(engine);
   const isHybrid = isHybridFormat(engine);
   const setBased = isSetBased(eventQuery.data);
+  // The table's shape — and with it the tiebreaker vocabulary — follows the
+  // sport, so both the standings and the config below read this one answer.
+  const context = standingsContextOf(selectedCategory);
   const config = hybridConfig(
     selectedCategory?.bracket_config,
-    catalog.tiebreakers.map((t) => t.key),
+    catalog.tiebreakersFor(context).map((t) => t.key),
+    context,
   );
   const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
 
@@ -177,11 +191,13 @@ export default function SchedulePage() {
       setScheduleDialog(false);
       refreshEventData();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal membuat jadwal.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal membuat jadwal.").message),
   });
 
   const draw = useMutation({
-    mutationFn: (payload: DrawPayload) => drawGroups(orgId!, eventId, catId!, payload),
+    mutationFn: (payload: DrawPayload) =>
+      drawGroups(orgId!, eventId, catId!, payload),
     onSuccess: () => {
       toast.success("Undian grup selesai", {
         description: "Buat ulang jadwal agar cocok dengan isi grup yang baru.",
@@ -189,22 +205,72 @@ export default function SchedulePage() {
       setDrawDialog(false);
       refreshEventData();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal mengundi grup.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengundi grup.").message),
   });
 
   const knockout = useMutation({
-    mutationFn: (seeding?: SeedingPayload) => generateKnockout(orgId!, eventId, catId!, seeding),
+    mutationFn: () => generateKnockout(orgId!, eventId, catId!),
     onSuccess: () => {
       toast.success("Bracket knockout dibuat dari tim yang lolos fase grup");
       setTab("bracket");
-      setSeedDialog(false);
+      setPlanDialog(false);
       refreshEventData();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal membuat bracket.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal membuat bracket.").message),
   });
 
+  // Saving the draw itself, long before any of it becomes a fixture. Null means
+  // "back to automatic seeding".
+  const savePlan = useMutation({
+    mutationFn: (ties: PlannedTie[] | null) =>
+      ties === null
+        ? resetKnockoutPlan(orgId!, eventId, catId!)
+        : saveKnockoutPlan(orgId!, eventId, catId!, ties),
+    onSuccess: (_data, ties) => {
+      toast.success(
+        ties === null
+          ? "Rencana bracket kembali ke seeding otomatis"
+          : "Rencana bracket disimpan",
+        {
+          description:
+            ties === null
+              ? undefined
+              : "Bracket akan dibuat mengikuti pasangan ini saat kamu buat bracketnya.",
+        },
+      );
+      setPlanDialog(false);
+      refreshEventData();
+    },
+    onError: (err) =>
+      toast.error(
+        parseApiError(err, "Gagal menyimpan rencana bracket.").message,
+      ),
+  });
+
+  /**
+   * The dialog's two footer actions. Saving first and generating second is the
+   * order that matters: generation reads the stored plan from the database, not
+   * from any payload, so the draw has to have landed before it runs.
+   */
+  const submitPlan = (ties: PlannedTie[] | null, generate: boolean) => {
+    if (!generate) {
+      savePlan.mutate(ties);
+      return;
+    }
+
+    savePlan
+      .mutateAsync(ties)
+      .then(() => knockout.mutate())
+      // Already surfaced by savePlan's own onError; this only stops the
+      // rejection from escaping as an unhandled promise.
+      .catch(() => {});
+  };
+
   const editSlot = useMutation({
-    mutationFn: (payload: MatchTeamsPayload) => updateMatchTeams(orgId!, slotMatch!.id, payload),
+    mutationFn: (payload: MatchTeamsPayload) =>
+      updateMatchTeams(orgId!, slotMatch!.id, payload),
     onSuccess: () => {
       toast.success("Tim di slot bracket diperbarui");
       setSlotMatch(null);
@@ -212,11 +278,28 @@ export default function SchedulePage() {
       refreshEventData();
     },
     onError: (err) => {
-      const { message, fieldErrors } = parseApiError(err, "Gagal mengganti tim.");
+      const { message, fieldErrors } = parseApiError(
+        err,
+        "Gagal mengganti tim.",
+      );
       setSlotErrors(fieldErrors);
       // Field-level problems are already spelled out beside the select.
       if (Object.keys(fieldErrors).length === 0) toast.error(message);
     },
+  });
+
+  // Redraw in place. Deliberately not a regenerate: rebuilding the bracket
+  // would send every kickoff and court back to the allocator's defaults.
+  const shuffle = useMutation({
+    mutationFn: () => shuffleBracket(orgId!, eventId, catId!),
+    onSuccess: () => {
+      toast.success("Bracket diundi ulang", {
+        description: "Jadwal & lapangan tiap laga tidak berubah.",
+      });
+      refreshEventData();
+    },
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengundi ulang bracket.").message),
   });
 
   const dropKnockout = useMutation({
@@ -228,17 +311,20 @@ export default function SchedulePage() {
       // The bracket tab now falls back to the plan, which may be stale.
       refreshEventData();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menghapus bracket.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menghapus bracket.").message),
   });
 
   const addManual = useMutation({
-    mutationFn: (payload: CreateMatchPayload) => createMatch(orgId!, eventId, catId!, payload),
+    mutationFn: (payload: CreateMatchPayload) =>
+      createMatch(orgId!, eventId, catId!, payload),
     onSuccess: () => {
       toast.success("Pertandingan ditambahkan");
       setManualDialog(false);
       refreshEventData();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menambah pertandingan.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menambah pertandingan.").message),
   });
 
   const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
@@ -251,6 +337,15 @@ export default function SchedulePage() {
       ? phaseLabel(m, matches, isKnockout)
       : undefined;
   const knockoutTies = knockoutMatches(matches);
+  // Single elimination is the one bracket that never had a draw: generation
+  // deals the field out alphabetically. Double elimination propagates losers
+  // too, so a redraw there has two topologies to unwind — not offered.
+  const isSingleElim = engine === "knockout_single";
+  // Keyed on the scoreline, not the status, exactly as the backend's guard is:
+  // a bye is written finished with no score, and moving one is fair game.
+  const bracketPlayed = matches.filter(
+    (m) => m.home_score !== null || m.away_score !== null || m.sets !== null,
+  ).length;
 
   // Who a bracket slot may be handed to. A hybrid bracket only accepts the
   // group qualifiers — which is exactly who already holds its slots — while
@@ -270,23 +365,32 @@ export default function SchedulePage() {
   // inside the day, so a fixture never loses its context.
   const dateGroups = groupByDate(matches, tz);
   const activeDateKey =
-    dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
+    dateKey && dateGroups.some((g) => g.key === dateKey)
+      ? dateKey
+      : defaultDateKey(dateGroups, tz);
   const activeDateGroup = dateGroups.find((g) => g.key === activeDateKey);
   const daySections = sections
-    .map(([label, list]) => [
-      label,
-      list
-        .filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)
-        // Earliest kickoff first — the API orders by round/insertion, so without
-        // this the top card is just whichever fixture was created first, not the
-        // one that starts first. Unscheduled fixtures sink to the bottom; equal
-        // times keep their section order (Array.sort is stable).
-        .sort((a, b) => {
-          const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
-          const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
-          return ta - tb;
-        }),
-    ] as [string, Match[]])
+    .map(
+      ([label, list]) =>
+        [
+          label,
+          list
+            .filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)
+            // Earliest kickoff first — the API orders by round/insertion, so without
+            // this the top card is just whichever fixture was created first, not the
+            // one that starts first. Unscheduled fixtures sink to the bottom; equal
+            // times keep their section order (Array.sort is stable).
+            .sort((a, b) => {
+              const ta = a.scheduled_at
+                ? new Date(a.scheduled_at).getTime()
+                : Infinity;
+              const tb = b.scheduled_at
+                ? new Date(b.scheduled_at).getTime()
+                : Infinity;
+              return ta - tb;
+            }),
+        ] as [string, Match[]],
+    )
     .filter(([, list]) => list.length > 0);
 
   const tabs: [Tab, string, typeof CalendarClock][] = isKnockout
@@ -310,361 +414,432 @@ export default function SchedulePage() {
 
   return (
     <EventTimezoneProvider timezone={tz}>
-    <div>
-      <PageHeader
-        title="Jadwal & Klasemen"
-        description={eventQuery.data?.name ?? "Atur pertandingan, input hasil, dan pantau klasemen."}
-        backHref={`/organizer/events/${eventId}/edit`}
-        backLabel="Kelola event"
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {isHybrid && (
-              <Button
-                variant="outline"
-                onClick={() => setDrawDialog(true)}
-                disabled={draw.isPending || !orgId}
-              >
-                <Shuffle className="h-4 w-4" />
-                Undian Grup
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => setManualDialog(true)}
-              disabled={addManual.isPending || !orgId}
-            >
-              <Plus className="h-4 w-4" />
-              Tambah Manual
-            </Button>
-            <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending || !orgId}>
-              <Sparkles className="h-4 w-4" />
-              {generate.isPending
-                ? "Membuat…"
-                : matches.length > 0
-                  ? isHybrid
-                    ? "Buat Ulang Jadwal Grup"
-                    : "Buat Ulang Jadwal"
-                  : "Buat Jadwal"}
-            </Button>
-          </div>
-        }
-      />
-
-      {categories.length > 1 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Kategori
-          </span>
-          <PillTabs
-            tone="tint"
-            items={categories.map((c) => ({ key: c.id, label: c.name }))}
-            activeKey={selectedCategory?.id ?? ""}
-            onSelect={(key) => {
-              setCategoryId(key);
-              // Tabs and matchday differ per category — recompute defaults.
-              setTab(null);
-              setDateKey(null);
-            }}
-          />
-        </div>
-      )}
-
-      <div className="mb-6">
-        <PillTabs
-          items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
-          activeKey={activeTab}
-          onSelect={(key) => setTab(key as Tab)}
-        />
-      </div>
-
-      {matchesQuery.isLoading ? (
-        <div className="grid gap-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
-          ))}
-        </div>
-      ) : /* The table stands on the draw alone, so it must outlive this gate: a
-            category with groups but no fixtures still has something to show. */
-      matches.length === 0 && activeTab !== "standings" ? (
-        <EmptyState
-          icon={CalendarClock}
-          title="Belum ada jadwal"
+      <div>
+        <PageHeader
+          title="Jadwal & Klasemen"
           description={
-            isKnockout
-              ? "Buat bracket knockout otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
-              : isHybrid
-                ? `Tim diundi ke ${config.groups} grup, lalu jadwal fase grup dibuat otomatis. Bracket knockout menyusul setelah grup selesai.`
-                : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+            eventQuery.data?.name ??
+            "Atur pertandingan, input hasil, dan pantau klasemen."
           }
-          action={
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button onClick={() => setScheduleDialog(true)} disabled={generate.isPending}>
-                <Sparkles className="h-4 w-4" />
-                Buat Jadwal
-              </Button>
+          backHref={`/organizer/events/${eventId}/edit`}
+          backLabel="Kelola event"
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {isHybrid && (
+                <Button
+                  variant="outline"
+                  onClick={() => setDrawDialog(true)}
+                  disabled={draw.isPending || !orgId}
+                >
+                  <Shuffle className="h-4 w-4" />
+                  Undian Grup
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setManualDialog(true)}
-                disabled={addManual.isPending}
+                disabled={addManual.isPending || !orgId}
               >
                 <Plus className="h-4 w-4" />
                 Tambah Manual
               </Button>
+              <Button
+                onClick={() => setScheduleDialog(true)}
+                disabled={generate.isPending || !orgId}
+              >
+                <Sparkles className="h-4 w-4" />
+                {generate.isPending
+                  ? "Membuat…"
+                  : matches.length > 0
+                    ? isHybrid
+                      ? "Buat Ulang Jadwal Grup"
+                      : "Buat Ulang Jadwal"
+                    : "Buat Jadwal"}
+              </Button>
             </div>
           }
         />
-      ) : activeTab === "bracket" ? (
-        isHybrid && knockoutTies.length === 0 ? (
-          // No bracket yet — show the plan, so the pairings are known while the
-          // groups are still being played.
-          <div className="grid gap-4">
-            {planQuery.data ? (
-              <KnockoutPlanView plan={planQuery.data} />
-            ) : (
-              <Skeleton className="h-40 w-full rounded-xl" />
-            )}
-            <div className="flex justify-end">
-              <Button onClick={() => setSeedDialog(true)} disabled={knockout.isPending}>
-                <Sparkles className="h-4 w-4" />
-                {knockout.isPending ? "Membuat…" : "Buat Bracket Knockout"}
-              </Button>
-            </div>
+
+        {categories.length > 1 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Kategori
+            </span>
+            <PillTabs
+              tone="tint"
+              items={categories.map((c) => ({ key: c.id, label: c.name }))}
+              activeKey={selectedCategory?.id ?? ""}
+              onSelect={(key) => {
+                setCategoryId(key);
+                // Tabs and matchday differ per category — recompute defaults.
+                setTab(null);
+                setDateKey(null);
+              }}
+            />
           </div>
-        ) : (
+        )}
+
+        <div className="mb-6">
+          <PillTabs
+            items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
+            activeKey={activeTab}
+            onSelect={(key) => setTab(key as Tab)}
+          />
+        </div>
+
+        {matchesQuery.isLoading ? (
           <div className="grid gap-3">
-            <Card className="overflow-x-auto p-4 md:p-6">
-              {isDouble ? (
-                // Double elimination propagates losers too, so a slot edit
-                // would have two topologies to unwind — not offered yet.
-                <DoubleBracketView matches={matches} />
-              ) : (
-                <BracketView
-                  matches={isHybrid ? knockoutTies : matches}
-                  onEditSlot={setSlotMatch}
-                />
-              )}
-            </Card>
-            {isHybrid && (
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    // Spell out what's at stake: a bracket with results entered
-                    // is not the same undo as one generated a minute ago. No
-                    // strip at all when nothing has been played — an empty
-                    // warning teaches people to skip the real ones.
-                    const played = knockoutTies.filter((m) => m.status === "finished").length;
-                    void confirm({
-                      title: "Hapus bracket knockout?",
-                      description: "Fase grup dan hasilnya tetap aman.",
-                      consequences:
-                        played > 0 ? `${played} hasil pertandingan akan ikut hilang.` : undefined,
-                      confirmLabel: "Hapus bracket",
-                      tone: "danger",
-                      icon: Trash2,
-                    }).then((ok) => ok && dropKnockout.mutate());
-                  }}
-                  disabled={dropKnockout.isPending || knockout.isPending}
-                  className="text-muted-foreground hover:text-[var(--danger)]"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  {dropKnockout.isPending ? "Menghapus…" : "Hapus Bracket"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSeedDialog(true)}
-                  disabled={knockout.isPending || dropKnockout.isPending}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {knockout.isPending ? "Membuat…" : "Buat Ulang Bracket"}
-                </Button>
-              </div>
-            )}
-          </div>
-        )
-      ) : activeTab === "schedule" ? (
-        <div>
-          <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
-            {([
-              ["list", "List", LayoutList],
-              ["calendar", "Kalender", CalendarRange],
-            ] as const).map(([key, label, Icon]) => (
-              <button
-                key={key}
-                onClick={() => setScheduleView(key)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
-                  scheduleView === key ? "bg-[var(--brand-600)] text-white" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
           </div>
-
-          {scheduleView === "calendar" ? (
-            <MatchCalendar matches={matches} />
-          ) : (
-            <>
-              {/* One matchday at a time, like the public page. */}
-              <MatchDayTabs
-                groups={dateGroups}
-                activeKey={activeDateKey}
-                onSelect={setDateKey}
-              />
-
-              <div className="mb-6 grid gap-1 border-b border-border pb-3">
-                <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                  {fullDateLabel(activeDateGroup?.iso ?? null, tz)}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {activeDateGroup?.list.length ?? 0} pertandingan
-                </p>
+        ) : /* The table stands on the draw alone, so it must outlive this gate: a
+            category with groups but no fixtures still has something to show. */
+        matches.length === 0 && activeTab !== "standings" ? (
+          <EmptyState
+            icon={CalendarClock}
+            title="Belum ada jadwal"
+            description={
+              isKnockout
+                ? "Buat bracket knockout otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+                : isHybrid
+                  ? `Tim diundi ke ${config.groups} grup, lalu jadwal fase grup dibuat otomatis. Bracket knockout menyusul setelah grup selesai.`
+                  : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+            }
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  onClick={() => setScheduleDialog(true)}
+                  disabled={generate.isPending}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Buat Jadwal
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setManualDialog(true)}
+                  disabled={addManual.isPending}
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Manual
+                </Button>
               </div>
+            }
+          />
+        ) : activeTab === "bracket" ? (
+          isHybrid && knockoutTies.length === 0 ? (
+            // No bracket yet — show the plan, so the pairings are known while the
+            // groups are still being played.
+            <div className="grid gap-4">
+              {planQuery.data ? (
+                <KnockoutPlanView plan={planQuery.data} />
+              ) : (
+                <Skeleton className="h-40 w-full rounded-xl" />
+              )}
+              <div className="flex justify-end">
+                {/* The only button here, and its name never changes. Arranging
+                    the draw lives inside it — a second button beside it read as
+                    a rival action nobody could tell apart from this one. */}
+                <Button
+                  onClick={() => setPlanDialog(true)}
+                  disabled={knockout.isPending || savePlan.isPending}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Buat Bracket Knockout
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              <Card className="overflow-x-auto p-4 md:p-6">
+                {isDouble ? (
+                  // Double elimination propagates losers too, so a slot edit
+                  // would have two topologies to unwind — not offered yet.
+                  <DoubleBracketView matches={matches} />
+                ) : (
+                  <BracketView
+                    matches={isHybrid ? knockoutTies : matches}
+                    onEditSlot={setSlotMatch}
+                  />
+                )}
+              </Card>
+              {(isHybrid || isSingleElim) && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {/* Generation deals the field out in name order, so a knockout
+                      bracket has never actually been drawn. This is the draw —
+                      and it keeps the kickoffs already assigned. */}
+                  {isSingleElim && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const later = matches.filter(
+                          (m) =>
+                            m.round > 1 && (m.home_team_id || m.away_team_id),
+                        ).length;
+                        void confirm({
+                          title: "Undi ulang bracket?",
+                          description:
+                            "Posisi tim di babak pertama diacak ulang, termasuk siapa yang dapat bye. Jadwal & lapangan tiap laga tidak berubah.",
+                          consequences:
+                            later > 0
+                              ? `${later} pertandingan babak lanjutan akan dikosongkan lagi.`
+                              : undefined,
+                          confirmLabel: "Undi ulang",
+                          icon: Shuffle,
+                        }).then((ok) => ok && shuffle.mutate());
+                      }}
+                      // Proactive twin of the backend's 422: once a result is in,
+                      // redrawing would move teams out from under it.
+                      disabled={shuffle.isPending || bracketPlayed > 0}
+                      title={
+                        bracketPlayed > 0
+                          ? "Sudah ada hasil yang diisi — undi ulang hanya bisa sebelum bracket dimainkan."
+                          : undefined
+                      }
+                    >
+                      <Shuffle className="h-4 w-4" />
+                      {shuffle.isPending ? "Mengundi…" : "Undi Ulang"}
+                    </Button>
+                  )}
+                  {isHybrid && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        // Spell out what's at stake: a bracket with results entered
+                        // is not the same undo as one generated a minute ago. No
+                        // strip at all when nothing has been played — an empty
+                        // warning teaches people to skip the real ones.
+                        const played = knockoutTies.filter(
+                          (m) => m.status === "finished",
+                        ).length;
+                        void confirm({
+                          title: "Hapus bracket knockout?",
+                          description: "Fase grup dan hasilnya tetap aman.",
+                          consequences:
+                            played > 0
+                              ? `${played} hasil pertandingan akan ikut hilang.`
+                              : undefined,
+                          confirmLabel: "Hapus bracket",
+                          tone: "danger",
+                          icon: Trash2,
+                        }).then((ok) => ok && dropKnockout.mutate());
+                      }}
+                      disabled={dropKnockout.isPending || knockout.isPending}
+                      className="text-muted-foreground hover:text-[var(--danger)]"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {dropKnockout.isPending ? "Menghapus…" : "Hapus Bracket"}
+                    </Button>
+                  )}
+                  {isHybrid && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPlanDialog(true)}
+                      disabled={
+                        knockout.isPending ||
+                        dropKnockout.isPending ||
+                        savePlan.isPending
+                      }
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {knockout.isPending ? "Membuat…" : "Buat Ulang Bracket"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        ) : activeTab === "schedule" ? (
+          <div>
+            <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
+              {(
+                [
+                  ["list", "List", LayoutList],
+                  ["calendar", "Kalender", CalendarRange],
+                ] as const
+              ).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => setScheduleView(key)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
+                    scheduleView === key
+                      ? "bg-[var(--brand-600)] text-white"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
 
-              {/* Sections (matchday / knockout round) are spaced apart from each
+            {scheduleView === "calendar" ? (
+              <MatchCalendar matches={matches} />
+            ) : (
+              <>
+                {/* One matchday at a time, like the public page. */}
+                <MatchDayTabs
+                  groups={dateGroups}
+                  activeKey={activeDateKey}
+                  onSelect={setDateKey}
+                />
+
+                <div className="mb-6 grid gap-1 border-b border-border pb-3">
+                  <h2
+                    className="text-base font-bold"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {fullDateLabel(activeDateGroup?.iso ?? null, tz)}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {activeDateGroup?.list.length ?? 0} pertandingan
+                  </p>
+                </div>
+
+                {/* Sections (matchday / knockout round) are spaced apart from each
                   other, not just from the day heading. */}
-              <div className="grid gap-8">
-                {daySections.map(([label, list]) => (
-                  // Spacing via gap, not heading margins: a global `h1..h4 {
-                  // margin: 0 }` can out-rank margin utilities.
-                  <div key={label} className="grid gap-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      {label}
-                    </h3>
-                    {/* Wide screens fit two fixtures side by side. grid-cols-1
+                <div className="grid gap-8">
+                  {daySections.map(([label, list]) => (
+                    // Spacing via gap, not heading margins: a global `h1..h4 {
+                    // margin: 0 }` can out-rank margin utilities.
+                    <div key={label} className="grid gap-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        {label}
+                      </h3>
+                      {/* Wide screens fit two fixtures side by side. grid-cols-1
                         is load-bearing on phones: an implicit `auto` track is
                         sized by its widest child's min-content, so one card that
                         refuses to shrink drags the whole page wider than the
                         viewport. minmax(0,1fr) — what grid-cols-* compiles to —
                         caps that. */}
-                    <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
-                      {list.map((m) => (
-                        <MatchCard
-                          key={m.id}
-                          match={m}
-                          orgId={orgId!}
-                          eventId={eventId}
-                          setBased={setBased}
-                          rubbers={!!selectedCategory?.uses_rubbers}
-                          knockout={isKnockout || m.stage === "knockout"}
-                          phase={phaseOf(m)}
-                        />
-                      ))}
+                      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+                        {list.map((m) => (
+                          <MatchCard
+                            key={m.id}
+                            match={m}
+                            orgId={orgId!}
+                            eventId={eventId}
+                            setBased={setBased}
+                            rubbers={!!selectedCategory?.uses_rubbers}
+                            knockout={isKnockout || m.stage === "knockout"}
+                            phase={phaseOf(m)}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      ) : activeTab === "stats" ? (
-        <div>
-          {leaderboardQuery.data && (
-            <LeaderboardTable
-              leaderboard={leaderboardQuery.data}
-              eventName={eventQuery.data?.name}
-            />
-          )}
-        </div>
-      ) : (
-        <div className={isHybrid ? undefined : "max-w-3xl"}>
-          {isHybrid ? (
-            <GroupStandings
-              standings={standingsQuery.data ?? []}
-              config={config}
-              category={selectedCategory}
-            />
-          ) : (
-            // A standalone league ends at the table — nothing follows it to
-            // qualify for — so only the leader is marked. Two green rows here
-            // would promise a knockout stage this format cannot produce.
-            <StandingsTable
-              standings={standingsQuery.data ?? []}
-              highlight={1}
-              category={selectedCategory}
-            />
-          )}
-          {(standingsQuery.data?.length ?? 0) > 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              {/* GroupStandings prints its own "lolos ke knockout" legend, so the
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : activeTab === "stats" ? (
+          <div>
+            {leaderboardQuery.data && (
+              <LeaderboardTable
+                leaderboard={leaderboardQuery.data}
+                eventName={eventQuery.data?.name}
+              />
+            )}
+          </div>
+        ) : (
+          <div className={isHybrid ? undefined : "max-w-3xl"}>
+            {isHybrid ? (
+              <GroupStandings
+                standings={standingsQuery.data ?? []}
+                config={config}
+                context={context}
+              />
+            ) : (
+              // A standalone league ends at the table — nothing follows it to
+              // qualify for — so only the leader is marked. Two green rows here
+              // would promise a knockout stage this format cannot produce.
+              <StandingsTable
+                standings={standingsQuery.data ?? []}
+                highlight={1}
+                context={context}
+              />
+            )}
+            {(standingsQuery.data?.length ?? 0) > 0 && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {/* GroupStandings prints its own "lolos ke knockout" legend, so the
                   green one here belongs to the standalone league only. */}
-              {!isHybrid && "Baris hijau = juara klasemen. "}
-              {scoreColumnLegend(selectedCategory)}
-            </p>
-          )}
-        </div>
-      )}
+                {!isHybrid && "Baris hijau = juara klasemen. "}
+                {standingsLegend(context)}
+              </p>
+            )}
+          </div>
+        )}
 
-      <ManualMatchDialog
-        // A fresh mount per open, so the form always starts empty.
-        key={String(manualDialog)}
-        open={manualDialog}
-        teams={approvedTeams}
-        orgId={orgId!}
-        eventId={eventId}
-        categoryId={catId!}
-        groups={isHybrid ? groupNames(config) : []}
-        pending={addManual.isPending}
-        onClose={() => setManualDialog(false)}
-        onSubmit={(payload) => addManual.mutate(payload)}
-      />
-
-      {eventQuery.data && (
-        <ScheduleSettingsDialog
-          event={eventQuery.data}
-          open={scheduleDialog}
-          hasMatches={matches.length > 0}
-          pending={generate.isPending}
-          seedTeams={engine === "knockout_single" ? approvedTeams : undefined}
-          onClose={() => setScheduleDialog(false)}
-          onSubmit={(options) => generate.mutate(options)}
-        />
-      )}
-
-      {isHybrid && (
-        <GroupDrawDialog
-          open={drawDialog}
+        <ManualMatchDialog
+          // A fresh mount per open, so the form always starts empty.
+          key={String(manualDialog)}
+          open={manualDialog}
           teams={approvedTeams}
-          config={config}
-          hasMatches={matches.length > 0}
-          pending={draw.isPending}
-          onClose={() => setDrawDialog(false)}
-          onSubmit={(payload) => draw.mutate(payload)}
+          orgId={orgId!}
+          eventId={eventId}
+          categoryId={catId!}
+          groups={isHybrid ? groupNames(config) : []}
+          pending={addManual.isPending}
+          onClose={() => setManualDialog(false)}
+          onSubmit={(payload) => addManual.mutate(payload)}
         />
-      )}
 
-      {isHybrid && (
-        <KnockoutSeedDialog
-          open={seedDialog}
-          plan={planQuery.data}
-          hasBracket={knockoutTies.length > 0}
-          pending={knockout.isPending}
-          tz={tz}
-          onClose={() => setSeedDialog(false)}
-          onSubmit={(payload) => knockout.mutate(payload)}
-        />
-      )}
+        {eventQuery.data && (
+          <ScheduleSettingsDialog
+            event={eventQuery.data}
+            open={scheduleDialog}
+            hasMatches={matches.length > 0}
+            pending={generate.isPending}
+            seedTeams={engine === "knockout_single" ? approvedTeams : undefined}
+            onClose={() => setScheduleDialog(false)}
+            onSubmit={(options) => generate.mutate(options)}
+          />
+        )}
 
-      {slotMatch && (
-        <SlotTeamsDialog
-          open
-          match={slotMatch}
-          bracket={isHybrid ? knockoutTies : matches}
-          teams={slotPool}
-          pending={editSlot.isPending}
-          fieldErrors={slotErrors}
-          onClose={() => {
-            setSlotMatch(null);
-            setSlotErrors({});
-          }}
-          onSubmit={(payload) => editSlot.mutate(payload)}
-        />
-      )}
-    </div>
+        {isHybrid && (
+          <GroupDrawDialog
+            open={drawDialog}
+            teams={approvedTeams}
+            config={config}
+            hasMatches={matches.length > 0}
+            pending={draw.isPending}
+            onClose={() => setDrawDialog(false)}
+            onSubmit={(payload) => draw.mutate(payload)}
+          />
+        )}
+
+        {isHybrid && planQuery.data && (
+          <KnockoutPlanDialog
+            open={planDialog}
+            plan={planQuery.data}
+            hasBracket={knockoutTies.length > 0}
+            pending={savePlan.isPending || knockout.isPending}
+            tz={tz}
+            onClose={() => setPlanDialog(false)}
+            onSubmit={submitPlan}
+          />
+        )}
+
+        {slotMatch && (
+          <SlotTeamsDialog
+            open
+            match={slotMatch}
+            bracket={isHybrid ? knockoutTies : matches}
+            teams={slotPool}
+            pending={editSlot.isPending}
+            fieldErrors={slotErrors}
+            onClose={() => {
+              setSlotMatch(null);
+              setSlotErrors({});
+            }}
+            onSubmit={(payload) => editSlot.mutate(payload)}
+          />
+        )}
+      </div>
     </EventTimezoneProvider>
   );
 }
@@ -716,7 +891,8 @@ function MatchCard({
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
   });
 
   const del = useMutation({
@@ -726,7 +902,8 @@ function MatchCard({
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menghapus pertandingan.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menghapus pertandingan.").message),
   });
 
   const removeBtn = (
@@ -757,15 +934,25 @@ function MatchCard({
   if (match.status === "cancelled") {
     return (
       <Card className="p-3 opacity-60">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <MatchCardHeader
+          orgId={orgId}
+          eventId={eventId}
+          match={match}
+          knockout={knockout}
+          phase={phase}
+        />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
+          <span className="flex-1 truncate text-right font-medium">
+            {match.home_team?.name ?? "TBD"}
+          </span>
           <span className="text-xs">
             {match.home_score !== null && match.away_score !== null
               ? `${match.home_score}–${match.away_score}`
               : "vs"}
           </span>
-          <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
+          <span className="flex-1 truncate font-medium">
+            {match.away_team?.name ?? "TBD"}
+          </span>
           {removeBtn}
         </div>
       </Card>
@@ -777,7 +964,13 @@ function MatchCard({
   if (match.home_team && !match.away_team && match.status === "finished") {
     return (
       <Card className="p-3 text-sm">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <MatchCardHeader
+          orgId={orgId}
+          eventId={eventId}
+          match={match}
+          knockout={knockout}
+          phase={phase}
+        />
         <div className="mt-3 flex items-center gap-3">
           <span className="flex-1 font-semibold">{match.home_team.name}</span>
           {removeBtn}
@@ -790,11 +983,21 @@ function MatchCard({
   if (!match.home_team || !match.away_team) {
     return (
       <Card className="p-3">
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <MatchCardHeader
+          orgId={orgId}
+          eventId={eventId}
+          match={match}
+          knockout={knockout}
+          phase={phase}
+        />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex-1 truncate text-right font-medium">{match.home_team?.name ?? "TBD"}</span>
+          <span className="flex-1 truncate text-right font-medium">
+            {match.home_team?.name ?? "TBD"}
+          </span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
-          <span className="flex-1 truncate font-medium">{match.away_team?.name ?? "TBD"}</span>
+          <span className="flex-1 truncate font-medium">
+            {match.away_team?.name ?? "TBD"}
+          </span>
         </div>
         <div className="mt-3 flex items-start justify-between gap-2 border-t border-border pt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
@@ -810,7 +1013,13 @@ function MatchCard({
   if (rubbers) {
     return (
       <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <MatchCardHeader
+          orgId={orgId}
+          eventId={eventId}
+          match={match}
+          knockout={knockout}
+          phase={phase}
+        />
         <div className="mt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
         </div>
@@ -828,7 +1037,13 @@ function MatchCard({
   if (setBased) {
     return (
       <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-        <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+        <MatchCardHeader
+          orgId={orgId}
+          eventId={eventId}
+          match={match}
+          knockout={knockout}
+          phase={phase}
+        />
         <div className="mt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
         </div>
@@ -838,14 +1053,25 @@ function MatchCard({
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setShowGoals((v) => !v)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowGoals((v) => !v)}
+              >
                 <Goal className="h-4 w-4" />
                 Statistik pemain
               </Button>
               {removeBtn}
             </div>
           </div>
-          {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}
+          {showGoals && (
+            <MatchStatsEditor
+              orgId={orgId}
+              eventId={eventId}
+              matchId={match.id}
+              match={match}
+            />
+          )}
         </div>
       </Card>
     );
@@ -856,18 +1082,28 @@ function MatchCard({
     away !== (match.away_score?.toString() ?? "") ||
     homePen !== (match.home_penalty?.toString() ?? "") ||
     awayPen !== (match.away_penalty?.toString() ?? "");
-  const penaltiesOk = !needsPenalties || (homePen !== "" && awayPen !== "" && homePen !== awayPen);
+  const penaltiesOk =
+    !needsPenalties ||
+    (homePen !== "" && awayPen !== "" && homePen !== awayPen);
   const canSave = home !== "" && away !== "" && dirty && penaltiesOk;
 
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
     <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
-      <MatchCardHeader orgId={orgId} eventId={eventId} match={match} knockout={knockout} phase={phase} />
+      <MatchCardHeader
+        orgId={orgId}
+        eventId={eventId}
+        match={match}
+        knockout={knockout}
+        phase={phase}
+      />
       <div className="mt-3">
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
-        <span className="flex-1 truncate text-right text-sm font-semibold">{match.home_team.name}</span>
+        <span className="flex-1 truncate text-right text-sm font-semibold">
+          {match.home_team.name}
+        </span>
         <Input
           type="number"
           min={0}
@@ -885,7 +1121,9 @@ function MatchCard({
           className="h-9 w-14 text-center"
           aria-label={`Skor ${match.away_team.name}`}
         />
-        <span className="flex-1 truncate text-sm font-semibold">{match.away_team.name}</span>
+        <span className="flex-1 truncate text-sm font-semibold">
+          {match.away_team.name}
+        </span>
         {/* The actions travel as one block. Left loose in the wrapping row they
             break up one at a time, so a phone gets "Simpan" stranded on a line
             by itself while the scoreline keeps the other two. */}
@@ -900,15 +1138,26 @@ function MatchCard({
           >
             <Goal className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant={canSave ? "default" : "outline"} disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? "…" : match.status === "finished" && !dirty ? "Tersimpan" : "Simpan"}
+          <Button
+            size="sm"
+            variant={canSave ? "default" : "outline"}
+            disabled={!canSave || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending
+              ? "…"
+              : match.status === "finished" && !dirty
+                ? "Tersimpan"
+                : "Simpan"}
           </Button>
         </div>
       </div>
 
       {needsPenalties && (
         <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border bg-[var(--surface-2)] px-3 py-2">
-          <span className="text-xs font-semibold text-muted-foreground">Adu penalti</span>
+          <span className="text-xs font-semibold text-muted-foreground">
+            Adu penalti
+          </span>
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -935,7 +1184,14 @@ function MatchCard({
           </p>
         </div>
       )}
-      {showGoals && <MatchStatsEditor orgId={orgId} eventId={eventId} matchId={match.id} match={match} />}
+      {showGoals && (
+        <MatchStatsEditor
+          orgId={orgId}
+          eventId={eventId}
+          matchId={match.id}
+          match={match}
+        />
+      )}
     </Card>
   );
 }

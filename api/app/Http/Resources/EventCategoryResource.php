@@ -25,6 +25,9 @@ class EventCategoryResource extends JsonResource
             'rubber_format' => $this->rubber_format,
             // Derived, not stored: needs the sport, which lives on the event.
             'uses_rubbers' => $this->usesRubbers(),
+            // Which shape the table takes: goal | set | rubber. Same reason —
+            // the client can't work it out without the sport.
+            'standings_context' => $this->standingsContext(),
             'roster_size' => $this->rosterSize(),
             'tournament_format' => $this->tournament_format,
             'engine' => $this->engine(),

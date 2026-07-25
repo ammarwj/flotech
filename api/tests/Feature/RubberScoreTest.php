@@ -200,10 +200,18 @@ class RubberScoreTest extends TestCase
         $this->assertSame(3, $spanyol['points']);
         $this->assertSame(0, $argentina['points']);
 
+        // Games behind the partai: 2-0, 2-1, 2-0 = 6-1.
+        $this->assertSame(6, $spanyol['sets_for']);
+        $this->assertSame(1, $spanyol['sets_against']);
+        $this->assertSame(5, $spanyol['set_diff']);
+        $this->assertSame(-5, $argentina['set_diff']);
+
         // 21+22+15+21+24 + 22+23 = 148 for Spanyol, 16+20+21+18+22 + 15+21 = 133.
         $this->assertSame(148, $spanyol['points_for']);
         $this->assertSame(133, $spanyol['points_against']);
         $this->assertSame(133, $argentina['points_for']);
+        $this->assertSame(15, $spanyol['points_diff']);
+        $this->assertSame(-15, $argentina['points_diff']);
     }
 
     public function test_a_level_tie_counts_in_a_league_but_waits_in_a_knockout(): void

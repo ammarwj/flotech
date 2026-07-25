@@ -63,6 +63,10 @@ export default function AdminConfigOptionsPage() {
   const [form, setForm] = useState({ ...EMPTY });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [defaults, setDefaults] = useState("");
+  // Meta keys this form has no field for — a tiebreaker's `applies_to`, say.
+  // Rebuilding meta from the fields alone would quietly drop them, and a
+  // tiebreaker that loses its `applies_to` starts showing up in every sport.
+  const [otherMeta, setOtherMeta] = useState<Record<string, unknown>>({});
 
   const query = useQuery({
     queryKey: ["admin-config-options", group],
@@ -76,22 +80,28 @@ export default function AdminConfigOptionsPage() {
   const reset = () => {
     setForm({ ...EMPTY });
     setDefaults("");
+    setOtherMeta({});
     setEditingId(null);
   };
 
   const payload = () => {
-    const metaObject: Record<string, unknown> = {};
+    const metaObject: Record<string, unknown> = { ...otherMeta };
 
     if (meta) {
       metaObject[meta.name] = meta.name === "size" ? Number(form.meta) : form.meta;
     }
 
     // A format preset can ship a starting bracket_config, e.g. {"legs": 2}.
-    if (group === "tournament_format" && defaults.trim() !== "") {
-      try {
-        metaObject.defaults = JSON.parse(defaults);
-      } catch {
-        throw new Error("Default config bukan JSON yang valid.");
+    // Emptying the field clears it, so this one is not carried over blindly.
+    if (group === "tournament_format") {
+      delete metaObject.defaults;
+
+      if (defaults.trim() !== "") {
+        try {
+          metaObject.defaults = JSON.parse(defaults);
+        } catch {
+          throw new Error("Default config bukan JSON yang valid.");
+        }
       }
     }
 
@@ -135,6 +145,11 @@ export default function AdminConfigOptionsPage() {
 
   const edit = (option: AdminConfigOption) => {
     setEditingId(option.id);
+    setOtherMeta(
+      Object.fromEntries(
+        Object.entries(option.meta ?? {}).filter(([k]) => k !== meta?.name && k !== "defaults"),
+      ),
+    );
     setForm({
       key: option.key,
       label: option.label,

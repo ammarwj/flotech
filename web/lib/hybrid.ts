@@ -1,4 +1,10 @@
-import type { BracketConfig, KnockoutRound, Match, Tiebreaker } from "@/types/api";
+import type {
+  BracketConfig,
+  KnockoutRound,
+  Match,
+  StandingsContext,
+  Tiebreaker,
+} from "@/types/api";
 
 /**
  * The hybrid format's per-event settings. The *vocabulary* (which tiebreakers,
@@ -28,17 +34,28 @@ export const DEFAULT_HYBRID: HybridConfig = {
 };
 
 /**
+ * A singles/doubles match cannot end level — there is no draw to award a point
+ * for — so it defaults to a plain 1 per win. Squad ties *can* finish 1-1, so
+ * they keep football's 3/1/0. Mirrors HybridConfig::fromArray() on the API.
+ */
+const defaultPoints = (context: StandingsContext) =>
+  context === "set" ? { win: 1, draw: 0, lose: 0 } : DEFAULT_HYBRID.points;
+
+/**
  * @param raw the event's stored bracket_config
- * @param tiebreakers the catalog's tiebreaker keys, used when the event has none
+ * @param tiebreakers the catalog's tiebreaker keys *for this context*, used when
+ *        the event has none — see useCatalog().tiebreakersFor()
+ * @param context the standings shape, which decides the points defaults
  */
 export function hybridConfig(
   raw?: BracketConfig | null,
-  tiebreakers: Tiebreaker[] = []
+  tiebreakers: Tiebreaker[] = [],
+  context: StandingsContext = "goal"
 ): HybridConfig {
   return {
     ...DEFAULT_HYBRID,
     ...raw,
-    points: { ...DEFAULT_HYBRID.points, ...raw?.points },
+    points: { ...defaultPoints(context), ...raw?.points },
     qualification: { ...DEFAULT_HYBRID.qualification, ...raw?.qualification },
     knockout_start: raw?.knockout_start ?? null,
     tiebreakers: raw?.tiebreakers?.length ? raw.tiebreakers : tiebreakers,

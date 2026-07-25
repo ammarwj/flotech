@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Team;
 use App\Services\Catalog;
 use App\Services\GroupDrawService;
+use App\Services\KnockoutPlanService;
 use App\Services\MatchResultService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
@@ -19,6 +20,7 @@ use App\Services\StandingService;
 use App\Support\ApiResponse;
 use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
+use App\Support\KnockoutPlan;
 use App\Support\MatchScoring;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +40,7 @@ class MatchController extends Controller
         protected PlayerStatService $stats,
         protected GroupDrawService $draw,
         protected MatchResultService $results,
+        protected KnockoutPlanService $plans,
     ) {}
 
     /**
@@ -154,6 +157,9 @@ class MatchController extends Controller
      * The knockout bracket as *planned*: which slot meets which ("Juara Grup A"
      * v "Runner-up Grup D"), with whoever currently holds each slot. Available
      * from the moment the groups are drawn, long before they finish.
+     *
+     * Comes from the organizer's own draw when they saved one, and from
+     * automatic seeding otherwise — `source` says which.
      */
     public function knockoutPlan(Request $request, string $organization, string $event, string $category): JsonResponse
     {
@@ -163,36 +169,99 @@ class MatchController extends Controller
             return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
         }
 
-        $config = HybridConfig::fromCategory($categoryModel);
+        return ApiResponse::success($this->plans->build($categoryModel));
+    }
+
+    /**
+     * Save the organizer's own first-round draw, in *slots* rather than teams:
+     * "Juara Grup A" v "Runner-up Grup B", decided while the groups are still
+     * being played. The slots fill themselves in as the tables move, and the
+     * bracket is generated from the plan when the organizer activates it.
+     *
+     * The draw never leaves the dashboard — there is no public counterpart to
+     * this route, and adding one would publish pairings the organizer is still
+     * free to change.
+     */
+    public function saveKnockoutPlan(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'hybrid') {
+            return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $half = intdiv(HybridConfig::fromCategory($categoryModel)->bracketSize(), 2);
         $slots = $this->standings->qualifierSlots($categoryModel);
 
-        $pairs = $this->schedule->firstRoundPairs(
-            $config->bracketSize(),
-            $slots,
-            fn (array $slot) => $slot['group'],
+        $validated = $request->validate(KnockoutPlan::validationRules($half, array_column($slots, 'key')));
+
+        if ($error = $this->planError($validated['ties'] ?? [], $slots)) {
+            return $error;
+        }
+
+        $categoryModel->update(['knockout_plan' => KnockoutPlan::normalize($validated, $half)]);
+
+        return ApiResponse::success($this->plans->build($categoryModel), 'Rencana bracket disimpan');
+    }
+
+    /**
+     * Drop the saved draw, back to automatic seeding from the standings. Any
+     * bracket already generated is left alone — this is the plan, not the
+     * fixtures.
+     */
+    public function destroyKnockoutPlan(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'hybrid') {
+            return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $categoryModel->update(['knockout_plan' => null]);
+
+        return ApiResponse::success(
+            $this->plans->build($categoryModel),
+            'Rencana bracket dikembalikan ke seeding otomatis',
         );
+    }
 
-        $pending = $categoryModel->matches()
-            ->where('stage', 'group')
-            ->where(fn ($q) => $q->where('status', '!=', 'finished')->orWhereNull('confirmed_at'))
-            ->count();
+    /**
+     * The checks on a knockout-plan payload that validation rules can't state —
+     * the slot-level twin of {@see seedingError()}.
+     *
+     * @param  array<int, array<string, mixed>>  $ties  the validated ties
+     * @param  array<int, array<string, mixed>>  $slots  qualifier slots that must all be placed
+     */
+    protected function planError(array $ties, array $slots): ?JsonResponse
+    {
+        $orders = array_column($ties, 'order');
+        if (count($orders) !== count(array_unique($orders))) {
+            return ApiResponse::error('Setiap slot bracket hanya boleh diisi sekali.', [
+                'ties' => ['Ada slot yang dikirim lebih dari sekali.'],
+            ], 422);
+        }
 
-        return ApiResponse::success([
-            'bracket_size' => $config->bracketSize(),
-            'qualifiers' => count($slots),
-            'byes' => max(0, $config->bracketSize() - count($slots)),
-            // Sent alongside the pending count because zero pending means two
-            // opposite things: every group game is played, or none exists yet.
-            // generateKnockout() refuses the second, so the client needs to be
-            // able to tell them apart or it offers a button that cannot work.
-            'group_matches_total' => $categoryModel->matches()->where('stage', 'group')->count(),
-            'group_matches_pending' => $pending,
-            'ties' => array_map(fn ($pair, $order) => [
-                'order' => $order,
-                'home' => $pair[0],
-                'away' => $pair[1],
-            ], $pairs, array_keys($pairs)),
-        ]);
+        if (KnockoutPlan::duplicateSlot($ties) !== null) {
+            return ApiResponse::error('Satu slot kualifikasi tidak boleh dipasang di dua pertandingan.', [
+                'ties' => ['Ada slot yang dipilih lebih dari sekali.'],
+            ], 422);
+        }
+
+        // Leaving one side of a tie empty is a bye and deliberate; leaving a
+        // qualifier slot out of the draw is not — whoever wins that place would
+        // qualify and then have nowhere to play.
+        if ($unplaced = KnockoutPlan::unplacedSlots($ties, array_column($slots, 'key'))) {
+            $labels = array_column($slots, 'label', 'key');
+
+            return ApiResponse::error(
+                'Semua slot kualifikasi harus ditempatkan. Belum ditempatkan: '
+                    .implode(', ', array_map(fn (string $key) => $labels[$key] ?? $key, $unplaced)).'.',
+                ['ties' => ['Ada '.count($unplaced).' slot yang belum ditempatkan.']],
+                422,
+            );
+        }
+
+        return null;
     }
 
     /**
@@ -256,6 +325,20 @@ class MatchController extends Controller
         }
 
         $pairs = BracketSeeding::normalize($seeding, $half);
+        $fromPlan = false;
+
+        // No teams named in the request → follow the draw the organizer saved
+        // ahead of the group stage, if there is one. Naming teams outright still
+        // wins: that is the escape hatch for changing your mind once the results
+        // are in, and it is the more specific instruction of the two.
+        if ($pairs === null && ($planned = $this->plans->pairsFor($categoryModel)) !== null) {
+            if ($error = $this->planBlockedError($categoryModel)) {
+                return $error;
+            }
+
+            $pairs = $planned;
+            $fromPlan = true;
+        }
 
         if ($this->schedule->generateHybridKnockout($categoryModel, $qualifiers, $pairs) === 0) {
             return ApiResponse::error('Butuh minimal 2 tim lolos untuk membuat bracket.', null, 422);
@@ -266,8 +349,44 @@ class MatchController extends Controller
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
             'Bracket knockout dibuat: '.count($qualifiers).' tim lolos'
-                .($pairs !== null ? ' (seeding manual)' : ''),
+                .match (true) {
+                    $fromPlan => ' (mengikuti rencana bracket)',
+                    $pairs !== null => ' (seeding manual)',
+                    default => '',
+                },
             201,
+        );
+    }
+
+    /**
+     * Refuse to activate a saved draw that no longer covers the bracket.
+     *
+     * The plan outlives the config it was drawn against: lowering
+     * `top_per_group` deletes slots it names, raising it invents slots it never
+     * placed. Activating anyway would build a bracket quietly missing whoever
+     * won those places — the same failure {@see seedingError()} refuses for
+     * unplaced teams, one level up.
+     */
+    protected function planBlockedError(EventCategory $category): ?JsonResponse
+    {
+        $blockers = $this->plans->blockers($category);
+
+        if ($blockers === []) {
+            return null;
+        }
+
+        $reasons = [];
+        if ($blockers['stale']) {
+            $reasons[] = 'ada pasangan yang menunjuk slot yang sudah tidak ada';
+        }
+        if ($blockers['unplaced'] !== []) {
+            $reasons[] = 'slot belum ditempatkan: '.implode(', ', $blockers['unplaced']);
+        }
+
+        return ApiResponse::error(
+            'Rencana bracket tidak lagi cocok dengan aturan kualifikasi — '.implode('; ', $reasons).'. Susun ulang rencananya dulu.',
+            ['feature' => 'knockout_plan_incomplete'],
+            422,
         );
     }
 
@@ -293,6 +412,60 @@ class MatchController extends Controller
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
             "Bracket knockout dihapus: {$deleted} pertandingan",
+        );
+    }
+
+    /**
+     * Redraw the first round of a knockout bracket.
+     *
+     * `generateKnockout()` deals the field out in name order, so a bracket that
+     * has never been re-seeded is an alphabetical list, not a draw. This is the
+     * draw — and it moves teams between the fixtures that already exist rather
+     * than rebuilding them, so the kickoff times and courts the organizer
+     * assigned are still there afterwards.
+     *
+     * Single elimination only. A hybrid bracket is seeded from the group tables
+     * (or the organizer's own plan), and shuffling it would throw away the very
+     * thing those seeds mean.
+     */
+    public function shuffleBracket(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'knockout_single') {
+            return ApiResponse::error(
+                'Undi ulang hanya untuk format Knockout. Bracket Grup + Knockout mengikuti unggulan klasemen.',
+                ['feature' => 'bracket_shuffle'],
+                422,
+            );
+        }
+
+        // Keyed on the scoreline rather than the status, the same way
+        // updateTeams() is: a bye is written finished and confirmed with no
+        // scores, and a bye that fell to the wrong team is one of the things a
+        // redraw is for. A tie that has actually been played is not.
+        $played = $categoryModel->matches()
+            ->whereNull('stage')
+            ->where(fn ($q) => $q->whereNotNull('home_score')
+                ->orWhereNotNull('away_score')
+                ->orWhereNotNull('sets'))
+            ->count();
+
+        if ($played > 0) {
+            return ApiResponse::error(
+                "Sudah ada {$played} pertandingan yang berisi hasil — undi ulang hanya bisa sebelum bracket dimainkan.",
+                ['feature' => 'bracket_shuffle'],
+                422,
+            );
+        }
+
+        if ($this->schedule->reshuffleFirstRound($categoryModel) === 0) {
+            return ApiResponse::error('Butuh minimal 2 tim di bracket untuk diundi ulang.', null, 422);
+        }
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($categoryModel)),
+            'Bracket diundi ulang — jadwal & lapangan tiap laga tidak berubah',
         );
     }
 
@@ -803,70 +976,36 @@ class MatchController extends Controller
     }
 
     /**
-     * Seat a pair in a bracket slot, dropping any result it held. A lone team
-     * is a walkover, written exactly as generation writes one, and goes
-     * straight through to the next round.
+     * Seat a pair in a bracket slot. The bye convention lives in
+     * {@see ScheduleService::seatSlot()} — the redraw writes slots too, and two
+     * copies of it would drift.
      */
     protected function reseat(GameMatch $match, ?string $home, ?string $away): void
     {
-        $bye = $home !== null && $away === null;
-
-        $match->update([
-            'home_team_id' => $home,
-            'away_team_id' => $away,
-            'home_score' => null,
-            'away_score' => null,
-            'home_penalty' => null,
-            'away_penalty' => null,
-            'sets' => null,
-            'status' => $bye ? 'finished' : 'scheduled',
-            'confirmed_at' => $bye ? now() : null,
-        ]);
-
-        if ($bye) {
-            $this->schedule->advanceWinner($match->fresh());
-        }
+        $this->schedule->seatSlot($match, $home, $away);
     }
 
     /**
      * The other first-round slots of this match's bracket.
      *
-     * A single-elimination bracket shares `stage null, round 1` with the manual
-     * extra fixtures of storeManual(), whose order keeps counting past the
-     * bracket — without the cut-off a friendly would be treated as a slot and
-     * get its teams shuffled.
-     *
      * @return Collection<int, GameMatch>
      */
     protected function bracketSlots(GameMatch $match)
     {
-        $query = $match->category->matches()
-            ->where('round', 1)
-            ->whereKeyNot($match->id);
-
-        if ($match->stage === null) {
-            $query->whereNull('stage')->where('order', '<', $this->bracketSlotCount($match));
-        } else {
-            $query->where('stage', $match->stage);
-        }
-
-        return $query->orderBy('order')->get();
+        return $this->schedule
+            ->firstRoundSlots($match->category, $match->stage)
+            ->reject(fn (GameMatch $m) => $m->is($match))
+            ->values();
     }
 
     /**
-     * First-round slots in the bracket this match belongs to.
-     *
-     * Derived from how tall the bracket is rather than from the team count, so
-     * it stays right when teams are approved or withdrawn after generation.
+     * First-round slots in the bracket this match belongs to. The rule that
+     * tells a slot from a hand-added friendly lives in
+     * {@see ScheduleService::bracketSlotCount()}, which the redraw needs too.
      */
     protected function bracketSlotCount(GameMatch $match): int
     {
-        $query = $match->category->matches();
-        $maxRound = (int) ($match->stage === null
-            ? $query->whereNull('stage')->max('round')
-            : $query->where('stage', $match->stage)->max('round'));
-
-        return intdiv(2 ** max(1, $maxRound), 2);
+        return $this->schedule->bracketSlotCount($match->category, $match->stage);
     }
 
     /**

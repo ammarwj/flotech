@@ -23,6 +23,13 @@ class EventCategory extends Model
 {
     use HasUuids;
 
+    /**
+     * The table shapes a category can be ranked in — see standingsContext().
+     * A tiebreaker names the ones it belongs to, so this is also what
+     * `config_options.meta.applies_to` is validated against.
+     */
+    public const STANDINGS_CONTEXTS = ['goal', 'set', 'rubber'];
+
     protected $fillable = [
         'event_id',
         'name',
@@ -31,6 +38,7 @@ class EventCategory extends Model
         'tournament_format',
         'bracket_config',
         'rubber_format',
+        'knockout_plan',
         'registration_fee',
         'max_teams',
         'sort_order',
@@ -41,6 +49,7 @@ class EventCategory extends Model
         return [
             'bracket_config' => 'array',
             'rubber_format' => 'array',
+            'knockout_plan' => 'array',
             'registration_fee' => 'decimal:2',
             'max_teams' => 'integer',
             'sort_order' => 'integer',
@@ -108,6 +117,24 @@ class EventCategory extends Model
         return $this->participant_type === 'team'
             && in_array('single', Catalog::participantModes($this->sport_type), true)
             && ! empty($this->rubber_format);
+    }
+
+    /**
+     * What shape this category's table has — the one question the standings,
+     * the tiebreaker vocabulary and the points defaults all branch on.
+     *
+     * The three answers differ in what a match score *means*, which is why one
+     * word covers all of them: gol ('goal'), game menang ('set'), or partai
+     * menang ('rubber'). Derived here rather than in each reader, so the client
+     * never has to rebuild it from sport + participant_type + rubber_format.
+     */
+    public function standingsContext(): string
+    {
+        if ($this->usesRubbers()) {
+            return 'rubber';
+        }
+
+        return $this->isSetBased() ? 'set' : 'goal';
     }
 
     /** Catalog entry for the event's sport (name, colour, scoring, stats). */

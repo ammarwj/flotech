@@ -33,6 +33,8 @@ export function BracketSeedEditor({
   onModeChange,
   onChange,
   autoHint,
+  entityLabel = "Tim",
+  emptyLabel = "Bye",
 }: {
   /** Bracket size; the editor draws size / 2 ties. */
   size: number;
@@ -45,6 +47,14 @@ export function BracketSeedEditor({
   onChange: (pairs: SeedPair[]) => void;
   /** What automatic seeding does here, since it differs per engine. */
   autoHint: string;
+  /**
+   * What the pool holds, singular. The plan editor pairs qualifier *slots*
+   * ("Juara Grup A") rather than teams, and the field names here — home_team_id
+   * and friends — are the only thing that still says otherwise.
+   */
+  entityLabel?: string;
+  /** What an empty second side means; "Bye" for a real draw. */
+  emptyLabel?: string;
 }) {
   const slots = Math.max(1, Math.floor(size / 2));
   const unplaced = unplacedTeams(pool, value);
@@ -113,7 +123,7 @@ export function BracketSeedEditor({
                       value={pair.home_team_id ?? ""}
                       onChange={(e) => setSide(order, "home_team_id", e.target.value)}
                       className="h-9 min-w-0 flex-1"
-                      aria-label={`Tim pertama pertandingan ${order + 1}`}
+                      aria-label={`${entityLabel} pertama pertandingan ${order + 1}`}
                     >
                       <option value="">—</option>
                       {options(pair.away_team_id)}
@@ -123,9 +133,9 @@ export function BracketSeedEditor({
                       value={pair.away_team_id ?? ""}
                       onChange={(e) => setSide(order, "away_team_id", e.target.value)}
                       className="h-9 min-w-0 flex-1"
-                      aria-label={`Tim kedua pertandingan ${order + 1}`}
+                      aria-label={`${entityLabel} kedua pertandingan ${order + 1}`}
                     >
-                      <option value="">Bye</option>
+                      <option value="">{emptyLabel}</option>
                       {options(pair.home_team_id)}
                     </Select>
                   </div>
@@ -156,8 +166,8 @@ export function BracketSeedEditor({
 
           {unplaced.length > 0 && (
             <p className={dialogConsequences.danger}>
-              {unplaced.length} tim belum ditempatkan: {unplaced.map((t) => t.name).join(", ")}.
-              Semua tim harus punya slot sebelum bracket dibuat.
+              {unplaced.length} {entityLabel.toLowerCase()} belum ditempatkan:{" "}
+              {unplaced.map((t) => t.name).join(", ")}. Semua harus punya slot sebelum disimpan.
             </p>
           )}
 

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { getCatalog } from "@/lib/api/catalog";
-import type { Catalog, CatalogOption, SportDef } from "@/types/api";
+import type { Catalog, CatalogOption, SportDef, StandingsContext } from "@/types/api";
 
 const EMPTY: Catalog = {
   sports: [],
@@ -58,6 +58,21 @@ export function useCatalog() {
 
     formatLabel: (key: string | null | undefined) => label(catalog.tournament_formats, key),
     tiebreakerLabel: (key: string | null | undefined) => label(catalog.tiebreakers, key),
+
+    /**
+     * The tiebreakers that make sense for a standings shape, in catalog order —
+     * which is also their default priority. A row without `applies_to` fits
+     * every shape (head to head, undian); the rest belong to one sport family,
+     * so a badminton event is never offered "Selisih Gol".
+     *
+     * Mirrors Catalog::tiebreakerKeys() on the API.
+     */
+    tiebreakersFor: (context: StandingsContext): CatalogOption[] =>
+      catalog.tiebreakers.filter((t) => {
+        const scope = t.meta?.applies_to;
+        return !Array.isArray(scope) || scope.length === 0 || scope.includes(context);
+      }),
+
     drawMethodLabel: (key: string | null | undefined) => label(catalog.draw_methods, key),
     roundLabel: (key: string | null | undefined) => label(catalog.knockout_rounds, key),
     sponsorTierLabel: (key: string | null | undefined) => label(catalog.sponsor_tiers, key),

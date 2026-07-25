@@ -17,11 +17,22 @@ class Engines
     /** Scheduling/standings engines, keyed to the branches in MatchController. */
     public const FORMATS = ['league', 'knockout_single', 'knockout_double', 'hybrid'];
 
-    /** Comparators implemented by StandingService::compareBy(). */
+    /**
+     * Comparators implemented by StandingService::compareBy().
+     *
+     * Several tiebreaker rows may share one of these — "Selisih Gol" and
+     * "Selisih Game" are both `goal_difference`, only the word for a match
+     * score differs — exactly like formats sharing an engine.
+     */
     public const TIEBREAKERS = [
         'head_to_head',
         'goal_difference',
         'goals_scored',
+        'set_difference',
+        'point_difference',
+        // The name `point_difference` used to carry before it covered plain set
+        // categories as well. Kept so rows seeded earlier still validate.
+        'rubber_points',
         'fair_play',
         'drawing_lots',
     ];

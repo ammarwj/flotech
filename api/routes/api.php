@@ -221,9 +221,17 @@ Route::prefix('v1')->group(function () {
             // since each category (U17, Woman, …) runs its own format.
             Route::post('events/{event}/categories/{category}/schedule', [MatchController::class, 'generate']);
             Route::post('events/{event}/categories/{category}/draw', [MatchController::class, 'drawGroups']);
+            // The bracket drawn in slots ("Juara Grup A" v "Runner-up Grup B")
+            // before the groups finish; POST knockout below activates it.
             Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
+            Route::put('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'saveKnockoutPlan']);
+            Route::delete('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'destroyKnockoutPlan']);
             Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
             Route::delete('events/{event}/categories/{category}/knockout', [MatchController::class, 'destroyKnockout']);
+            // Redraw a knockout bracket in place — same fixtures, same kickoffs,
+            // new positions. Generation deals the field out in name order, so
+            // this is the only real draw a knockout category ever gets.
+            Route::post('events/{event}/categories/{category}/bracket/shuffle', [MatchController::class, 'shuffleBracket']);
             Route::get('events/{event}/categories/{category}/matches', [MatchController::class, 'index']);
             // Manual fixture: organizers who already have their own schedule.
             Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);

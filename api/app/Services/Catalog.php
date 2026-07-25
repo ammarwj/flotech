@@ -251,6 +251,42 @@ class Catalog
         return self::option('tournament_format', $format)['meta']['defaults'] ?? [];
     }
 
+    /**
+     * The comparator a tiebreaker runs. A tiebreaker is a *preset*: "Selisih
+     * Gol" and "Selisih Game" both compare the match score, they just name it
+     * differently. Falls back to the key itself, so the built-in tiebreakers
+     * keep working even if the row is missing.
+     */
+    public static function comparatorOf(?string $key): ?string
+    {
+        return self::option('tiebreaker', $key)['meta']['comparator'] ?? $key;
+    }
+
+    /**
+     * Tiebreaker keys that make sense for a standings context (goal | set |
+     * rubber), in catalog order — which is also their default priority.
+     *
+     * A row without `applies_to` fits every context (head to head, undian).
+     * Passing no context returns the lot, which is what validation wants: the
+     * request being validated doesn't know the sport yet.
+     *
+     * @return array<int, string>
+     */
+    public static function tiebreakerKeys(?string $context = null): array
+    {
+        $keys = [];
+
+        foreach (self::options('tiebreaker') as $option) {
+            $scope = $option['meta']['applies_to'] ?? [];
+
+            if ($context === null || $scope === [] || in_array($context, $scope, true)) {
+                $keys[] = $option['key'];
+            }
+        }
+
+        return $keys;
+    }
+
     /** Teams held by a knockout entry round (round_of_16 → 16). */
     public static function roundSize(?string $key): ?int
     {

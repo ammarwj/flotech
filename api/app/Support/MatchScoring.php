@@ -66,6 +66,26 @@ class MatchScoring
     }
 
     /**
+     * Every point scored across the sets of one match. "3-0" says nothing about
+     * how close the sets were, and this is what does.
+     *
+     * @param  array<int, array{home: int, away: int}>  $sets
+     * @return array{home: int, away: int}
+     */
+    public static function setPoints(array $sets): array
+    {
+        $home = 0;
+        $away = 0;
+
+        foreach ($sets as $set) {
+            $home += (int) $set['home'];
+            $away += (int) $set['away'];
+        }
+
+        return ['home' => $home, 'away' => $away];
+    }
+
+    /**
      * Every point scored across every set of every partai. Two squads can split
      * a tie 3-3, and this is what separates them in the table.
      *
@@ -78,10 +98,30 @@ class MatchScoring
         $away = 0;
 
         foreach ($rubbers as $rubber) {
-            foreach ($rubber->sets ?? [] as $set) {
-                $home += (int) $set['home'];
-                $away += (int) $set['away'];
-            }
+            $points = self::setPoints($rubber->sets ?? []);
+            $home += $points['home'];
+            $away += $points['away'];
+        }
+
+        return ['home' => $home, 'away' => $away];
+    }
+
+    /**
+     * Sets won by each side across every partai of a tie — the middle tier of a
+     * squad table, between the partai won and the raw points.
+     *
+     * @param  iterable<MatchRubber>  $rubbers
+     * @return array{home: int, away: int}
+     */
+    public static function rubberSets(iterable $rubbers): array
+    {
+        $home = 0;
+        $away = 0;
+
+        foreach ($rubbers as $rubber) {
+            $won = self::setsWon($rubber->sets ?? []);
+            $home += $won['home'];
+            $away += $won['away'];
         }
 
         return ['home' => $home, 'away' => $away];

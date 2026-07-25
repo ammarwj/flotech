@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\ConfigOption;
+use App\Models\EventCategory;
 use App\Support\Engines;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -37,6 +38,11 @@ class ConfigOptionRequest extends FormRequest
             'meta' => ['nullable', 'array'],
             'meta.engine' => ['nullable', Rule::in(Engines::FORMATS)],
             'meta.comparator' => ['nullable', Rule::in(Engines::TIEBREAKERS)],
+            // Which standings shapes a tiebreaker belongs to. Absent = all of
+            // them; the rule has to exist or validated() would drop the key and
+            // every edit would quietly widen the row to every sport.
+            'meta.applies_to' => ['nullable', 'array'],
+            'meta.applies_to.*' => [Rule::in(EventCategory::STANDINGS_CONTEXTS)],
             'meta.strategy' => ['nullable', Rule::in(Engines::DRAW_METHODS)],
             'meta.size' => ['nullable', 'integer', 'min:2', 'max:128'],
             'meta.defaults' => ['nullable', 'array'],

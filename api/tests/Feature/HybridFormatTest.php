@@ -271,7 +271,8 @@ class HybridFormatTest extends TestCase
             ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/schedule")
             ->assertCreated();
 
-        // Not a single result yet — the plan still knows who meets whom.
+        // Not a single result yet — the plan already knows the *slots* that
+        // will be fought over, and who currently holds each of them.
         $plan = $this->actingAs($user, 'api')
             ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$event->categories->first()->id}/knockout-plan")
             ->assertOk()
@@ -282,14 +283,21 @@ class HybridFormatTest extends TestCase
         $this->assertSame(12, $plan['group_matches_pending']);
         $this->assertCount(2, $plan['ties']);
 
-        // Semifinals pair a group winner against the other group's runner-up.
-        $labels = array_map(
-            fn ($tie) => [$tie['home']['label'], $tie['away']['label']],
-            $plan['ties'],
+        // The four places that reach the semifinals, named and keyed.
+        $this->assertSame(
+            ['Juara Grup A', 'Juara Grup B', 'Runner-up Grup A', 'Runner-up Grup B'],
+            array_column($plan['slots'], 'label'),
         );
+        $this->assertSame(['A1', 'B1', 'A2', 'B2'], array_column($plan['slots'], 'key'));
 
-        $this->assertContains(['Juara Grup A', 'Runner-up Grup B'], $labels);
-        $this->assertContains(['Juara Grup B', 'Runner-up Grup A'], $labels);
+        // Nobody has drawn the bracket, so no tie claims a pairing. The
+        // automatic seeding is not shown here on purpose — a suggestion sitting
+        // in the slots reads as a decision already taken.
+        $this->assertSame('auto', $plan['source']);
+        foreach ($plan['ties'] as $tie) {
+            $this->assertNull($tie['home']);
+            $this->assertNull($tie['away']);
+        }
     }
 
     public function test_the_plan_tells_an_unscheduled_group_stage_from_a_finished_one(): void

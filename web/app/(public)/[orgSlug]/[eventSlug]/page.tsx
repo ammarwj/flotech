@@ -513,7 +513,7 @@ export default function PublicEventPage() {
               categorySlug={selectedCategory!.slug}
               engine={selectedCategory!.engine}
               bracketConfig={selectedCategory!.bracket_config}
-              usesRubbers={selectedCategory!.uses_rubbers}
+              context={selectedCategory!.standings_context}
               activeTab={activeTab}
             />
           )}

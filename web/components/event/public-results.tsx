@@ -11,7 +11,7 @@ import {
   phaseLabel,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
-import { scoreColumnLegend } from "@/lib/scoring";
+import { standingsLegend } from "@/lib/scoring";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
@@ -23,7 +23,7 @@ import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
 import { PublicMatchCard } from "./public-match-card";
 import { MatchDetailDialog } from "./match-detail-dialog";
-import type { BracketConfig, FormatEngine, Match } from "@/types/api";
+import type { BracketConfig, FormatEngine, Match, StandingsContext } from "@/types/api";
 
 export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
 
@@ -39,7 +39,7 @@ export function PublicResults({
   categorySlug,
   engine,
   bracketConfig,
-  usesRubbers,
+  context,
   activeTab,
 }: {
   orgSlug: string;
@@ -49,8 +49,8 @@ export function PublicResults({
   /** The engine the category's format runs on — decides which panels make sense. */
   engine: FormatEngine | null;
   bracketConfig?: BracketConfig | null;
-  /** Squad ties: the table counts partai, not goals. */
-  usesRubbers?: boolean;
+  /** The standings shape: counts gol, game, or partai. */
+  context?: StandingsContext;
   activeTab: ResultsTab;
 }) {
   const catalog = useCatalog();
@@ -59,7 +59,8 @@ export function PublicResults({
   const isHybrid = isHybridFormat(engine);
   const config = hybridConfig(
     bracketConfig,
-    catalog.tiebreakers.map((t) => t.key),
+    catalog.tiebreakersFor(context ?? "goal").map((t) => t.key),
+    context,
   );
   const [dateKey, setDateKey] = useState<string | null>(null);
   const tz = useEventTimezone();
@@ -108,6 +109,9 @@ export function PublicResults({
       <div className="container">
         {activeTab === "bracket" ? (
           isHybrid && knockoutMatches(matches).length === 0 ? (
+            // The planned draw stays inside the dashboard: it is the organizer's
+            // working document, and publishing it commits them to pairings they
+            // may still rearrange.
             <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
               Bracket knockout dibuat setelah fase grup selesai.
             </div>
@@ -148,7 +152,7 @@ export function PublicResults({
               <GroupStandings
                 standings={standingsQuery.data ?? []}
                 config={config}
-                category={{ uses_rubbers: !!usesRubbers }}
+                context={context}
               />
             ) : (
               // Same as the organizer view: a standalone league has no next
@@ -156,13 +160,13 @@ export function PublicResults({
               <StandingsTable
                 standings={standingsQuery.data ?? []}
                 highlight={1}
-                category={{ uses_rubbers: !!usesRubbers }}
+                context={context}
               />
             )}
             {(standingsQuery.data?.length ?? 0) > 0 && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {!isHybrid && "Baris hijau = juara klasemen. "}
-                {scoreColumnLegend({ uses_rubbers: !!usesRubbers })}
+                {standingsLegend(context ?? "goal")}
               </p>
             )}
           </div>

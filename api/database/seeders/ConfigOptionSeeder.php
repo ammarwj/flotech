@@ -25,19 +25,42 @@ class ConfigOptionSeeder extends Seeder
             ['group' => 'tournament_format', 'key' => 'hybrid', 'label' => 'Grup + Knockout (Hybrid)',
                 'meta' => ['engine' => 'hybrid']],
 
-            // ---- Tiebreakers (meta.comparator) ----
+            // ---- Tiebreakers (meta.comparator + meta.applies_to) ----
+            //
+            // A tiebreaker is a *preset* over a comparator, the same way a format
+            // is a preset over an engine: "Selisih Gol" and "Selisih Game" both
+            // run `goal_difference`, because a match score means gol in football
+            // and game menang in badminton. That is also why each row names the
+            // standings contexts it belongs in (`applies_to`, empty = all of
+            // them) — an event only ever offers the rows that fit its sport.
             ['group' => 'tiebreaker', 'key' => 'head_to_head', 'label' => 'Head to Head',
                 'meta' => ['comparator' => 'head_to_head']],
             ['group' => 'tiebreaker', 'key' => 'goal_difference', 'label' => 'Selisih Gol',
-                'meta' => ['comparator' => 'goal_difference']],
+                'meta' => ['comparator' => 'goal_difference', 'applies_to' => ['goal']]],
             ['group' => 'tiebreaker', 'key' => 'goals_scored', 'label' => 'Gol Memasukkan',
-                'meta' => ['comparator' => 'goals_scored']],
-            // Squad ties (badminton beregu & co): aggregate set points, which is
-            // what separates two squads that split their ties.
-            ['group' => 'tiebreaker', 'key' => 'rubber_points', 'label' => 'Selisih Poin Partai',
-                'meta' => ['comparator' => 'rubber_points']],
+                'meta' => ['comparator' => 'goals_scored', 'applies_to' => ['goal']]],
+            // Racket singles/doubles: the match score is games won.
+            ['group' => 'tiebreaker', 'key' => 'game_difference', 'label' => 'Selisih Game',
+                'meta' => ['comparator' => 'goal_difference', 'applies_to' => ['set']]],
+            // Squad ties: the match score is partai won, and the games sit a
+            // tier below it.
+            ['group' => 'tiebreaker', 'key' => 'rubber_difference', 'label' => 'Selisih Partai',
+                'meta' => ['comparator' => 'goal_difference', 'applies_to' => ['rubber']]],
+            ['group' => 'tiebreaker', 'key' => 'rubber_games', 'label' => 'Selisih Game',
+                'meta' => ['comparator' => 'set_difference', 'applies_to' => ['rubber']]],
+            // Aggregate points across every set — what separates two entrants
+            // that split their games (or, for a squad, their ties).
+            //
+            // The key still reads `rubber_points` although it now covers plain
+            // set categories too: renaming it would strand every bracket_config
+            // that already stores it, since HybridConfig::fromArray() drops keys
+            // the catalog no longer knows.
+            ['group' => 'tiebreaker', 'key' => 'rubber_points', 'label' => 'Selisih Skor',
+                'meta' => ['comparator' => 'point_difference', 'applies_to' => ['set', 'rubber']]],
+            ['group' => 'tiebreaker', 'key' => 'games_won', 'label' => 'Game Menang',
+                'meta' => ['comparator' => 'goals_scored', 'applies_to' => ['set']]],
             ['group' => 'tiebreaker', 'key' => 'fair_play', 'label' => 'Fair Play',
-                'meta' => ['comparator' => 'fair_play']],
+                'meta' => ['comparator' => 'fair_play', 'applies_to' => ['goal']]],
             ['group' => 'tiebreaker', 'key' => 'drawing_lots', 'label' => 'Undian',
                 'meta' => ['comparator' => 'drawing_lots']],
 

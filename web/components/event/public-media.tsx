@@ -10,7 +10,7 @@ import type { EventPhoto, EventSponsor } from "@/types/api";
  * Logo size by rank: the first tier the admin configured (typically the host)
  * gets the biggest badge, the rest step down.
  */
-const TIER_HEIGHTS = ["h-16", "h-14", "h-11", "h-11"];
+const TIER_HEIGHTS = ["h-22", "h-18", "h-14", "h-14"];
 
 /** Partner logos, grouped by tier, in the order the admin arranged them. */
 export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
@@ -20,7 +20,7 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
 
   return (
     <>
-      <div className="esection-title">
+      <div className="esection-title justify-center">
         <h2 className="section-title" style={{ margin: 0 }}>
           Sponsor &amp; Partner
         </h2>
@@ -35,10 +35,10 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
 
           return (
             <div key={tier.key}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {tier.label}
               </p>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-3">
                 {list.map((s) => {
                   const logo = (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -46,14 +46,14 @@ export function SponsorStrip({ sponsors }: { sponsors: EventSponsor[] }) {
                       src={s.logo_url}
                       alt={s.name}
                       title={s.name}
-                      className={`${height} w-auto max-w-[160px] object-contain`}
+                      className={`${height} w-auto max-w-[220px] object-contain`}
                     />
                   );
 
                   return (
                     <span
                       key={s.id}
-                      className="grid place-items-center rounded-lg border border-border bg-[var(--surface)] px-4 py-3"
+                      className="grid place-items-center rounded-lg border border-border bg-[var(--surface)] px-3 py-2"
                     >
                       {s.website_url ? (
                         <a href={s.website_url} target="_blank" rel="noopener noreferrer sponsored">

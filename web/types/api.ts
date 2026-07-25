@@ -158,6 +158,16 @@ export type DrawMethod = string;
 /** The engines the backend can actually run a format on. */
 export type FormatEngine = "league" | "knockout_single" | "knockout_double" | "hybrid";
 
+/**
+ * What shape a category's table has — and so which columns it shows, which
+ * tiebreakers it offers, and what its points default to.
+ *
+ * `goal` counts gol, `set` counts game menang with the points behind them
+ * (badminton tunggal/ganda, voli), `rubber` counts partai with the games and
+ * points behind those (badminton beregu).
+ */
+export type StandingsContext = "goal" | "set" | "rubber";
+
 export interface SportStatDef {
   key: string;
   label: string;
@@ -319,6 +329,11 @@ export interface MatchRubber {
 
 /** A place in the knockout bracket, e.g. "Juara Grup A" — and who holds it now. */
 export interface KnockoutSlot {
+  /**
+   * Stable identity of the place itself: "A1", "B2", "BR1". This is what a
+   * saved plan pairs up, so it survives the standings moving underneath it.
+   */
+  key: string;
   label: string;
   group: string | null;
   place: number;
@@ -337,7 +352,26 @@ export interface KnockoutPlan {
    */
   group_matches_total: number;
   group_matches_pending: number;
-  ties: { order: number; home: KnockoutSlot | null; away: KnockoutSlot | null }[];
+  /** "manual" once the organizer saved their own draw; "auto" = seeded from the standings. */
+  source: "manual" | "auto";
+  /**
+   * A saved draw that outlived the qualification rules it was made against —
+   * it names slots that no longer exist. Reported, never silently repaired:
+   * only the organizer knows where those pairings should go now.
+   */
+  stale: boolean;
+  /** Qualifier slots the saved draw places nowhere; blocks activation. */
+  unplaced_slots: KnockoutSlot[];
+  /** Every qualifier slot, in seed order — the pool the plan editor draws from. */
+  slots: KnockoutSlot[];
+  ties: {
+    order: number;
+    home: KnockoutSlot | null;
+    away: KnockoutSlot | null;
+    /** Kickoff/court booked for this tie before its teams were known. */
+    scheduled_at: string | null;
+    venue: string | null;
+  }[];
 }
 
 export interface Standing {
@@ -349,9 +383,18 @@ export interface Standing {
   won: number;
   drawn: number;
   lost: number;
+  /** The match score, whatever the sport calls it: gol, game, or partai. */
   goals_for: number;
   goals_against: number;
   goal_diff: number;
+  /** Games behind a squad tie. Zero elsewhere — see StandingsContext. */
+  sets_for: number;
+  sets_against: number;
+  set_diff: number;
+  /** Raw points across every set played. Zero for a goal sport. */
+  points_for: number;
+  points_against: number;
+  points_diff: number;
   points: number;
   /** Disciplinary points: 1 per yellow, 3 per red. Lower is better. */
   fair_play: number;
@@ -442,6 +485,8 @@ export interface EventCategory {
   rubber_format: RubberFormatRow[] | null;
   /** Derived server-side — needs the sport, which lives on the event. */
   uses_rubbers: boolean;
+  /** Which shape the table takes. Derived server-side for the same reason. */
+  standings_context: StandingsContext;
   /** Players an entrant has: 1 tunggal, 2 ganda, null for a squad. */
   roster_size: number | null;
   tournament_format: TournamentFormat;

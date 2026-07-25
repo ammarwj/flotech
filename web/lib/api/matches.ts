@@ -151,6 +151,49 @@ export async function getKnockoutPlan(
   return data.data;
 }
 
+/**
+ * One planned first-round tie, in *slots* rather than teams: "A1" v "B2". A null
+ * away side is a bye, exactly as in {@link SeedPair}.
+ */
+export interface PlannedTie {
+  order: number;
+  home: string | null;
+  away: string | null;
+  /** Kickoff booked for this tie, as an offset-bearing ISO instant. */
+  scheduled_at?: string | null;
+  venue?: string | null;
+}
+
+/**
+ * Save the organizer's own first-round draw, decided before the groups finish.
+ * Every qualifier slot must be placed somewhere or the backend refuses it — an
+ * empty *side* is a bye, an unplaced *slot* is a team that never plays.
+ */
+export async function saveKnockoutPlan(
+  orgId: string,
+  eventId: string,
+  categoryId: string,
+  ties: PlannedTie[]
+): Promise<KnockoutPlan> {
+  const { data } = await apiClient.put<ApiEnvelope<KnockoutPlan>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout-plan`,
+    { ties }
+  );
+  return data.data;
+}
+
+/** Drop the saved draw, back to automatic seeding from the standings. */
+export async function resetKnockoutPlan(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<KnockoutPlan> {
+  const { data } = await apiClient.delete<ApiEnvelope<KnockoutPlan>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout-plan`
+  );
+  return data.data;
+}
+
 /** Build the knockout bracket of a hybrid category from the group qualifiers. */
 export async function generateKnockout(
   orgId: string,
@@ -161,6 +204,24 @@ export async function generateKnockout(
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
     `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout`,
     seeding ?? {}
+  );
+  return data.data;
+}
+
+/**
+ * Redraw the first round of a knockout bracket: same fixtures, same kickoffs
+ * and courts, new positions — including who receives a bye.
+ *
+ * Single elimination only, and only before anything has been played; a hybrid
+ * bracket follows the group standings and has nothing to randomise.
+ */
+export async function shuffleBracket(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Match[]> {
+  const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/bracket/shuffle`
   );
   return data.data;
 }

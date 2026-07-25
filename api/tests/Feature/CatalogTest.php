@@ -47,7 +47,7 @@ class CatalogTest extends TestCase
         );
 
         $this->assertCount(4, $data['tournament_formats']);
-        $this->assertCount(6, $data['tiebreakers']);
+        $this->assertCount(10, $data['tiebreakers']);
         $this->assertCount(4, $data['sponsor_tiers']);
         $this->assertSame('hybrid', collect($data['tournament_formats'])->firstWhere('key', 'hybrid')['meta']['engine']);
     }

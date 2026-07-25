@@ -12,10 +12,16 @@ use Illuminate\Support\Facades\DB;
 /**
  * Computes the table for a category from its confirmed results.
  *
- * Points and tiebreakers come from the category's format config (`bracket_config`),
- * defaulting to 3/1/0 and the usual head-to-head → goal difference → goals
- * scored → fair play → drawing lots order. Hybrid categories are ranked inside
- * each group; every other format is one table.
+ * Points and tiebreakers come from the category's format config
+ * (`bracket_config`), whose defaults follow the standings context — football
+ * gets 3/1/0 and head-to-head → goal difference → goals scored, badminton gets
+ * 1/0 and head-to-head → selisih game → selisih skor. Hybrid categories are
+ * ranked inside each group; every other format is one table.
+ *
+ * Every row carries three tiers of for/against, and the context says what they
+ * are called: `goals_*` is the match score (gol, game menang, or partai
+ * menang), `sets_*` the games behind a squad tie, `points_*` the raw points
+ * behind the sets. A tier a context has no use for stays zero.
  */
 class StandingService
 {
@@ -59,7 +65,12 @@ class StandingService
      * places — best runners-up / best thirds — are ranked across groups, because
      * that is what those places mean.
      *
-     * @return array<int, array{label: string, group: string|null, place: int, team: array<string, mixed>|null}>
+     * Every slot also carries a stable `key` — "A1", "B2", "BR1" — which is what
+     * a saved knockout plan pairs up. It has to survive a reshuffle of the list
+     * (a changed `best_runners_up` moves the extras around), so it is derived
+     * from what the slot *is*, never from its position.
+     *
+     * @return array<int, array{key: string, label: string, group: string|null, place: int, team: array<string, mixed>|null}>
      */
     public function qualifierSlots(EventCategory $category): array
     {
@@ -77,6 +88,7 @@ class StandingService
         for ($place = 1; $place <= $config->topPerGroup; $place++) {
             foreach ($config->groupNames() as $group) {
                 $slots[] = [
+                    'key' => $group.$place,
                     'label' => $this->placeLabel($place)." Grup {$group}",
                     'group' => $group,
                     'place' => $place,
@@ -87,8 +99,8 @@ class StandingService
 
         // Extra places: the best teams from the first non-qualifying rank.
         $extras = [
-            2 => ['take' => $config->bestRunnersUp, 'label' => 'Best Runner-up'],
-            3 => ['take' => $config->bestThirds, 'label' => 'Best Third Place'],
+            2 => ['take' => $config->bestRunnersUp, 'label' => 'Best Runner-up', 'key' => 'BR'],
+            3 => ['take' => $config->bestThirds, 'label' => 'Best Third Place', 'key' => 'BT'],
         ];
 
         foreach ($extras as $place => $extra) {
@@ -107,6 +119,7 @@ class StandingService
             for ($i = 0; $i < $extra['take']; $i++) {
                 $row = $best[$i] ?? null;
                 $slots[] = [
+                    'key' => $extra['key'].($i + 1),
                     'label' => $extra['label'].' '.($i + 1),
                     'group' => null, // could come from any group — no clash to avoid
                     'place' => $place,
@@ -176,13 +189,23 @@ class StandingService
                 'won' => 0,
                 'drawn' => 0,
                 'lost' => 0,
+                // The match score, whatever the sport calls it: gol, game
+                // menang (racket singles/doubles), or partai menang (squad tie).
                 'goals_for' => 0,
                 'goals_against' => 0,
                 'goal_diff' => 0,
-                // Set points across every partai, for squad ties only — two
-                // squads can split a tie 3-3 and this is what separates them.
+                // Games won behind a squad tie — the tier between its partai and
+                // its raw points. Zero elsewhere: for a singles category the
+                // games *are* the match score above.
+                'sets_for' => 0,
+                'sets_against' => 0,
+                'set_diff' => 0,
+                // Raw points across every set played. Two entrants can split
+                // their games (or, for a squad, their ties) and this is what
+                // separates them.
                 'points_for' => 0,
                 'points_against' => 0,
+                'points_diff' => 0,
                 'points' => 0,
                 'fair_play' => 0,
             ];
@@ -203,42 +226,65 @@ class StandingService
             }
         }
 
-        foreach ($this->rubberPoints($category) as $teamId => $totals) {
+        foreach ($this->scoreDetail($category) as $teamId => $totals) {
             if (isset($rows[$teamId])) {
-                $rows[$teamId]['points_for'] = $totals['for'];
-                $rows[$teamId]['points_against'] = $totals['against'];
+                $rows[$teamId] = [...$rows[$teamId], ...$totals];
             }
+        }
+
+        foreach ($rows as &$row) {
+            $row['set_diff'] = $row['sets_for'] - $row['sets_against'];
+            $row['points_diff'] = $row['points_for'] - $row['points_against'];
         }
 
         return $rows;
     }
 
     /**
-     * Every set point a squad scored and conceded across the partai of its ties.
+     * The tiers below the match score: games won, and the points behind them.
      *
-     * Read straight off match_rubbers rather than from the tie scoreline, since
-     * "3-0" says nothing about how close the partai were — which is the entire
-     * point of the tiebreaker.
+     * Read straight off the sets rather than from the scoreline, since "3-0"
+     * says nothing about how close the games were — which is the entire point
+     * of the tiebreakers built on this.
      *
-     * @return array<string, array{for: int, against: int}> team id => totals
+     * A goal sport has neither tier, and a singles/doubles category has no
+     * separate games tier: its match score already *is* the games won.
+     *
+     * @return array<string, array{sets_for?: int, sets_against?: int, points_for: int, points_against: int}>
+     *                                                                                                        team id => totals
      */
-    protected function rubberPoints(EventCategory $category): array
+    protected function scoreDetail(EventCategory $category): array
     {
-        if (! $category->usesRubbers()) {
+        $context = $category->standingsContext();
+
+        if ($context === 'goal') {
             return [];
         }
 
-        $matches = $this->countingMatches($category)->load('rubbers');
+        $rubbers = $context === 'rubber';
+        $matches = $this->countingMatches($category);
+
+        if ($rubbers) {
+            $matches->load('rubbers');
+        }
+
         $out = [];
 
         foreach ($matches as $match) {
-            $tally = MatchScoring::rubberPoints($match->rubbers);
+            $points = $rubbers
+                ? MatchScoring::rubberPoints($match->rubbers)
+                : MatchScoring::setPoints($match->sets ?? []);
+            $sets = $rubbers
+                ? MatchScoring::rubberSets($match->rubbers)
+                : ['home' => 0, 'away' => 0];
 
             foreach (['home' => 'away', 'away' => 'home'] as $side => $other) {
                 $teamId = $match->{"{$side}_team_id"};
 
-                $out[$teamId]['for'] = ($out[$teamId]['for'] ?? 0) + $tally[$side];
-                $out[$teamId]['against'] = ($out[$teamId]['against'] ?? 0) + $tally[$other];
+                $out[$teamId]['points_for'] = ($out[$teamId]['points_for'] ?? 0) + $points[$side];
+                $out[$teamId]['points_against'] = ($out[$teamId]['points_against'] ?? 0) + $points[$other];
+                $out[$teamId]['sets_for'] = ($out[$teamId]['sets_for'] ?? 0) + $sets[$side];
+                $out[$teamId]['sets_against'] = ($out[$teamId]['sets_against'] ?? 0) + $sets[$other];
             }
         }
 
@@ -353,6 +399,10 @@ class StandingService
      * One tiebreaker, applied to a pair of tied teams. Returns <0 when $a ranks
      * ahead of $b.
      *
+     * `$rule` is the configured tiebreaker *key*, which is a preset over one of
+     * these comparators — "Selisih Gol" and "Selisih Game" both compare the
+     * match score, they only differ in what the sport calls it.
+     *
      * @param  array<string, mixed>  $a
      * @param  array<string, mixed>  $b
      * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
@@ -362,7 +412,7 @@ class StandingService
         $idA = $a['team']['id'];
         $idB = $b['team']['id'];
 
-        return match ($rule) {
+        return match (Catalog::comparatorOf($rule)) {
             // Only the matches the two played against each other: points, then
             // goal difference across those meetings.
             'head_to_head' => [
@@ -374,8 +424,11 @@ class StandingService
             ],
             'goal_difference' => $b['goal_diff'] <=> $a['goal_diff'],
             'goals_scored' => $b['goals_for'] <=> $a['goals_for'],
-            // Squad ties: the aggregate set points behind the partai count.
-            'rubber_points' => ($b['points_for'] - $b['points_against']) <=> ($a['points_for'] - $a['points_against']),
+            // Squad ties only: the games won behind the partai count.
+            'set_difference' => $b['set_diff'] <=> $a['set_diff'],
+            // The aggregate points behind the sets. `rubber_points` is the name
+            // this comparator carried while squad ties were its only user.
+            'point_difference', 'rubber_points' => $b['points_diff'] <=> $a['points_diff'],
             // Fewer disciplinary points ranks higher.
             'fair_play' => $a['fair_play'] <=> $b['fair_play'],
             // A stable "draw": random-looking but the same every time it's shown.

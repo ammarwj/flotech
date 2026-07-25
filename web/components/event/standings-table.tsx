@@ -1,5 +1,5 @@
-import { scoreColumnLabels } from "@/lib/scoring";
-import type { EventCategory, Standing } from "@/types/api";
+import { standingsColumns } from "@/lib/scoring";
+import type { StandingsContext, Standing } from "@/types/api";
 
 /**
  * League table. `highlight` marks the top N rows in green.
@@ -8,18 +8,21 @@ import type { EventCategory, Standing } from "@/types/api";
  * group it's "qualifies for the knockout", in a standalone league there is no
  * next stage to qualify for (generateKnockout() is hybrid-only, 422 otherwise)
  * so the only thing worth marking is the leader.
+ *
+ * Which columns sit between "Tim" and "Poin" is `context`'s business — see
+ * standingsColumns(). Nothing about a sport is decided here.
  */
 export function StandingsTable({
   standings,
   highlight = 0,
-  category,
+  context = "goal",
 }: {
   standings: Standing[];
   highlight?: number;
-  /** Decides whether the for/against columns count goals or partai. */
-  category?: Pick<EventCategory, "uses_rubbers"> | null;
+  /** The table's shape: counts gol, game, or partai. */
+  context?: StandingsContext;
 }) {
-  const cols = scoreColumnLabels(category);
+  const columns = standingsColumns(context);
 
   if (standings.length === 0) {
     return (
@@ -36,9 +39,9 @@ export function StandingsTable({
           <tr className="bg-[var(--surface-2)] text-xs uppercase tracking-wide text-muted-foreground">
             <th className="w-10 px-2 py-3 text-center font-semibold">#</th>
             <th className="px-3 py-3 text-left font-semibold">Tim</th>
-            {["M", "M", "S", "K", cols.for, cols.against, cols.diff].map((h, i) => (
-              <th key={i} className="px-2 py-3 text-center font-semibold">
-                {h}
+            {columns.map((c) => (
+              <th key={c.key} className="whitespace-nowrap px-2 py-3 text-center font-semibold">
+                {c.short}
               </th>
             ))}
             <th className="px-2 py-3 text-center font-semibold text-foreground">Poin</th>
@@ -58,13 +61,11 @@ export function StandingsTable({
                 {s.rank}
               </td>
               <td className="px-3 py-3 font-semibold">{s.team.name}</td>
-              <td className="px-2 py-3 text-center">{s.played}</td>
-              <td className="px-2 py-3 text-center">{s.won}</td>
-              <td className="px-2 py-3 text-center">{s.drawn}</td>
-              <td className="px-2 py-3 text-center">{s.lost}</td>
-              <td className="px-2 py-3 text-center">{s.goals_for}</td>
-              <td className="px-2 py-3 text-center">{s.goals_against}</td>
-              <td className="px-2 py-3 text-center">{s.goal_diff > 0 ? `+${s.goal_diff}` : s.goal_diff}</td>
+              {columns.map((c) => (
+                <td key={c.key} className="whitespace-nowrap px-2 py-3 text-center">
+                  {c.cell(s)}
+                </td>
+              ))}
               <td className="px-2 py-3 text-center font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
                 {s.points}
               </td>

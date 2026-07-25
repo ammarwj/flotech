@@ -536,6 +536,136 @@ class ScheduleService
     }
 
     /**
+     * Seat a pair in a bracket slot, dropping any result it held. A lone team is
+     * a walkover, written exactly as generation writes one, and goes straight
+     * through to the next round.
+     *
+     * The single copy of the bye convention. Two callers write into first-round
+     * slots — the slot editor (`MatchController::updateTeams`) and the redraw
+     * below — and a second copy of "lone team = finished + confirmed + advanced"
+     * is the kind that drifts and leaves a walkover that never walks over.
+     */
+    public function seatSlot(GameMatch $match, ?string $home, ?string $away): void
+    {
+        $bye = $home !== null && $away === null;
+
+        $match->update([
+            'home_team_id' => $home,
+            'away_team_id' => $away,
+            'home_score' => null,
+            'away_score' => null,
+            'home_penalty' => null,
+            'away_penalty' => null,
+            'sets' => null,
+            'status' => $bye ? 'finished' : 'scheduled',
+            'confirmed_at' => $bye ? now() : null,
+        ]);
+
+        if ($bye) {
+            $this->advanceWinner($match->fresh());
+        }
+    }
+
+    /**
+     * The first-round slots of a category's bracket, in draw order.
+     *
+     * A single-elimination bracket shares `stage null, round 1` with the extra
+     * fixtures of storeManual(), whose order keeps counting past the bracket —
+     * without the cut-off a friendly would be treated as a slot and have its
+     * teams shuffled. The cut-off comes from how tall the bracket is rather than
+     * from the team count, so it stays right when teams are approved or
+     * withdrawn after generation.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, GameMatch>
+     */
+    public function firstRoundSlots(EventCategory $category, ?string $stage = null)
+    {
+        $query = $category->matches()->where('round', 1);
+
+        if ($stage === null) {
+            $query->whereNull('stage')->where('order', '<', $this->bracketSlotCount($category, null));
+        } else {
+            $query->where('stage', $stage);
+        }
+
+        return $query->orderBy('order')->get();
+    }
+
+    /** How many first-round slots a bracket of this height has. */
+    public function bracketSlotCount(EventCategory $category, ?string $stage = null): int
+    {
+        $query = $category->matches();
+
+        $maxRound = (int) ($stage === null
+            ? $query->whereNull('stage')->max('round')
+            : $query->where('stage', $stage)->max('round'));
+
+        return intdiv(2 ** max(1, $maxRound), 2);
+    }
+
+    /**
+     * Redraw the first round: the same teams, the same fixtures, new positions.
+     *
+     * A knockout bracket is generated from `orderBy('name')`, which is an
+     * alphabetical list and not a draw at all. This is the draw — and it works
+     * in place rather than regenerating, so the kickoff times and courts the
+     * organizer already assigned survive it. Slot *shapes* are preserved (a
+     * two-team tie stays a two-team tie, a bye stays a bye) while the occupants
+     * move, so who receives the bye is redrawn along with everything else.
+     *
+     * Later rounds are wiped wholesale rather than walked back through
+     * clearDownstream(): every slot changes, so nothing downstream survives, and
+     * a clean sweep is far easier to prove right than N upward walks.
+     *
+     * @return int teams redrawn
+     */
+    public function reshuffleFirstRound(EventCategory $category, ?string $stage = null): int
+    {
+        $slots = $this->firstRoundSlots($category, $stage);
+
+        $teams = $slots
+            ->flatMap(fn (GameMatch $m) => [$m->home_team_id, $m->away_team_id])
+            ->filter()
+            ->values();
+
+        if ($teams->count() < 2) {
+            return 0;
+        }
+
+        $later = $category->matches()->where('round', '>', 1);
+        $stage === null ? $later->whereNull('stage') : $later->where('stage', $stage);
+
+        $later->update([
+            'home_team_id' => null,
+            'away_team_id' => null,
+            'home_score' => null,
+            'away_score' => null,
+            'home_penalty' => null,
+            'away_penalty' => null,
+            'sets' => null,
+            'status' => 'scheduled',
+            'confirmed_at' => null,
+        ]);
+
+        $drawn = $teams->shuffle()->values();
+        $next = 0;
+
+        foreach ($slots as $slot) {
+            // What the slot held, not what it could hold: an empty slot the
+            // organizer left on purpose stays empty, and a bye stays a bye.
+            $size = ($slot->home_team_id !== null ? 1 : 0) + ($slot->away_team_id !== null ? 1 : 0);
+
+            $this->seatSlot(
+                $slot,
+                $size >= 1 ? $drawn[$next++] : null,
+                $size >= 2 ? $drawn[$next++] : null,
+            );
+        }
+
+        return $drawn->count();
+    }
+
+    /**
      * Propagate the winner of a finished knockout match into the next round's
      * slot. No-op for the final, draws, or undecided matches.
      *

@@ -16,7 +16,13 @@ import {
   type HybridConfig,
 } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
-import type { BracketConfig, DrawMethod, KnockoutRound, Tiebreaker } from "@/types/api";
+import type {
+  BracketConfig,
+  DrawMethod,
+  KnockoutRound,
+  StandingsContext,
+  Tiebreaker,
+} from "@/types/api";
 
 function Sub({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -64,19 +70,29 @@ function NumField({
  * Everything that defines a Group + Knockout event: the group structure, the
  * points, who qualifies, how the bracket starts, how the draw is made, and the
  * tiebreaker order. Writes straight into the event's `bracket_config`.
+ *
+ * The vocabulary follows the sport, never the other way round: `context` picks
+ * which tiebreakers exist ("Selisih Game" for badminton, "Selisih Gol" for
+ * football) and what the points default to.
  */
 export function HybridConfigCard({
   value,
   onChange,
+  context = "goal",
 }: {
   value?: BracketConfig | null;
   onChange: (config: BracketConfig) => void;
+  /** The standings shape this category will be ranked in. */
+  context?: StandingsContext;
 }) {
   const catalog = useCatalog();
   const c = hybridConfig(
     value,
-    catalog.tiebreakers.map((t) => t.key),
+    catalog.tiebreakersFor(context).map((t) => t.key),
+    context,
   );
+  // Nothing to award a draw for when a match is decided on games.
+  const hasDraws = context !== "set";
 
   const set = (patch: Partial<HybridConfig>) => onChange({ ...c, ...patch });
 
@@ -160,7 +176,7 @@ export function HybridConfigCard({
         </Sub>
 
         <Sub title="Poin klasemen">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className={`grid gap-4 ${hasDraws ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             <NumField
               label="Poin menang"
               value={c.points.win}
@@ -168,13 +184,15 @@ export function HybridConfigCard({
               max={10}
               onChange={(win) => set({ points: { ...c.points, win } })}
             />
-            <NumField
-              label="Poin seri"
-              value={c.points.draw}
-              min={0}
-              max={10}
-              onChange={(draw) => set({ points: { ...c.points, draw } })}
-            />
+            {hasDraws && (
+              <NumField
+                label="Poin seri"
+                value={c.points.draw}
+                min={0}
+                max={10}
+                onChange={(draw) => set({ points: { ...c.points, draw } })}
+              />
+            )}
             <NumField
               label="Poin kalah"
               value={c.points.lose}

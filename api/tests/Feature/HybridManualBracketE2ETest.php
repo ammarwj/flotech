@@ -227,12 +227,11 @@ class HybridManualBracketE2ETest extends TestCase
         $this->assertSame(4, $plan['bracket_size']);
         $this->assertSame(4, $plan['qualifiers']);
 
-        // Keyed by the slot they hold, not by position in the tie list: the
-        // plan is already seeded, so reading it positionally and posting it
-        // back would reproduce the automatic draw and prove nothing.
-        $held = collect($plan['ties'])
-            ->flatMap(fn ($tie) => [$tie['home'], $tie['away']])
-            ->filter(fn ($slot) => $slot !== null && $slot['team'] !== null)
+        // Keyed by the place they hold, not by position in a list: the seeding
+        // this test must differ from is the one generation would apply, and
+        // reading the qualifiers positionally would reproduce it by accident.
+        $held = collect($plan['slots'])
+            ->filter(fn ($slot) => $slot['team'] !== null)
             ->mapWithKeys(fn ($slot) => [$slot['label'] => $slot['team']['id']]);
 
         $this->assertCount(4, $held);
@@ -242,15 +241,18 @@ class HybridManualBracketE2ETest extends TestCase
         $runnerA = $held['Runner-up Grup A'];
         $runnerB = $held['Runner-up Grup B'];
 
+        // Nothing was drawn ahead of time, so the plan proposes no pairings at
+        // all — what follows is the organizer's draw and only theirs.
+        $this->assertSame('auto', $plan['source']);
+        $this->assertSame(
+            [[null, null], [null, null]],
+            array_map(fn ($tie) => [$tie['home'], $tie['away']], $plan['ties']),
+        );
+
         // Automatic seeding always crosses the groups: a winner meets the other
         // group's runner-up. Putting the two group winners in the same tie is a
         // draw it cannot produce, so a bracket that comes back this way can only
         // have honoured the payload.
-        $this->assertEqualsCanonicalizing(
-            [[$juaraA, $runnerB], [$juaraB, $runnerA]],
-            array_map(fn ($tie) => [$tie['home']['team']['id'], $tie['away']['team']['id']], $plan['ties']),
-            'the automatic plan is the draw this test must differ from',
-        );
 
         $this->actingAs($this->user, 'api')
             ->postJson($this->categoryUrl('/knockout'), [
