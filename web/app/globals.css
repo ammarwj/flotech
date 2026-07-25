@@ -1032,7 +1032,12 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
   display: flex; align-items: stretch;
   overflow-x: auto; padding: 6px 2px 16px;
 }
-.bkt-col { display: flex; flex-direction: column; min-width: 212px; }
+/* Fixed width, not min-width: a column must not take its size from the names
+   inside it. Racket categories put a whole doubles pair in one card ("Raffael
+   Suwondo / Bagas Maulana"), which as max-content is several hundred pixels —
+   the column would grow past the gap into the next one and .bkt-name's ellipsis
+   would never engage. Long names truncate; the tree keeps its grid. */
+.bkt-col { display: flex; flex-direction: column; flex: 0 0 auto; width: 212px; }
 .bkt-col:not(:last-child) { margin-right: var(--bkt-gap); }
 .bkt-head {
   text-align: center; margin-bottom: 12px;
@@ -1048,7 +1053,11 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
    nothing can spill out of one. */
 .bkt-body { flex: 1; display: grid; grid-auto-rows: 1fr; }
 .bkt-cell {
-  min-height: 64px; position: relative;
+  /* min-width:0 is load-bearing. A grid item's automatic minimum size applies on
+     both axes (a column-flex item's only on the block axis), so without this the
+     track is floored at the card's min-content — .bkt-name is nowrap, so that is
+     the untruncated name — and the card paints outside its column. */
+  min-height: 64px; min-width: 0; position: relative;
   display: flex; flex-direction: column; justify-content: center; padding: 6px 0;
 }
 
