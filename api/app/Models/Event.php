@@ -45,6 +45,7 @@ class Event extends Model
         'registration_close',
         'location_name',
         'location_address',
+        'courts',
         'description',
         'banner_url',
         'rules_config',
@@ -57,6 +58,7 @@ class Event extends Model
             'end_date' => 'date',
             'registration_open' => 'datetime',
             'registration_close' => 'datetime',
+            'courts' => 'array',
             'rules_config' => 'array',
         ];
     }

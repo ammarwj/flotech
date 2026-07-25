@@ -126,6 +126,24 @@ export function matchWinnerId(m: Match): string | null {
   return null;
 }
 
+/**
+ * True when the fixture is a bye — one side seated, no opponent, and written
+ * final by generation (`status: finished`, no scores). Nothing was played, so
+ * the public schedule leaves it out; the bracket still needs it to draw the
+ * branch its winner walked out of.
+ *
+ * The `finished` check is what separates a bye from a later-round slot waiting
+ * on a feeder: that one also holds exactly one team, but it is still
+ * `scheduled` and is a real fixture-to-be.
+ */
+export function isBye(m: Match): boolean {
+  const seated = (m.home_team_id === null) !== (m.away_team_id === null);
+  return seated && m.status === "finished";
+}
+
+/** Fixtures worth listing on a public schedule — a bye was never played. */
+export const playableMatches = (matches: Match[]) => matches.filter((m) => !isBye(m));
+
 /** True when the tie went to penalties. */
 export const wentToPenalties = (m: Match) =>
   m.home_penalty !== null && m.away_penalty !== null;

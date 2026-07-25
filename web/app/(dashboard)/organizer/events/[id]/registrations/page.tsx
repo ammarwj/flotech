@@ -33,6 +33,7 @@ import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { usesSquadFields } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -301,7 +302,10 @@ function RegistrationCard({
   onUpdate: (status: TeamStatus) => void;
   onEdit: () => void;
 }) {
-  const { positionLabel } = useCatalog();
+  const { positionLabel, sport: sportDef } = useCatalog();
+  // The racket family never fills a shirt number in, so its roster shows names
+  // rather than a column of dashes.
+  const squadFields = usesSquadFields(sportDef(sport));
   const [open, setOpen] = useState(false);
   const logo = team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null;
   const paid = team.payment_amount > 0;
@@ -422,9 +426,11 @@ function RegistrationCard({
                     key={p.id ?? i}
                     className="flex items-center gap-2.5 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
                   >
-                    <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
-                      {p.jersey_number || "–"}
-                    </span>
+                    {squadFields && (
+                      <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
+                        {p.jersey_number || "–"}
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate font-medium">{p.full_name}</span>
                     {p.position && (
                       <span className="shrink-0 text-xs text-muted-foreground">

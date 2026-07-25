@@ -194,6 +194,23 @@ export async function resetKnockoutPlan(
   return data.data;
 }
 
+/**
+ * Redraw the plan at random: the qualifier slots paired anew, still keeping two
+ * slots of the same group apart in the first round. Overwrites any saved draw
+ * and returns the fresh plan (source "manual"). Safe before the groups finish —
+ * it seeds slots, not results.
+ */
+export async function shuffleKnockoutPlan(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<KnockoutPlan> {
+  const { data } = await apiClient.post<ApiEnvelope<KnockoutPlan>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/knockout-plan/shuffle`
+  );
+  return data.data;
+}
+
 /** Build the knockout bracket of a hybrid category from the group qualifiers. */
 export async function generateKnockout(
   orgId: string,

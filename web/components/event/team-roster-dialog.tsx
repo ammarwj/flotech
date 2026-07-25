@@ -5,6 +5,7 @@ import { Users, X } from "lucide-react";
 
 import { crestGradient } from "@/lib/bracket";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { usesSquadFields } from "@/lib/scoring";
 import type { PublicTeam } from "@/types/api";
 
 export function TeamRosterDialog({
@@ -17,7 +18,11 @@ export function TeamRosterDialog({
   sport?: string | null;
   onClose: () => void;
 }) {
-  const { positionLabel } = useCatalog();
+  const { positionLabel, sport: sportDef } = useCatalog();
+
+  // No shirt numbers in the racket family, so the slot in front of the name
+  // holds the player's initial instead of a dash for every row.
+  const squadFields = usesSquadFields(sportDef(sport));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -108,12 +113,12 @@ export function TeamRosterDialog({
                           color: "var(--text-muted)",
                         }}
                       >
-                        {p.jersey_number ?? "–"}
+                        {squadFields ? (p.jersey_number ?? "–") : p.full_name.charAt(0).toUpperCase()}
                       </span>
                     )}
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                       {p.full_name}
-                      {photo && p.jersey_number && (
+                      {photo && squadFields && p.jersey_number && (
                         <span className="ml-1.5 font-normal" style={{ color: "var(--text-muted)" }}>
                           #{p.jersey_number}
                         </span>

@@ -7,6 +7,7 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { nameInput } from "@/lib/name";
 import { uploadImage } from "@/lib/api/events";
+import { usesSquadFields } from "@/lib/scoring";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -43,8 +44,9 @@ function photoShown(p: PlayerRow): string | null {
 /**
  * The roster table, shared by the three places a squad gets typed in: public
  * registration, the participant's own team page, and the organizer entering a
- * team by hand. Same columns everywhere — photo (optional), name, number,
- * position — so a roster doesn't lose a field depending on who filled it.
+ * team by hand. Same columns everywhere for a given sport — photo (optional),
+ * name, and, where the sport has them, number and position — so a roster
+ * doesn't lose a field depending on who filled it.
  */
 export function RosterEditor({
   players,
@@ -65,13 +67,17 @@ export function RosterEditor({
    */
   size?: number | null;
 }) {
-  const { positionsFor } = useCatalog();
+  const { positionsFor, sport: sportDef } = useCatalog();
   const fixed = typeof size === "number";
+
+  // Badminton and the rest of the racket family have neither shirt numbers nor
+  // positions — see usesSquadFields(). Both columns go, not just the dropdown.
+  const squadFields = usesSquadFields(sportDef(sport));
 
   // The admin defines these per sport (sport_positions). A sport with none has
   // nothing to offer, and the API rejects any position on its rosters — so the
   // column disappears rather than showing an empty dropdown.
-  const positions = positionsFor(sport);
+  const positions = squadFields ? positionsFor(sport) : [];
 
   const set = (i: number, patch: Partial<PlayerRow>) =>
     onChange(players.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -161,16 +167,18 @@ export function RosterEditor({
               disabled={disabled}
               onChange={(e) => set(i, { full_name: nameInput(e.target.value) })}
             />
-            <Input
-              className="w-20 shrink-0"
-              placeholder="No."
-              aria-label={`Nomor punggung pemain ${i + 1}`}
-              inputMode="numeric"
-              value={p.jersey_number}
-              disabled={disabled}
-              // A jersey number is digits only — drop letters/symbols as they type or paste.
-              onChange={(e) => set(i, { jersey_number: e.target.value.replace(/\D/g, "") })}
-            />
+            {squadFields && (
+              <Input
+                className="w-20 shrink-0"
+                placeholder="No."
+                aria-label={`Nomor punggung pemain ${i + 1}`}
+                inputMode="numeric"
+                value={p.jersey_number}
+                disabled={disabled}
+                // A jersey number is digits only — drop letters/symbols as they type or paste.
+                onChange={(e) => set(i, { jersey_number: e.target.value.replace(/\D/g, "") })}
+              />
+            )}
             {positions.length > 0 && !fixed && (
               <Select
                 className="w-36 shrink-0"

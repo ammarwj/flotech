@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { unplacedTeams } from "@/lib/bracket";
 import { fromEventInput, toEventInput, tzLabel } from "@/lib/match-dates";
+import { CourtSelect } from "./court-select";
 import type { SeedPair } from "@/lib/api/matches";
 
 export type SeedingMode = "auto" | "manual";
@@ -30,6 +31,7 @@ export function BracketSeedEditor({
   mode,
   value,
   tz,
+  courts = [],
   onModeChange,
   onChange,
   autoHint,
@@ -43,6 +45,8 @@ export function BracketSeedEditor({
   value: SeedPair[];
   /** The venue's zone: kickoffs are typed and read as its wall clock. */
   tz: string;
+  /** Named courts to pick from per tie; empty falls back to a free-text field. */
+  courts?: string[];
   onModeChange: (mode: SeedingMode) => void;
   onChange: (pairs: SeedPair[]) => void;
   /** What automatic seeding does here, since it differs per engine. */
@@ -151,13 +155,16 @@ export function BracketSeedEditor({
                       className="h-8 min-w-0 flex-1 text-xs"
                       aria-label={`Jadwal pertandingan ${order + 1}`}
                     />
-                    <Input
-                      value={pair.venue ?? ""}
-                      onChange={(e) => setField(order, "venue", e.target.value || null)}
-                      placeholder="Lapangan"
-                      className="h-8 min-w-0 flex-1 text-xs"
-                      aria-label={`Lapangan pertandingan ${order + 1}`}
-                    />
+                    <div className="min-w-0 flex-1">
+                      <CourtSelect
+                        value={pair.venue ?? null}
+                        onChange={(v) => setField(order, "venue", v)}
+                        courts={courts}
+                        className="h-8 text-xs"
+                        placeholder="Lapangan"
+                        ariaLabel={`Lapangan pertandingan ${order + 1}`}
+                      />
+                    </div>
                   </div>
                 </div>
               );

@@ -3,43 +3,29 @@
 namespace App\Console\Commands;
 
 use App\Models\EventCategory;
-use App\Services\Catalog;
+use App\Support\HybridConfig;
+use App\Support\Tiebreakers;
 use Illuminate\Console\Command;
 
 /**
- * One-off: translate tiebreakers saved before they were sport-aware.
+ * Write back what the config already reads as.
  *
  * Every event used to be offered the football vocabulary, so a badminton
- * category that had its config saved is holding keys like `goal_difference`.
- * Those no longer apply to its standings context, and HybridConfig::fromArray()
- * drops what does not apply — leaving that category ranking on head-to-head and
- * a coin toss, silently, the first time two entrants finish level.
+ * category that had its config saved is holding keys like `goal_difference`,
+ * and the 3/1/0 that came with them. Nothing breaks if it keeps them —
+ * HybridConfig::fromArray() translates on read and the API sends the translated
+ * values to the client — but the stored row then disagrees with everything
+ * shown on top of it, which is a bad thing to leave in a table people read by
+ * hand.
  *
- * The keys mean the same thing in the new vocabulary, only under the word the
- * sport uses, so they are translated rather than discarded:
- * "Selisih Gol" → "Selisih Game", "Gol Memasukkan" → "Game Menang".
- *
- * Idempotent: a category already holding valid keys is left untouched, so it is
- * safe to run repeatedly. Goal-based categories are never eligible.
+ * Idempotent: a category already holding valid values is left untouched, so it
+ * is safe to run repeatedly. Goal-based categories are never eligible.
  */
 class RemapTiebreakers extends Command
 {
     protected $signature = 'standings:remap-tiebreakers {--dry-run : Tampilkan perubahan tanpa menyimpan}';
 
     protected $description = 'Terjemahkan tie breaker tersimpan ke padanan cabang olahraganya.';
-
-    /**
-     * Old key => its equivalent per standings context. A key absent from a
-     * context has no equivalent there and is dropped: fair play needs cards,
-     * which a racket sport does not have.
-     *
-     * @var array<string, array<string, string>>
-     */
-    private const EQUIVALENTS = [
-        'goal_difference' => ['set' => 'game_difference', 'rubber' => 'rubber_difference'],
-        'goals_scored' => ['set' => 'games_won'],
-        'fair_play' => [],
-    ];
 
     public function handle(): int
     {
@@ -56,15 +42,32 @@ class RemapTiebreakers extends Command
 
                     $context = $category->standingsContext();
                     $config = $category->bracket_config;
-                    $stored = is_array($config['tiebreakers'] ?? null) ? $config['tiebreakers'] : null;
 
-                    if ($context === 'goal' || $stored === null) {
+                    // Football's vocabulary was never wrong for a goal sport,
+                    // and neither were its points.
+                    if ($context === 'goal') {
                         continue;
                     }
 
-                    $remapped = $this->remap($stored, $context);
+                    $next = $config;
 
-                    if ($remapped === $stored) {
+                    if (is_array($config['tiebreakers'] ?? null)) {
+                        $next['tiebreakers'] = Tiebreakers::remap($config['tiebreakers'], $context);
+                    }
+
+                    // The draw point rode in with those keys — see HybridConfig,
+                    // which drops the trio on read for the same reason. Take the
+                    // effective values from there rather than restating the rule.
+                    if ($context === 'set' && (int) ($config['points']['draw'] ?? 0) > 0) {
+                        $effective = HybridConfig::fromCategory($category);
+                        $next['points'] = [
+                            'win' => $effective->pointsWin,
+                            'draw' => $effective->pointsDraw,
+                            'lose' => $effective->pointsLose,
+                        ];
+                    }
+
+                    if ($next === $config) {
                         continue;
                     }
 
@@ -73,12 +76,12 @@ class RemapTiebreakers extends Command
                         $category->event->name,
                         $category->name,
                         $context,
-                        implode(', ', $stored),
-                        implode(', ', $remapped),
+                        $this->describe($config),
+                        $this->describe($next),
                     ));
 
                     if (! $dry) {
-                        $category->update(['bracket_config' => [...$config, 'tiebreakers' => $remapped]]);
+                        $category->update(['bracket_config' => $next]);
                     }
 
                     $changed++;
@@ -93,31 +96,23 @@ class RemapTiebreakers extends Command
     }
 
     /**
-     * @param  array<int, string>  $stored
-     * @return array<int, string>
+     * The two parts of a config this command touches, for the before/after line.
+     *
+     * @param  array<string, mixed>  $config
      */
-    private function remap(array $stored, string $context): array
+    private function describe(array $config): string
     {
-        $valid = Catalog::tiebreakerKeys($context);
-        $out = [];
+        $parts = [];
 
-        foreach ($stored as $key) {
-            // Already speaks this context's vocabulary.
-            if (in_array($key, $valid, true)) {
-                $out[] = $key;
-
-                continue;
-            }
-
-            $equivalent = self::EQUIVALENTS[$key][$context] ?? null;
-
-            // Keep the original priority, and never list one key twice — two
-            // old keys can share an equivalent.
-            if ($equivalent !== null && in_array($equivalent, $valid, true) && ! in_array($equivalent, $out, true)) {
-                $out[] = $equivalent;
-            }
+        if (is_array($config['tiebreakers'] ?? null)) {
+            $parts[] = implode(', ', $config['tiebreakers']);
         }
 
-        return array_values($out);
+        if (is_array($config['points'] ?? null)) {
+            $points = $config['points'];
+            $parts[] = sprintf('poin %d/%d/%d', $points['win'] ?? 0, $points['draw'] ?? 0, $points['lose'] ?? 0);
+        }
+
+        return implode(' | ', $parts);
     }
 }

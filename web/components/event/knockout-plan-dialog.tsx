@@ -38,6 +38,8 @@ interface KnockoutPlanDialogProps {
   pending: boolean;
   /** The venue's zone, for the per-tie kickoff inputs. */
   tz: string;
+  /** Named courts to pick per tie; empty falls back to a free-text field. */
+  courts: string[];
   onClose: () => void;
   /**
    * Manual: the ties to save. Automatic: null, i.e. drop the saved draw.
@@ -58,6 +60,7 @@ function Dialog({
   hasBracket,
   pending,
   tz,
+  courts,
   onClose,
   onSubmit,
 }: KnockoutPlanDialogProps) {
@@ -156,6 +159,7 @@ function Dialog({
             mode={mode}
             value={pairs}
             tz={tz}
+            courts={courts}
             entityLabel="Slot"
             emptyLabel="Kosong / bye"
             onModeChange={setMode}

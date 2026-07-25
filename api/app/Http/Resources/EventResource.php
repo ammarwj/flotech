@@ -37,6 +37,8 @@ class EventResource extends JsonResource
             'registration_close' => $this->registration_close,
             'location_name' => $this->location_name,
             'location_address' => $this->location_address,
+            // Named courts for scheduling; [] when the organizer hasn't set any.
+            'courts' => $this->courts ?? [],
             'description' => $this->description,
             'banner_url' => $this->banner_url,
             // Format, bracket config, fee and team cap live on each category.

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 
 import { getPublicMatches } from "@/lib/api/matches";
-import { isKnockout as isKnockoutFormat, phaseLabel } from "@/lib/bracket";
+import { isBye, isKnockout as isKnockoutFormat, phaseLabel } from "@/lib/bracket";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { MatchDayTabs } from "./match-day-tabs";
@@ -23,10 +23,13 @@ export function PublicAllSchedule({
   orgSlug,
   eventSlug,
   categories,
+  playerStats,
 }: {
   orgSlug: string;
   eventSlug: string;
   categories: EventCategory[];
+  /** Whether this sport publishes player stats at all — see showsPlayerStats. */
+  playerStats: boolean;
 }) {
   const tz = useEventTimezone();
   const [dateKey, setDateKey] = useState<string | null>(null);
@@ -57,6 +60,10 @@ export function PublicAllSchedule({
     const own = r.data ?? [];
     const knockout = isKnockoutFormat(categories[i]?.engine ?? null);
     for (const m of own) {
+      // A bye was never played, so it is left out of the list — `own` stays
+      // whole underneath it, which is what keeps phaseLabel counting the round
+      // at its real size.
+      if (isBye(m)) continue;
       byMatchId.set(m.id, categories[i]);
       phaseById.set(m.id, phaseLabel(m, own, knockout));
       matches.push(m);
@@ -111,6 +118,7 @@ export function PublicAllSchedule({
           orgSlug={orgSlug}
           eventSlug={eventSlug}
           categoryLabel={open.categoryLabel || undefined}
+          playerStats={playerStats}
           onClose={() => setOpen(null)}
         />
       )}

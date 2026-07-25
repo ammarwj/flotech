@@ -237,6 +237,106 @@ class StandingsFormatTest extends TestCase
         $this->artisan('standings:remap-tiebreakers')->expectsOutputToContain('0 kategori diperbarui.');
     }
 
+    public function test_remap_also_writes_back_the_points_that_rode_in_with_them(): void
+    {
+        $org = $this->org(User::factory()->create());
+
+        // Football's defaults, on a category where a draw cannot happen.
+        $event = $this->event($org, 'badminton', [
+            'bracket_config' => ['points' => ['win' => 3, 'draw' => 1, 'lose' => 0], 'groups' => 2],
+        ]);
+
+        $this->artisan('standings:remap-tiebreakers')->assertSuccessful();
+
+        $stored = $event->categories->first()->fresh()->bracket_config;
+
+        // Leaving these behind would put a row in the database that says 3 per
+        // win while every reader of it says 1.
+        $this->assertSame(['win' => 1, 'draw' => 0, 'lose' => 0], $stored['points']);
+        $this->assertSame(2, $stored['groups']);
+        // Nothing to translate here, so no empty tiebreaker list is invented.
+        $this->assertArrayNotHasKey('tiebreakers', $stored);
+
+        $this->artisan('standings:remap-tiebreakers')->expectsOutputToContain('0 kategori diperbarui.');
+    }
+
+    public function test_a_config_saved_under_another_sport_is_translated_without_running_the_command(): void
+    {
+        $org = $this->org(User::factory()->create());
+
+        // What the config card saves when the sport dropdown still shows its
+        // default: the organizer picks badminton afterwards and the row keeps
+        // football's words. Ranking it on head-to-head and a coin toss — which
+        // is all that survives a plain filter — loses priorities they did set.
+        $event = $this->event($org, 'badminton', [
+            'bracket_config' => [
+                'tiebreakers' => ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'drawing_lots'],
+                'points' => ['win' => 3, 'draw' => 1, 'lose' => 0],
+            ],
+        ]);
+
+        $config = HybridConfig::fromCategory($event->categories->first());
+
+        // Same order, said in badminton's words. Fair play has no equivalent —
+        // no cards to count — so it goes.
+        $this->assertSame(
+            ['head_to_head', 'game_difference', 'games_won', 'drawing_lots'],
+            $config->tiebreakers,
+        );
+        // Nothing here can earn the stored draw point, so it was never chosen
+        // for this category — and neither was the 3 beside it.
+        $this->assertSame([1, 0, 0], [$config->pointsWin, $config->pointsDraw, $config->pointsLose]);
+
+        // A deliberate scale is left alone: the tell is the impossible draw.
+        $chosen = $this->event($org, 'badminton', [
+            'bracket_config' => ['points' => ['win' => 2, 'draw' => 0, 'lose' => 0]],
+        ]);
+        $this->assertSame(2, HybridConfig::fromCategory($chosen->categories->first())->pointsWin);
+    }
+
+    public function test_the_api_sends_the_tiebreakers_the_table_actually_ranks_on(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+
+        $event = $this->event($org, 'badminton', [
+            'bracket_config' => [
+                'groups' => 2,
+                'tiebreakers' => ['head_to_head', 'goal_difference', 'fair_play', 'drawing_lots'],
+                'points' => ['win' => 3, 'draw' => 1, 'lose' => 0],
+            ],
+        ]);
+
+        // The event page prints this list under the table. Sending the raw row
+        // would have it spell out "Selisih Gol" while the standings behind it
+        // rank on "Selisih Game".
+        $this->actingAs($owner, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}")
+            ->assertOk()
+            ->assertJsonPath('data.categories.0.bracket_config.tiebreakers', [
+                'head_to_head', 'game_difference', 'drawing_lots',
+            ])
+            ->assertJsonPath('data.categories.0.bracket_config.points', [
+                'win' => 1, 'draw' => 0, 'lose' => 0,
+            ])
+            // Everything the organizer set that still applies rides along.
+            ->assertJsonPath('data.categories.0.bracket_config.groups', 2);
+    }
+
+    public function test_an_unconfigured_category_is_still_sent_as_unconfigured(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+        $event = $this->event($org, 'badminton');
+
+        // "Belum diatur" is not the same answer as "diatur dengan default" —
+        // the client fills the defaults itself, from the catalog.
+        $this->actingAs($owner, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}")
+            ->assertOk()
+            ->assertJsonPath('data.categories.0.bracket_config', null);
+    }
+
     public function test_editing_a_tiebreaker_keeps_the_contexts_it_belongs_to(): void
     {
         $admin = User::factory()->create(['role' => 'super_admin']);

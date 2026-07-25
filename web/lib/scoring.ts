@@ -36,6 +36,51 @@ export function participantModes(
 }
 
 /**
+ * The racket family — badminton, tenis, tenis meja, padel — recognised by the
+ * one thing that sets it apart: a category can be entered by a single player.
+ *
+ * Keyed on the entrant shapes rather than a list of slugs, so a racket sport an
+ * admin adds later behaves the same without touching this file. The same test
+ * appears in `standingsContextOf` below. Volleyball is also scored per set but
+ * is squad-only, so it is *not* one of these.
+ */
+function isRacketSport(
+  sport: Pick<SportDef, "participant_modes"> | null | undefined
+): boolean {
+  return participantModes(sport).includes("single");
+}
+
+/**
+ * Whether a roster of this sport carries shirt numbers and positions.
+ *
+ * A racket sport is played by people, not squads: nobody wears a number in
+ * badminton, and "Tunggal"/"Ganda" is the kategori, not a place on the field. So
+ * the entry form drops both and keeps the two things such a roster actually has
+ * — name and photo.
+ */
+export function usesSquadFields(
+  sport: Pick<SportDef, "participant_modes"> | null | undefined
+): boolean {
+  return !isRacketSport(sport);
+}
+
+/**
+ * Whether the public pages show player statistics for this sport.
+ *
+ * Racket sports don't: a squad tie's stats have no input path at all (the score
+ * is filled in per partai, and `player_match_stats` knows nothing about one), so
+ * the tab is permanently empty — and showing it for tunggal/ganda alone would
+ * give the same sport two shapes of public page. Shares `isRacketSport` with
+ * `usesSquadFields` by coincidence of the same test, not the same reason: these
+ * two can drift apart without the other having to follow.
+ */
+export function showsPlayerStats(
+  sport: Pick<SportDef, "participant_modes"> | null | undefined
+): boolean {
+  return !isRacketSport(sport);
+}
+
+/**
  * The standings shape of a category. Prefer the server's answer — it needs the
  * sport, which lives on the event — and fall back to deriving it, which the
  * event form has to do for a category that isn't saved yet.

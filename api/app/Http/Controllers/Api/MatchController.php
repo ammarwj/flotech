@@ -109,6 +109,10 @@ class MatchController extends Controller
             return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk membuat jadwal.', null, 422);
         }
 
+        // Named courts (when the event defines any) label the lanes; otherwise
+        // the allocator falls back to the `venues` count and "Lapangan N".
+        $options['courts'] = $categoryModel->event?->courts ?? [];
+
         // Assign concrete date/time (and venue lane) to each fixture.
         $this->schedule->applySchedule($categoryModel, $options, null, $lockedOrders);
 
@@ -223,6 +227,52 @@ class MatchController extends Controller
             $this->plans->build($categoryModel),
             'Rencana bracket dikembalikan ke seeding otomatis',
         );
+    }
+
+    /**
+     * Overwrite the saved draw with a fresh random one: the qualifier slots
+     * paired at random, but still keeping two slots of the same group apart in
+     * the first round. Stored as the plan (source "manual"), so a later generate
+     * reads it back verbatim — the same as if the organizer had drawn it.
+     *
+     * No confirmation and no undo on purpose: the bracket does not exist yet, so
+     * nothing played is at stake, and the button is meant to be clicked again
+     * and again until a draw looks right.
+     */
+    public function shuffleKnockoutPlan(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'hybrid') {
+            return ApiResponse::error('Rencana bracket hanya untuk format Grup + Knockout.', null, 422);
+        }
+
+        $size = HybridConfig::fromCategory($categoryModel)->bracketSize();
+        $slots = $this->standings->qualifierSlots($categoryModel);
+
+        // No slots means the groups have not been drawn — there is nothing to
+        // pair yet, exactly what the plan view says before a draw exists.
+        if ($slots === []) {
+            return ApiResponse::error('Undi tim ke grup dulu sebelum bisa mengacak bracket.', null, 422);
+        }
+
+        $group = array_column($slots, 'group', 'key');
+        $pairs = $this->schedule->shuffledFirstRoundPairs(
+            $size,
+            array_column($slots, 'key'),
+            fn (?string $key) => $key === null ? null : ($group[$key] ?? null),
+        );
+
+        $ties = [];
+        foreach ($pairs as $order => [$home, $away]) {
+            $ties[] = ['order' => $order, 'home' => $home, 'away' => $away];
+        }
+
+        $categoryModel->update([
+            'knockout_plan' => KnockoutPlan::normalize(['ties' => $ties], intdiv($size, 2)),
+        ]);
+
+        return ApiResponse::success($this->plans->build($categoryModel), 'Rencana bracket diacak ulang');
     }
 
     /**

@@ -282,6 +282,23 @@ class ScheduleService
     }
 
     /**
+     * A random first-round draw of $seeds into a bracket of $size, still keeping
+     * group-mates apart in the opening round. The redraw twin of
+     * {@see firstRoundPairs()}: the seeds are shuffled first, so the ladder order
+     * (who meets whom, who gets a bye) is thrown away — the whole point of a
+     * reshuffle — while byes still land by seedOrder rather than clustering, and
+     * the same-group rule still holds.
+     *
+     * @param  array<int, mixed>  $seeds
+     * @param  callable(mixed): ?string  $groupOf
+     * @return array<int, array{0: mixed, 1: mixed}>
+     */
+    public function shuffledFirstRoundPairs(int $size, array $seeds, callable $groupOf): array
+    {
+        return $this->firstRoundPairs($size, collect($seeds)->shuffle()->values()->all(), $groupOf);
+    }
+
+    /**
      * Keep group-mates apart in the first knockout round: whenever a tie pairs
      * two seeds from the same group, swap one side with another tie that can
      * take it. Seeding (who is at home) is preserved; only the opponents move.
@@ -1126,7 +1143,10 @@ class ScheduleService
         $endMin = $this->minutesOfDay($opts['daily_end'] ?? '21:00');
         $dur = (int) ($opts['match_minutes'] ?? 90);
         $break = (int) ($opts['break_minutes'] ?? 15);
-        $venues = max(1, (int) ($opts['venues'] ?? 1));
+        // Named courts win over the bare `venues` count: they set both how many
+        // lanes there are and each lane's label. Empty list → the old integer.
+        $courts = array_values(array_filter($opts['courts'] ?? [], fn ($c) => filled($c)));
+        $venues = count($courts) > 0 ? count($courts) : max(1, (int) ($opts['venues'] ?? 1));
         $maxPerDay = isset($opts['max_per_day']) ? max(1, (int) $opts['max_per_day']) : null;
         $spread = (bool) ($opts['spread'] ?? true);
 
@@ -1185,7 +1205,7 @@ class ScheduleService
                     // the Carbon instance as-is, so without it the venue-local
                     // wall clock would land raw in a UTC column.
                     'scheduled_at' => $day->copy()->addMinutes($time)->utc(),
-                    'venue' => $venues > 1 ? 'Lapangan '.($lane + 1) : null,
+                    'venue' => $courts[$lane] ?? ($venues > 1 ? 'Lapangan '.($lane + 1) : null),
                 ]);
                 $slot++;
             }

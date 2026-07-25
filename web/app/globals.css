@@ -1072,6 +1072,21 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
 .bkt-side.win .bkt-score { color: var(--success); }
 .bkt-side.lose .bkt-name { color: var(--text-muted); }
 
+/* Per-set detail under the two sides — e.g. "21-15, 21-18". Set sports only;
+   goal sports have no detail so the row never renders. Right-aligned to sit
+   under the aggregate .bkt-score column above it. */
+.bkt-sets {
+  border-top: 1px solid var(--border);
+  padding: 7px 13px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Connectors. The pair meets near the source cards: a short stub out the right
    of each cell, a vertical joining the pair just past it, then a longer lead-in
    that carries the merged line into the next card. */

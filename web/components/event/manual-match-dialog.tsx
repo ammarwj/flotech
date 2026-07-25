@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapPin, Swords, X } from "lucide-react";
+import { Swords, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { CourtSelect } from "./court-select";
 import { TeamCombobox } from "./team-combobox";
 import type { CreateMatchPayload } from "@/lib/api/matches";
 import { fromEventInput, tzLabel } from "@/lib/match-dates";
@@ -34,6 +35,8 @@ interface ManualMatchDialogProps {
    * they have no groups, so the picker is not offered at all.
    */
   groups?: string[];
+  /** Named courts to pick from; empty falls back to a free-text field. */
+  courts: string[];
   pending: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateMatchPayload) => void;
@@ -50,6 +53,7 @@ function Dialog({
   eventId,
   categoryId,
   groups = [],
+  courts,
   pending,
   onClose,
   onSubmit,
@@ -202,16 +206,14 @@ function Dialog({
                   Lokasi / lapangan{" "}
                   <span className="font-normal text-muted-foreground">(opsional)</span>
                 </Label>
-                <div className="relative">
-                  <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="manual-venue"
-                    value={venue}
-                    onChange={(e) => setVenue(e.target.value)}
-                    placeholder="mis. Lapangan A"
-                    className="pl-8"
-                  />
-                </div>
+                <CourtSelect
+                  id="manual-venue"
+                  value={venue || null}
+                  onChange={(v) => setVenue(v ?? "")}
+                  courts={courts}
+                  placeholder="mis. Lapangan A"
+                  ariaLabel="Lokasi / lapangan"
+                />
               </div>
             </>
           )}

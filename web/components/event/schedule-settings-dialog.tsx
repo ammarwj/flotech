@@ -60,6 +60,10 @@ export function ScheduleSettingsDialog({
   const [seeding, setSeeding] = useState<SeedingMode>("auto");
   const [pairs, setPairs] = useState<SeedPair[]>([]);
 
+  // Named courts set in event settings drive the lane count & labels; the
+  // number input only shows when the organizer hasn't defined any.
+  const courts = event.courts ?? [];
+
   // Close on Escape while the dialog is open.
   useEffect(() => {
     if (!open) return;
@@ -155,9 +159,24 @@ export function ScheduleSettingsDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Jumlah lapangan" hint="Match paralel per slot.">
-              <Input type="number" min={1} value={venues} onChange={(e) => setVenues(e.target.value)} />
-            </Field>
+            {courts.length > 0 ? (
+              <Field label="Lapangan" hint={`${courts.length} lapangan · dari setelan event.`}>
+                <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2">
+                  {courts.map((c) => (
+                    <span
+                      key={c}
+                      className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground"
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </Field>
+            ) : (
+              <Field label="Jumlah lapangan" hint="Match paralel per slot.">
+                <Input type="number" min={1} value={venues} onChange={(e) => setVenues(e.target.value)} />
+              </Field>
+            )}
             <Field label="Maks. match / hari" hint="Kosongkan = tanpa batas.">
               <Input
                 type="number"
@@ -192,6 +211,7 @@ export function ScheduleSettingsDialog({
                 mode={seeding}
                 value={pairs}
                 tz={event.timezone}
+                courts={courts}
                 onModeChange={setSeeding}
                 onChange={setPairs}
                 autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."

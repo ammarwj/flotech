@@ -33,6 +33,8 @@ class UpdateEventRequest extends FormRequest
             'registration_close' => ['nullable', 'date'],
             'location_name' => ['nullable', 'string', 'max:255'],
             'location_address' => ['nullable', 'string'],
+            'courts' => ['nullable', 'array', 'max:50'],
+            'courts.*' => ['string', 'max:255'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
             // Categories are only touched when the client sends them; the

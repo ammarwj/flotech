@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
+import { showsPlayerStats } from "@/lib/scoring";
 import type { PublicTeam } from "@/types/api";
 import "../../event-shell.css";
 
@@ -99,6 +100,10 @@ export default function PublicEventPage() {
 
   const categories = ev.categories ?? [];
 
+  // Racket sports don't publish player stats — see showsPlayerStats. Resolved
+  // once here so the tab and the panels below can't disagree about it.
+  const playerStats = showsPlayerStats(ev.sport);
+
   // Which categories a panel can actually show anything for. An event may mix
   // formats — a badminton event runs Tunggal as a league and Ganda as a knockout
   // — so the tab decides which categories are on offer, not the other way round.
@@ -122,7 +127,11 @@ export default function PublicEventPage() {
     ...(categoriesFor("bracket").length > 0
       ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
       : []),
-    ["stats", "Statistik", Goal],
+    // Unlike the two above, this one is decided per event, not per category:
+    // the sport lives on the event, so no category can bring the tab back.
+    ...(playerStats
+      ? ([["stats", "Statistik", Goal]] as [TabKey, string, typeof Info][])
+      : []),
   ];
   const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
 
@@ -504,6 +513,7 @@ export default function PublicEventPage() {
               orgSlug={params.orgSlug}
               eventSlug={params.eventSlug}
               categories={categories}
+              playerStats={playerStats}
             />
           ) : (
             <PublicResults
@@ -515,6 +525,7 @@ export default function PublicEventPage() {
               bracketConfig={selectedCategory!.bracket_config}
               context={selectedCategory!.standings_context}
               activeTab={activeTab}
+              playerStats={playerStats}
             />
           )}
         </>

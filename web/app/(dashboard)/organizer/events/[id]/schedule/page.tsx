@@ -26,6 +26,7 @@ import {
   getKnockoutPlan,
   saveKnockoutPlan,
   resetKnockoutPlan,
+  shuffleKnockoutPlan,
   generateKnockout,
   shuffleBracket,
   deleteKnockout,
@@ -116,6 +117,8 @@ export default function SchedulePage() {
 
   // Kickoff times belong to the venue's zone, not the organizer's browser.
   const tz = eventQuery.data?.timezone ?? "Asia/Jakarta";
+  // Named courts (if any) turn the venue field into a dropdown when scheduling.
+  const courts = eventQuery.data?.courts ?? [];
 
   // Each category runs its own format, so the schedule/standings/bracket below
   // are all scoped to the one the organizer has selected.
@@ -246,6 +249,23 @@ export default function SchedulePage() {
     onError: (err) =>
       toast.error(
         parseApiError(err, "Gagal menyimpan rencana bracket.").message,
+      ),
+  });
+
+  // Redraw the plan at random. Overwrites the saved draw with no confirmation on
+  // purpose — nothing is played yet, and it is meant to be clicked until a draw
+  // looks right. The result is stored as the plan, so the view updates with it.
+  const shufflePlan = useMutation({
+    mutationFn: () => shuffleKnockoutPlan(orgId!, eventId, catId!),
+    onSuccess: () => {
+      toast.success("Rencana bracket diacak ulang", {
+        description: "Tim satu grup tetap dihindarkan bertemu di babak pertama.",
+      });
+      refreshEventData();
+    },
+    onError: (err) =>
+      toast.error(
+        parseApiError(err, "Gagal mengacak rencana bracket.").message,
       ),
   });
 
@@ -536,13 +556,33 @@ export default function SchedulePage() {
               ) : (
                 <Skeleton className="h-40 w-full rounded-xl" />
               )}
-              <div className="flex justify-end">
-                {/* The only button here, and its name never changes. Arranging
-                    the draw lives inside it — a second button beside it read as
-                    a rival action nobody could tell apart from this one. */}
+              <div className="flex flex-wrap justify-end gap-2">
+                {/* Reshuffle is a shortcut, not a rival to "Buat Bracket": it
+                    only rearranges the draw at random and saves it, whereas the
+                    main button is where the draw is arranged and turned into a
+                    real bracket. Hidden until the groups are drawn — with no
+                    qualifier slots there is nothing to pair. */}
+                {(planQuery.data?.slots.length ?? 0) > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => shufflePlan.mutate()}
+                    disabled={
+                      shufflePlan.isPending ||
+                      knockout.isPending ||
+                      savePlan.isPending
+                    }
+                  >
+                    <Shuffle className="h-4 w-4" />
+                    {shufflePlan.isPending ? "Mengacak…" : "Undi Ulang"}
+                  </Button>
+                )}
                 <Button
                   onClick={() => setPlanDialog(true)}
-                  disabled={knockout.isPending || savePlan.isPending}
+                  disabled={
+                    knockout.isPending ||
+                    savePlan.isPending ||
+                    shufflePlan.isPending
+                  }
                 >
                   <Sparkles className="h-4 w-4" />
                   Buat Bracket Knockout
@@ -727,6 +767,7 @@ export default function SchedulePage() {
                             rubbers={!!selectedCategory?.uses_rubbers}
                             knockout={isKnockout || m.stage === "knockout"}
                             phase={phaseOf(m)}
+                            courts={courts}
                           />
                         ))}
                       </div>
@@ -783,6 +824,7 @@ export default function SchedulePage() {
           eventId={eventId}
           categoryId={catId!}
           groups={isHybrid ? groupNames(config) : []}
+          courts={courts}
           pending={addManual.isPending}
           onClose={() => setManualDialog(false)}
           onSubmit={(payload) => addManual.mutate(payload)}
@@ -819,6 +861,7 @@ export default function SchedulePage() {
             hasBracket={knockoutTies.length > 0}
             pending={savePlan.isPending || knockout.isPending}
             tz={tz}
+            courts={courts}
             onClose={() => setPlanDialog(false)}
             onSubmit={submitPlan}
           />
@@ -852,6 +895,7 @@ function MatchCard({
   rubbers,
   knockout,
   phase,
+  courts,
 }: {
   match: Match;
   orgId: string;
@@ -863,6 +907,8 @@ function MatchCard({
   knockout: boolean;
   /** "Grup A", "Semifinal" — omitted when it would only repeat the heading. */
   phase?: string;
+  /** Named courts to pick from when scheduling; empty falls back to free text. */
+  courts: string[];
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -1000,7 +1046,7 @@ function MatchCard({
           </span>
         </div>
         <div className="mt-3 flex items-start justify-between gap-2 border-t border-border pt-3">
-          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
           {removeBtn}
         </div>
       </Card>
@@ -1021,7 +1067,7 @@ function MatchCard({
           phase={phase}
         />
         <div className="mt-3">
-          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
         </div>
         <div className="mt-3 border-t border-border pt-3">
           <RubberScoreEditor orgId={orgId} eventId={eventId} match={match} />
@@ -1045,7 +1091,7 @@ function MatchCard({
           phase={phase}
         />
         <div className="mt-3">
-          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+          <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
         </div>
         <div className="mt-3 border-t border-border pt-3">
           <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
@@ -1098,7 +1144,7 @@ function MatchCard({
         phase={phase}
       />
       <div className="mt-3">
-        <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} />
+        <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
         <span className="flex-1 truncate text-right text-sm font-semibold">

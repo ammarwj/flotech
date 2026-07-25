@@ -64,13 +64,14 @@ class HybridConfig
         $drawMethods = Catalog::keys('draw_method');
         $rounds = array_keys(Catalog::roundSizes());
 
-        // Keep only tiebreakers the catalog still offers *for this context*, in
-        // the event's order. A football event that later changed sport keeps no
-        // "Selisih Gol" it can no longer compute.
-        $tiebreakers = array_values(array_intersect(
+        // Say the stored order in the words this context can compute, keeping
+        // the event's priorities: a football event that later changed sport
+        // ranks on "Selisih Game" where it used to rank on "Selisih Gol". What
+        // has no equivalent here (fair play, with no cards to count) is dropped.
+        $tiebreakers = Tiebreakers::remap(
             is_array($raw['tiebreakers'] ?? null) ? $raw['tiebreakers'] : $known,
-            $known,
-        ));
+            $context,
+        );
 
         $homeAway = (bool) ($raw['home_away'] ?? false);
 
@@ -80,6 +81,15 @@ class HybridConfig
         $defaults = $context === 'set'
             ? ['win' => 1, 'draw' => 0, 'lose' => 0]
             : ['win' => 3, 'draw' => 1, 'lose' => 0];
+
+        // Nothing here can earn a draw point, so a stored one was never chosen
+        // for this category — it rode in from another sport's defaults, and so
+        // did the 3 beside it. Drop the trio rather than leave a badminton table
+        // paying 3 per win. An organizer who deliberately set 2/0/0 keeps it:
+        // the tell is the impossible value, not a win worth anything but 1.
+        if ($context === 'set' && (int) ($points['draw'] ?? 0) > 0) {
+            $points = [];
+        }
 
         return new self(
             groups: max(1, (int) ($raw['groups'] ?? 4)),

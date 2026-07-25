@@ -10,6 +10,7 @@ import {
   wentToPenalties,
 } from "@/lib/bracket";
 import { cn } from "@/lib/utils";
+import { matchScoreText } from "@/lib/scoring";
 import type { Match } from "@/types/api";
 
 function Side({
@@ -64,6 +65,9 @@ function MatchCell({
   // A lone team is a real "Bye" only once the match is settled.
   const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
   const pens = wentToPenalties(m);
+  // Set/partai detail under the two sides — "21-15, 21-18" for badminton, the
+  // played rubbers for a squad tie, undefined (nothing) for goal sports.
+  const detail = matchScoreText(m).detail;
 
   return (
     <div className="bkt-match">
@@ -94,6 +98,7 @@ function MatchCell({
         isWinner={winner === m.away_team_id}
         decided={decided}
       />
+      {detail && <div className="bkt-sets">{detail}</div>}
     </div>
   );
 }

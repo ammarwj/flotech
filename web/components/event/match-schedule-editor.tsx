@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, MapPin } from "lucide-react";
+import { Check } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { fromEventInput, toEventInput, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
+import { CourtSelect } from "./court-select";
 import type { Match } from "@/types/api";
 
 /** Inline editor for a fixture's kickoff time and venue (result untouched). */
@@ -18,10 +19,13 @@ export function MatchScheduleEditor({
   orgId,
   eventId,
   match,
+  courts,
 }: {
   orgId: string;
   eventId: string;
   match: Match;
+  /** Named courts to pick from; empty falls back to a free-text field. */
+  courts: string[];
 }) {
   const qc = useQueryClient();
   const tz = useEventTimezone();
@@ -64,14 +68,14 @@ export function MatchScheduleEditor({
         />
         <span className="text-[11px] font-semibold text-muted-foreground">{tzLabel(tz)}</span>
       </div>
-      <div className="relative min-w-[10rem] flex-1">
-        <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={venue}
-          onChange={(e) => setVenue(e.target.value)}
+      <div className="min-w-[10rem] flex-1">
+        <CourtSelect
+          value={venue || null}
+          onChange={(v) => setVenue(v ?? "")}
+          courts={courts}
+          className="h-9"
           placeholder="Lokasi / lapangan (opsional)"
-          className="h-9 pl-8"
-          aria-label="Lokasi pertandingan"
+          ariaLabel="Lokasi pertandingan"
         />
       </div>
       {dirty && (

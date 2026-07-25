@@ -521,6 +521,8 @@ export interface SportEvent {
   registration_close: string | null;
   location_name: string | null;
   location_address: string | null;
+  /** Named courts/pitches for scheduling; [] when the organizer set none. */
+  courts: string[];
   description: string | null;
   banner_url: string | null;
   /** The competitions inside this event; each carries its own format & fee. */

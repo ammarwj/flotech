@@ -47,6 +47,7 @@ export type EventInput = Partial<
     | "registration_close"
     | "location_name"
     | "location_address"
+    | "courts"
     | "description"
     | "banner_url"
   >

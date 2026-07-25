@@ -27,6 +27,7 @@ export function MatchDetailDialog({
   eventSlug,
   categoryLabel,
   phase,
+  playerStats,
   onClose,
 }: {
   match: Match;
@@ -34,6 +35,8 @@ export function MatchDetailDialog({
   eventSlug: string;
   /** Shown when the fixture was opened from the combined "Semua" list. */
   categoryLabel?: string;
+  /** Whether this sport publishes player stats at all — see showsPlayerStats. */
+  playerStats: boolean;
   /** Phase in words, resolved by the caller — see PublicMatchCard. */
   phase: string;
   onClose: () => void;
@@ -56,6 +59,7 @@ export function MatchDetailDialog({
     queryKey: ["public-match-stats", orgSlug, eventSlug, match.id],
     queryFn: () => getPublicMatchStats(orgSlug, eventSlug, match.id),
     retry: false,
+    enabled: playerStats,
   });
 
   const done = match.status === "finished" && match.home_score !== null && match.away_score !== null;
@@ -64,6 +68,7 @@ export function MatchDetailDialog({
   const columns = query.data?.columns ?? [];
   const sides = [query.data?.home_team, query.data?.away_team].filter(Boolean) as PublicMatchStatTeam[];
   const hasStats = sides.some((s) => s.players.length > 0);
+  const hasRubbers = !!match.rubbers?.length;
 
   return (
     <div
@@ -137,39 +142,44 @@ export function MatchDetailDialog({
           />
         </div>
 
-        <div className="overflow-y-auto p-4">
-          {/* A squad tie: the "3 – 0" above is these partai counted up, so the
-              breakdown is the result — it goes before the player stats. */}
-          {match.rubbers && match.rubbers.length > 0 && (
-            <div className="mb-5 flex flex-col gap-2">
-              {match.rubbers.map((rubber) => (
-                <RubberLine key={rubber.id} rubber={rubber} />
-              ))}
-            </div>
-          )}
+        {/* A racket fixture with no partai has nothing under the scoreline, so
+            the scrolling body is dropped rather than left as empty padding. */}
+        {(hasRubbers || playerStats) && (
+          <div className="overflow-y-auto p-4">
+            {/* A squad tie: the "3 – 0" above is these partai counted up, so the
+                breakdown is the result — it goes before the player stats. */}
+            {hasRubbers && (
+              <div className={cn("flex flex-col gap-2", playerStats && "mb-5")}>
+                {match.rubbers!.map((rubber) => (
+                  <RubberLine key={rubber.id} rubber={rubber} />
+                ))}
+              </div>
+            )}
 
-          {query.isLoading ? (
-            <p className="section-sub" style={{ margin: 0 }}>
-              Memuat statistik…
-            </p>
-          ) : query.isError ? (
-            <p className="section-sub" style={{ margin: 0 }}>
-              Statistik pertandingan gagal dimuat.
-            </p>
-          ) : !hasStats ? (
-            // The ordinary case for a fixture not yet played, or one whose
-            // organizer hasn't filled the stats in — not an error.
-            <p className="section-sub" style={{ margin: 0 }}>
-              Statistik pemain belum tersedia untuk pertandingan ini.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {sides.map((side) => (
-                <SideStats key={side.id} side={side} columns={columns} />
+            {playerStats &&
+              (query.isLoading ? (
+                <p className="section-sub" style={{ margin: 0 }}>
+                  Memuat statistik…
+                </p>
+              ) : query.isError ? (
+                <p className="section-sub" style={{ margin: 0 }}>
+                  Statistik pertandingan gagal dimuat.
+                </p>
+              ) : !hasStats ? (
+                // The ordinary case for a fixture not yet played, or one whose
+                // organizer hasn't filled the stats in — not an error.
+                <p className="section-sub" style={{ margin: 0 }}>
+                  Statistik pemain belum tersedia untuk pertandingan ini.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {sides.map((side) => (
+                    <SideStats key={side.id} side={side} columns={columns} />
+                  ))}
+                </div>
               ))}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

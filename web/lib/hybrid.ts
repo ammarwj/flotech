@@ -52,13 +52,31 @@ export function hybridConfig(
   tiebreakers: Tiebreaker[] = [],
   context: StandingsContext = "goal"
 ): HybridConfig {
+  // The stored order, minus what this shape cannot compute. The API already
+  // translates the keys it can (see Tiebreakers on the backend) and sends the
+  // result, so what's left to do here is the case that never reaches it: the
+  // organizer switching sport in the form, where the config in state was
+  // written for the shape it had a moment ago.
+  //
+  // An empty vocabulary means the catalog hasn't arrived yet, not that every
+  // key is invalid — filtering against it would blank the tiebreaker legend for
+  // a frame on every page that prints one.
+  const stored = tiebreakers.length
+    ? (raw?.tiebreakers?.filter((t) => tiebreakers.includes(t)) ?? [])
+    : (raw?.tiebreakers ?? []);
+
+  // A set-based category cannot draw, so a stored draw point came from another
+  // shape's defaults — and the 3 next to it did too. Mirrors HybridConfig on
+  // the API, which drops the same trio for the same reason.
+  const points = context === "set" && (raw?.points?.draw ?? 0) > 0 ? undefined : raw?.points;
+
   return {
     ...DEFAULT_HYBRID,
     ...raw,
-    points: { ...defaultPoints(context), ...raw?.points },
+    points: { ...defaultPoints(context), ...points },
     qualification: { ...DEFAULT_HYBRID.qualification, ...raw?.qualification },
     knockout_start: raw?.knockout_start ?? null,
-    tiebreakers: raw?.tiebreakers?.length ? raw.tiebreakers : tiebreakers,
+    tiebreakers: stored.length ? stored : tiebreakers,
   };
 }
 

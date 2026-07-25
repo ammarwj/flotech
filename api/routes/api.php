@@ -226,6 +226,9 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
             Route::put('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'saveKnockoutPlan']);
             Route::delete('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'destroyKnockoutPlan']);
+            // Redraw the plan at random (group-mates still kept apart), stored as
+            // the plan so a later generate reads it back verbatim.
+            Route::post('events/{event}/categories/{category}/knockout-plan/shuffle', [MatchController::class, 'shuffleKnockoutPlan']);
             Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
             Route::delete('events/{event}/categories/{category}/knockout', [MatchController::class, 'destroyKnockout']);
             // Redraw a knockout bracket in place — same fixtures, same kickoffs,

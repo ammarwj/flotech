@@ -403,6 +403,7 @@ export function EventForm({
     timezone: initial?.timezone ?? "Asia/Jakarta",
     location_name: initial?.location_name ?? "",
     location_address: initial?.location_address ?? "",
+    courts: initial?.courts ?? [],
     description: initial?.description ?? "",
     banner_url: initial?.banner_url ?? "",
   });
@@ -551,7 +552,10 @@ export function EventForm({
       bracket_config: c.bracket_config ?? null,
     }));
 
-    onSubmit({ ...v, sport_type: sportValue, categories: cleanedCategories });
+    // Drop blank court rows so an empty input never becomes a nameless court.
+    const cleanedCourts = (v.courts ?? []).map((c) => c.trim()).filter(Boolean);
+
+    onSubmit({ ...v, sport_type: sportValue, courts: cleanedCourts, categories: cleanedCategories });
   };
 
   const days = durationDays(v.start_date, v.end_date);
@@ -710,6 +714,51 @@ export function EventForm({
               className={invalidCls("location_name")}
             />
             <FieldError message={errorFor("location_name")} />
+          </div>
+
+          <div className="grid gap-2">
+            <Label className="font-semibold">Lapangan</Label>
+            {(v.courts ?? []).length > 0 && (
+              <div className="grid gap-2">
+                {(v.courts ?? []).map((court, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={court}
+                      onChange={(e) => {
+                        const next = [...(v.courts ?? [])];
+                        next[i] = e.target.value;
+                        set("courts", next);
+                      }}
+                      placeholder={`Lapangan ${i + 1}`}
+                      aria-label={`Nama lapangan ${i + 1}`}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => set("courts", (v.courts ?? []).filter((_, j) => j !== i))}
+                      aria-label={`Hapus lapangan ${i + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-self-start"
+              onClick={() => set("courts", [...(v.courts ?? []), ""])}
+            >
+              <Plus className="h-4 w-4" />
+              Tambah lapangan
+            </Button>
+            <FieldHint>
+              Dipakai sebagai pilihan lapangan saat menjadwalkan pertandingan. Kosongkan jika tidak
+              perlu.
+            </FieldHint>
           </div>
         </CardContent>
       </Card>

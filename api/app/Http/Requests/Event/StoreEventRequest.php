@@ -32,6 +32,8 @@ class StoreEventRequest extends FormRequest
             'registration_close' => ['nullable', 'date', 'after_or_equal:registration_open'],
             'location_name' => ['nullable', 'string', 'max:255'],
             'location_address' => ['nullable', 'string'],
+            'courts' => ['nullable', 'array', 'max:50'],
+            'courts.*' => ['string', 'max:255'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
             // Format, bracket config, fee and team cap live on each category.

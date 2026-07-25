@@ -9,6 +9,7 @@ import {
   isDoubleElim,
   isHybrid as isHybridFormat,
   phaseLabel,
+  playableMatches,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { standingsLegend } from "@/lib/scoring";
@@ -41,6 +42,7 @@ export function PublicResults({
   bracketConfig,
   context,
   activeTab,
+  playerStats,
 }: {
   orgSlug: string;
   eventSlug: string;
@@ -52,6 +54,8 @@ export function PublicResults({
   /** The standings shape: counts gol, game, or partai. */
   context?: StandingsContext;
   activeTab: ResultsTab;
+  /** Whether this sport publishes player stats at all — see showsPlayerStats. */
+  playerStats: boolean;
 }) {
   const catalog = useCatalog();
   const isKnockout = isKnockoutFormat(engine);
@@ -81,6 +85,9 @@ export function PublicResults({
     queryKey: ["public-leaderboard", orgSlug, eventSlug, categorySlug],
     queryFn: () => getPublicLeaderboard(orgSlug, eventSlug, categorySlug),
     retry: false,
+    // Same reason as the standings gate above: the Statistik tab isn't offered
+    // for a racket sport, so the request would answer a question nobody asked.
+    enabled: playerStats,
   });
 
   const matches = matchesQuery.data ?? [];
@@ -99,7 +106,11 @@ export function PublicResults({
     );
   }
 
-  const dateGroups = groupByDate(matches, tz);
+  // Byes are dropped from the schedule list only: the bracket panel below still
+  // gets the full list, and phaseLabel keeps counting against it, so a round
+  // that is half byes is still named for its real size.
+  const listed = playableMatches(matches);
+  const dateGroups = groupByDate(listed, tz);
   const activeDateKey =
     dateKey && dateGroups.some((g) => g.key === dateKey) ? dateKey : defaultDateKey(dateGroups, tz);
   const activeGroup = dateGroups.find((g) => g.key === activeDateKey);
@@ -125,23 +136,31 @@ export function PublicResults({
             </div>
           )
         ) : activeTab === "schedule" ? (
-          <div style={{ maxWidth: 760 }}>
-            <MatchDayTabs groups={dateGroups} activeKey={activeDateKey} onSelect={setDateKey} />
+          listed.length === 0 ? (
+            // Every fixture drawn here is a bye: nothing has been played yet, so
+            // the schedule reads the same as one that was never drawn.
+            <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+              Belum ada pertandingan yang dimainkan di kategori ini.
+            </div>
+          ) : (
+            <div style={{ maxWidth: 760 }}>
+              <MatchDayTabs groups={dateGroups} activeKey={activeDateKey} onSelect={setDateKey} />
 
-            {activeGroup && (
-              <>
-                <div className="match-day">{fullDateLabel(activeGroup.iso, tz)}</div>
-                {activeGroup.list.map((m) => (
-                  <PublicMatchCard
-                    key={m.id}
-                    match={m}
-                    phase={phaseLabel(m, matches, isKnockout)}
-                    onClick={() => setOpenMatch(m)}
-                  />
-                ))}
-              </>
-            )}
-          </div>
+              {activeGroup && (
+                <>
+                  <div className="match-day">{fullDateLabel(activeGroup.iso, tz)}</div>
+                  {activeGroup.list.map((m) => (
+                    <PublicMatchCard
+                      key={m.id}
+                      match={m}
+                      phase={phaseLabel(m, matches, isKnockout)}
+                      onClick={() => setOpenMatch(m)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )
         ) : activeTab === "stats" ? (
           <div style={{ maxWidth: 900 }}>
             {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
@@ -179,6 +198,7 @@ export function PublicResults({
           phase={phaseLabel(openMatch, matches, isKnockout)}
           orgSlug={orgSlug}
           eventSlug={eventSlug}
+          playerStats={playerStats}
           onClose={() => setOpenMatch(null)}
         />
       )}
