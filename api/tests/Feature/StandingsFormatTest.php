@@ -154,18 +154,22 @@ class StandingsFormatTest extends TestCase
             $this->event($org, 'football', ['participant_type' => 'team'])->categories->first(),
         );
 
-        // Unchanged: this is the order every existing event already runs on.
+        // The order every existing event already runs on, with the decider now
+        // seated where a real competition puts it: the last thing tried before
+        // giving up and drawing a name out of a hat.
         $this->assertSame(
-            ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'drawing_lots'],
+            ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots'],
             $football->tiebreakers,
         );
         $this->assertSame([3, 1, 0], [$football->pointsWin, $football->pointsDraw, $football->pointsLose]);
 
         $badminton = HybridConfig::fromCategory($this->event($org, 'badminton')->categories->first());
 
-        // No "Selisih Gol", no "Fair Play" — badminton has neither.
+        // No "Selisih Gol", no "Fair Play" — badminton has neither. The decider
+        // it does have, under its own name: there is no shootout to hold, so it
+        // simply replays the match.
         $this->assertSame(
-            ['head_to_head', 'game_difference', 'rubber_points', 'games_won', 'drawing_lots'],
+            ['head_to_head', 'game_difference', 'rubber_points', 'games_won', 'decider_match', 'drawing_lots'],
             $badminton->tiebreakers,
         );
         // A singles match cannot end level, so there is no draw to pay for.
@@ -190,7 +194,7 @@ class StandingsFormatTest extends TestCase
         $config = HybridConfig::fromCategory($category);
 
         $this->assertSame(
-            ['head_to_head', 'rubber_difference', 'rubber_games', 'rubber_points', 'drawing_lots'],
+            ['head_to_head', 'rubber_difference', 'rubber_games', 'rubber_points', 'decider_match', 'drawing_lots'],
             $config->tiebreakers,
         );
         // A tie *can* finish 1-1, so a draw is still worth paying for here.
@@ -218,20 +222,26 @@ class StandingsFormatTest extends TestCase
         $this->artisan('standings:remap-tiebreakers')->assertSuccessful();
 
         // Same priorities, said in badminton's words. Fair play has no
-        // equivalent — no cards to count — so it goes.
+        // equivalent — no cards to count — so it goes. The decider is seated
+        // above the lot, which is the backfill rather than the translation.
         $this->assertSame(
-            ['head_to_head', 'game_difference', 'games_won', 'drawing_lots'],
+            ['head_to_head', 'game_difference', 'games_won', 'decider_match', 'drawing_lots'],
             $badminton->categories->first()->fresh()->bracket_config['tiebreakers'],
         );
         $this->assertSame(
-            ['head_to_head', 'rubber_difference', 'drawing_lots'],
+            ['head_to_head', 'rubber_difference', 'decider_match', 'drawing_lots'],
             $squad->categories->first()->fresh()->bracket_config['tiebreakers'],
         );
         // The rest of the config rides along untouched.
         $this->assertSame(2, $squad->categories->first()->fresh()->bracket_config['groups']);
 
-        // A goal sport was never wrong, so it is never rewritten.
-        $this->assertSame($football, $soccer->categories->first()->fresh()->bracket_config['tiebreakers']);
+        // A goal sport's *words* were never wrong, so none of them change — but
+        // a stored order is a closed list, so it would never have met a rule
+        // added after it was saved without this.
+        $this->assertSame(
+            ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots'],
+            $soccer->categories->first()->fresh()->bracket_config['tiebreakers'],
+        );
 
         // And a second run has nothing left to do.
         $this->artisan('standings:remap-tiebreakers')->expectsOutputToContain('0 kategori diperbarui.');

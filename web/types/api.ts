@@ -261,8 +261,14 @@ export interface MatchTeamRef {
  */
 export type BracketSide = "winners" | "losers" | "grand_final" | "third_place";
 
-/** Stage of a hybrid event; null for the single-stage formats. */
-export type MatchStage = "group" | "knockout" | null;
+/**
+ * Stage of a hybrid event; null for the single-stage formats.
+ *
+ * `playoff` belongs to neither stage and to every format that has a table: it
+ * is a decider, played only to separate two teams no criterion could, and the
+ * stage is exactly what keeps its result out of the standings it settles.
+ */
+export type MatchStage = "group" | "knockout" | "playoff" | null;
 
 export interface Match {
   id: string;
@@ -398,6 +404,12 @@ export interface Standing {
   points: number;
   /** Disciplinary points: 1 per yellow, 3 per red. Lower is better. */
   fair_play: number;
+  /**
+   * No criterion could separate this row from its neighbour, so what put it
+   * where it is was the lot — the two are owed a decider. Only ever true when
+   * the category still ranks on one, since otherwise playing it changes nothing.
+   */
+  needs_decider: boolean;
 }
 
 /** A stat column of a sport, as the API hands it to the editors. */

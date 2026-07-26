@@ -38,7 +38,7 @@ class HybridConfig
         /** Play an extra tie between the beaten semifinalists. */
         public readonly bool $thirdPlace = false,
         /** @var array<int, string> */
-        public readonly array $tiebreakers = ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'drawing_lots'],
+        public readonly array $tiebreakers = ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots'],
     ) {}
 
     public static function fromCategory(EventCategory $category): self

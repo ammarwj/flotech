@@ -3,7 +3,7 @@
 import { StandingsTable } from "@/components/event/standings-table";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { HybridConfig } from "@/lib/hybrid";
-import type { StandingsContext, Standing } from "@/types/api";
+import type { MatchTeamRef, StandingsContext, Standing } from "@/types/api";
 
 /**
  * One table per group, with the automatic qualifying places highlighted. Extra
@@ -14,11 +14,14 @@ export function GroupStandings({
   standings,
   config,
   context = "goal",
+  onDecide,
 }: {
   standings: Standing[];
   config: HybridConfig;
   /** Passed straight through — decides which columns the tables show. */
   context?: StandingsContext;
+  /** Passed straight through — see StandingsTable. */
+  onDecide?: (teams: MatchTeamRef[], group: string | null) => void;
 }) {
   const { tiebreakerLabel } = useCatalog();
   const groups = new Map<string, Standing[]>();
@@ -49,6 +52,9 @@ export function GroupStandings({
             standings={groups.get(name)!}
             highlight={name === "-" ? 0 : config.qualification.top_per_group}
             context={context}
+            // A team not yet drawn into a group has no table to be deadlocked
+            // in, so there is nothing there to schedule a decider for.
+            onDecide={name === "-" ? undefined : onDecide}
           />
         </section>
       ))}

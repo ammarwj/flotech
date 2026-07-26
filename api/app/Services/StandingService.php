@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  * are called: `goals_*` is the match score (gol, game menang, or partai
  * menang), `sets_*` the games behind a squad tie, `points_*` the raw points
  * behind the sets. A tier a context has no use for stays zero.
+ *
+ * A row also says whether its place is real: `needs_decider` means nothing in
+ * the config could separate it from its neighbour, so what put it there is the
+ * lot, and the two are owed a decider — the extra tie in `deciders()`.
  */
 class StandingService
 {
@@ -156,14 +160,18 @@ class StandingService
     /**
      * Rank teams that finished in the same group position against each other
      * (the "best runner-up" table). Head-to-head is meaningless across groups,
-     * so it is skipped here.
+     * so it is skipped here — and so is the decider, which is only ever played
+     * between two teams of the same group.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
     protected function crossGroupOrder(array $rows, EventCategory $category, HybridConfig $config): array
     {
-        $tiebreakers = array_values(array_diff($config->tiebreakers, ['head_to_head']));
+        $tiebreakers = array_values(array_filter(
+            $config->tiebreakers,
+            fn ($rule) => $rule !== 'head_to_head' && Catalog::comparatorOf($rule) !== 'playoff',
+        ));
 
         return $this->rank($rows, $category, $config, $tiebreakers);
     }
@@ -208,6 +216,10 @@ class StandingService
                 'points_diff' => 0,
                 'points' => 0,
                 'fair_play' => 0,
+                // Nothing in the config could separate this team from the one
+                // beside it, so its place is currently the lot's guess. Stamped
+                // by rank(), which is the only thing that knows the pair.
+                'needs_decider' => false,
             ];
         }
 
@@ -312,6 +324,12 @@ class StandingService
      * Disciplinary points per team: 1 per yellow card, 3 per red. Lower is
      * better, which is exactly how the fair-play tiebreaker reads it.
      *
+     * Scoped to the same matches the table itself counts. Cards shown in a
+     * decider — the extra tie played *because* fair play could not separate two
+     * teams — would otherwise feed back into the criterion above it and reorder
+     * the pair before the decider's own result is even read. The knockout stage
+     * leaks the same way, and never belonged in a group table either.
+     *
      * @return array<string, int> team id => points
      */
     protected function fairPlayPoints(EventCategory $category): array
@@ -328,6 +346,7 @@ class StandingService
         $rows = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
             ->where('matches.category_id', $category->id)
+            ->where(fn ($q) => $q->whereNull('matches.stage')->orWhere('matches.stage', 'group'))
             ->whereIn('player_match_stats.stat_key', array_keys($weights))
             ->groupBy('player_match_stats.team_id', 'player_match_stats.stat_key')
             ->select(
@@ -372,14 +391,15 @@ class StandingService
     {
         $order = $tiebreakers ?? $config->tiebreakers;
         $h2h = in_array('head_to_head', $order, true) ? $this->headToHead($category) : [];
+        $deciders = $this->usesComparator($order, 'playoff') ? $this->deciders($category) : [];
 
-        usort($rows, function ($a, $b) use ($order, $h2h, $category) {
+        usort($rows, function ($a, $b) use ($order, $h2h, $deciders, $category) {
             if ($a['points'] !== $b['points']) {
                 return $b['points'] <=> $a['points'];
             }
 
             foreach ($order as $rule) {
-                $cmp = $this->compareBy($rule, $a, $b, $h2h, $category);
+                $cmp = $this->compareBy($rule, $a, $b, $h2h, $deciders, $category);
                 if ($cmp !== 0) {
                     return $cmp;
                 }
@@ -391,8 +411,74 @@ class StandingService
         foreach ($rows as $i => &$row) {
             $row['rank'] = $i + 1;
         }
+        unset($row);
+
+        $this->flagUndecided($rows, $order, $h2h, $deciders, $category);
 
         return $rows;
+    }
+
+    /**
+     * Mark neighbouring rows that no configured rule could separate — the ones
+     * whose order is, right now, whatever the lot said.
+     *
+     * Only raised when the order actually holds the decider rule, because the
+     * mark is an invitation to play one: telling an organizer who removed it
+     * that a tie is unresolved would point at a fixture that changes nothing.
+     * The lot is skipped on purpose — it always answers, and an answer from it
+     * is exactly the state being reported.
+     *
+     * @param  array<int, array<string, mixed>>  $rows  ranked, by reference
+     * @param  array<int, string>  $order
+     * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
+     * @param  array<string, array<string, int>>  $deciders
+     */
+    protected function flagUndecided(array &$rows, array $order, array $h2h, array $deciders, EventCategory $category): void
+    {
+        if (! $this->usesComparator($order, 'playoff')) {
+            return;
+        }
+
+        $rules = array_values(array_filter(
+            $order,
+            fn ($rule) => Catalog::comparatorOf($rule) !== 'drawing_lots',
+        ));
+
+        for ($i = 1; $i < count($rows); $i++) {
+            $a = $rows[$i - 1];
+            $b = $rows[$i];
+
+            if ($a['points'] !== $b['points']) {
+                continue;
+            }
+
+            foreach ($rules as $rule) {
+                if ($this->compareBy($rule, $a, $b, $h2h, $deciders, $category) !== 0) {
+                    continue 2;
+                }
+            }
+
+            $rows[$i - 1]['needs_decider'] = true;
+            $rows[$i]['needs_decider'] = true;
+        }
+    }
+
+    /**
+     * Whether an order runs a comparator at all. Asked of the comparator rather
+     * than the key because one comparator wears several: the decider tie is
+     * "Adu Penalti" in football and "Laga Penentuan" in badminton.
+     *
+     * @param  array<int, string>  $order
+     */
+    protected function usesComparator(array $order, string $comparator): bool
+    {
+        foreach ($order as $rule) {
+            if (Catalog::comparatorOf($rule) === $comparator) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -406,8 +492,9 @@ class StandingService
      * @param  array<string, mixed>  $a
      * @param  array<string, mixed>  $b
      * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
+     * @param  array<string, array<string, int>>  $deciders
      */
-    protected function compareBy(string $rule, array $a, array $b, array $h2h, EventCategory $category): int
+    protected function compareBy(string $rule, array $a, array $b, array $h2h, array $deciders, EventCategory $category): int
     {
         $idA = $a['team']['id'];
         $idB = $b['team']['id'];
@@ -431,6 +518,10 @@ class StandingService
             'point_difference', 'rubber_points' => $b['points_diff'] <=> $a['points_diff'],
             // Fewer disciplinary points ranks higher.
             'fair_play' => $a['fair_play'] <=> $b['fair_play'],
+            // The extra tie the two played to settle exactly this. Silent until
+            // one has been played and confirmed, which is what leaves the pair
+            // on the lot below in the meantime.
+            'playoff' => ($deciders[$idB][$idA] ?? 0) <=> ($deciders[$idA][$idB] ?? 0),
             // A stable "draw": random-looking but the same every time it's shown.
             'drawing_lots' => $this->lot($category, $idA) <=> $this->lot($category, $idB),
             default => 0,
@@ -462,6 +553,59 @@ class StandingService
             $out[$home][$away]['diff'] = ($out[$home][$away]['diff'] ?? 0) + $diff;
             $out[$away][$home]['points'] = ($out[$away][$home]['points'] ?? 0) + $awayPoints;
             $out[$away][$home]['diff'] = ($out[$away][$home]['diff'] ?? 0) - $diff;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Who won the deciders — the extra ties played only to break a deadlock the
+     * table could not.
+     *
+     * Deliberately *not* read through countingMatches(): that is the method that
+     * keeps these fixtures out of the table, and it has to keep doing so. A
+     * decider adds no point, no goal and no appearance to anyone; the single
+     * thing it is allowed to move is the order of two rows.
+     *
+     * A win is recorded as a plain 1, so the shape is the same mini-league
+     * head-to-head builds and three teams can be separated by playing each
+     * other. Level after the scoreline, the shootout decides; level after that
+     * too — a decider saved without one — the pair simply stays undecided and
+     * falls through to the lot.
+     *
+     * @return array<string, array<string, int>> winner id => loser id => 1
+     */
+    protected function deciders(EventCategory $category): array
+    {
+        $matches = $category->matches()
+            ->where('stage', 'playoff')
+            ->where('status', 'finished')
+            ->whereNotNull('confirmed_at')
+            ->whereNotNull('home_score')
+            ->whereNotNull('away_score')
+            ->get();
+
+        $out = [];
+
+        foreach ($matches as $m) {
+            $home = $m->home_team_id;
+            $away = $m->away_team_id;
+            if (! $home || ! $away) {
+                continue;
+            }
+
+            $margin = $m->home_score <=> $m->away_score;
+
+            if ($margin === 0) {
+                $margin = ($m->home_penalty ?? 0) <=> ($m->away_penalty ?? 0);
+            }
+
+            if ($margin === 0) {
+                continue;
+            }
+
+            [$winner, $loser] = $margin > 0 ? [$home, $away] : [$away, $home];
+            $out[$winner][$loser] = 1;
         }
 
         return $out;

@@ -35,6 +35,12 @@ export interface CreateMatchPayload {
    * = a loose fixture that reaches no group table.
    */
   group_name?: string | null;
+  /**
+   * `playoff` makes it a decider: an extra tie played only to separate two teams
+   * the table could not, which adds nothing to the standings but their order.
+   * Hybrid has to name the group it settles. Omitted = an ordinary fixture.
+   */
+  stage?: "playoff" | null;
   /** ISO kickoff time; null when undecided. */
   scheduled_at?: string | null;
   venue?: string | null;

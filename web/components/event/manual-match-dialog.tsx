@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Swords, X } from "lucide-react";
+import { Scale, Swords, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,14 @@ interface ManualMatchDialogProps {
   groups?: string[];
   /** Named courts to pick from; empty falls back to a free-text field. */
   courts: string[];
+  /**
+   * Opens as a decider instead: the extra tie played to separate teams the
+   * table could not. The pair and the group come from the standings row that
+   * asked for it, and the fixture is saved with `stage: "playoff"` so it stays
+   * out of that table. Still editable — three teams can be level all round, and
+   * only two of them play at a time.
+   */
+  decider?: { home: string; away: string; group: string | null };
   pending: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateMatchPayload) => void;
@@ -54,14 +62,15 @@ function Dialog({
   categoryId,
   groups = [],
   courts,
+  decider,
   pending,
   onClose,
   onSubmit,
 }: ManualMatchDialogProps) {
   const tz = useEventTimezone();
-  const [group, setGroup] = useState("");
-  const [home, setHome] = useState("");
-  const [away, setAway] = useState("");
+  const [group, setGroup] = useState(decider?.group ?? "");
+  const [home, setHome] = useState(decider?.home ?? "");
+  const [away, setAway] = useState(decider?.away ?? "");
   const [when, setWhen] = useState("");
   const [venue, setVenue] = useState("");
 
@@ -78,6 +87,7 @@ function Dialog({
       home_team_id: home,
       away_team_id: away,
       group_name: group || null,
+      stage: decider ? "playoff" : null,
       // What the organizer typed is the venue's wall clock, not their own.
       scheduled_at: fromEventInput(when, tz),
       venue: venue.trim() || null,
@@ -88,21 +98,22 @@ function Dialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Tambah pertandingan manual"
+        aria-label={decider ? "Jadwalkan laga penentuan" : "Tambah pertandingan manual"}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-start gap-3 border-b border-border p-5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
-            <Swords className="h-5 w-5" />
+            {decider ? <Scale className="h-5 w-5" /> : <Swords className="h-5 w-5" />}
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-              Tambah Pertandingan
+              {decider ? "Jadwalkan Laga Penentuan" : "Tambah Pertandingan"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Buat satu pertandingan sendiri. Skor dan hasil diisi belakangan di kartu
-              pertandingan.
+              {decider
+                ? "Laga ini hanya memisahkan peringkat kedua tim — poin, main dan gol di klasemen tidak berubah. Imbang, pemenangnya ditentukan adu penalti."
+                : "Buat satu pertandingan sendiri. Skor dan hasil diisi belakangan di kartu pertandingan."}
             </p>
           </div>
           <button
@@ -121,7 +132,17 @@ function Dialog({
             </p>
           ) : (
             <>
-              {groups.length > 0 && (
+              {/* A decider settles one named table, and the row that asked for
+                it already said which — offering the picker would let it be
+                pointed at a tie that does not exist. */}
+              {groups.length > 0 && decider && (
+                <p className="rounded-md border border-border bg-[var(--surface-2)] px-3 py-2 text-sm text-muted-foreground">
+                  Memisahkan peringkat di <span className="font-semibold">Grup {group}</span>. Hasilnya
+                  tidak dihitung sebagai pertandingan grup.
+                </p>
+              )}
+
+              {groups.length > 0 && !decider && (
                 <div className="grid gap-1.5">
                   <Label htmlFor="manual-group" className="font-semibold">
                     Fase
@@ -224,8 +245,8 @@ function Dialog({
             Batal
           </Button>
           <Button onClick={submit} disabled={pending || !canSave}>
-            <Swords className="h-4 w-4" />
-            {pending ? "Menyimpan…" : "Tambah"}
+            {decider ? <Scale className="h-4 w-4" /> : <Swords className="h-4 w-4" />}
+            {pending ? "Menyimpan…" : decider ? "Jadwalkan" : "Tambah"}
           </Button>
         </div>
       </div>

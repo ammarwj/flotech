@@ -61,6 +61,14 @@ class ConfigOptionSeeder extends Seeder
                 'meta' => ['comparator' => 'goals_scored', 'applies_to' => ['set']]],
             ['group' => 'tiebreaker', 'key' => 'fair_play', 'label' => 'Fair Play',
                 'meta' => ['comparator' => 'fair_play', 'applies_to' => ['goal']]],
+            // The extra tie played when nothing above could separate two
+            // entrants. Sits above the lot deliberately: a real competition
+            // sends them back onto the pitch before it draws a name out of a hat.
+            ['group' => 'tiebreaker', 'key' => 'penalty_shootout', 'label' => 'Adu Penalti',
+                'meta' => ['comparator' => 'playoff', 'applies_to' => ['goal']]],
+            // A racket sport has no shootout — the decider is just another match.
+            ['group' => 'tiebreaker', 'key' => 'decider_match', 'label' => 'Laga Penentuan',
+                'meta' => ['comparator' => 'playoff', 'applies_to' => ['set', 'rubber']]],
             ['group' => 'tiebreaker', 'key' => 'drawing_lots', 'label' => 'Undian',
                 'meta' => ['comparator' => 'drawing_lots']],
 

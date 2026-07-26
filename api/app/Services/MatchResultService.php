@@ -77,11 +77,22 @@ class MatchResultService
         return 0;
     }
 
-    /** Whether a level result here has to be settled rather than left drawn. */
-    public function isKnockoutTie(GameMatch $match): bool
+    /**
+     * Whether a level result here has to be settled rather than left drawn.
+     *
+     * Two kinds of tie owe an answer. A knockout tie has a slot waiting on it,
+     * and a decider (`stage = 'playoff'`) is played for no other reason than to
+     * separate two teams the table could not — one that ends level has not done
+     * the only job it was scheduled for.
+     */
+    public function mustProduceWinner(GameMatch $match): bool
     {
         if ($match->stage === 'group') {
             return false;
+        }
+
+        if ($match->stage === 'playoff') {
+            return true;
         }
 
         return in_array($match->category->engine(), ['knockout_single', 'knockout_double'], true)

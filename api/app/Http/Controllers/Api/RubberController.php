@@ -185,8 +185,9 @@ class RubberController extends Controller
 
         // A league tie may legitimately end level, so a draw still counts. A
         // knockout tie may not: with no winner there is nobody to seat in the
-        // next round, so it waits for the organizer to settle it.
-        $decided = $tally['home'] !== $tally['away'] || ! $this->results->isKnockoutTie($match);
+        // next round, so it waits for the organizer to settle it. Neither may a
+        // decider, which exists only to produce one.
+        $decided = $tally['home'] !== $tally['away'] || ! $this->results->mustProduceWinner($match);
 
         $confirm = $complete
             && $decided

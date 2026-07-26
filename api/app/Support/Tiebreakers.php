@@ -34,6 +34,7 @@ class Tiebreakers
         'goal_difference' => ['set' => 'game_difference', 'rubber' => 'rubber_difference'],
         'goals_scored' => ['set' => 'games_won'],
         'fair_play' => [],
+        'penalty_shootout' => ['set' => 'decider_match', 'rubber' => 'decider_match'],
     ];
 
     /**

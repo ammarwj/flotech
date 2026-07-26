@@ -538,6 +538,11 @@ class MatchController extends Controller
      * a knockout bracket. Naming a group instead files it under the group stage,
      * where it counts toward that group's table — which is why both teams have
      * to already belong to that group.
+     *
+     * `stage: playoff` is the third shape: a decider, played to separate two
+     * teams nothing in the table could. It is the one fixture here that adds
+     * *nothing* to the standings — see StandingService::deciders() — so the only
+     * thing its result may move is the order of those two rows.
      */
     public function storeManual(Request $request, string $organization, string $event, string $category): JsonResponse
     {
@@ -560,11 +565,35 @@ class MatchController extends Controller
             // Naming a group promotes the fixture into the group stage, where it
             // counts toward that group's table. Only hybrid has groups at all.
             'group_name' => ['nullable', 'string', Rule::in($groups)],
+            // The only stage that may be asked for by hand. `group` is implied
+            // by naming a group, and `knockout` is the bracket's to write.
+            'stage' => ['nullable', Rule::in(['playoff'])],
             'scheduled_at' => ['nullable', 'date'],
             'venue' => ['nullable', 'string', 'max:255'],
         ]);
 
         $group = $data['group_name'] ?? null;
+        $decider = ($data['stage'] ?? null) === 'playoff';
+
+        if ($decider && in_array($categoryModel->engine(), ['knockout_single', 'knockout_double'], true)) {
+            // Nothing to break a tie in: a bracket has no table, and the winner
+            // of this fixture would be propagated into a slot it never earned.
+            return ApiResponse::error(
+                'Format knockout tidak punya klasemen yang perlu dipisahkan.',
+                ['stage' => ['Laga penentuan hanya untuk format liga atau grup.']],
+                422,
+            );
+        }
+
+        if ($decider && $groups !== [] && $group === null) {
+            // Hybrid ranks inside a group, so a decider that names none would be
+            // settling a tie in no table at all.
+            return ApiResponse::error(
+                'Pilih grup mana yang tie-nya dipisahkan laga ini.',
+                ['group_name' => ['Grup wajib diisi untuk laga penentuan.']],
+                422,
+            );
+        }
 
         if ($group !== null) {
             // A group fixture between teams of different groups would put a
@@ -586,14 +615,17 @@ class MatchController extends Controller
 
         // A grouped fixture joins the last matchday rather than starting a new
         // one; adding three would otherwise sprout three headings. Round is
-        // presentation only — standings never read it.
-        $round = $group === null
+        // presentation only — standings never read it. Deciders are their own
+        // section in the list, so they all sit on round 1.
+        $round = $group === null || $decider
             ? 1
             : (int) ($categoryModel->matches()->where('stage', 'group')->max('round') ?: 1);
 
         $siblings = $categoryModel->matches();
 
-        if ($group === null) {
+        if ($decider) {
+            $siblings->where('stage', 'playoff');
+        } elseif ($group === null) {
             $siblings->whereNull('stage');
         } else {
             $siblings->where('stage', 'group')->where('round', $round);
@@ -602,7 +634,9 @@ class MatchController extends Controller
         $match = GameMatch::create([
             'event_id' => $categoryModel->event_id,
             'category_id' => $categoryModel->id,
-            'stage' => $group === null ? null : 'group',
+            // A decider keeps its group name for display, but the stage is what
+            // keeps it out of that group's table.
+            'stage' => $decider ? 'playoff' : ($group === null ? null : 'group'),
             'group_name' => $group,
             'round' => $round,
             'leg' => 1,
@@ -617,7 +651,7 @@ class MatchController extends Controller
 
         return ApiResponse::success(
             new MatchResource($match->load(['homeTeam', 'awayTeam'])),
-            'Pertandingan ditambahkan',
+            $decider ? 'Laga penentuan ditambahkan' : 'Pertandingan ditambahkan',
             201,
         );
     }
@@ -772,16 +806,16 @@ class MatchController extends Controller
         ]);
 
         $level = $payload['home_score'] !== null && $payload['home_score'] === $payload['away_score'];
-        $knockout = $this->isKnockoutTie($matchModel);
+        $mustDecide = $this->mustProduceWinner($matchModel);
 
-        // A knockout tie that ends level is settled on penalties; anything else
-        // has no shootout at all.
-        if ($finished && $knockout && $level) {
+        // A tie that owes a winner and ended level is settled on penalties;
+        // anything else has no shootout at all.
+        if ($finished && $mustDecide && $level) {
             $home = $shootout['home_penalty'] ?? null;
             $away = $shootout['away_penalty'] ?? null;
 
             if ($home === null || $away === null) {
-                return ApiResponse::error('Skor imbang di knockout — isi hasil adu penalti.', [
+                return ApiResponse::error('Skor imbang — isi hasil adu penalti untuk menentukan pemenang.', [
                     'home_penalty' => ['Skor adu penalti wajib diisi.'],
                 ], 422);
             }
@@ -1282,12 +1316,13 @@ class MatchController extends Controller
     }
 
     /**
-     * A match that must produce a winner: any tie in a knockout format, or the
-     * knockout stage of a hybrid event. Group fixtures may end level.
+     * A match that must produce a winner: any tie in a knockout format, the
+     * knockout stage of a hybrid event, or a decider played to break a deadlock
+     * in the table. Group fixtures may end level.
      */
-    protected function isKnockoutTie(GameMatch $match): bool
+    protected function mustProduceWinner(GameMatch $match): bool
     {
-        return $this->results->isKnockoutTie($match);
+        return $this->results->mustProduceWinner($match);
     }
 
     /**

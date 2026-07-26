@@ -34,6 +34,9 @@ class Engines
         // categories as well. Kept so rows seeded earlier still validate.
         'rubber_points',
         'fair_play',
+        // The extra tie played to separate two entrants nothing else could —
+        // football settles it on penalties, a racket sport just replays it.
+        'playoff',
         'drawing_lots',
     ];
 

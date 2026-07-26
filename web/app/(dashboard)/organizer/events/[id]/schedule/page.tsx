@@ -49,6 +49,7 @@ import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  isDecider,
   isThirdPlace,
   phaseLabel,
 } from "@/lib/bracket";
@@ -89,7 +90,7 @@ import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
 import { SlotTeamsDialog } from "@/components/event/slot-teams-dialog";
 import { KnockoutPlanDialog } from "@/components/event/knockout-plan-dialog";
 import { cn } from "@/lib/utils";
-import type { Match } from "@/types/api";
+import type { Match, MatchTeamRef } from "@/types/api";
 
 type Tab = "schedule" | "standings" | "bracket" | "stats";
 
@@ -103,6 +104,13 @@ export default function SchedulePage() {
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
   const [manualDialog, setManualDialog] = useState(false);
+  // Set when the manual dialog was opened from a deadlocked standings row, so
+  // it opens as a decider with that pair already in it.
+  const [deciderSeed, setDeciderSeed] = useState<{
+    home: string;
+    away: string;
+    group: string | null;
+  } | null>(null);
   const [planDialog, setPlanDialog] = useState(false);
   // The bracket slot being re-seated, plus any inline errors it came back with.
   const [slotMatch, setSlotMatch] = useState<Match | null>(null);
@@ -184,6 +192,22 @@ export default function SchedulePage() {
     qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["knockout-plan", orgId, eventId] });
+  };
+
+  const closeManual = () => {
+    setManualDialog(false);
+    setDeciderSeed(null);
+  };
+
+  /**
+   * A deadlocked standings row asked for the tie that separates it. Three teams
+   * can be level all round, so only the first two are seated — the organizer
+   * swaps in the third from the pickers if that is the pairing they want.
+   */
+  const openDecider = (teams: MatchTeamRef[], group: string | null) => {
+    if (teams.length < 2) return;
+    setDeciderSeed({ home: teams[0].id, away: teams[1].id, group });
+    setManualDialog(true);
   };
 
   const generate = useMutation({
@@ -338,9 +362,14 @@ export default function SchedulePage() {
   const addManual = useMutation({
     mutationFn: (payload: CreateMatchPayload) =>
       createMatch(orgId!, eventId, catId!, payload),
-    onSuccess: () => {
-      toast.success("Pertandingan ditambahkan");
-      setManualDialog(false);
+    onSuccess: (_created, payload) => {
+      const decider = payload.stage === "playoff";
+      toast.success(decider ? "Laga penentuan dijadwalkan" : "Pertandingan ditambahkan");
+      closeManual();
+      // The decider was asked for from the table, but its score is entered on
+      // the schedule — leaving the organizer where they clicked would hide the
+      // fixture they just made.
+      if (decider) setTab("schedule");
       refreshEventData();
     },
     onError: (err) =>
@@ -353,7 +382,7 @@ export default function SchedulePage() {
   // the groups, and a knockout round number isn't a name. A league fixture's
   // "Pekan 3" would just repeat its own heading, so it gets no chip.
   const phaseOf = (m: Match) =>
-    m.group_name || m.stage === "knockout" || isKnockout || isThirdPlace(m)
+    m.group_name || m.stage === "knockout" || isKnockout || isThirdPlace(m) || isDecider(m)
       ? phaseLabel(m, matches, isKnockout)
       : undefined;
   const knockoutTies = knockoutMatches(matches);
@@ -765,7 +794,7 @@ export default function SchedulePage() {
                             eventId={eventId}
                             setBased={setBased}
                             rubbers={!!selectedCategory?.uses_rubbers}
-                            knockout={isKnockout || m.stage === "knockout"}
+                            knockout={isKnockout || m.stage === "knockout" || isDecider(m)}
                             phase={phaseOf(m)}
                             courts={courts}
                           />
@@ -793,6 +822,7 @@ export default function SchedulePage() {
                 standings={standingsQuery.data ?? []}
                 config={config}
                 context={context}
+                onDecide={openDecider}
               />
             ) : (
               // A standalone league ends at the table — nothing follows it to
@@ -802,6 +832,7 @@ export default function SchedulePage() {
                 standings={standingsQuery.data ?? []}
                 highlight={1}
                 context={context}
+                onDecide={openDecider}
               />
             )}
             {(standingsQuery.data?.length ?? 0) > 0 && (
@@ -816,8 +847,9 @@ export default function SchedulePage() {
         )}
 
         <ManualMatchDialog
-          // A fresh mount per open, so the form always starts empty.
-          key={String(manualDialog)}
+          // A fresh mount per open, so the form always starts from whatever
+          // that open seeded it with — empty, or the deadlocked pair.
+          key={`${manualDialog}-${deciderSeed?.home ?? ""}-${deciderSeed?.away ?? ""}`}
           open={manualDialog}
           teams={approvedTeams}
           orgId={orgId!}
@@ -825,8 +857,9 @@ export default function SchedulePage() {
           categoryId={catId!}
           groups={isHybrid ? groupNames(config) : []}
           courts={courts}
+          decider={deciderSeed ?? undefined}
           pending={addManual.isPending}
-          onClose={() => setManualDialog(false)}
+          onClose={closeManual}
           onSubmit={(payload) => addManual.mutate(payload)}
         />
 
@@ -903,7 +936,11 @@ function MatchCard({
   setBased: boolean;
   /** A squad tie: scored per partai, never as one scoreline. */
   rubbers: boolean;
-  /** A tie that must produce a winner — level scores go to penalties. */
+  /**
+   * A tie that must produce a winner — level scores go to penalties. Named for
+   * the bracket it started out serving, but a decider owes one too: it is
+   * played for the sole purpose of separating two teams.
+   */
   knockout: boolean;
   /** "Grup A", "Semifinal" — omitted when it would only repeat the heading. */
   phase?: string;

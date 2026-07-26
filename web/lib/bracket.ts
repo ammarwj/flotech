@@ -73,6 +73,15 @@ export const THIRD_PLACE_LABEL = "Perebutan Juara 3";
 /** The play-off between the beaten semifinalists, not a round of the draw. */
 export const isThirdPlace = (m: Match) => m.bracket === "third_place";
 
+export const DECIDER_LABEL = "Laga Penentuan";
+
+/**
+ * A tie played only to separate two teams the table could not. It belongs to no
+ * matchday and no round — it counts for nothing but the order of two rows — so
+ * everywhere a fixture is filed by phase, this comes first.
+ */
+export const isDecider = (m: Match) => m.stage === "playoff";
+
 /**
  * What phase a fixture belongs to, in words a spectator recognises.
  *
@@ -82,6 +91,11 @@ export const isThirdPlace = (m: Match) => m.bracket === "third_place";
  */
 export function phaseLabel(m: Match, all: Match[], knockout = false): string {
   if (isThirdPlace(m)) return THIRD_PLACE_LABEL;
+  // Before the group check: a decider carries the group whose tie it settles,
+  // and reading back "Grup A" would hide the one thing that fixture is.
+  if (isDecider(m)) {
+    return m.group_name ? `${DECIDER_LABEL} · Grup ${m.group_name}` : DECIDER_LABEL;
+  }
   if (m.group_name) return `Grup ${m.group_name}`;
 
   if (!knockout && m.stage !== "knockout") return `Pekan ${m.round}`;
@@ -201,9 +215,15 @@ export function buildMatchSections(
     const thirdKo = ko.filter(isThirdPlace);
     if (thirdKo.length) out.push([`Knockout · ${THIRD_PLACE_LABEL}`, thirdKo]);
 
+    const deciders = matches.filter(isDecider);
+    if (deciders.length) out.push([DECIDER_LABEL, deciders]);
+
     // Fixtures added by hand carry no stage, so they belong to neither loop
-    // above — without this they'd vanish from the list entirely.
-    const loose = matches.filter((m) => m.stage !== "group" && m.stage !== "knockout");
+    // above — without this they'd vanish from the list entirely. Deciders are
+    // pulled out first: they do have a stage, and it isn't "tambahan".
+    const loose = matches.filter(
+      (m) => m.stage !== "group" && m.stage !== "knockout" && !isDecider(m)
+    );
     if (loose.length) out.push(["Pertandingan Tambahan", loose]);
 
     return out;
@@ -237,11 +257,17 @@ export function buildMatchSections(
   }
 
   const third = matches.filter(isThirdPlace);
-  const sections = groupByRound(matches.filter((m) => !isThirdPlace(m))).map(
+  // A league decider sits on round 1 and would otherwise be filed under
+  // "Putaran 1" beside the matchday it is meant to be settling.
+  const deciders = matches.filter(isDecider);
+  const sections = groupByRound(
+    matches.filter((m) => !isThirdPlace(m) && !isDecider(m))
+  ).map(
     ([round, list]) => [knockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`, list] as [string, Match[]]
   );
 
   if (third.length) sections.push([THIRD_PLACE_LABEL, third]);
+  if (deciders.length) sections.push([DECIDER_LABEL, deciders]);
 
   return sections;
 }
