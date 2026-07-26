@@ -15,6 +15,7 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/v1/auth/register', [
             'full_name' => 'Andi Saputra',
             'email' => 'andi@example.com',
+            'phone' => '081234567890',
             'password' => 'password123',
             'password_confirmation' => 'password123',
         ]);
@@ -23,7 +24,11 @@ class AuthTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['data' => ['access_token', 'token_type', 'expires_in', 'user' => ['id', 'email']]]);
 
-        $this->assertDatabaseHas('users', ['email' => 'andi@example.com', 'role' => 'user']);
+        $this->assertDatabaseHas('users', [
+            'email' => 'andi@example.com',
+            'role' => 'user',
+            'phone' => '081234567890',
+        ]);
         $this->assertNotNull($response->getCookie('refresh_token', false));
     }
 
@@ -34,6 +39,24 @@ class AuthTest extends TestCase
             'email' => 'not-an-email',
             'password' => 'short',
         ])->assertStatus(422)->assertJsonPath('success', false);
+    }
+
+    public function test_register_requires_a_phone_number(): void
+    {
+        // Everything else is valid, so a 422 here can only be the phone.
+        $payload = [
+            'full_name' => 'Tanpa HP',
+            'email' => 'nohp@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ];
+
+        $this->postJson('/api/v1/auth/register', $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('phone');
+
+        $this->postJson('/api/v1/auth/register', $payload + ['phone' => '+6281234567890'])
+            ->assertCreated();
     }
 
     public function test_user_can_login_with_valid_credentials(): void
@@ -82,6 +105,7 @@ class AuthTest extends TestCase
         $register = $this->postJson('/api/v1/auth/register', [
             'full_name' => 'Refresh User',
             'email' => 'refresh@example.com',
+            'phone' => '081234567891',
             'password' => 'password123',
             'password_confirmation' => 'password123',
         ]);

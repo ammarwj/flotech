@@ -17,6 +17,7 @@ import {
   type DashboardMode,
 } from "@/lib/hooks/use-dashboard-mode";
 import { safeNext } from "@/lib/next-param";
+import { phoneInput } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,9 @@ import { Label } from "@/components/ui/label";
 const fields = z.object({
   full_name: z.string().min(2, "Nama minimal 2 karakter"),
   email: z.string().email("Email tidak valid"),
+  // Digits with an optional leading country code — phoneInput() already strips
+  // anything else on every keystroke, so this only catches a too-short number.
+  phone: z.string().regex(/^\+?\d{8,19}$/, "Nomor HP tidak valid, contoh: 081234567890"),
   password: z
     .string()
     .min(8, "Minimal 8 karakter")
@@ -67,6 +71,10 @@ function RegisterForm() {
     setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // Sanitize in the DOM before handing the event to RHF, so its own onChange
+  // still runs (a plain onChange prop after the spread would replace it).
+  const phoneField = register("phone");
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -148,6 +156,22 @@ function RegisterForm() {
           <Label htmlFor="email">Email</Label>
           <Input id="email" type="email" autoComplete="email" {...register("email")} />
           {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="phone">No. HP</Label>
+          <Input
+            id="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="081234567890"
+            {...phoneField}
+            onChange={(e) => {
+              e.target.value = phoneInput(e.target.value);
+              phoneField.onChange(e);
+            }}
+          />
+          {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="password">Password</Label>

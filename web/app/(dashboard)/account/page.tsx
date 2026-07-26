@@ -185,6 +185,10 @@ export default function AccountPage() {
                 <dd className="truncate font-medium">{user?.email}</dd>
               </div>
               <div>
+                <dt className="text-xs text-muted-foreground">No. HP</dt>
+                <dd className="font-medium">{user?.phone || "—"}</dd>
+              </div>
+              <div>
                 <dt className="text-xs text-muted-foreground">Status</dt>
                 <dd className="mt-1">
                   {user?.is_verified ? (

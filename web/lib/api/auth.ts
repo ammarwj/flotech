@@ -5,7 +5,8 @@ import type { ApiEnvelope, AuthTokenResponse, AuthUser } from "@/types/api";
 export interface RegisterPayload {
   full_name: string;
   email: string;
-  phone?: string;
+  /** Required by the API: how we reach the organizer / team manager. */
+  phone: string;
   password: string;
   password_confirmation: string;
   /** Which dashboard the account starts (and keeps landing) in. */
