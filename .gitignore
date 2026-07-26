@@ -36,6 +36,9 @@ api/.phpunit.result.cache
 docker/data/
 certbot/
 
+# ---- Backup DB (db-backup.sh / db-restore-local.sh) ----
+backups-data-prod/
+
 # ---- Editor ----
 .idea/
 .vscode/

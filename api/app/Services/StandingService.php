@@ -24,11 +24,39 @@ use Illuminate\Support\Facades\DB;
  * behind the sets. A tier a context has no use for stays zero.
  *
  * A row also says whether its place is real: `needs_decider` means nothing in
- * the config could separate it from its neighbour, so what put it there is the
- * lot, and the two are owed a decider — the extra tie in `deciders()`.
+ * the config could separate it from the others it is level with, so what put it
+ * there is the lot, and they are owed a decider — the extra tie in `deciders()`.
+ *
+ * Teams that are level are ranked as a *group*, not by comparing them two at a
+ * time, because head to head is a table among them — see miniLeague() for the
+ * three-team circle that makes the difference.
  */
 class StandingService
 {
+    /**
+     * The fixtures behind the table being computed right now — see
+     * countingMatches(), and forget() for how long "right now" lasts.
+     *
+     * @var array<string, Collection<int, GameMatch>> category id => countingMatches()
+     */
+    protected array $matchCache = [];
+
+    /**
+     * Drop the memoized fixtures. Called at the top of every public entry
+     * point, because the service can outlive the results it read: one instance
+     * answers the knockout plan both before a ball is kicked and after the
+     * groups are done, and a table built from the first read would have every
+     * team on nought points forever.
+     *
+     * The cache is worth having anyway — a hybrid category reads the same
+     * fixtures once per group and again per tied block inside it — it just has
+     * to be scoped to a single computation rather than to the object.
+     */
+    protected function forget(): void
+    {
+        $this->matchCache = [];
+    }
+
     /**
      * All approved teams, ranked. Rows carry `group_name` so the client can
      * split a hybrid category into one table per group.
@@ -37,6 +65,8 @@ class StandingService
      */
     public function compute(EventCategory $category): array
     {
+        $this->forget();
+
         $config = HybridConfig::fromCategory($category);
         $rows = $this->rows($category, $config);
 
@@ -78,6 +108,8 @@ class StandingService
      */
     public function qualifierSlots(EventCategory $category): array
     {
+        $this->forget();
+
         $config = HybridConfig::fromCategory($category);
         $groups = $this->byGroup($this->rows($category, $config));
 
@@ -170,7 +202,7 @@ class StandingService
     {
         $tiebreakers = array_values(array_filter(
             $config->tiebreakers,
-            fn ($rule) => $rule !== 'head_to_head' && Catalog::comparatorOf($rule) !== 'playoff',
+            fn ($rule) => ! in_array(Catalog::comparatorOf($rule), ['head_to_head', 'playoff'], true),
         ));
 
         return $this->rank($rows, $category, $config, $tiebreakers);
@@ -307,11 +339,17 @@ class StandingService
      * Confirmed, played matches that count toward the table. The knockout stage
      * of a hybrid category never does.
      *
+     * Memoized because a hybrid category asks for these once per group and then
+     * once more per tied block inside it — sixteen groups is a lot of times to
+     * read the same fixtures. The memo is cleared by forget() at the start of
+     * every public entry point, which is what keeps it from answering with the
+     * fixtures of an earlier, emptier moment.
+     *
      * @return Collection<int, GameMatch>
      */
     protected function countingMatches(EventCategory $category): Collection
     {
-        return $category->matches()
+        return $this->matchCache[$category->id] ??= $category->matches()
             ->where('status', 'finished')
             ->whereNotNull('confirmed_at')
             ->whereNotNull('home_score')
@@ -380,8 +418,13 @@ class StandingService
     }
 
     /**
-     * Sort rows by points, then by each configured tiebreaker in turn, and stamp
-     * the resulting rank.
+     * Sort rows by points, then settle each set of level teams against the
+     * configured tiebreakers, and stamp the resulting rank.
+     *
+     * Points come first and no config reorders that. Everything below is
+     * resolved a *block* at a time rather than by one comparator over the whole
+     * table, because head to head is a table among the teams that are level and
+     * therefore has to know who they are — see miniLeague().
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<int, string>|null  $tiebreakers  overrides the category config
@@ -390,77 +433,146 @@ class StandingService
     protected function rank(array $rows, EventCategory $category, HybridConfig $config, ?array $tiebreakers = null): array
     {
         $order = $tiebreakers ?? $config->tiebreakers;
-        $h2h = in_array('head_to_head', $order, true) ? $this->headToHead($category) : [];
         $deciders = $this->usesComparator($order, 'playoff') ? $this->deciders($category) : [];
 
-        usort($rows, function ($a, $b) use ($order, $h2h, $deciders, $category) {
-            if ($a['points'] !== $b['points']) {
-                return $b['points'] <=> $a['points'];
+        // Name is not a tiebreaker here, only what keeps this pass from
+        // depending on the order the rows arrived in: everything level on
+        // points is handed to resolveBlock() as one block regardless.
+        usort($rows, fn ($a, $b) => [$b['points'], $a['team']['name']] <=> [$a['points'], $b['team']['name']]);
+
+        $out = [];
+        foreach ($this->blocks($rows, fn ($a, $b) => $b['points'] <=> $a['points']) as $block) {
+            foreach ($this->resolveBlock($block, $order, $config, $deciders, $category, 0) as $row) {
+                $out[] = $row;
             }
+        }
 
-            foreach ($order as $rule) {
-                $cmp = $this->compareBy($rule, $a, $b, $h2h, $deciders, $category);
-                if ($cmp !== 0) {
-                    return $cmp;
-                }
-            }
-
-            return strcmp($a['team']['name'], $b['team']['name']);
-        });
-
-        foreach ($rows as $i => &$row) {
+        foreach ($out as $i => &$row) {
             $row['rank'] = $i + 1;
         }
         unset($row);
 
-        $this->flagUndecided($rows, $order, $h2h, $deciders, $category);
+        return $out;
+    }
+
+    /**
+     * Order a set of teams nothing above the tiebreakers could separate.
+     *
+     * Walks the configured order until a rule splits the block, then hands each
+     * remaining group back to itself *from the top of the order again*. That
+     * restart is the point of the recursion, not tidiness: two teams left level
+     * after a head to head among three are owed a head to head among two, which
+     * is a different table over different matches. Jumping straight to the next
+     * criterion would rank them on goal difference while the match they played
+     * against each other sits unread.
+     *
+     * It terminates because a block only recurses when a rule split it, so
+     * every sub-block is strictly smaller than the one it came from.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<int, string>  $order
+     * @param  array<string, array<string, int>>  $deciders
+     * @param  int  $from  index into $order to resume at
+     * @return array<int, array<string, mixed>>
+     */
+    protected function resolveBlock(array $rows, array $order, HybridConfig $config, array $deciders, EventCategory $category, int $from): array
+    {
+        if (count($rows) < 2) {
+            return $rows;
+        }
+
+        for ($i = $from; $i < count($order); $i++) {
+            $rule = $order[$i];
+            $comparator = Catalog::comparatorOf($rule);
+
+            // Reaching the lot means every rule that answers to a result has
+            // already been asked and none of them answered: this block is where
+            // it is because of a draw, and is owed a decider. Said before the
+            // lot is applied, since the lot itself always separates them.
+            if ($comparator === 'drawing_lots') {
+                $this->markUndecided($rows, $order);
+            }
+
+            $mini = $comparator === 'head_to_head'
+                ? $this->miniLeague($category, $config, array_column(array_column($rows, 'team'), 'id'))
+                : [];
+
+            $compare = fn ($a, $b) => $this->compareBy($rule, $a, $b, $mini, $deciders, $category);
+
+            usort($rows, fn ($a, $b) => $compare($a, $b) ?: strcmp($a['team']['name'], $b['team']['name']));
+
+            $blocks = $this->blocks($rows, $compare);
+
+            if (count($blocks) === 1) {
+                continue; // this rule separated nobody — ask the next one
+            }
+
+            $out = [];
+            foreach ($blocks as $block) {
+                foreach ($this->resolveBlock($block, $order, $config, $deciders, $category, 0) as $row) {
+                    $out[] = $row;
+                }
+            }
+
+            return $out;
+        }
+
+        // The order ran out with these still level — it holds no lot to break
+        // the tie with either, so the name is all that is left.
+        $this->markUndecided($rows, $order);
+        usort($rows, fn ($a, $b) => strcmp($a['team']['name'], $b['team']['name']));
 
         return $rows;
     }
 
     /**
-     * Mark neighbouring rows that no configured rule could separate — the ones
-     * whose order is, right now, whatever the lot said.
+     * Split an already-sorted list into runs of adjacent rows the comparator
+     * cannot tell apart.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  callable(array<string, mixed>, array<string, mixed>): int  $compare
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    protected function blocks(array $rows, callable $compare): array
+    {
+        $out = [];
+        $run = [];
+
+        foreach ($rows as $row) {
+            if ($run !== [] && $compare($run[count($run) - 1], $row) !== 0) {
+                $out[] = $run;
+                $run = [];
+            }
+            $run[] = $row;
+        }
+
+        if ($run !== []) {
+            $out[] = $run;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Mark a block whose order is, right now, whatever the lot said.
      *
      * Only raised when the order actually holds the decider rule, because the
      * mark is an invitation to play one: telling an organizer who removed it
      * that a tie is unresolved would point at a fixture that changes nothing.
-     * The lot is skipped on purpose — it always answers, and an answer from it
-     * is exactly the state being reported.
      *
-     * @param  array<int, array<string, mixed>>  $rows  ranked, by reference
+     * @param  array<int, array<string, mixed>>  $rows  by reference
      * @param  array<int, string>  $order
-     * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
-     * @param  array<string, array<string, int>>  $deciders
      */
-    protected function flagUndecided(array &$rows, array $order, array $h2h, array $deciders, EventCategory $category): void
+    protected function markUndecided(array &$rows, array $order): void
     {
         if (! $this->usesComparator($order, 'playoff')) {
             return;
         }
 
-        $rules = array_values(array_filter(
-            $order,
-            fn ($rule) => Catalog::comparatorOf($rule) !== 'drawing_lots',
-        ));
-
-        for ($i = 1; $i < count($rows); $i++) {
-            $a = $rows[$i - 1];
-            $b = $rows[$i];
-
-            if ($a['points'] !== $b['points']) {
-                continue;
-            }
-
-            foreach ($rules as $rule) {
-                if ($this->compareBy($rule, $a, $b, $h2h, $deciders, $category) !== 0) {
-                    continue 2;
-                }
-            }
-
-            $rows[$i - 1]['needs_decider'] = true;
-            $rows[$i]['needs_decider'] = true;
+        foreach ($rows as &$row) {
+            $row['needs_decider'] = true;
         }
+        unset($row);
     }
 
     /**
@@ -491,23 +603,25 @@ class StandingService
      *
      * @param  array<string, mixed>  $a
      * @param  array<string, mixed>  $b
-     * @param  array<string, array<string, array{points: int, diff: int}>>  $h2h
+     * @param  array<string, array{points: int, diff: int, scored: int}>  $mini  the tied block's table, from miniLeague()
      * @param  array<string, array<string, int>>  $deciders
      */
-    protected function compareBy(string $rule, array $a, array $b, array $h2h, array $deciders, EventCategory $category): int
+    protected function compareBy(string $rule, array $a, array $b, array $mini, array $deciders, EventCategory $category): int
     {
         $idA = $a['team']['id'];
         $idB = $b['team']['id'];
 
         return match (Catalog::comparatorOf($rule)) {
-            // Only the matches the two played against each other: points, then
-            // goal difference across those meetings.
+            // Their place in the table they make among themselves — points,
+            // then goal difference, then goals scored across those meetings.
             'head_to_head' => [
-                $h2h[$idB][$idA]['points'] ?? 0,
-                $h2h[$idB][$idA]['diff'] ?? 0,
+                $mini[$idB]['points'] ?? 0,
+                $mini[$idB]['diff'] ?? 0,
+                $mini[$idB]['scored'] ?? 0,
             ] <=> [
-                $h2h[$idA][$idB]['points'] ?? 0,
-                $h2h[$idA][$idB]['diff'] ?? 0,
+                $mini[$idA]['points'] ?? 0,
+                $mini[$idA]['diff'] ?? 0,
+                $mini[$idA]['scored'] ?? 0,
             ],
             'goal_difference' => $b['goal_diff'] <=> $a['goal_diff'],
             'goals_scored' => $b['goals_for'] <=> $a['goals_for'],
@@ -529,30 +643,47 @@ class StandingService
     }
 
     /**
-     * Points and goal difference each team took off each other.
+     * The table a set of tied teams makes among themselves: points, goal
+     * difference and goals scored across the matches they played against *each
+     * other*, and nothing else.
      *
-     * @return array<string, array<string, array{points: int, diff: int}>>
+     * This is what head to head means, and why it cannot be a comparison of two
+     * teams in isolation. Three teams that beat each other in a circle separate
+     * pairwise perfectly — each of the three comparisons is decisive — but the
+     * three answers contradict, so the order becomes whatever the sort happened
+     * to walk them in, and the criterion listed *below* head to head is never
+     * reached to settle it. Read as a table, the circle is what it plainly is:
+     * three teams level on points, falling through to the next criterion.
+     *
+     * The tied set is the input rather than something derived here, because it
+     * is the caller's block that defines it: two teams left over from a tie of
+     * three are a new, smaller head to head, over a different set of matches.
+     *
+     * @param  array<int, string>  $teamIds  the tied teams
+     * @return array<string, array{points: int, diff: int, scored: int}>
      */
-    protected function headToHead(EventCategory $category): array
+    protected function miniLeague(EventCategory $category, HybridConfig $config, array $teamIds): array
     {
-        $config = HybridConfig::fromCategory($category);
-        $out = [];
+        $tied = array_flip($teamIds);
+        $out = array_fill_keys($teamIds, ['points' => 0, 'diff' => 0, 'scored' => 0]);
 
         foreach ($this->countingMatches($category) as $m) {
             $home = $m->home_team_id;
             $away = $m->away_team_id;
-            if (! $home || ! $away) {
+
+            // Both ends inside the tied set, or the match says nothing about it.
+            if (! $home || ! $away || ! isset($tied[$home], $tied[$away])) {
                 continue;
             }
 
             $diff = $m->home_score - $m->away_score;
-            $homePoints = $diff > 0 ? $config->pointsWin : ($diff === 0 ? $config->pointsDraw : $config->pointsLose);
-            $awayPoints = $diff < 0 ? $config->pointsWin : ($diff === 0 ? $config->pointsDraw : $config->pointsLose);
 
-            $out[$home][$away]['points'] = ($out[$home][$away]['points'] ?? 0) + $homePoints;
-            $out[$home][$away]['diff'] = ($out[$home][$away]['diff'] ?? 0) + $diff;
-            $out[$away][$home]['points'] = ($out[$away][$home]['points'] ?? 0) + $awayPoints;
-            $out[$away][$home]['diff'] = ($out[$away][$home]['diff'] ?? 0) - $diff;
+            $out[$home]['points'] += $diff > 0 ? $config->pointsWin : ($diff === 0 ? $config->pointsDraw : $config->pointsLose);
+            $out[$away]['points'] += $diff < 0 ? $config->pointsWin : ($diff === 0 ? $config->pointsDraw : $config->pointsLose);
+            $out[$home]['diff'] += $diff;
+            $out[$away]['diff'] -= $diff;
+            $out[$home]['scored'] += $m->home_score;
+            $out[$away]['scored'] += $m->away_score;
         }
 
         return $out;
