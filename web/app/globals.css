@@ -449,6 +449,55 @@ img { max-width: 100%; display: block; }
 .footer-links { display: flex; flex-direction: column; gap: 11px; }
 .footer-links a { font-size: 14.5px; color: var(--text-2); transition: color 0.15s; }
 .footer-links a:hover { color: var(--brand-600); }
+/* Contact details and socials sit inside the brand cell, so .footer-grid keeps
+   its four columns and both breakpoints below stay untouched. */
+.footer-contact { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 20px; }
+.footer-contact a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14.5px;
+  color: var(--text-2);
+  transition: color 0.15s;
+}
+.footer-contact a:hover { color: var(--brand-600); }
+.footer-contact a > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+.footer-contact a:hover > svg { color: var(--brand-600); }
+
+.footer-social { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.footer-social a {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-muted);
+  transition: color 0.18s var(--ease), border-color 0.18s var(--ease),
+    background 0.18s var(--ease), transform 0.18s var(--ease);
+}
+.footer-social a > svg { width: 17px; height: 17px; }
+/* Resting state is one quiet grey row; the platform's own colour appears only
+   on the one you're reaching for. */
+.footer-social a:hover,
+.footer-social a:focus-visible {
+  color: var(--social);
+  border-color: color-mix(in srgb, var(--social) 45%, var(--border));
+  background: color-mix(in srgb, var(--social) 10%, var(--bg));
+  transform: translateY(-2px);
+}
+.footer-social a:focus-visible { outline: 2px solid var(--social); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .footer-social a { transition: none; }
+  .footer-social a:hover, .footer-social a:focus-visible { transform: none; }
+}
 .footer-bottom {
   margin-top: 48px;
   padding-top: 24px;

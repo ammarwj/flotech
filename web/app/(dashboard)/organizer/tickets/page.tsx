@@ -90,11 +90,16 @@ export default function TicketsOverviewPage() {
         />
       )}
 
-      <div className="grid gap-3">
+      {/* grid-cols-1, bukan `grid` polos: kolom implisit itu ber-ukuran `auto`,
+          yang minimumnya min-content. `truncate` di nama event memasang
+          white-space: nowrap, jadi min-content-nya = seluruh nama dan ukuran itu
+          merambat naik jadi lebar track — kartunya melebar melewati viewport
+          walau isinya sudah min-w-0. Tailwind grid-cols-1 = minmax(0, 1fr). */}
+      <div className="grid grid-cols-1 gap-3">
         {events?.map((ev) => {
           const color = sportColor(ev.sport_type);
           return (
-            <Card key={ev.id} className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <Card key={ev.id} className="flex min-w-0 flex-wrap items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-4">
                 <span
                   className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
@@ -104,22 +109,32 @@ export default function TicketsOverviewPage() {
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+                    {/* min-w-0: `truncate` alone cannot shrink a flex item —
+                        its automatic minimum size is the full nowrap text, so a
+                        long event name pushes past the card instead of
+                        ellipsing. Sama seperti kartu di /organizer/events. */}
+                    <span
+                      className="min-w-0 truncate font-semibold"
+                      style={{ fontFamily: "var(--font-display)" }}
+                      title={ev.name}
+                    >
                       {ev.name}
                     </span>
                     <EventStatusBadge status={ev.status} />
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">{sportLabel(ev.sport_type)}</div>
+                  <div className="mt-1 truncate text-sm text-muted-foreground">{sportLabel(ev.sport_type)}</div>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button asChild size="sm" variant="outline">
+              {/* Full width dulu supaya kedua tombol turun ke barisnya sendiri
+                  di HP, bukan melebarkan kartu melewati viewport. */}
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none">
                   <Link href={`/organizer/events/${ev.id}/scan`}>
                     <ScanLine className="h-4 w-4" />
                     Scan
                   </Link>
                 </Button>
-                <Button asChild size="sm">
+                <Button asChild size="sm" className="flex-1 sm:flex-none">
                   <Link href={`/organizer/events/${ev.id}/tickets`}>
                     Kelola tiket
                     <ArrowRight className="h-4 w-4" />

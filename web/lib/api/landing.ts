@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { ApiEnvelope, Faq, Testimonial } from "@/types/api";
+import type { ApiEnvelope, Faq, SiteSettings, Testimonial } from "@/types/api";
 
 // ---- Public ----
 
@@ -10,6 +10,11 @@ export async function getPublicTestimonials(): Promise<Testimonial[]> {
 
 export async function getPublicFaqs(): Promise<Faq[]> {
   const { data } = await apiClient.get<ApiEnvelope<Faq[]>>("/faqs");
+  return data.data;
+}
+
+export async function getPublicSiteSettings(): Promise<SiteSettings> {
+  const { data } = await apiClient.get<ApiEnvelope<SiteSettings>>("/site-settings");
   return data.data;
 }
 
@@ -61,4 +66,16 @@ export async function updateFaq(id: string, payload: FaqInput): Promise<Faq> {
 
 export async function deleteFaq(id: string): Promise<void> {
   await apiClient.delete(`/admin/faqs/${id}`);
+}
+
+export async function getAdminSiteSettings(): Promise<SiteSettings> {
+  const { data } = await apiClient.get<ApiEnvelope<SiteSettings>>("/admin/site-settings");
+  return data.data;
+}
+
+export type SiteSettingsInput = SiteSettings;
+
+export async function updateSiteSettings(payload: SiteSettingsInput): Promise<SiteSettings> {
+  const { data } = await apiClient.put<ApiEnvelope<SiteSettings>>("/admin/site-settings", payload);
+  return data.data;
 }

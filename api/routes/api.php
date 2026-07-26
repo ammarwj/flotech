@@ -8,7 +8,9 @@ use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
+use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
+use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\ViewStatController as AdminViewStatController;
@@ -45,9 +47,11 @@ use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
 use App\Http\Controllers\Api\WithdrawalController;
 use App\Http\Resources\FaqResource;
 use App\Http\Resources\PlanResource;
+use App\Http\Resources\PublicSiteSettingResource;
 use App\Http\Resources\TestimonialResource;
 use App\Models\Faq;
 use App\Models\Plan;
+use App\Models\SiteSetting;
 use App\Models\Testimonial;
 use App\Support\ApiResponse;
 use Illuminate\Support\Facades\Route;
@@ -91,6 +95,12 @@ Route::prefix('v1')->group(function () {
                 ->orderBy('sort_order')
                 ->get()
         )
+    ));
+
+    // Contact details and social profiles in the footer, which renders on every
+    // public page — not just the landing one.
+    Route::get('/site-settings', fn () => ApiResponse::success(
+        new PublicSiteSettingResource(SiteSetting::current())
     ));
 
     // Admin-managed vocabulary: sports (+ stat columns), formats, tiebreakers,
@@ -329,6 +339,9 @@ Route::prefix('v1')->group(function () {
                 ->parameters(['feature-definitions' => 'feature_definition'])
                 ->except(['show']);
 
+            // How much of the platform is in use: tournaments by status.
+            Route::get('stats', [AdminStatController::class, 'index']);
+
             // Public page traffic across the whole platform.
             Route::get('view-stats', [AdminViewStatController::class, 'index']);
             Route::get('view-stats/organizations', [AdminViewStatController::class, 'organizations']);
@@ -337,6 +350,10 @@ Route::prefix('v1')->group(function () {
             // Landing page content.
             Route::apiResource('testimonials', TestimonialController::class)->except(['show']);
             Route::apiResource('faqs', FaqController::class)->except(['show']);
+
+            // Contact & socials: one row, so a settings pair instead of a resource.
+            Route::get('site-settings', [SiteSettingController::class, 'index']);
+            Route::put('site-settings', [SiteSettingController::class, 'update']);
 
             // Catalog administration.
             Route::get('engines', [ConfigOptionController::class, 'engines']);

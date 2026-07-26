@@ -39,6 +39,20 @@ class UserResource extends JsonResource
                 'organization_name' => $m->organization?->name,
                 'role' => $m->role,
             ])->values()),
+            'managed_teams' => $this->whenLoaded('managedTeams', fn () => $this->managedTeams->map(fn ($t) => [
+                'id' => $t->id,
+                'name' => $t->name,
+                'event_name' => $t->event?->name,
+            ])->values()),
+            // Diturunkan dari ketiga relasi di atas — butuh ketiganya dimuat,
+            // karena "tidak dimuat" tidak bisa dibedakan dari "tidak punya" dan
+            // akan melabeli setiap organizer sebagai akun kosong.
+            'account_types' => $this->when(
+                $this->relationLoaded('ownedOrganizations')
+                    && $this->relationLoaded('organizationMemberships')
+                    && $this->relationLoaded('managedTeams'),
+                fn () => $this->accountTypes(),
+            ),
         ];
     }
 }

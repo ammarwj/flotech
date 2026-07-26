@@ -89,6 +89,21 @@ export type SocialPlatform = "instagram" | "youtube" | "x" | "tiktok" | "faceboo
 /** Profile URLs per platform. Unset platforms are `null` (or absent, publicly). */
 export type SocialLinks = Partial<Record<SocialPlatform, string | null>>;
 
+/**
+ * How to reach flo-event itself — rendered in the footer, edited by super_admin
+ * at /admin/site-settings. One record, so no id and nothing to list.
+ *
+ * The public endpoint omits the platforms nobody filled in; the admin one keeps
+ * all five (as `null`) so the settings form binds to a stable set of inputs.
+ */
+export interface SiteSettings {
+  contact_email: string | null;
+  contact_phone: string | null;
+  /** CTA of the Professional plan card. Empty = fall back to `contact_email`. */
+  sales_email: string | null;
+  social_links: SocialLinks;
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -1105,6 +1120,35 @@ export interface AdminUser {
   last_seen_at: string | null;
   owned_organizations: { id: string; name: string }[];
   memberships: { organization_id: string; organization_name: string | null; role: string }[];
+  managed_teams: { id: string; name: string; event_name: string | null }[];
+  /**
+   * Jenis akun yang diturunkan server dari jejak user (punya/anggota organisasi
+   * = organizer, mendaftarkan tim = peserta) — bukan `default_mode`, yang cuma
+   * topi terakhir yang dipakai di switcher dashboard. Bisa keduanya sekaligus,
+   * dan kosong untuk akun yang belum melakukan apa pun.
+   */
+  account_types: AccountType[];
+}
+
+export type AccountType = "organizer" | "participant";
+
+// ---- Platform counters ----
+
+export interface AdminEventStats {
+  total: number;
+  /**
+   * Turnamen yang belum selesai dan belum dibatalkan — definisi yang sama
+   * dengan kuota paket (`isActiveEvent` di `lib/plan.ts`), jadi draf ikut
+   * terhitung. Event yang benar-benar sedang dimainkan ada di `ongoing`.
+   */
+  active: number;
+  ongoing: number;
+  /** Semua status yang dikenal server hadir, termasuk yang bernilai 0. */
+  by_status: Record<EventStatus, number>;
+}
+
+export interface AdminStats {
+  events: AdminEventStats;
 }
 
 // ---- Public page traffic ----

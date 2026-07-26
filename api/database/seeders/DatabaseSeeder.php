@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             PlanSeeder::class,
             TestimonialSeeder::class,
             FaqSeeder::class,
+            SiteSettingSeeder::class,
         ]);
 
         // Demo/trial data (demo users with password "password", demo org & events)

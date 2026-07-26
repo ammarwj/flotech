@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SocialPlatforms;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,18 +15,13 @@ class Organization extends Model
 
     /**
      * Platforms accepted in `social_links`, each with the base URL used to turn
-     * a bare handle into a full profile URL. Adding one here is all it takes —
-     * the request, the resources and the settings form all read this list.
+     * a bare handle into a full profile URL. The list itself lives in
+     * SocialPlatforms because the platform's own footer stores the same shape;
+     * add a platform there and both pick it up.
      *
      * @var array<string, string>
      */
-    public const SOCIAL_PLATFORMS = [
-        'instagram' => 'https://instagram.com/',
-        'youtube' => 'https://youtube.com/@',
-        'x' => 'https://x.com/',
-        'tiktok' => 'https://tiktok.com/@',
-        'facebook' => 'https://facebook.com/',
-    ];
+    public const SOCIAL_PLATFORMS = SocialPlatforms::BASE_URLS;
 
     protected $fillable = [
         'name',
@@ -61,15 +57,7 @@ class Organization extends Model
      */
     public function socialLinksMap(): array
     {
-        $stored = $this->social_links ?? [];
-
-        return array_map(
-            fn (string $platform) => $stored[$platform] ?? null,
-            array_combine(
-                array_keys(self::SOCIAL_PLATFORMS),
-                array_keys(self::SOCIAL_PLATFORMS),
-            ),
-        );
+        return SocialPlatforms::map($this->social_links);
     }
 
     public function owner(): BelongsTo

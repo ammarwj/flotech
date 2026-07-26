@@ -24,6 +24,29 @@ class UserController extends Controller
 {
     public function __construct(protected AuthService $auth) {}
 
+    /**
+     * Relasi yang membentuk konteks satu user di layar admin.
+     *
+     * Satu daftar untuk semua respons di controller ini karena
+     * `UserResource::account_types` hanya terisi kalau **ketiganya** dimuat —
+     * memuat sebagian di salah satu endpoint membuat badge jenis akun hilang
+     * diam-diam di respons itu saja.
+     *
+     * @return array<string, mixed>
+     */
+    private function contextRelations(): array
+    {
+        return [
+            'ownedOrganizations',
+            'organizationMemberships.organization',
+            // Kolomnya dibatasi: `teams` lebar (snapshot pembayaran, bukti
+            // transfer, dll) dan satu peserta bisa punya banyak tim.
+            'managedTeams' => fn ($q) => $q->select('id', 'manager_user_id', 'event_id', 'name')
+                ->with('event:id,name')
+                ->latest('created_at'),
+        ];
+    }
+
     /** Paginated, searchable list with each user's org context. */
     public function index(Request $request): JsonResponse
     {
@@ -34,7 +57,21 @@ class UserController extends Controller
                     ->orWhere('email', 'like', "%{$q}%"));
             })
             ->when($request->query('role'), fn ($query, $role) => $query->where('role', $role))
-            ->with(['ownedOrganizations', 'organizationMemberships.organization'])
+            // Filter jenis akun memakai definisi yang sama persis dengan
+            // User::accountTypes() — kalau keduanya menyimpang, badge di kartu
+            // dan hasil filter akan saling membantah di layar yang sama.
+            ->when($request->query('type'), fn ($query, $type) => match ($type) {
+                'organizer' => $query->where(fn ($w) => $w
+                    ->whereHas('ownedOrganizations')
+                    ->orWhereHas('organizationMemberships')),
+                'participant' => $query->whereHas('managedTeams'),
+                'none' => $query
+                    ->whereDoesntHave('ownedOrganizations')
+                    ->whereDoesntHave('organizationMemberships')
+                    ->whereDoesntHave('managedTeams'),
+                default => $query,
+            })
+            ->with($this->contextRelations())
             ->orderByDesc('created_at')
             ->paginate(min((int) $request->query('per_page', 20), 100));
 
@@ -71,7 +108,7 @@ class UserController extends Controller
 
         $user->save();
 
-        $user->load(['ownedOrganizations', 'organizationMemberships.organization']);
+        $user->load($this->contextRelations());
 
         return ApiResponse::success(new UserResource($user), 'User diperbarui');
     }
@@ -102,7 +139,7 @@ class UserController extends Controller
 
         $token = $this->auth->issueImpersonationToken($user, $admin);
 
-        $user->load(['ownedOrganizations', 'organizationMemberships.organization']);
+        $user->load($this->contextRelations());
 
         return ApiResponse::success([
             'access_token' => $token,

@@ -42,6 +42,37 @@ class OrganizationTest extends TestCase
             ->assertJsonPath('data.id', $org->id);
     }
 
+    /**
+     * Organizers type profiles however they like. Compare all three shapes in
+     * one request — asserting a single stored value would pass even if the
+     * normalization in SocialPlatforms never ran.
+     */
+    public function test_organizer_social_handles_are_normalized_into_profile_urls(): void
+    {
+        $user = User::factory()->create();
+        $org = Organization::create([
+            'name' => 'Klub Ku',
+            'slug' => 'klub-ku',
+            'owner_id' => $user->id,
+        ]);
+        $org->members()->create(['user_id' => $user->id, 'role' => 'admin']);
+
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}", [
+                'social_links' => [
+                    'instagram' => '@klubku',
+                    'tiktok' => 'tiktok.com/@klubku',
+                    'x' => 'https://x.com/klubku',
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.social_links.instagram', 'https://instagram.com/klubku')
+            ->assertJsonPath('data.social_links.tiktok', 'https://tiktok.com/@klubku')
+            ->assertJsonPath('data.social_links.x', 'https://x.com/klubku')
+            // Untouched platforms stay present as null so the settings form binds.
+            ->assertJsonPath('data.social_links.facebook', null);
+    }
+
     public function test_non_member_cannot_view_organization(): void
     {
         $owner = User::factory()->create();

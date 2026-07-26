@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { usePlanCtaHref } from "@/components/auth/public-auth-actions";
 import { observeReveals } from "@/components/landing/reveal-init";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getPublicSiteSettings } from "@/lib/api/landing";
 import { getPublicPlans } from "@/lib/api/plans";
 import { rupiahCompact } from "@/lib/labels";
 import {
@@ -19,16 +20,29 @@ import {
 import type { Plan } from "@/types/api";
 import { CheckIcon, CrossIcon } from "./icons";
 
-const SALES_MAILTO =
-  "mailto:sales@flo-event.id?subject=Tertarik%20paket%20Professional%20flo-event";
+/** Last resort only: the address super_admin has not replaced yet, or the API is down. */
+const SALES_FALLBACK = "sales@flo-event.id";
+
+const SALES_SUBJECT = "?subject=Tertarik%20paket%20Professional%20flo-event";
+
+/**
+ * Whom "Hubungi Sales" writes to. Same query key as the footer, so react-query
+ * serves both from one request on the landing page.
+ */
+function useSalesMailto(): string {
+  const { data } = useQuery({ queryKey: ["public-site-settings"], queryFn: getPublicSiteSettings });
+  const address = data?.sales_email || data?.contact_email || SALES_FALLBACK;
+
+  return `mailto:${address}${SALES_SUBJECT}`;
+}
 
 /**
  * The bits of a card the plan catalogue has no opinion about: the top plan is a
  * sales conversation rather than a self-serve checkout, and `pro` is the one we
  * push. Everything else on the card — price, description, features — is API data.
  */
-function ctaFor(plan: Plan): { label: string; href: string } {
-  if (plan.slug === "professional") return { label: "Hubungi Sales", href: SALES_MAILTO };
+function ctaFor(plan: Plan, salesMailto: string): { label: string; href: string } {
+  if (plan.slug === "professional") return { label: "Hubungi Sales", href: salesMailto };
   return { label: `Pilih ${plan.name}`, href: "/register" };
 }
 
@@ -135,8 +149,9 @@ export function Pricing() {
 }
 
 function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
+  const salesMailto = useSalesMailto();
   const featured = plan.slug === "pro";
-  const cta = ctaFor(plan);
+  const cta = ctaFor(plan, salesMailto);
 
   return (
     <article className={`plan${featured ? " featured" : ""} reveal`} data-delay={delay}>

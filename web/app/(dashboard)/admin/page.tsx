@@ -11,11 +11,14 @@ import {
   Settings2,
   Trophy,
   BarChart3,
+  Zap,
 } from "lucide-react";
 
+import { getAdminStats } from "@/lib/api/admin";
 import { getAdminPlans } from "@/lib/api/plans";
 import { getAdminViewStats, LIVE_STATS_OPTIONS } from "@/lib/api/views";
-import { angka } from "@/lib/labels";
+import { angka, EVENT_STATUS_LABELS } from "@/lib/labels";
+import type { EventStatus } from "@/types/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +33,16 @@ export default function AdminOverviewPage() {
     queryFn: getAdminViewStats,
     ...LIVE_STATS_OPTIONS,
   });
+  const statsQuery = useQuery({
+    queryKey: ["admin-stats"],
+    queryFn: getAdminStats,
+    ...LIVE_STATS_OPTIONS,
+  });
+
+  const events = statsQuery.data?.events;
+  // "Aktif" di sini adalah definisi yang sama dengan kuota paket (belum selesai
+  // & belum dibatalkan); sisanya = yang sudah selesai atau batal.
+  const closedEvents = events ? events.total - events.active : 0;
 
   const planCount = plansQuery.data?.length ?? 0;
   const activePlans = plansQuery.data?.filter((p) => p.is_active).length ?? 0;
@@ -49,13 +62,25 @@ export default function AdminOverviewPage() {
         description={`Halo ${user?.full_name ?? "Super Admin"} — kelola paket langganan dan konfigurasi platform flo-event.`}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Total paket"
-          value={planCount}
-          icon={CreditCard}
-          loading={plansQuery.isLoading}
-          hint={`${activePlans} paket aktif`}
+          label="Total turnamen"
+          value={angka(events?.total ?? 0)}
+          icon={Trophy}
+          loading={statsQuery.isLoading}
+          hint={
+            events
+              ? `${angka(events.active)} aktif · ${angka(closedEvents)} selesai/batal`
+              : undefined
+          }
+        />
+        <StatCard
+          label="Turnamen aktif"
+          value={angka(events?.active ?? 0)}
+          icon={Zap}
+          color="var(--accent-green)"
+          loading={statsQuery.isLoading}
+          hint={events ? `${angka(events.ongoing)} sedang berlangsung` : undefined}
         />
         <StatCard
           label="Kunjungan 30 hari"
@@ -69,7 +94,33 @@ export default function AdminOverviewPage() {
             </Link>
           }
         />
+        <StatCard
+          label="Total paket"
+          value={planCount}
+          icon={CreditCard}
+          loading={plansQuery.isLoading}
+          hint={`${activePlans} paket aktif`}
+        />
       </div>
+
+      {events && (
+        <Card className="mt-4 p-5">
+          <h3 className="text-sm font-semibold">Turnamen per status</h3>
+          <dl className="mt-3 flex flex-wrap gap-2">
+            {/* Urutan & label dari EVENT_STATUS_LABELS — satu sumber label
+                status, sama seperti yang dibaca halaman event. */}
+            {(Object.keys(EVENT_STATUS_LABELS) as EventStatus[]).map((status) => (
+              <div
+                key={status}
+                className="flex items-center gap-2 rounded-lg bg-[var(--tint)] px-3 py-1.5 text-sm"
+              >
+                <dt className="text-muted-foreground">{EVENT_STATUS_LABELS[status]}</dt>
+                <dd className="font-semibold">{angka(events.by_status[status] ?? 0)}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
 
       <Card className="mt-6 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">

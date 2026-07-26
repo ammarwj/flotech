@@ -1,7 +1,14 @@
 import type { AxiosRequestConfig } from "axios";
 
 import { apiClient } from "./client";
-import type { ActiveSession, AdminUser, ApiEnvelope, AuthUser, Paginated } from "@/types/api";
+import type {
+  ActiveSession,
+  AdminStats,
+  AdminUser,
+  ApiEnvelope,
+  AuthUser,
+  Paginated,
+} from "@/types/api";
 
 // ---- SaaS super admin ----
 
@@ -11,11 +18,19 @@ export async function getActiveSessions(): Promise<ActiveSession[]> {
   return data.data;
 }
 
+/** Isi platform: jumlah turnamen per status, lintas semua organisasi. */
+export async function getAdminStats(): Promise<AdminStats> {
+  const { data } = await apiClient.get<ApiEnvelope<AdminStats>>("/admin/stats");
+  return data.data;
+}
+
 // ---- Platform user management ----
 
 export interface AdminUserQuery {
   q?: string;
   role?: string;
+  /** Jenis akun turunan: "organizer" | "participant" | "none" (belum ada aktivitas). */
+  type?: string;
   page?: number;
   per_page?: number;
 }

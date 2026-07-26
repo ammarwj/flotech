@@ -6,7 +6,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Users, ShieldCheck, BadgeCheck, Trash2, Building2, UserCog, UserCheck, KeyRound } from "lucide-react";
+import {
+  Users,
+  ShieldCheck,
+  BadgeCheck,
+  Trash2,
+  Building2,
+  UserCog,
+  UserCheck,
+  KeyRound,
+  Megaphone,
+  Shirt,
+} from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
 
@@ -29,13 +40,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import type { AdminUser } from "@/types/api";
+import type { AccountType, AdminUser } from "@/types/api";
 
 const relative = (iso: string | null) =>
   iso ? formatDistanceToNow(new Date(iso), { addSuffix: true, locale: idLocale }) : "belum pernah";
 
 const roleLabel = (role: string) => (role === "super_admin" ? "Super Admin" : "Pengguna");
 const orgRoleLabel = (role: string) => (role === "admin" ? "Admin" : role === "operator" ? "Operator" : role);
+
+// Jenis akun turunan dari server (lihat AdminUser["account_types"]). Ikon + label
+// dikunci di sini supaya badge dan opsi filter di bawah tidak bisa menyimpang.
+const ACCOUNT_TYPES: Record<AccountType, { label: string; icon: typeof Megaphone }> = {
+  organizer: { label: "Organizer", icon: Megaphone },
+  participant: { label: "Tim Peserta", icon: Shirt },
+};
+
+/** Berapa tim yang ditampilkan sebelum sisanya diringkas jadi "+N". */
+const TEAM_CHIP_LIMIT = 3;
 
 export default function AdminUsersPage() {
   const confirm = useConfirm();
@@ -48,6 +69,7 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
+  const [type, setType] = useState("");
   const [page, setPage] = useState(1);
   // The user whose password dialog is open. One dialog for the whole list, not
   // one per card — mounting 20 hidden dialogs to show at most one is waste.
@@ -63,8 +85,9 @@ export default function AdminUsersPage() {
   }, [search]);
 
   const query = useQuery({
-    queryKey: ["admin-users", { q, role, page }],
-    queryFn: () => getAdminUsers({ q: q || undefined, role: role || undefined, page }),
+    queryKey: ["admin-users", { q, role, type, page }],
+    queryFn: () =>
+      getAdminUsers({ q: q || undefined, role: role || undefined, type: type || undefined, page }),
     // The moment impersonation starts the token is no longer a super admin's, so
     // refetching this admin-only list would just 403 while we navigate away.
     enabled: !impersonating,
@@ -136,6 +159,19 @@ export default function AdminUsersPage() {
           <option value="user">Pengguna</option>
           <option value="super_admin">Super Admin</option>
         </Select>
+        <Select
+          value={type}
+          onChange={(e) => {
+            setType(e.target.value);
+            setPage(1);
+          }}
+          className="sm:max-w-[200px]"
+        >
+          <option value="">Semua jenis akun</option>
+          <option value="organizer">{ACCOUNT_TYPES.organizer.label}</option>
+          <option value="participant">{ACCOUNT_TYPES.participant.label}</option>
+          <option value="none">Belum ada aktivitas</option>
+        </Select>
       </div>
 
       {query.isLoading ? (
@@ -152,7 +188,7 @@ export default function AdminUsersPage() {
         <EmptyState
           icon={Users}
           title="Tidak ada user"
-          description="Coba ubah kata kunci pencarian atau filter role."
+          description="Coba ubah kata kunci pencarian, filter role, atau filter jenis akun."
         />
       ) : (
         <>
@@ -257,6 +293,9 @@ function UserCard({
 }) {
   const initial = (user.full_name || user.email || "?").charAt(0).toUpperCase();
   const ownsOrgs = user.owned_organizations.length > 0;
+  // Server yang menurunkannya; `?? []` cuma menjaga klien yang lebih baru dari API.
+  const accountTypes = user.account_types ?? [];
+  const teams = user.managed_teams ?? [];
   const deleteReason = isSelf
     ? "Tidak bisa menghapus akun sendiri"
     : ownsOrgs
@@ -300,13 +339,31 @@ function UserCard({
             ) : (
               <Badge variant="warning">Belum verifikasi</Badge>
             )}
+            {/* Jenis akun — apa yang user ini benar-benar lakukan di platform,
+                bukan mode dashboard yang terakhir dia pilih. */}
+            {accountTypes.map((t) => {
+              const { label, icon: Icon } = ACCOUNT_TYPES[t];
+              return (
+                <Badge key={t} variant="info">
+                  <Icon className="h-3 w-3" />
+                  {label}
+                </Badge>
+              );
+            })}
+            {accountTypes.length === 0 && (
+              <Badge variant="outline" title="Belum punya organisasi maupun tim terdaftar">
+                Belum ada aktivitas
+              </Badge>
+            )}
           </div>
           <p className="truncate text-sm text-muted-foreground">{user.email}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Aktif terakhir {relative(user.last_seen_at)}
           </p>
 
-          {(user.owned_organizations.length > 0 || user.memberships.length > 0) && (
+          {(user.owned_organizations.length > 0 ||
+            user.memberships.length > 0 ||
+            teams.length > 0) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {user.owned_organizations.map((o) => (
                 <span
@@ -326,6 +383,22 @@ function UserCard({
                   {m.organization_name ?? "—"} · {orgRoleLabel(m.role)}
                 </span>
               ))}
+              {teams.slice(0, TEAM_CHIP_LIMIT).map((t) => (
+                <span
+                  key={t.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]"
+                  title={t.event_name ?? undefined}
+                >
+                  <Shirt className="h-3 w-3" />
+                  {t.name}
+                  {t.event_name && <span className="opacity-70">· {t.event_name}</span>}
+                </span>
+              ))}
+              {teams.length > TEAM_CHIP_LIMIT && (
+                <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
+                  +{teams.length - TEAM_CHIP_LIMIT} tim lain
+                </span>
+              )}
             </div>
           )}
         </div>

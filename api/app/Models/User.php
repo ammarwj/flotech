@@ -122,4 +122,39 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(Team::class, 'manager_user_id');
     }
+
+    // ---- Jenis akun ----
+
+    /**
+     * Jenis akun yang **diturunkan dari data**, bukan kolom.
+     *
+     * `default_mode` tidak bisa dipakai untuk ini: itu cuma topi terakhir yang
+     * dipakai user di switcher dashboard (dan defaultnya 'organizer' untuk
+     * setiap akun baru), jadi ia menjawab "mau lihat apa" — bukan "dia siapa".
+     * Yang menjawab "dia siapa" adalah jejaknya: punya/anggota organisasi =
+     * organizer, mendaftarkan tim = peserta.
+     *
+     * Satu akun bisa keduanya (organizer yang juga ikut turnamen orang lain),
+     * jadi hasilnya list, bukan satu nilai. List kosong = akun baru yang belum
+     * melakukan apa pun.
+     *
+     * Membaca relasi yang sudah dimuat — pemanggilnya wajib eager-load
+     * `ownedOrganizations`, `organizationMemberships`, dan `managedTeams`.
+     *
+     * @return list<string>
+     */
+    public function accountTypes(): array
+    {
+        $types = [];
+
+        if ($this->ownedOrganizations->isNotEmpty() || $this->organizationMemberships->isNotEmpty()) {
+            $types[] = 'organizer';
+        }
+
+        if ($this->managedTeams->isNotEmpty()) {
+            $types[] = 'participant';
+        }
+
+        return $types;
+    }
 }

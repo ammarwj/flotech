@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Organization;
 
 use App\Models\Organization;
+use App\Support\SocialPlatforms;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,38 +16,17 @@ class UpdateOrganizationRequest extends FormRequest
 
     /**
      * Organizers type social profiles however they like — "@klubku",
-     * "instagram.com/klubku", or the full URL. Normalize all three into a
-     * profile URL here so everything downstream (settings form, public page)
+     * "instagram.com/klubku", or the full URL. SocialPlatforms turns all three
+     * into a profile URL so everything downstream (settings form, public page)
      * only ever deals with a link it can render as an anchor.
      */
     protected function prepareForValidation(): void
     {
-        $social = $this->input('social_links');
-
-        if (! is_array($social)) {
+        if (! is_array($this->input('social_links'))) {
             return;
         }
 
-        $normalized = [];
-
-        foreach (Organization::SOCIAL_PLATFORMS as $platform => $base) {
-            $value = trim((string) ($social[$platform] ?? ''));
-
-            if ($value === '') {
-                $normalized[$platform] = null;
-
-                continue;
-            }
-
-            $normalized[$platform] = match (true) {
-                (bool) preg_match('#^https?://#i', $value) => $value,
-                // Looks like a bare domain ("instagram.com/klubku") — just add the scheme.
-                (bool) preg_match('#^(www\.)?[a-z0-9-]+\.[a-z]{2,}/#i', $value) => 'https://'.$value,
-                default => $base.ltrim($value, '@/'),
-            };
-        }
-
-        $this->merge(['social_links' => $normalized]);
+        $this->merge(['social_links' => SocialPlatforms::normalize($this->input('social_links'))]);
     }
 
     /**
@@ -56,12 +36,6 @@ class UpdateOrganizationRequest extends FormRequest
     {
         /** @var Organization $org */
         $org = $this->attributes->get('organization');
-
-        $socialRules = [];
-
-        foreach (array_keys(Organization::SOCIAL_PLATFORMS) as $platform) {
-            $socialRules["social_links.{$platform}"] = ['nullable', 'url', 'max:255'];
-        }
 
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
@@ -79,7 +53,7 @@ class UpdateOrganizationRequest extends FormRequest
             'contact_email' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:20'],
             'social_links' => ['nullable', 'array'],
-            ...$socialRules,
+            ...SocialPlatforms::rules(),
         ];
     }
 
@@ -88,15 +62,10 @@ class UpdateOrganizationRequest extends FormRequest
      */
     public function messages(): array
     {
-        $messages = [
+        return [
             'slug.alpha_dash' => 'Slug hanya boleh berisi huruf, angka, dan tanda hubung.',
             'slug.unique' => 'Slug ini sudah dipakai organisasi lain.',
+            ...SocialPlatforms::messages(),
         ];
-
-        foreach (array_keys(Organization::SOCIAL_PLATFORMS) as $platform) {
-            $messages["social_links.{$platform}.url"] = 'Tautan tidak valid. Isi username atau URL profil lengkap.';
-        }
-
-        return $messages;
     }
 }
