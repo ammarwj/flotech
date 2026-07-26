@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal, Search, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal, Search, X } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
@@ -21,7 +21,7 @@ import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
 import { showsPlayerStats } from "@/lib/scoring";
-import type { PublicTeam } from "@/types/api";
+import type { EventStatus, PublicEvent, PublicTeam } from "@/types/api";
 import "../../event-shell.css";
 
 function fmtDate(d: string | null) {
@@ -33,6 +33,44 @@ function dateRange(a: string | null, b: string | null) {
   if (!a && !b) return "Tanggal menyusul";
   if (a && b) return `${fmtDate(a)} – ${fmtDate(b)}`;
   return fmtDate(a ?? b);
+}
+
+/** Event yang sudah mulai — atau sudah tidak akan mulai lagi. */
+function hasStarted(status: EventStatus) {
+  return status === "ongoing" || status === "finished" || status === "cancelled";
+}
+
+/**
+ * Kartu penyelenggara di sidebar tab Info. Seluruh kartunya adalah link ke
+ * profil penyelenggara; kalau slug-nya tidak ada, kartunya tetap tampil tapi
+ * sebagai teks biasa (tanpa hover state maupun chevron).
+ */
+function OrganizerCard({ organization }: { organization: PublicEvent["organization"] }) {
+  const body = (
+    <>
+      <span className="crest">
+        {organization.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={organization.logo_url} alt="" />
+        ) : (
+          <Building2 />
+        )}
+      </span>
+      <span className="meta">
+        <small>Penyelenggara</small>
+        <b>{organization.name ?? "-"}</b>
+      </span>
+      {organization.slug && <ChevronRight className="go" aria-hidden />}
+    </>
+  );
+
+  if (!organization.slug) return <div className="card scard org-card">{body}</div>;
+
+  return (
+    <Link href={`/${organization.slug}`} className="card scard org-card">
+      {body}
+    </Link>
+  );
 }
 
 type TabKey = "info" | "teams" | ResultsTab;
@@ -149,6 +187,11 @@ export default function PublicEventPage() {
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll = scheduleAll && activeTab === "schedule" && categories.length > 1;
+  // "Pendaftaran ditutup" hanya berarti sesuatu selama eventnya belum mulai.
+  // Begitu berlangsung/selesai/batal, statusnya sudah tampil di badge hero dan
+  // pill itu cuma jadi tombol mati di bawah judul.
+  const showRegistrationClosed = !ev.registration_is_open && !hasStarted(ev.status);
+  const showHeroCta = ev.registration_is_open || showRegistrationClosed || ev.tickets_on_sale;
 
   return (
     // Kickoff times render in the venue's zone, so every visitor reads the same
@@ -214,22 +257,27 @@ export default function PublicEventPage() {
                 </span>
               </div>
 
-              <div className="ehero-cta">
-                {ev.registration_is_open ? (
-                  <Link href={registerHref} className="btn btn-primary btn-lg">
-                    Daftar Tim Sekarang
-                  </Link>
-                ) : (
-                  <span className="ehero-badge" style={{ height: 44, paddingInline: 20 }}>
-                    Pendaftaran ditutup
-                  </span>
-                )}
-                {ev.tickets_on_sale && (
-                  <Link href={`${base}/tickets`} className="btn btn-secondary btn-lg">
-                    Beli Tiket
-                  </Link>
-                )}
-              </div>
+              {/* .ehero-cta punya margin-top sendiri, jadi wadahnya ikut hilang
+                  kalau tidak ada satu pun tombol — bukan cuma isinya. */}
+              {showHeroCta && (
+                <div className="ehero-cta">
+                  {ev.registration_is_open && (
+                    <Link href={registerHref} className="btn btn-primary btn-lg">
+                      Daftar Tim Sekarang
+                    </Link>
+                  )}
+                  {showRegistrationClosed && (
+                    <span className="ehero-badge" style={{ height: 44, paddingInline: 20 }}>
+                      Pendaftaran ditutup
+                    </span>
+                  )}
+                  {ev.tickets_on_sale && (
+                    <Link href={`${base}/tickets`} className="btn btn-secondary btn-lg">
+                      Beli Tiket
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -282,52 +330,12 @@ export default function PublicEventPage() {
 
               {/* sidebar */}
               <aside>
-                <div className="card scard">
-                  <h3>
-                    <Building2 />
-                    Info Event
-                  </h3>
-                  <div className="price-tier">
-                    <div>
-                      <b>Penyelenggara</b>
-                      <small>Organizer</small>
-                    </div>
-                    <span className="amt" style={{ fontSize: 14 }}>
-                      {ev.organization.slug ? (
-                        <Link href={`/${ev.organization.slug}`}>{ev.organization.name ?? "-"}</Link>
-                      ) : (
-                        (ev.organization.name ?? "-")
-                      )}
-                    </span>
-                  </div>
-                  <div className="price-tier">
-                    <div>
-                      <b>Cabang</b>
-                      <small>Olahraga</small>
-                    </div>
-                    <span className="amt" style={{ fontSize: 14, color: sportColor }}>
-                      {sportLabel(ev.sport_type)}
-                    </span>
-                  </div>
-                  <div className="price-tier">
-                    <div>
-                      <b>Lokasi</b>
-                      <small>Venue</small>
-                    </div>
-                    <span className="amt" style={{ fontSize: 14 }}>
-                      {ev.location_name ?? "TBA"}
-                    </span>
-                  </div>
-                  <div className="price-tier">
-                    <div>
-                      <b>Tim</b>
-                      <small>Disetujui</small>
-                    </div>
-                    <span className="amt" style={{ fontSize: 14 }}>
-                      {ev.approved_teams_count} tim
-                    </span>
-                  </div>
-                </div>
+                {/*
+                  Cabang, lokasi, tanggal, dan jumlah tim sudah tampil di hero,
+                  jadi sidebar hanya menyisakan penyelenggara — dan seluruh
+                  kartunya jadi link supaya afordansi kliknya jelas.
+                */}
+                <OrganizerCard organization={ev.organization} />
 
                 <div className="card scard">
                   <h3>
@@ -347,27 +355,31 @@ export default function PublicEventPage() {
                   ))}
                 </div>
 
-                <div className="card scard">
-                  <h3>
-                    <Wallet />
-                    Pendaftaran
-                  </h3>
-                  {ev.registration_is_open ? (
-                    <>
-                      <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
-                        Pendaftaran tim sedang dibuka. Amankan slot timmu sekarang.
+                {/* Aturan yang sama dengan CTA hero: kartunya hilang seluruhnya
+                    begitu event berjalan, bukan cuma tombolnya. */}
+                {(ev.registration_is_open || showRegistrationClosed) && (
+                  <div className="card scard">
+                    <h3>
+                      <Wallet />
+                      Pendaftaran
+                    </h3>
+                    {ev.registration_is_open ? (
+                      <>
+                        <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
+                          Pendaftaran tim sedang dibuka. Amankan slot timmu sekarang.
+                        </p>
+                        <Link href={registerHref} className="btn btn-primary btn-block">
+                          <Trophy className="h-4 w-4" />
+                          Daftar Tim
+                        </Link>
+                      </>
+                    ) : (
+                      <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
+                        Pendaftaran untuk event ini sedang ditutup.
                       </p>
-                      <Link href={registerHref} className="btn btn-primary btn-block">
-                        <Trophy className="h-4 w-4" />
-                        Daftar Tim
-                      </Link>
-                    </>
-                  ) : (
-                    <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
-                      Pendaftaran untuk event ini sedang ditutup.
-                    </p>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {ev.tickets_on_sale && (
                   <div className="card scard">
