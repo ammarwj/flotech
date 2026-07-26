@@ -127,9 +127,11 @@ const PLAYED: StandingColumn = { key: "played", short: "M", legend: "main", cell
 const WON: StandingColumn = { key: "won", short: "M", legend: "menang", cell: (s) => String(s.won) };
 const DRAWN: StandingColumn = { key: "drawn", short: "S", legend: "seri", cell: (s) => String(s.drawn) };
 const LOST: StandingColumn = { key: "lost", short: "K", legend: "kalah", cell: (s) => String(s.lost) };
+/** Sits right after LOST, not at the far right: it is the number people scan for. */
+const POINTS: StandingColumn = { key: "points", short: "Poin", legend: "poin", cell: (s) => String(s.points) };
 
 /**
- * The columns between "Tim" and "Poin", in order.
+ * The columns after "Tim", in order — Poin included.
  *
  * Every branch on sport lives here rather than in the table, because the words
  * follow the numbers: `goals_for` is gol in football, game menang in badminton
@@ -148,6 +150,7 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
       // A tie *can* finish level — 1-1 over two partai — so seri stays.
       DRAWN,
       LOST,
+      POINTS,
       { key: "rubbers", short: "Partai", legend: "partai menang-kalah", cell: (s) => pair(s.goals_for, s.goals_against) },
       { key: "games", short: "Game", legend: "game menang-kalah", cell: (s) => pair(s.sets_for, s.sets_against) },
       { key: "score", short: "Skor", legend: "poin menang-kalah", cell: (s) => pair(s.points_for, s.points_against) },
@@ -160,6 +163,7 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
       WON,
       // No seri column: a match decided on games cannot end level.
       LOST,
+      POINTS,
       { key: "games", short: "Game", legend: "game menang-kalah", cell: (s) => pair(s.goals_for, s.goals_against) },
       { key: "score", short: "Skor", legend: "poin menang-kalah", cell: (s) => pair(s.points_for, s.points_against) },
       { key: "game_diff", short: "±G", legend: "selisih game", cell: (s) => signed(s.goal_diff) },
@@ -172,15 +176,20 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
     WON,
     DRAWN,
     LOST,
+    POINTS,
     { key: "goals_for", short: "GM", legend: "gol masuk", cell: (s) => String(s.goals_for) },
     { key: "goals_against", short: "GK", legend: "gol kemasukan", cell: (s) => String(s.goals_against) },
     { key: "goal_diff", short: "SG", legend: "selisih gol", cell: (s) => signed(s.goal_diff) },
   ];
 }
 
-/** The legend under a standings table, spelling out the headers above it. */
+/**
+ * The legend under a standings table, spelling out the headers above it —
+ * except Poin, whose header is already the whole word.
+ */
 export function standingsLegend(context: StandingsContext): string {
   return `${standingsColumns(context)
+    .filter((c) => c.key !== "points")
     .map((c) => `${c.short}: ${c.legend}`)
     .join(" · ")}.`;
 }

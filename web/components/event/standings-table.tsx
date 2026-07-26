@@ -9,8 +9,9 @@ import type { StandingsContext, Standing } from "@/types/api";
  * next stage to qualify for (generateKnockout() is hybrid-only, 422 otherwise)
  * so the only thing worth marking is the leader.
  *
- * Which columns sit between "Tim" and "Poin" is `context`'s business — see
- * standingsColumns(). Nothing about a sport is decided here.
+ * Which columns follow "Tim" — Poin among them — is `context`'s business, see
+ * standingsColumns(). Nothing about a sport is decided here; the only thing
+ * this table knows about Poin is that it gets the loud type.
  */
 export function StandingsTable({
   standings,
@@ -40,11 +41,15 @@ export function StandingsTable({
             <th className="w-10 px-2 py-3 text-center font-semibold">#</th>
             <th className="px-3 py-3 text-left font-semibold">Tim</th>
             {columns.map((c) => (
-              <th key={c.key} className="whitespace-nowrap px-2 py-3 text-center font-semibold">
+              <th
+                key={c.key}
+                className={`whitespace-nowrap px-2 py-3 text-center font-semibold${
+                  c.key === "points" ? " text-foreground" : ""
+                }`}
+              >
                 {c.short}
               </th>
             ))}
-            <th className="px-2 py-3 text-center font-semibold text-foreground">Poin</th>
           </tr>
         </thead>
         <tbody>
@@ -62,13 +67,16 @@ export function StandingsTable({
               </td>
               <td className="px-3 py-3 font-semibold">{s.team.name}</td>
               {columns.map((c) => (
-                <td key={c.key} className="whitespace-nowrap px-2 py-3 text-center">
+                <td
+                  key={c.key}
+                  className={`whitespace-nowrap px-2 py-3 text-center${
+                    c.key === "points" ? " font-extrabold" : ""
+                  }`}
+                  style={c.key === "points" ? { fontFamily: "var(--font-display)" } : undefined}
+                >
                   {c.cell(s)}
                 </td>
               ))}
-              <td className="px-2 py-3 text-center font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-                {s.points}
-              </td>
             </tr>
           ))}
         </tbody>

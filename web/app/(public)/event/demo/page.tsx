@@ -239,8 +239,8 @@ export default function EventPage() {
                   <th>M</th>
                   <th>S</th>
                   <th>K</th>
-                  <th>SG</th>
                   <th>Poin</th>
+                  <th>SG</th>
                 </tr>
               </thead>
               <tbody>
@@ -255,8 +255,8 @@ export default function EventPage() {
                   <td>4</td>
                   <td>1</td>
                   <td>0</td>
-                  <td>+9</td>
                   <td className="pts">13</td>
+                  <td>+9</td>
                 </tr>
                 <tr className="qual">
                   <td className="pos">2</td>
@@ -269,8 +269,8 @@ export default function EventPage() {
                   <td>3</td>
                   <td>2</td>
                   <td>0</td>
-                  <td>+5</td>
                   <td className="pts">11</td>
+                  <td>+5</td>
                 </tr>
                 <tr className="playoff">
                   <td className="pos">3</td>
@@ -283,8 +283,8 @@ export default function EventPage() {
                   <td>2</td>
                   <td>2</td>
                   <td>1</td>
-                  <td>+2</td>
                   <td className="pts">8</td>
+                  <td>+2</td>
                 </tr>
                 <tr>
                   <td className="pos">4</td>
@@ -297,8 +297,8 @@ export default function EventPage() {
                   <td>1</td>
                   <td>1</td>
                   <td>3</td>
-                  <td>-3</td>
                   <td className="pts">4</td>
+                  <td>-3</td>
                 </tr>
                 <tr>
                   <td className="pos">5</td>
@@ -311,8 +311,8 @@ export default function EventPage() {
                   <td>0</td>
                   <td>0</td>
                   <td>5</td>
-                  <td>-13</td>
                   <td className="pts">0</td>
+                  <td>-13</td>
                 </tr>
               </tbody>
             </table>
