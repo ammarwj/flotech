@@ -537,7 +537,9 @@ class MatchController extends Controller
      * flows into the standings once its result is confirmed, and it never drives
      * a knockout bracket. Naming a group instead files it under the group stage,
      * where it counts toward that group's table — which is why both teams have
-     * to already belong to that group.
+     * to already belong to that group. In a hybrid category the name is not
+     * asked for at all: two teams from the same group can only be playing a
+     * group fixture, so it is derived — see sharedGroup().
      *
      * `stage: playoff` is the third shape: a decider, played to separate two
      * teams nothing in the table could. It is the one fixture here that adds
@@ -593,6 +595,18 @@ class MatchController extends Controller
                 ['group_name' => ['Grup wajib diisi untuk laga penentuan.']],
                 422,
             );
+        }
+
+        if (! $decider && $group === null && $groups !== []) {
+            // Two teams of the same group can only be meeting in the group
+            // stage, so the fixture is filed there whether or not the client
+            // said so. Not a convenience: countingMatches() already counts a
+            // stage-null fixture toward that group's table, so leaving the
+            // stamp off produces a row that claims to be outside the group
+            // while moving its table — and the bracket gate, whose filter is
+            // narrower (`stage = 'group'`), never sees it. That is how a
+            // finished group stage came to read as "no group schedule".
+            $group = $this->sharedGroup($categoryModel, $data['home_team_id'], $data['away_team_id']);
         }
 
         if ($group !== null) {
@@ -654,6 +668,28 @@ class MatchController extends Controller
             $decider ? 'Laga penentuan ditambahkan' : 'Pertandingan ditambahkan',
             201,
         );
+    }
+
+    /**
+     * The group both teams play in, or null when they do not share one.
+     *
+     * Null is the honest answer for a fixture across two groups: it belongs to
+     * neither table, so it stays stage-null and out of the bracket gate's count.
+     * A team not drawn into a group yet answers null as well — and *both* teams
+     * are read rather than the distinct values, because one grouped team beside
+     * an undrawn one shares nothing. Returning that one group would hand the
+     * caller a name its own cross-group guard then rejects with a 422, breaking
+     * a fixture that used to save fine.
+     */
+    private function sharedGroup(EventCategory $category, string $home, string $away): ?string
+    {
+        $groups = $category->teams()
+            ->whereIn('id', [$home, $away])
+            ->pluck('group_name', 'id');
+
+        $mine = $groups[$home] ?? null;
+
+        return $mine !== null && $mine === ($groups[$away] ?? null) ? (string) $mine : null;
     }
 
     /**

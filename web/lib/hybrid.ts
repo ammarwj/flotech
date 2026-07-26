@@ -1,5 +1,6 @@
 import type {
   BracketConfig,
+  KnockoutPlan,
   KnockoutRound,
   Match,
   StandingsContext,
@@ -116,3 +117,40 @@ export const groupNames = (c: HybridConfig): string[] =>
 
 export const groupMatches = (matches: Match[]) => matches.filter((m) => m.stage === "group");
 export const knockoutMatches = (matches: Match[]) => matches.filter((m) => m.stage === "knockout");
+
+/**
+ * Whether the bracket can be generated yet, and why not when it can't. Mirrors
+ * the two gates in MatchController::generateKnockout(), so the button and the
+ * banner above it can never disagree with the endpoint behind them.
+ *
+ * Both counts are load-bearing: zero *pending* means two opposite things — every
+ * group game is played, or none exists yet — and the second is refused. Reading
+ * the pending count alone is exactly how the plan page came to print "bracket
+ * siap dibuat" over a dead button, which is the whole reason this lives in one
+ * place now.
+ *
+ * `reason` is aimed at the button, not the page: the draw itself can always be
+ * saved, and reading this as "come back later" sends the organizer away from the
+ * one thing they can do right now.
+ */
+export function knockoutReadiness(plan: KnockoutPlan): {
+  ready: boolean;
+  reason: string | null;
+} {
+  if (plan.group_matches_total === 0) {
+    return {
+      ready: false,
+      reason:
+        "Fase grup belum punya jadwal, dan bracket disusun dari klasemen; klasemen kosong hanya akan mengurutkan tim berdasarkan nama.",
+    };
+  }
+
+  if (plan.group_matches_pending > 0) {
+    return {
+      ready: false,
+      reason: `Masih ada ${plan.group_matches_pending} pertandingan grup yang belum selesai atau belum dikonfirmasi.`,
+    };
+  }
+
+  return { ready: true, reason: null };
+}

@@ -4,6 +4,7 @@ import { AlertTriangle, CalendarClock, Info, MapPin } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { crestGradient } from "@/lib/bracket";
+import { knockoutReadiness } from "@/lib/hybrid";
 import { tabDateLabel, timeOf } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import type { KnockoutPlan, KnockoutSlot } from "@/types/api";
@@ -87,6 +88,7 @@ export function KnockoutPlanView({ plan }: { plan: KnockoutPlan }) {
 
   const manual = plan.source === "manual";
   const broken = plan.stale || plan.unplaced_slots.length > 0;
+  const { ready, reason } = knockoutReadiness(plan);
 
   return (
     <div className="grid gap-4">
@@ -102,9 +104,9 @@ export function KnockoutPlanView({ plan }: { plan: KnockoutPlan }) {
           {manual
             ? "Pasangannya kamu tentukan sendiri; nama tim mengikuti klasemen grup terkini."
             : "Belum ada pasangan yang ditentukan — susun sendiri lewat “Buat Bracket Knockout” (bisa disimpan sekarang, tanpa menunggu grup selesai), atau biarkan kosong dan unggulan diambil dari klasemen saat bracket dibuat."}{" "}
-          {plan.group_matches_pending > 0
-            ? `${plan.group_matches_pending} laga grup belum selesai.`
-            : "Fase grup sudah selesai — bracket siap dibuat."}
+          {/* The same answer the generate button uses, so this can't promise a
+              readiness the button then refuses. */}
+          {ready ? "Fase grup sudah selesai — bracket siap dibuat." : reason}
         </p>
       </div>
 

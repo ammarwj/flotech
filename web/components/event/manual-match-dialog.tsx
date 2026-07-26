@@ -6,7 +6,6 @@ import { Scale, Swords, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { CourtSelect } from "./court-select";
 import { TeamCombobox } from "./team-combobox";
 import type { CreateMatchPayload } from "@/lib/api/matches";
@@ -31,8 +30,9 @@ interface ManualMatchDialogProps {
   eventId: string;
   categoryId: string;
   /**
-   * The groups this category runs, if any. Empty for league and knockout —
-   * they have no groups, so the picker is not offered at all.
+   * The groups this category runs, if any. Empty for league and knockout.
+   * Only the decider path reads it now — a plain fixture's phase is derived
+   * from the two teams rather than picked, see the note on `group` below.
    */
   groups?: string[];
   /** Named courts to pick from; empty falls back to a free-text field. */
@@ -68,11 +68,20 @@ function Dialog({
   onSubmit,
 }: ManualMatchDialogProps) {
   const tz = useEventTimezone();
-  const [group, setGroup] = useState(decider?.group ?? "");
   const [home, setHome] = useState(decider?.home ?? "");
   const [away, setAway] = useState(decider?.away ?? "");
   const [when, setWhen] = useState("");
   const [venue, setVenue] = useState("");
+
+  // Which group this fixture lands in. There is nothing here to choose: two
+  // teams of the same group can only be meeting in the group stage, and the
+  // server files it there from the pair alone (MatchController::sharedGroup()).
+  // The dropdown that used to ask defaulted to "outside the group", and whole
+  // group stages were entered through it — counted in the tables all along, yet
+  // invisible to the bracket, which reads the stage stamp they never got.
+  const groupOf = (id: string) => teams.find((t) => t.id === id)?.group_name ?? null;
+  const homeGroup = groupOf(home);
+  const derivedGroup = homeGroup !== null && homeGroup === groupOf(away) ? homeGroup : null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -86,7 +95,10 @@ function Dialog({
     onSubmit({
       home_team_id: home,
       away_team_id: away,
-      group_name: group || null,
+      // A decider names the table it settles; a plain fixture leaves the phase
+      // to the server, so the rule lives in one place rather than two that can
+      // drift.
+      group_name: decider?.group ?? null,
       stage: decider ? "playoff" : null,
       // What the organizer typed is the venue's wall clock, not their own.
       scheduled_at: fromEventInput(when, tz),
@@ -137,39 +149,10 @@ function Dialog({
                 pointed at a tie that does not exist. */}
               {groups.length > 0 && decider && (
                 <p className="rounded-md border border-border bg-[var(--surface-2)] px-3 py-2 text-sm text-muted-foreground">
-                  Memisahkan peringkat di <span className="font-semibold">Grup {group}</span>. Hasilnya
-                  tidak dihitung sebagai pertandingan grup.
+                  Memisahkan peringkat di{" "}
+                  <span className="font-semibold">Grup {decider.group}</span>. Hasilnya tidak
+                  dihitung sebagai pertandingan grup.
                 </p>
-              )}
-
-              {groups.length > 0 && !decider && (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="manual-group" className="font-semibold">
-                    Fase
-                  </Label>
-                  <Select
-                    id="manual-group"
-                    value={group}
-                    onChange={(e) => {
-                      setGroup(e.target.value);
-                      // The old pair may not belong to the new group.
-                      setHome("");
-                      setAway("");
-                    }}
-                  >
-                    <option value="">Pertandingan tambahan (di luar grup)</option>
-                    {groups.map((g) => (
-                      <option key={g} value={g}>
-                        Fase Grup · Grup {g}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {group
-                      ? `Dihitung di klasemen Grup ${group}. Hanya tim Grup ${group} yang bisa dipilih.`
-                      : "Tidak masuk klasemen grup mana pun."}
-                  </p>
-                </div>
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -182,7 +165,7 @@ function Dialog({
                     orgId={orgId}
                     eventId={eventId}
                     categoryId={categoryId}
-                    group={group || undefined}
+                    group={decider?.group ?? undefined}
                     value={home}
                     onChange={setHome}
                     excludeId={away || undefined}
@@ -197,13 +180,24 @@ function Dialog({
                     orgId={orgId}
                     eventId={eventId}
                     categoryId={categoryId}
-                    group={group || undefined}
+                    group={decider?.group ?? undefined}
                     value={away}
                     onChange={setAway}
                     excludeId={home || undefined}
                   />
                 </div>
               </div>
+
+              {/* Says where the fixture will land, once the pair says it. Not a
+                  choice — the organizer's move if it reads wrong is to fix the
+                  draw, and it names Undian Grup so they know where to go. */}
+              {groups.length > 0 && !decider && home !== "" && away !== "" && (
+                <p className="text-xs text-muted-foreground">
+                  {derivedGroup
+                    ? `Masuk Fase Grup · Grup ${derivedGroup}, dihitung di klasemen grup itu.`
+                    : "Kedua tim beda grup, jadi ini pertandingan tambahan — tidak masuk klasemen grup mana pun. Pindahkan timnya lewat Undian Grup kalau seharusnya laga grup."}
+                </p>
+              )}
 
               <div className="grid gap-1.5">
                 <Label htmlFor="manual-when" className="font-semibold">

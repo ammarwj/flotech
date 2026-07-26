@@ -5,6 +5,7 @@ import { CalendarClock, Network, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { unplacedTeams } from "@/lib/bracket";
+import { knockoutReadiness } from "@/lib/hybrid";
 import {
   BracketSeedEditor,
   type SeedingMode,
@@ -108,11 +109,8 @@ function Dialog({
   const unplaced = mode === "manual" ? unplacedTeams(pool, pairs) : [];
   const incomplete = unplaced.length > 0;
 
-  // Two different ways the group stage blocks *generation*, and "0 pending" is
-  // true of both — a category with no fixtures at all has nothing pending.
-  // Neither one blocks saving the draw.
-  const noGroupSchedule = plan.group_matches_total === 0;
-  const ready = !noGroupSchedule && plan.group_matches_pending === 0;
+  // The group stage blocks *generation* only — never saving the draw.
+  const { ready, reason } = knockoutReadiness(plan);
 
   return (
     <div
@@ -183,10 +181,7 @@ function Dialog({
           {!ready && (
             <p className="rounded-md border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2 text-xs text-[var(--warning)]">
               Rencananya bisa disimpan sekarang — yang belum bisa cuma membuat
-              bracketnya.{" "}
-              {noGroupSchedule
-                ? "Fase grup belum punya jadwal, dan bracket disusun dari klasemen; klasemen kosong hanya akan mengurutkan tim berdasarkan nama."
-                : `Masih ada ${plan.group_matches_pending} pertandingan grup yang belum selesai atau belum dikonfirmasi.`}
+              bracketnya. {reason}
             </p>
           )}
 

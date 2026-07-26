@@ -303,6 +303,149 @@ class ManualMatchTest extends TestCase
         $this->assertSame('A', $winner['group_name']);
     }
 
+    /**
+     * The phase is read off the pair, not asked for. Compared rather than
+     * asserted alone: "it saved as a group match" proves nothing on its own —
+     * what matters is that the *same* endpoint, in the *same* category, files an
+     * inter-group pair differently. Get that backwards and either every friendly
+     * pollutes a group table, or a whole hand-typed group stage stays invisible
+     * to the bracket (which is what happened).
+     */
+    public function test_the_group_is_derived_from_the_pair_when_the_client_names_none(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        [$a1, $a2] = $event->teams()->where('group_name', 'A')->pluck('id')->all();
+        $b1 = $event->teams()->where('group_name', 'B')->value('id');
+
+        // Both in group A: there is no other phase they could be meeting in.
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $a1,
+                'away_team_id' => $a2,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.stage', 'group')
+            ->assertJsonPath('data.group_name', 'A');
+
+        // Across two groups it belongs to neither table, so it stays an extra.
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $a1,
+                'away_team_id' => $b1,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.stage', null)
+            ->assertJsonPath('data.group_name', null);
+    }
+
+    /**
+     * A league has no groups to derive, and its fixtures must keep the null stage
+     * the standings read them by.
+     */
+    public function test_a_league_fixture_is_not_promoted_to_a_group(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->leagueEvent($org);
+        [$home, $away] = $event->teams()->orderBy('name')->pluck('id')->all();
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $home,
+                'away_team_id' => $away,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.stage', null);
+    }
+
+    /**
+     * The one fixture between two teams of one group that is *not* a group match.
+     * A decider exists to separate them without touching the table it settles, so
+     * the derivation must not swallow it.
+     */
+    public function test_a_decider_between_two_group_teams_stays_a_playoff(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        [$a1, $a2] = $event->teams()->where('group_name', 'A')->pluck('id')->all();
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->matchesUrl($org, $event), [
+                'home_team_id' => $a1,
+                'away_team_id' => $a2,
+                'group_name' => 'A',
+                'stage' => 'playoff',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.stage', 'playoff')
+            ->assertJsonPath('data.group_name', 'A');
+    }
+
+    /**
+     * The regression this whole change exists for. An organizer who types their
+     * own group schedule instead of generating one must still be able to build the
+     * bracket: before the derivation those fixtures carried no stage, so the gate
+     * counted zero group matches and refused with "fase grup belum punya jadwal"
+     * — while every table on screen showed the group stage finished.
+     */
+    public function test_bracket_can_be_generated_from_a_group_stage_entered_by_hand(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $catId = $event->categories->first()->id;
+
+        // One fixture per group — with two teams each, that is the whole stage.
+        foreach (['A', 'B'] as $group) {
+            [$home, $away] = $event->teams()->where('group_name', $group)->pluck('id')->all();
+
+            $matchId = $this->actingAs($user, 'api')
+                ->postJson($this->matchesUrl($org, $event), [
+                    'home_team_id' => $home,
+                    'away_team_id' => $away,
+                ])
+                ->assertCreated()
+                ->assertJsonPath('data.stage', 'group')
+                ->json('data.id');
+
+            $this->actingAs($user, 'api')
+                ->patchJson("/api/v1/organizations/{$org->id}/matches/{$matchId}", [
+                    'status' => 'finished', 'home_score' => 2, 'away_score' => 0,
+                ])
+                ->assertOk();
+            $this->actingAs($user, 'api')
+                ->patchJson("/api/v1/organizations/{$org->id}/matches/{$matchId}/confirm", ['confirmed' => true])
+                ->assertOk();
+        }
+
+        // What the dashboard reads to decide whether the button is live. Both
+        // counts matter: zero pending also describes a category with no group
+        // fixtures at all, which is the state this used to be stuck in.
+        $plan = $this->actingAs($user, 'api')
+            ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$catId}/knockout-plan")
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(2, $plan['group_matches_total']);
+        $this->assertSame(0, $plan['group_matches_pending']);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$catId}/knockout")
+            ->assertCreated();
+
+        // Four qualifiers: two first-round ties, plus the final they feed.
+        $bracket = $event->matches()->where('stage', 'knockout')->get();
+        $this->assertSame(3, $bracket->count());
+        $this->assertSame(2, $bracket->where('round', 1)->count());
+        // Every opening tie is seated — a bracket generated from an empty table
+        // would still be built, just from teams ranked by name.
+        $this->assertTrue($bracket->where('round', 1)->every(
+            fn ($m) => $m->home_team_id !== null && $m->away_team_id !== null,
+        ));
+    }
+
     public function test_a_group_fixture_is_refused_when_the_teams_are_in_different_groups(): void
     {
         $user = User::factory()->create();
