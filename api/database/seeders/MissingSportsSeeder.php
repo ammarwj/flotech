@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Sport;
+use App\Models\SportOfficialRole;
 use App\Models\SportPosition;
 use App\Models\SportStat;
 use App\Services\Catalog;
@@ -35,6 +36,14 @@ class MissingSportsSeeder extends Seeder
         $racketPositions = [
             ['position_key' => 'singles', 'label' => 'Tunggal'],
             ['position_key' => 'doubles', 'label' => 'Ganda'],
+        ];
+        // Same bench in every sport — see SportSeeder.
+        $officialRoles = [
+            ['role_key' => 'head_coach', 'label' => 'Pelatih Kepala'],
+            ['role_key' => 'assistant_coach', 'label' => 'Asisten Pelatih'],
+            ['role_key' => 'team_manager', 'label' => 'Manajer Tim'],
+            ['role_key' => 'physio', 'label' => 'Fisioterapis'],
+            ['role_key' => 'official', 'label' => 'Ofisial'],
         ];
 
         $sports = [
@@ -110,6 +119,13 @@ class MissingSportsSeeder extends Seeder
                 SportPosition::updateOrCreate(
                     ['sport_id' => $sport->id, 'position_key' => $position['position_key']],
                     ['label' => $position['label'], 'sort_order' => $posOrder],
+                );
+            }
+
+            foreach ($officialRoles as $roleOrder => $role) {
+                SportOfficialRole::updateOrCreate(
+                    ['sport_id' => $sport->id, 'role_key' => $role['role_key']],
+                    ['label' => $role['label'], 'sort_order' => $roleOrder],
                 );
             }
         }

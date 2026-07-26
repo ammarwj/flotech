@@ -51,6 +51,17 @@ class RegisterTeamRequest extends FormRequest
             'players.*.position' => ['nullable', 'string', 'max:50'],
             'players.*.photo_url' => ['nullable', 'string'],
 
+            // The bench: pelatih, manajer, ofisial. Optional everywhere and for
+            // every participant_type — a singles entrant may bring a coach too.
+            'officials' => ['nullable', 'array', 'max:20'],
+            // Same contract as players.*.id: without it every official is read
+            // as new, recreated, and the photo already uploaded for that row is
+            // orphaned. MyTeamController declares the same rule.
+            'officials.*.id' => ['nullable', 'string'],
+            'officials.*.full_name' => ['required', 'string', 'max:255'],
+            'officials.*.role' => ['nullable', 'string', 'max:30'],
+            'officials.*.photo_url' => ['nullable', 'string'],
+
             'documents' => ['nullable', 'array'],
             // Same contract as the roster: without the id every document is
             // re-uploaded as a new row and loses its uploaded_at.

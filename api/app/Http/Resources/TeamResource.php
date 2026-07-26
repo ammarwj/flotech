@@ -53,6 +53,12 @@ class TeamResource extends JsonResource
                 'position' => $p->position,
                 'photo_url' => $p->photo_url,
             ])),
+            'officials' => $this->whenLoaded('officials', fn () => $this->officials->map(fn ($o) => [
+                'id' => $o->id,
+                'full_name' => $o->full_name,
+                'role' => $o->role,
+                'photo_url' => $o->photo_url,
+            ])),
             'documents' => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($d) => [
                 'id' => $d->id,
                 'document_type' => $d->document_type,

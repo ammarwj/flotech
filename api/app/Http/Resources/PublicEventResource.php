@@ -71,6 +71,14 @@ class PublicEventResource extends JsonResource
                     'position' => $p->position,
                     'photo_url' => $p->photo_url,
                 ])->values() : null,
+                // The bench is public for the same reason the roster is, and
+                // holds nothing private either — name, role, photo.
+                'officials' => $t->relationLoaded('officials') ? $t->officials->map(fn ($o) => [
+                    'id' => $o->id,
+                    'full_name' => $o->full_name,
+                    'role' => $o->role,
+                    'photo_url' => $o->photo_url,
+                ])->values() : null,
             ])),
         ];
     }

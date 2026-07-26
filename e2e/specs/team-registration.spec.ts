@@ -22,6 +22,10 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     await page.getByLabel("Nama kontak").fill("Budi");
     await page.getByLabel("No. HP kontak").fill("081234567890");
     await page.getByPlaceholder("Nama pemain").first().fill("Pemain Satu");
+    // The bench is optional, but it registers in the same submit as the roster.
+    await page.getByRole("button", { name: "Ofisial", exact: true }).click();
+    await page.getByLabel("Nama ofisial 1").fill("Coach Budi");
+    await page.getByLabel("Peran ofisial 1").selectOption({ label: "Pelatih Kepala" });
     await page.getByLabel("Persetujuan ketentuan").check();
     await page.getByRole("button", { name: "Kirim Pendaftaran" }).click();
 
@@ -109,8 +113,18 @@ test.describe("§5.2 Peserta — daftar tim", () => {
 
     // It stuck: the roster survives a reload and the nudge is gone.
     await page.reload();
-    await expect(page.getByPlaceholder("Nama pemain")).toHaveValue("Pemain Susulan");
+    await expect(page.getByPlaceholder("Nama pemain")).toHaveValue("PEMAIN SUSULAN");
     await expect(page.getByText(/roster masih kosong/i)).toBeHidden();
+
+    // The bench is completed the same way, and syncs on the same save.
+    await page.getByRole("button", { name: "Ofisial", exact: true }).click();
+    await page.getByLabel("Nama ofisial 1").fill("Coach Susulan");
+    await page.getByRole("button", { name: /simpan perubahan/i }).click();
+    await expect(toast(page, /data tim diperbarui/i)).toBeVisible();
+
+    // Uppercased on the way in by nameInput(), same as a player's name.
+    await page.reload();
+    await expect(page.getByLabel("Nama ofisial 1")).toHaveValue("COACH SUSULAN");
   });
 
   test("tamu diminta masuk dulu, lalu dikembalikan ke form pendaftaran", async ({

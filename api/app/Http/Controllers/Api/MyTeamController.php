@@ -26,7 +26,7 @@ class MyTeamController extends Controller
     public function index(): JsonResponse
     {
         $teams = $this->scope()
-            ->with(['event', 'category', 'players', 'documents'])
+            ->with(['event', 'category', 'players', 'officials', 'documents'])
             ->latest('registered_at')
             ->get();
 
@@ -38,7 +38,7 @@ class MyTeamController extends Controller
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'category', 'players', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with(['event', 'category', 'players', 'officials', 'documents'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -71,6 +71,14 @@ class MyTeamController extends Controller
             'players.*.position' => ['nullable', 'string', 'max:50'],
             'players.*.photo_url' => ['nullable', 'string'],
 
+            // The bench. Same rules as RegisterTeamRequest — including why the
+            // id has to be declared.
+            'officials' => ['sometimes', 'array', 'max:20'],
+            'officials.*.id' => ['nullable', 'string'],
+            'officials.*.full_name' => ['required', 'string', 'max:255'],
+            'officials.*.role' => ['nullable', 'string', 'max:30'],
+            'officials.*.photo_url' => ['nullable', 'string'],
+
             'documents' => ['sometimes', 'array'],
             'documents.*.id' => ['nullable', 'string'],
             'documents.*.file_url' => ['required', 'string'],
@@ -87,13 +95,17 @@ class MyTeamController extends Controller
                 $this->roster->syncPlayers($model, $data['players']);
             }
 
+            if (array_key_exists('officials', $data)) {
+                $this->roster->syncOfficials($model, $data['officials']);
+            }
+
             if (array_key_exists('documents', $data)) {
                 $this->roster->syncDocuments($model, $data['documents']);
             }
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
             'Data tim diperbarui',
         );
     }
@@ -128,7 +140,7 @@ class MyTeamController extends Controller
         $payment = $this->registration->startPayment($model, $model->event->organization);
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
+            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -153,7 +165,7 @@ class MyTeamController extends Controller
         $this->registration->submitProof($model, $data['payment_proof_url']);
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
     }

@@ -9,6 +9,7 @@ import {
   Plus,
   Pencil,
   Users,
+  UserCog,
   Phone,
   FileText,
   Inbox,
@@ -140,8 +141,10 @@ export default function RegistrationsPage() {
         (t.contact_name ?? "").toLowerCase().includes(q) ||
         (t.contact_phone ?? "").toLowerCase().includes(q) ||
         // Rosters are collapsed by default, so a player hit is the one match the
-        // organizer cannot see for themselves — worth searching anyway.
-        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q))
+        // organizer cannot see for themselves — worth searching anyway. Same for
+        // the bench.
+        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q)) ||
+        (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q))
     );
   }, [teams, search]);
 
@@ -302,7 +305,7 @@ function RegistrationCard({
   onUpdate: (status: TeamStatus) => void;
   onEdit: () => void;
 }) {
-  const { positionLabel, sport: sportDef } = useCatalog();
+  const { positionLabel, officialRoleLabel, sport: sportDef } = useCatalog();
   // The racket family never fills a shirt number in, so its roster shows names
   // rather than a column of dashes.
   const squadFields = usesSquadFields(sportDef(sport));
@@ -310,6 +313,7 @@ function RegistrationCard({
   const logo = team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null;
   const paid = team.payment_amount > 0;
   const players = team.players ?? [];
+  const officials = team.officials ?? [];
   const docs = team.documents ?? [];
 
   return (
@@ -349,6 +353,12 @@ function RegistrationCard({
                 <Users className="h-3.5 w-3.5" />
                 {players.length} pemain
               </span>
+              {officials.length > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <UserCog className="h-3.5 w-3.5" />
+                  {officials.length} ofisial
+                </span>
+              )}
               {docs.length > 0 && (
                 <span className="inline-flex items-center gap-1.5">
                   <FileText className="h-3.5 w-3.5" />
@@ -442,6 +452,29 @@ function RegistrationCard({
               </div>
             )}
           </div>
+
+          {officials.length > 0 && (
+            <div className="mt-5">
+              <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Ofisial ({officials.length})
+              </h4>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {officials.map((o, i) => (
+                  <div
+                    key={o.id ?? i}
+                    className="flex items-center gap-2.5 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">{o.full_name}</span>
+                    {o.role && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {officialRoleLabel(sport, o.role)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {docs.length > 0 && (
             <div className="mt-5">

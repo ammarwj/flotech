@@ -14,6 +14,7 @@ import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
+import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 import { participantLabel } from "@/lib/scoring";
 
 /**
@@ -75,6 +76,14 @@ export function ManualTeamDialog({
         }))
       : [emptyPlayer()]
   );
+  const [officials, setOfficials] = useState<OfficialRow[]>(() =>
+    (team?.officials ?? []).map((o) => ({
+      id: o.id,
+      full_name: o.full_name,
+      role: o.role ?? "",
+      photo_url: o.photo_url ?? null,
+    }))
+  );
 
   if (!open) return null;
 
@@ -101,6 +110,14 @@ export function ManualTeamDialog({
           jersey_number: p.jersey_number,
           position: p.position,
           photo_url: p.photo_url,
+        })),
+      officials: officials
+        .filter((o) => o.full_name.trim())
+        .map((o) => ({
+          id: o.id,
+          full_name: o.full_name,
+          role: o.role || null,
+          photo_url: o.photo_url,
         })),
     });
 
@@ -218,6 +235,14 @@ export function ManualTeamDialog({
                 Nama peserta diambil dari sini — mis. “Dimas / Ammar”.
               </p>
             )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label className="font-semibold">
+              Pelatih &amp; ofisial{" "}
+              <span className="font-normal text-muted-foreground">(opsional)</span>
+            </Label>
+            <OfficialEditor officials={officials} onChange={setOfficials} sport={sport} />
           </div>
         </div>
 

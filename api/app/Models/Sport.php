@@ -69,6 +69,11 @@ class Sport extends Model
         return $this->hasMany(SportPosition::class)->orderBy('sort_order');
     }
 
+    public function officialRoles(): HasMany
+    {
+        return $this->hasMany(SportOfficialRole::class)->orderBy('sort_order');
+    }
+
     public function isSetBased(): bool
     {
         return $this->scoring === 'set';

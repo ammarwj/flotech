@@ -60,9 +60,9 @@ export default function PublicEventPage() {
     retry: false,
   });
 
-  // Rosters live behind a dialog, so a player hit is the one match a visitor
-  // cannot spot by scanning the grid — worth matching on even though only the
-  // team name is rendered on the card.
+  // Rosters live behind a dialog, so a player or official hit is the one match a
+  // visitor cannot spot by scanning the grid — worth matching on even though
+  // only the team name is rendered on the card.
   const allTeams = query.data?.approved_teams;
   const shownTeams = useMemo(() => {
     const q = teamSearch.trim().toLowerCase();
@@ -71,7 +71,8 @@ export default function PublicEventPage() {
     return (allTeams ?? []).filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
-        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q))
+        (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q)) ||
+        (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q))
     );
   }, [allTeams, teamSearch]);
 

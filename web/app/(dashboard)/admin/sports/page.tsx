@@ -9,10 +9,12 @@ import {
   createSport,
   deleteSport,
   getAdminSports,
+  syncSportOfficialRoles,
   syncSportPositions,
   syncSportStats,
   updateSport,
   type AdminSport,
+  type AdminSportOfficialRole,
   type AdminSportPosition,
   type AdminSportStat,
 } from "@/lib/api/catalog";
@@ -64,11 +66,13 @@ const EMPTY_STAT: AdminSportStat = {
 
 const EMPTY_POSITION: AdminSportPosition = { position_key: "", label: "" };
 
+const EMPTY_ROLE: AdminSportOfficialRole = { role_key: "", label: "" };
+
 /**
  * Sports, their stat columns and their positions. Adding one here is all it
  * takes for organizers to run events in it — the sport list, scoring style,
- * match length, colour, the statistics tracked and the positions a roster may
- * pick from all come from these rows.
+ * match length, colour, the statistics tracked, the positions a roster may pick
+ * from and the roles its bench may hold all come from these rows.
  */
 export default function AdminSportsPage() {
   const qc = useQueryClient();
@@ -80,6 +84,8 @@ export default function AdminSportsPage() {
   const [stats, setStats] = useState<AdminSportStat[]>([]);
   const [positionsFor, setPositionsFor] = useState<string | null>(null);
   const [positions, setPositions] = useState<AdminSportPosition[]>([]);
+  const [rolesFor, setRolesFor] = useState<string | null>(null);
+  const [roles, setRoles] = useState<AdminSportOfficialRole[]>([]);
 
   const reset = () => {
     setForm(EMPTY);
@@ -133,6 +139,21 @@ export default function AdminSportsPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan posisi.").message),
   });
 
+  const saveRoles = useMutation({
+    mutationFn: () =>
+      syncSportOfficialRoles(
+        rolesFor!,
+        roles.filter((r) => r.role_key.trim() !== "")
+      ),
+    onSuccess: () => {
+      toast.success("Peran ofisial disimpan");
+      setRolesFor(null);
+      qc.invalidateQueries({ queryKey: ["admin-sports"] });
+      qc.invalidateQueries({ queryKey: ["catalog"] });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan peran ofisial.").message),
+  });
+
   const edit = (sport: AdminSport) => {
     setEditingId(sport.id);
     setForm({
@@ -151,14 +172,23 @@ export default function AdminSportsPage() {
   // Only one editor at a time — two open lists under one sport read as one list.
   const openStats = (sport: AdminSport) => {
     setPositionsFor(null);
+    setRolesFor(null);
     setStatsFor(sport.id);
     setStats(sport.stats.length > 0 ? sport.stats : [{ ...EMPTY_STAT }]);
   };
 
   const openPositions = (sport: AdminSport) => {
     setStatsFor(null);
+    setRolesFor(null);
     setPositionsFor(sport.id);
     setPositions(sport.positions.length > 0 ? sport.positions : [{ ...EMPTY_POSITION }]);
+  };
+
+  const openRoles = (sport: AdminSport) => {
+    setStatsFor(null);
+    setPositionsFor(null);
+    setRolesFor(sport.id);
+    setRoles(sport.official_roles.length > 0 ? sport.official_roles : [{ ...EMPTY_ROLE }]);
   };
 
   const setStat = (i: number, patch: Partial<AdminSportStat>) =>
@@ -166,6 +196,9 @@ export default function AdminSportsPage() {
 
   const setPosition = (i: number, patch: Partial<AdminSportPosition>) =>
     setPositions((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const setRole = (i: number, patch: Partial<AdminSportOfficialRole>) =>
+    setRoles((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const sports = query.data ?? [];
 
@@ -362,7 +395,11 @@ export default function AdminSportsPage() {
                     ·{" "}
                     {sport.positions.length > 0
                       ? `${sport.positions.length} posisi`
-                      : "belum ada posisi"}
+                      : "belum ada posisi"}{" "}
+                    ·{" "}
+                    {sport.official_roles.length > 0
+                      ? `${sport.official_roles.length} peran ofisial`
+                      : "belum ada peran ofisial"}
                   </p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => openStats(sport)}>
@@ -370,6 +407,9 @@ export default function AdminSportsPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => openPositions(sport)}>
                   Posisi
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => openRoles(sport)}>
+                  Peran ofisial
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => edit(sport)}>
                   Edit
@@ -521,6 +561,62 @@ export default function AdminSportsPage() {
                       {savePositions.isPending ? "Menyimpan…" : "Simpan posisi"}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setPositionsFor(null)}>
+                      Tutup
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ---- Official roles editor ---- */}
+              {rolesFor === sport.id && (
+                <div className="mt-4 grid gap-3 border-t border-border pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Peran yang bisa dipilih saat mendaftarkan pelatih dan ofisial tim. Urutan baris
+                    = urutan di dropdown. Sama seperti posisi: mengganti <em>label</em> aman dan
+                    langsung berlaku di semua tim, tapi kunci yang masih dipakai ofisial tidak bisa
+                    dihapus.
+                  </p>
+
+                  {roles.map((role, i) => (
+                    <div key={i} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                      <Input
+                        value={role.role_key}
+                        onChange={(e) => setRole(i, { role_key: e.target.value })}
+                        placeholder="head_coach"
+                        aria-label="Kunci peran ofisial"
+                      />
+                      <Input
+                        value={role.label}
+                        onChange={(e) => setRole(i, { label: e.target.value })}
+                        placeholder="Pelatih Kepala"
+                        aria-label="Label peran ofisial"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setRoles((rows) => rows.filter((_, idx) => idx !== i))}
+                        aria-label="Hapus peran ofisial"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRoles((rows) => [...rows, { ...EMPTY_ROLE }])}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Tambah peran
+                    </Button>
+                    <Button size="sm" onClick={() => saveRoles.mutate()} disabled={saveRoles.isPending}>
+                      {saveRoles.isPending ? "Menyimpan…" : "Simpan peran"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRolesFor(null)}>
                       Tutup
                     </Button>
                   </div>

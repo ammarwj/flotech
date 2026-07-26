@@ -184,6 +184,12 @@ export interface SportPositionDef {
   label: string;
 }
 
+/** A role a team official of this sport can hold (Pelatih Kepala, Manajer Tim…). */
+export interface SportOfficialRoleDef {
+  key: string;
+  label: string;
+}
+
 export interface SportDef {
   slug: string;
   name: string;
@@ -195,6 +201,7 @@ export interface SportDef {
   default_match_minutes: number;
   stats: SportStatDef[];
   positions: SportPositionDef[];
+  official_roles: SportOfficialRoleDef[];
 }
 
 /** A reference option: a format, tiebreaker, draw method, round, sponsor tier. */
@@ -572,6 +579,18 @@ export interface Player {
   photo_url?: string | null;
 }
 
+/**
+ * Someone on a team's bench — pelatih, manajer, ofisial. Not a Player: they
+ * never appear in a lineup, a leaderboard, or a roster-size rule.
+ */
+export interface TeamOfficial {
+  id?: string;
+  full_name: string;
+  /** A key from the sport's official_roles. Null when the sport defines none. */
+  role?: string | null;
+  photo_url?: string | null;
+}
+
 export interface TeamDocument {
   id?: string;
   document_type?: string | null;
@@ -602,6 +621,7 @@ export interface Team extends ManualPaymentFields {
   paid_at: string | null;
   midtrans_token: string | null;
   players?: Player[];
+  officials?: TeamOfficial[];
   documents?: TeamDocument[];
   event?: SportEvent;
   category?: EventCategory;
@@ -724,6 +744,7 @@ export interface PublicTeam {
   name: string;
   logo_url: string | null;
   players?: Player[] | null;
+  officials?: TeamOfficial[] | null;
 }
 
 // ---- Tickets & payment (Phase 3) ----

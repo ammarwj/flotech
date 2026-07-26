@@ -29,6 +29,13 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     // Positions come from the sport's master (sport_positions), so this is a
     // dropdown of futsal's positions — not a box you can type anything into.
     await page.getByLabel("Posisi pemain 1").selectOption({ label: "Kiper" });
+
+    // The bench is its own list (team_officials), never a player with a label —
+    // its roles come from the sport's master too.
+    await page.getByRole("button", { name: "Ofisial", exact: true }).click();
+    await page.getByLabel("Nama ofisial 1").fill("Coach Budi");
+    await page.getByLabel("Peran ofisial 1").selectOption({ label: "Pelatih Kepala" });
+
     await page.getByRole("button", { name: "Tambah tim", exact: true }).click();
 
     await expect(toast(page, /tim berhasil ditambahkan/i)).toBeVisible();
@@ -36,6 +43,12 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     // The organizer entering it *is* the verification: no approval queue.
     await expect(page.getByText(teamName)).toBeVisible();
     await expect(page.getByText("Disetujui").first()).toBeVisible();
+
+    // One player and one official — the coach did not land in the roster.
+    await expect(page.getByText("1 pemain").first()).toBeVisible();
+    await expect(page.getByText("1 ofisial").first()).toBeVisible();
+    await page.getByRole("button", { name: /lihat detail/i }).click();
+    await expect(page.getByText("Pelatih Kepala")).toBeVisible();
   });
 
   test("tim manual bisa diperbaiki rosternya kemudian", async ({ page, api, organizer }) => {

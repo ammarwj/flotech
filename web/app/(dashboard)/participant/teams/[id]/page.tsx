@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, X, Loader2, CreditCard, LogOut, Users, FileText, Upload } from "lucide-react";
+import { ChevronLeft, X, Loader2, CreditCard, LogOut, Users, UserCog, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { RosterEditor, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
+import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 
 type DocRow = { id?: string; file_name: string; file_url: string };
 
@@ -49,6 +50,7 @@ export default function ManageTeamPage() {
 
   const [info, setInfo] = useState({ name: "", contact_name: "", contact_phone: "" });
   const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [officials, setOfficials] = useState<OfficialRow[]>([]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -67,6 +69,14 @@ export default function ManageTeamPage() {
         jersey_number: p.jersey_number ?? "",
         position: p.position ?? "",
         photo_url: p.photo_url ?? null,
+      }))
+    );
+    setOfficials(
+      (team.officials ?? []).map((o) => ({
+        id: o.id,
+        full_name: o.full_name,
+        role: o.role ?? "",
+        photo_url: o.photo_url ?? null,
       }))
     );
     setDocs(
@@ -119,6 +129,14 @@ export default function ManageTeamPage() {
             jersey_number: p.jersey_number,
             position: p.position,
             photo_url: p.photo_url,
+          })),
+        officials: officials
+          .filter((o) => o.full_name.trim())
+          .map((o) => ({
+            id: o.id,
+            full_name: o.full_name,
+            role: o.role || null,
+            photo_url: o.photo_url,
           })),
         documents: docs.map((d) => ({ id: d.id, file_url: d.file_url, file_name: d.file_name })),
       };
@@ -282,6 +300,25 @@ export default function ManageTeamPage() {
               sport={team.event?.sport_type}
               disabled={!editable}
               size={rosterSize}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <UserCog className="h-4 w-4" /> Pelatih &amp; Ofisial
+            </CardTitle>
+            <CardDescription>
+              Pelatih, manajer, dan ofisial tim. Opsional.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <OfficialEditor
+              officials={officials}
+              onChange={setOfficials}
+              sport={team.event?.sport_type}
+              disabled={!editable}
             />
           </CardContent>
         </Card>

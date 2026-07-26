@@ -10,12 +10,13 @@ export async function getCatalog(): Promise<Catalog> {
 // ---- Super admin ----
 
 /** A sport as the admin edits it: the public shape plus its editable fields. */
-export interface AdminSport extends Omit<SportDef, "stats" | "positions"> {
+export interface AdminSport extends Omit<SportDef, "stats" | "positions" | "official_roles"> {
   id: string;
   is_active: boolean;
   sort_order: number;
   stats: AdminSportStat[];
   positions: AdminSportPosition[];
+  official_roles: AdminSportOfficialRole[];
 }
 
 export interface AdminSportStat {
@@ -35,7 +36,14 @@ export interface AdminSportPosition {
   sort_order?: number;
 }
 
-export type SportInput = Omit<AdminSport, "id" | "stats" | "positions">;
+export interface AdminSportOfficialRole {
+  id?: string;
+  role_key: string;
+  label: string;
+  sort_order?: number;
+}
+
+export type SportInput = Omit<AdminSport, "id" | "stats" | "positions" | "official_roles">;
 
 export async function getAdminSports(): Promise<AdminSport[]> {
   const { data } = await apiClient.get<ApiEnvelope<AdminSport[]>>("/admin/sports");
@@ -72,6 +80,18 @@ export async function syncSportPositions(
   const { data } = await apiClient.put<ApiEnvelope<AdminSport>>(`/admin/sports/${id}/positions`, {
     positions,
   });
+  return data.data;
+}
+
+/** Replace a sport's official roles; order = the order the bench dropdown offers them. */
+export async function syncSportOfficialRoles(
+  id: string,
+  officialRoles: AdminSportOfficialRole[]
+): Promise<AdminSport> {
+  const { data } = await apiClient.put<ApiEnvelope<AdminSport>>(
+    `/admin/sports/${id}/official-roles`,
+    { official_roles: officialRoles }
+  );
   return data.data;
 }
 

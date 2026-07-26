@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Users, X } from "lucide-react";
+import { UserCog, Users, X } from "lucide-react";
 
 import { crestGradient } from "@/lib/bracket";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -18,7 +18,7 @@ export function TeamRosterDialog({
   sport?: string | null;
   onClose: () => void;
 }) {
-  const { positionLabel, sport: sportDef } = useCatalog();
+  const { positionLabel, officialRoleLabel, sport: sportDef } = useCatalog();
 
   // No shirt numbers in the racket family, so the slot in front of the name
   // holds the player's initial instead of a dash for every row.
@@ -37,6 +37,7 @@ export function TeamRosterDialog({
   }, [onClose]);
 
   const players = team.players ?? [];
+  const officials = team.officials ?? [];
 
   return (
     <div
@@ -131,6 +132,57 @@ export function TeamRosterDialog({
                 );
               })}
             </ul>
+          )}
+
+          {/* The bench, when there is one. No empty state: a team without
+              officials hasn't left anything blank, it just doesn't list them. */}
+          {officials.length > 0 && (
+            <>
+              <h4 className="mb-2 mt-5 inline-flex items-center gap-1.5 text-sm font-bold">
+                <UserCog className="h-3.5 w-3.5" /> Pelatih &amp; Ofisial
+                <span className="font-normal" style={{ color: "var(--text-muted)" }}>
+                  ({officials.length})
+                </span>
+              </h4>
+              <ul className="flex flex-col gap-2">
+                {officials.map((o) => {
+                  const photo = o.photo_url && /^https?:\/\//.test(o.photo_url) ? o.photo_url : null;
+                  return (
+                    <li
+                      key={o.id ?? o.full_name}
+                      className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+                    >
+                      {photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={photo}
+                          alt={o.full_name}
+                          className="shrink-0 object-cover"
+                          style={{ width: 34, height: 34, borderRadius: 9, border: "1px solid var(--border)" }}
+                        />
+                      ) : (
+                        <span
+                          className="grid shrink-0 place-items-center text-sm font-bold"
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 9,
+                            background: "var(--surface-2)",
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          {o.full_name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{o.full_name}</span>
+                      {o.role && (
+                        <span className="pill shrink-0">{officialRoleLabel(sport, o.role)}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
       </div>

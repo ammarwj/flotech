@@ -342,6 +342,7 @@ Route::prefix('v1')->group(function () {
             Route::get('engines', [ConfigOptionController::class, 'engines']);
             Route::put('sports/{sport}/stats', [SportController::class, 'syncStats']);
             Route::put('sports/{sport}/positions', [SportController::class, 'syncPositions']);
+            Route::put('sports/{sport}/official-roles', [SportController::class, 'syncOfficialRoles']);
             Route::apiResource('sports', SportController::class)->except(['show']);
             Route::apiResource('config-options', ConfigOptionController::class)
                 ->parameters(['config-options' => 'config_option'])

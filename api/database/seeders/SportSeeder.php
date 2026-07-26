@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Sport;
+use App\Models\SportOfficialRole;
 use App\Models\SportPosition;
 use App\Models\SportStat;
 use App\Services\Catalog;
@@ -21,6 +22,17 @@ class SportSeeder extends Seeder
             ['stat_key' => 'assists', 'label' => 'Assist', 'short' => 'A', 'role' => 'assist'],
             ['stat_key' => 'yellow_cards', 'label' => 'Kartu Kuning', 'short' => 'KK', 'fair_play_weight' => 1],
             ['stat_key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM', 'fair_play_weight' => 3],
+        ];
+
+        // A bench looks the same in every sport, so this list is shared rather
+        // than declared per entry the way positions are. An admin who wants a
+        // shorter one for their sport trims it from /admin/sports.
+        $officialRoles = [
+            ['role_key' => 'head_coach', 'label' => 'Pelatih Kepala'],
+            ['role_key' => 'assistant_coach', 'label' => 'Asisten Pelatih'],
+            ['role_key' => 'team_manager', 'label' => 'Manajer Tim'],
+            ['role_key' => 'physio', 'label' => 'Fisioterapis'],
+            ['role_key' => 'official', 'label' => 'Ofisial'],
         ];
 
         // The key is what a roster stores; the label is only what it's shown as.
@@ -176,6 +188,13 @@ class SportSeeder extends Seeder
                 SportPosition::updateOrCreate(
                     ['sport_id' => $sport->id, 'position_key' => $position['position_key']],
                     ['label' => $position['label'], 'sort_order' => $posOrder],
+                );
+            }
+
+            foreach ($officialRoles as $roleOrder => $role) {
+                SportOfficialRole::updateOrCreate(
+                    ['sport_id' => $sport->id, 'role_key' => $role['role_key']],
+                    ['label' => $role['label'], 'sort_order' => $roleOrder],
                 );
             }
         }

@@ -40,7 +40,7 @@ class Catalog
         }
 
         return self::$memo = Cache::rememberForever(self::KEY, function () {
-            $sports = Sport::with(['stats', 'positions'])
+            $sports = Sport::with(['stats', 'positions', 'officialRoles'])
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->get()
@@ -62,6 +62,10 @@ class Catalog
                     'positions' => $s->positions->map(fn ($position) => [
                         'key' => $position->position_key,
                         'label' => $position->label,
+                    ])->values()->all(),
+                    'official_roles' => $s->officialRoles->map(fn ($role) => [
+                        'key' => $role->role_key,
+                        'label' => $role->label,
                     ])->values()->all(),
                 ])
                 ->values()
@@ -168,6 +172,26 @@ class Catalog
     public static function positionKeys(?string $slug): array
     {
         return array_column(self::positions($slug), 'key');
+    }
+
+    /**
+     * The roles a team official of this sport can hold. Empty for an unknown
+     * sport and for one the admin hasn't given any — an official may still be
+     * named there, they just carry no role, the same way a position works.
+     *
+     * @return array<int, array{key: string, label: string}>
+     */
+    public static function officialRoles(?string $slug): array
+    {
+        return self::sport($slug)['official_roles'] ?? [];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function officialRoleKeys(?string $slug): array
+    {
+        return array_column(self::officialRoles($slug), 'key');
     }
 
     public static function isSetBased(?string $slug): bool

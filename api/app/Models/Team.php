@@ -74,6 +74,12 @@ class Team extends Model
         return $this->hasMany(Player::class);
     }
 
+    /** The bench — pelatih, manajer, ofisial. Never Players; see TeamOfficial. */
+    public function officials(): HasMany
+    {
+        return $this->hasMany(TeamOfficial::class)->orderBy('sort_order');
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(RegistrationDocument::class);

@@ -10,6 +10,7 @@ use App\Models\EventCategory;
 use App\Models\Player;
 use App\Models\Sport;
 use App\Models\SportStat;
+use App\Models\TeamOfficial;
 use App\Services\Catalog;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +25,7 @@ class SportController extends Controller
 {
     public function index(): JsonResponse
     {
-        $sports = Sport::with(['stats', 'positions'])->orderBy('sort_order')->get();
+        $sports = Sport::with(['stats', 'positions', 'officialRoles'])->orderBy('sort_order')->get();
 
         return ApiResponse::success(SportResource::collection($sports));
     }
@@ -34,7 +35,7 @@ class SportController extends Controller
         $sport = Sport::create($request->validated());
         Catalog::flush();
 
-        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions'])), 'Cabang olahraga dibuat', 201);
+        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions', 'officialRoles'])), 'Cabang olahraga dibuat', 201);
     }
 
     public function update(SportRequest $request, Sport $sport): JsonResponse
@@ -69,7 +70,7 @@ class SportController extends Controller
         $sport->update($data);
         Catalog::flush();
 
-        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions'])), 'Cabang olahraga diperbarui');
+        return ApiResponse::success(new SportResource($sport->load(['stats', 'positions', 'officialRoles'])), 'Cabang olahraga diperbarui');
     }
 
     public function destroy(Sport $sport): JsonResponse
@@ -125,7 +126,7 @@ class SportController extends Controller
         Catalog::flush();
 
         return ApiResponse::success(
-            new SportResource($sport->load(['stats', 'positions'])),
+            new SportResource($sport->load(['stats', 'positions', 'officialRoles'])),
             'Kolom statistik diperbarui',
         );
     }
@@ -168,8 +169,50 @@ class SportController extends Controller
         Catalog::flush();
 
         return ApiResponse::success(
-            new SportResource($sport->load(['stats', 'positions'])),
+            new SportResource($sport->load(['stats', 'positions', 'officialRoles'])),
             'Posisi diperbarui',
+        );
+    }
+
+    /**
+     * Replace a sport's official roles — same contract as positions, and the
+     * same guard: a key some team's official still holds may be renamed but not
+     * dropped, or that official ends up with a role nobody can name.
+     */
+    public function syncOfficialRoles(Request $request, Sport $sport): JsonResponse
+    {
+        $data = $request->validate([
+            'official_roles' => ['present', 'array', 'max:20'],
+            'official_roles.*.role_key' => ['required', 'string', 'max:30', 'alpha_dash'],
+            'official_roles.*.label' => ['required', 'string', 'max:60'],
+        ]);
+
+        $keys = array_column($data['official_roles'], 'role_key');
+
+        $dropped = $sport->officialRoles()->whereNotIn('role_key', $keys)->pluck('role_key');
+        $used = $this->officialRolesInUse($sport, $dropped->all());
+
+        if ($used !== []) {
+            return ApiResponse::error(
+                'Peran '.implode(', ', $used).' masih dipakai ofisial tim — ganti namanya saja, jangan dihapus.',
+                ['official_roles' => ['Masih dipakai ofisial tim.']],
+                422,
+            );
+        }
+
+        foreach ($data['official_roles'] as $order => $role) {
+            $sport->officialRoles()->updateOrCreate(
+                ['role_key' => $role['role_key']],
+                ['label' => $role['label'], 'sort_order' => $order],
+            );
+        }
+
+        $sport->officialRoles()->whereNotIn('role_key', $keys)->delete();
+        Catalog::flush();
+
+        return ApiResponse::success(
+            new SportResource($sport->load(['stats', 'positions', 'officialRoles'])),
+            'Peran ofisial diperbarui',
         );
     }
 
@@ -213,6 +256,25 @@ class SportController extends Controller
             ->whereHas('team.event', fn ($q) => $q->where('sport_type', $sport->slug))
             ->distinct()
             ->pluck('position')
+            ->all();
+    }
+
+    /**
+     * Which of these role keys any official of this sport still holds.
+     *
+     * @param  array<int, string>  $keys
+     * @return array<int, string>
+     */
+    protected function officialRolesInUse(Sport $sport, array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+
+        return TeamOfficial::whereIn('role', $keys)
+            ->whereHas('team.event', fn ($q) => $q->where('sport_type', $sport->slug))
+            ->distinct()
+            ->pluck('role')
             ->all();
     }
 }

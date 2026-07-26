@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
+import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 import { participantLabel } from "@/lib/scoring";
 
 type DocRow = { file_name: string; file_url: string };
@@ -80,6 +81,9 @@ function RegisterTeamPage() {
   const isFixed = typeof rosterSize === "number";
 
   const [players, setPlayers] = useState<PlayerRow[]>([emptyPlayer()]);
+  // Starts empty, unlike the roster: a bench is genuinely optional, so an empty
+  // list shouldn't look like a field someone forgot to fill.
+  const [officials, setOfficials] = useState<OfficialRow[]>([]);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -138,6 +142,13 @@ function RegisterTeamPage() {
             jersey_number: p.jersey_number,
             position: p.position,
             photo_url: p.photo_url,
+          })),
+        officials: officials
+          .filter((o) => o.full_name.trim())
+          .map((o) => ({
+            full_name: o.full_name,
+            role: o.role || null,
+            photo_url: o.photo_url,
           })),
         documents: docs.map((d) => ({ file_url: d.file_url, file_name: d.file_name })),
       };
@@ -448,6 +459,25 @@ function RegisterTeamPage() {
               onChange={setPlayers}
               sport={event?.sport_type}
               size={rosterSize}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Pelatih &amp; Ofisial{" "}
+              <span className="font-normal text-muted-foreground">(opsional)</span>
+            </CardTitle>
+            <CardDescription>
+              Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Tim Saya.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <OfficialEditor
+              officials={officials}
+              onChange={setOfficials}
+              sport={event?.sport_type}
             />
           </CardContent>
         </Card>

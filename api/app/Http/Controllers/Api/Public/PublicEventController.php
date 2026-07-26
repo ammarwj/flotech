@@ -96,6 +96,7 @@ class PublicEventController extends Controller
                 ->orderByRaw("(jersey_number ~ '^[0-9]+$') desc")
                 ->orderByRaw("case when jersey_number ~ '^[0-9]+$' then jersey_number::int end asc")
                 ->orderBy('full_name'),
+            'teams.officials',
             'sponsors',
             'photos',
         ]);
@@ -252,6 +253,7 @@ class PublicEventController extends Controller
         // validates a player's position against the sport's master list, and a
         // public form is exactly where an unknown one would arrive.
         $this->roster->syncPlayers($team, $data['players'] ?? []);
+        $this->roster->syncOfficials($team, $data['officials'] ?? []);
         $this->roster->syncDocuments($team, $data['documents'] ?? []);
 
         // Charge the registration fee when the event has one; free events are
@@ -265,7 +267,7 @@ class PublicEventController extends Controller
             : 'Pendaftaran dibuat. Selesaikan pembayaran biaya pendaftaran untuk mengirim ke penyelenggara.';
 
         return ApiResponse::success([
-            'team' => new TeamResource($team->fresh()->load(['players', 'documents', 'event', 'category'])),
+            'team' => new TeamResource($team->fresh()->load(['players', 'officials', 'documents', 'event', 'category'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],

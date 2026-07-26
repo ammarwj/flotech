@@ -34,7 +34,7 @@ class RegistrationController extends Controller
     {
         $query = $this->event($request, $event)
             ->teams()
-            ->with(['players', 'documents', 'category'])
+            ->with(['players', 'officials', 'documents', 'category'])
             ->latest('registered_at');
 
         // Optional server-side filters. The manual-match team picker uses these to
@@ -119,13 +119,14 @@ class RegistrationController extends Controller
             ]);
 
             $this->roster->syncPlayers($team, $data['players'] ?? []);
+            $this->roster->syncOfficials($team, $data['officials'] ?? []);
             $this->roster->syncDocuments($team, $data['documents'] ?? []);
 
             return $team;
         });
 
         return ApiResponse::success(
-            new TeamResource($team->fresh()->load(['players', 'documents', 'category'])),
+            new TeamResource($team->fresh()->load(['players', 'officials', 'documents', 'category'])),
             'Tim berhasil ditambahkan.',
             201,
         );
@@ -157,13 +158,19 @@ class RegistrationController extends Controller
 
             $this->roster->syncPlayers($teamModel, $data['players'] ?? []);
 
+            // Guarded, unlike the roster above: a client that predates the bench
+            // doesn't send the key at all, and that must not wipe it.
+            if (array_key_exists('officials', $data)) {
+                $this->roster->syncOfficials($teamModel, $data['officials']);
+            }
+
             if (array_key_exists('documents', $data)) {
                 $this->roster->syncDocuments($teamModel, $data['documents']);
             }
         });
 
         return ApiResponse::success(
-            new TeamResource($teamModel->fresh()->load(['players', 'documents', 'category'])),
+            new TeamResource($teamModel->fresh()->load(['players', 'officials', 'documents', 'category'])),
             'Data tim diperbarui',
         );
     }
@@ -195,7 +202,7 @@ class RegistrationController extends Controller
             $this->announceStatus($teamModel, $validated['status']);
         }
 
-        return ApiResponse::success(new TeamResource($teamModel->load(['players', 'documents'])), 'Status pendaftaran diperbarui');
+        return ApiResponse::success(new TeamResource($teamModel->load(['players', 'officials', 'documents'])), 'Status pendaftaran diperbarui');
     }
 
     /**

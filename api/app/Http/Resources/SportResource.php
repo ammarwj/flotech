@@ -42,6 +42,12 @@ class SportResource extends JsonResource
                 'label' => $p->label,
                 'sort_order' => (int) $p->sort_order,
             ])),
+            'official_roles' => $this->whenLoaded('officialRoles', fn () => $this->officialRoles->map(fn ($r) => [
+                'id' => $r->id,
+                'role_key' => $r->role_key,
+                'label' => $r->label,
+                'sort_order' => (int) $r->sort_order,
+            ])),
         ];
     }
 }

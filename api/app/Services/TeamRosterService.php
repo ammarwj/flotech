@@ -7,7 +7,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Roster and document lists, kept in sync from two places: the participant
+ * Roster, bench and document lists, kept in sync from two places: the participant
  * editing their own team, and the organizer maintaining a team they entered by
  * hand (offline registration). Both send the full list, so the rules live here
  * once instead of drifting apart in two controllers.
@@ -124,6 +124,73 @@ class TeamRosterService
 
             if ($position !== null && $position !== '' && ! in_array($position, $allowed, true)) {
                 $errors["players.{$i}.position"] = 'Posisi tidak dikenali untuk cabang olahraga ini.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
+     * The bench, same contract as the roster. No size rule: a team may have no
+     * officials at all, and a singles entrant may still bring a coach — the
+     * count is nobody's business but the organizer's.
+     *
+     * Officials live in their own table precisely so this method needs neither
+     * assertRosterSize() nor syncDerivedName(); see the migration for why.
+     *
+     * @param  array<int, array<string, mixed>>  $officials
+     */
+    public function syncOfficials(Team $team, array $officials): void
+    {
+        $this->assertRolesExist($team, $officials);
+
+        $keepIds = [];
+
+        foreach ($officials as $order => $row) {
+            $attrs = [
+                'full_name' => $row['full_name'],
+                'role' => $row['role'] ?? null,
+                'photo_url' => $row['photo_url'] ?? null,
+                // The order they were typed in is the order they are shown.
+                'sort_order' => $order,
+            ];
+
+            $existing = ! empty($row['id'])
+                ? $team->officials()->whereKey($row['id'])->first()
+                : null;
+
+            if ($existing) {
+                $existing->update($attrs);
+                $keepIds[] = $existing->id;
+            } else {
+                $keepIds[] = $team->officials()->create($attrs)->id;
+            }
+        }
+
+        $team->officials()->whereKeyNot($keepIds)->delete();
+    }
+
+    /**
+     * A role must be one the admin defined for this event's sport (see
+     * sport_official_roles). Guarded here for the same reason positions are:
+     * this is the one write path all three flows share.
+     *
+     * @param  array<int, array<string, mixed>>  $officials
+     *
+     * @throws ValidationException
+     */
+    private function assertRolesExist(Team $team, array $officials): void
+    {
+        $allowed = Catalog::officialRoleKeys($team->event?->sport_type);
+        $errors = [];
+
+        foreach ($officials as $i => $row) {
+            $role = $row['role'] ?? null;
+
+            if ($role !== null && $role !== '' && ! in_array($role, $allowed, true)) {
+                $errors["officials.{$i}.role"] = 'Peran ofisial tidak dikenali untuk cabang olahraga ini.';
             }
         }
 

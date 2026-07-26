@@ -56,6 +56,13 @@ export function useCatalog() {
     positionLabel: (slug: string | null | undefined, key: string | null | undefined) =>
       sport(slug)?.positions.find((p) => p.key === key)?.label ?? key ?? "",
 
+    /** The roles a team official of this sport may hold. Empty = none defined. */
+    officialRolesFor: (slug: string | null | undefined) => sport(slug)?.official_roles ?? [],
+
+    /** A stored official role key as a person reads it — same fallback as positions. */
+    officialRoleLabel: (slug: string | null | undefined, key: string | null | undefined) =>
+      sport(slug)?.official_roles?.find((r) => r.key === key)?.label ?? key ?? "",
+
     formatLabel: (key: string | null | undefined) => label(catalog.tournament_formats, key),
     tiebreakerLabel: (key: string | null | undefined) => label(catalog.tiebreakers, key),
 
