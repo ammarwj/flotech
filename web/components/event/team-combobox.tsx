@@ -33,7 +33,7 @@ interface TeamComboboxProps {
   disabled?: boolean;
 }
 
-const HOW_MANY = 8;
+const HOW_MANY = 50;
 /** Max height of the results list; drives the flip-up decision. */
 const LIST_MAX = 224; // 14rem
 
