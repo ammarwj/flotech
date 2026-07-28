@@ -130,7 +130,11 @@ export function MobileSheet({
         </div>
 
         <SheetCloseContext.Provider value={close}>
-          <div className="grid content-start gap-5 overflow-y-auto p-5">{children}</div>
+          {/* min-h-0 is what makes `overflow-y-auto` actually scroll: a flex item
+              defaults to `min-height: auto`, so without it this box grows to its
+              content instead of shrinking, and a long body (the admin menu's
+              fourteen rows) pushes the footer off the bottom of the screen. */}
+          <div className="grid min-h-0 content-start gap-5 overflow-y-auto p-5">{children}</div>
           {footer && <div className="mt-auto grid gap-2 border-t border-border p-5">{footer}</div>}
         </SheetCloseContext.Provider>
       </div>

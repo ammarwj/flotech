@@ -6,6 +6,7 @@ import { LogOut, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/dashboard/mode-switcher";
+import { MobileNavList } from "@/components/dashboard/sidebar-nav";
 import { MobileMenuButton, MobileSheet, useSheetClose } from "@/components/shared/mobile-sheet";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { useLogout } from "@/lib/hooks/use-logout";
@@ -20,6 +21,10 @@ import { useAuthStore } from "@/stores/auth-store";
  * renders whichever nav `useDashboardMode()` resolves to, so it *reflects* the
  * mode without offering any way to change it. This panel is the only way to
  * switch hats on a phone.
+ *
+ * It carries the full menu for the same reason. MobileTabBar shows five items;
+ * the admin menu has fourteen, so without the list here nine admin pages are
+ * simply unreachable below `md`.
  */
 export function MobileMenu() {
   const [open, setOpen] = useState(false);
@@ -84,7 +89,18 @@ function Body({ superAdmin }: { superAdmin: boolean }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
+      {/* -mx-2 so the rows' own px-3 lines their labels up with the headings
+          above and below, while their hover/active fill still reaches wider. */}
+      <div className="grid gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Menu
+        </span>
+        <div className="-mx-2">
+          <MobileNavList onNavigate={close} />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-5">
         <span className="text-sm font-medium">Tema</span>
         <ThemeToggleButton />
       </div>
