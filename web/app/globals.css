@@ -1179,16 +1179,38 @@ body[data-billing="monthly"] .plan-note { visibility: hidden; }
 .bkt-col:not(:last-child) .bkt-body:has(.bkt-cell:only-child) .bkt-cell::after,
 .bkt-col:not(:last-child) .bkt-cell:nth-child(odd):last-child::before { display: none; }
 
-/* Third-place play-off. Kept outside .bkt on purpose: the connectors above key
-   off :last-child and "every card gets a lead-in line", so a column for it
-   would have to undo both. Outside the tree it also stays put while the
-   bracket scrolls sideways. */
-.bkt-wrap { display: block; }
-.bkt-third { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--border); }
-/* Type comes from .bkt-head, worn alongside this class — only the alignment
-   differs, since the strip is not a centred column. */
-.bkt-third-head { text-align: left; }
-.bkt-third-card { position: relative; max-width: 260px; }
+/* Third-place play-off: hangs off the final's own cell, so it reads as a
+   footnote to the final rather than a separate section further down the page.
+   It is not a slot of the tree — a second cell in the final column would halve
+   that column's slots and drop the final off the mid-line its two feeders meet
+   at.
+
+   Three rows keep the final where the connectors expect it: the card sits in
+   the middle one, between two equal `1fr` rows. Under a height the column works
+   out from its content, both of those take the play-off's height — so the cell
+   grows by twice it and the card stays on the mid-line its two feeders meet at.
+   The tree gets taller rather than the final drifting down it.
+
+   The single column is declared rather than left implicit: .bkt-cell centres
+   its content with `justify-content`, which means one thing to a flex column
+   and another to a grid. An implicit track is sized to its widest text and
+   parked mid-column, leaving the final narrower than every other card and its
+   lead-in line stranded short of the connector. */
+.bkt-cell-third {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr auto 1fr;
+}
+.bkt-cell-third > .bkt-match { grid-row: 2; }
+.bkt-cell-third > .bkt-third { grid-row: 3; align-self: start; margin-top: 18px; }
+/* Type comes from .bkt-head, worn alongside this class; the margin is smaller
+   than a column heading's because this one labels one card, not a column. */
+.bkt-third-head { margin-bottom: 8px; }
+.bkt-third-card { position: relative; }
+/* Nothing feeds this card from the column on its left: it takes the two teams
+   the final rejected. Without this it inherits the lead-in every card in a
+   non-first column gets, and dangles a line into open space. */
+.bkt-third .bkt-match::before { display: none; }
 .bkt-third-card + .bkt-third-card { margin-top: 10px; }
 
 /* ============================================================

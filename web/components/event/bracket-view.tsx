@@ -49,8 +49,9 @@ function Side({
 }
 
 /**
- * One tie of the draw. Lives outside BracketView because the third-place strip
- * below the tree shows the same card — scoreline, bye, shootout and all.
+ * One tie of the draw. Lives outside BracketView because the third-place
+ * play-off under the final shows the same card — scoreline, bye, shootout
+ * and all.
  */
 function MatchCell({
   match: m,
@@ -119,14 +120,15 @@ export function BracketView({
    */
   onEditSlot?: (match: Match) => void;
 }) {
-  // The third-place tie shares the final's round but is not part of the tree —
-  // drawing it there would give the final column two cells and a connector to
-  // nowhere. The schedule list shows it under its own heading instead.
+  // The third-place tie shares the final's round but is not a slot of the tree —
+  // giving the final column a second cell would halve the column's slots and
+  // pull the final off the mid-line the semifinal connectors meet at. It hangs
+  // off the final's own cell instead (see .bkt-cell-third).
   const rounds = groupByRound(matches.filter((m) => !isThirdPlace(m)));
   if (rounds.length === 0) return null;
 
-  // Drawn as a strip under the tree instead. The backend never creates one for a
-  // bracket of two, so it always has a tree above it.
+  // The backend never creates one for a bracket of two, so there is always a
+  // final above it to hang it under.
   const third = matches.filter(isThirdPlace);
 
   // Hand-added friendlies share round 1 with a single-elimination bracket, but
@@ -136,46 +138,47 @@ export function BracketView({
   const slotCount = 2 ** Math.max(1, maxRound) / 2;
 
   return (
-    <div className="bkt-wrap">
-      <div className="bkt">
-        {rounds.map(([round, list]) => (
-          <div key={round} className="bkt-col">
-            <div className="bkt-head">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
-            <div className="bkt-body">
-              {list.map((m) => {
-                // The backend refuses a slot whose result is already in, so the
-                // affordance must not appear there either.
-                const editable =
-                  onEditSlot &&
-                  m.round === 1 &&
-                  m.order < slotCount &&
-                  m.home_score === null &&
-                  m.away_score === null;
-                return (
-                  <div key={m.id} className="bkt-cell group/slot">
-                    <MatchCell match={m} onEditSlot={editable ? onEditSlot : undefined} />
-                  </div>
-                );
-              })}
-            </div>
+    <div className="bkt">
+      {rounds.map(([round, list], col) => (
+        <div key={round} className="bkt-col">
+          <div className="bkt-head">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
+          <div className="bkt-body">
+            {list.map((m, i) => {
+              // The backend refuses a slot whose result is already in, so the
+              // affordance must not appear there either.
+              const editable =
+                onEditSlot &&
+                m.round === 1 &&
+                m.order < slotCount &&
+                m.home_score === null &&
+                m.away_score === null;
+              // Under the last cell of the last column — the final.
+              const withThird =
+                third.length > 0 && col === rounds.length - 1 && i === list.length - 1;
+              return (
+                <div key={m.id} className={cn("bkt-cell group/slot", withThird && "bkt-cell-third")}>
+                  <MatchCell match={m} onEditSlot={editable ? onEditSlot : undefined} />
+                  {withThird && (
+                    // No onEditSlot: both slots are filled by advanceLoser(), so
+                    // a team put here by hand would be overwritten the moment a
+                    // semifinal is confirmed.
+                    <div className="bkt-third">
+                      {/* Shares .bkt-head so the heading never drifts from the
+                          column labels above it. */}
+                      <div className="bkt-head bkt-third-head">{THIRD_PLACE_LABEL}</div>
+                      {third.map((t) => (
+                        <div key={t.id} className="bkt-third-card">
+                          <MatchCell match={t} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-
-      {third.length > 0 && (
-        // No onEditSlot: both slots are filled by advanceLoser(), so a team put
-        // here by hand would be overwritten the moment a semifinal is confirmed.
-        <div className="bkt-third">
-          {/* Shares .bkt-head so the heading never drifts from the column
-              labels above it. */}
-          <div className="bkt-head bkt-third-head">{THIRD_PLACE_LABEL}</div>
-          {third.map((m) => (
-            <div key={m.id} className="bkt-third-card">
-              <MatchCell match={m} />
-            </div>
-          ))}
         </div>
-      )}
+      ))}
     </div>
   );
 }
