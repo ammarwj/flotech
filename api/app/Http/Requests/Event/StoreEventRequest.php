@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
+use App\Support\DisciplineRules;
 use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,6 +37,12 @@ class StoreEventRequest extends FormRequest
             'courts.*' => ['string', 'max:255'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
+            // Competition rules, namespaced because this column will get
+            // neighbours. A cleared field arrives as null and means "follow the
+            // sport default" — DisciplineRules::clean() is what honours that.
+            'rules_config' => ['sometimes', 'nullable', 'array'],
+            'rules_config.discipline' => ['sometimes', 'nullable', 'array'],
+            ...DisciplineRules::validationRules('rules_config.discipline.'),
             // Format, bracket config, fee and team cap live on each category.
             ...EventCategoryRules::make('required'),
         ];

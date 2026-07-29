@@ -21,6 +21,7 @@ import {
   getMatches,
   getStandings,
   getLeaderboard,
+  getDiscipline,
   generateSchedule,
   drawGroups,
   getKnockoutPlan,
@@ -62,7 +63,12 @@ import {
   groupByDate,
 } from "@/lib/match-dates";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
-import { isSetBased, standingsContextOf, standingsLegend } from "@/lib/scoring";
+import {
+  isSetBased,
+  standingsContextOf,
+  standingsLegend,
+  tracksDiscipline,
+} from "@/lib/scoring";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +85,7 @@ import { PillTabs } from "@/components/event/pill-tabs";
 import { BracketView } from "@/components/event/bracket-view";
 import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
+import { DisciplineTable } from "@/components/event/discipline-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
@@ -90,7 +97,13 @@ import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
 import { SlotTeamsDialog } from "@/components/event/slot-teams-dialog";
 import { KnockoutPlanDialog } from "@/components/event/knockout-plan-dialog";
 import { cn } from "@/lib/utils";
-import type { Match, MatchTeamRef } from "@/types/api";
+import type {
+  DisciplineBan,
+  DisciplineRules,
+  Match,
+  MatchTeamRef,
+  SportDef,
+} from "@/types/api";
 
 type Tab = "schedule" | "standings" | "bracket" | "stats";
 
@@ -150,6 +163,13 @@ export default function SchedulePage() {
     queryFn: () => getLeaderboard(orgId!, eventId, catId!),
     enabled: !!orgId && !!catId,
   });
+  // Who accumulated cards, and which upcoming fixture that keeps them out of.
+  // Skipped entirely for a sport that books nobody — see tracksDiscipline.
+  const disciplineQuery = useQuery({
+    queryKey: ["discipline", orgId, eventId, catId],
+    queryFn: () => getDiscipline(orgId!, eventId, catId!),
+    enabled: !!orgId && !!catId && tracksDiscipline(eventQuery.data?.sport),
+  });
 
   const qc = useQueryClient();
   const catalog = useCatalog();
@@ -190,6 +210,7 @@ export default function SchedulePage() {
   const refreshEventData = () => {
     qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+    qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["knockout-plan", orgId, eventId] });
   };
@@ -797,6 +818,9 @@ export default function SchedulePage() {
                             knockout={isKnockout || m.stage === "knockout" || isDecider(m)}
                             phase={phaseOf(m)}
                             courts={courts}
+                            bans={disciplineQuery.data?.matches?.[m.id] ?? []}
+                            sport={eventQuery.data?.sport ?? null}
+                            disciplineRules={disciplineQuery.data?.rules ?? null}
                           />
                         ))}
                       </div>
@@ -807,12 +831,25 @@ export default function SchedulePage() {
             )}
           </div>
         ) : activeTab === "stats" ? (
-          <div>
+          <div className="grid gap-8">
             {leaderboardQuery.data && (
               <LeaderboardTable
                 leaderboard={leaderboardQuery.data}
                 eventName={eventQuery.data?.name}
               />
+            )}
+            {/* Same tab as the leaderboard on purpose: both are per-player
+                numbers for this category, and reading the cards next to the
+                scorers is how an organizer notices a top scorer is suspended. */}
+            {disciplineQuery.data?.enabled && (
+              <section className="grid gap-3">
+                <h3 className="text-sm font-bold">Disiplin & larangan bermain</h3>
+                <DisciplineTable
+                  players={disciplineQuery.data.players}
+                  sport={eventQuery.data?.sport ?? null}
+                  rules={disciplineQuery.data.rules}
+                />
+              </section>
             )}
           </div>
         ) : (
@@ -929,6 +966,9 @@ function MatchCard({
   knockout,
   phase,
   courts,
+  bans,
+  sport,
+  disciplineRules,
 }: {
   match: Match;
   orgId: string;
@@ -946,6 +986,14 @@ function MatchCard({
   phase?: string;
   /** Named courts to pick from when scheduling; empty falls back to free text. */
   courts: string[];
+  /**
+   * Passed straight through to MatchCardHeader, which is the one place all six
+   * branches below share. No branch reads these — put logic here and it has to
+   * be repeated six times.
+   */
+  bans: DisciplineBan[];
+  sport: SportDef | null;
+  disciplineRules: DisciplineRules | null;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -973,6 +1021,7 @@ function MatchCard({
       toast.success("Hasil disimpan");
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     },
     onError: (err) =>
       toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
@@ -984,6 +1033,7 @@ function MatchCard({
       toast.success("Pertandingan dihapus");
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     },
     onError: (err) =>
       toast.error(parseApiError(err, "Gagal menghapus pertandingan.").message),
@@ -1023,6 +1073,9 @@ function MatchCard({
           match={match}
           knockout={knockout}
           phase={phase}
+          bans={bans}
+          sport={sport}
+          disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="flex-1 truncate text-right font-medium">
@@ -1053,6 +1106,9 @@ function MatchCard({
           match={match}
           knockout={knockout}
           phase={phase}
+          bans={bans}
+          sport={sport}
+          disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3">
           <span className="flex-1 font-semibold">{match.home_team.name}</span>
@@ -1072,6 +1128,9 @@ function MatchCard({
           match={match}
           knockout={knockout}
           phase={phase}
+          bans={bans}
+          sport={sport}
+          disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="flex-1 truncate text-right font-medium">
@@ -1102,6 +1161,9 @@ function MatchCard({
           match={match}
           knockout={knockout}
           phase={phase}
+          bans={bans}
+          sport={sport}
+          disciplineRules={disciplineRules}
         />
         <div className="mt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
@@ -1126,6 +1188,9 @@ function MatchCard({
           match={match}
           knockout={knockout}
           phase={phase}
+          bans={bans}
+          sport={sport}
+          disciplineRules={disciplineRules}
         />
         <div className="mt-3">
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
@@ -1179,6 +1244,9 @@ function MatchCard({
         match={match}
         knockout={knockout}
         phase={phase}
+        bans={bans}
+        sport={sport}
+        disciplineRules={disciplineRules}
       />
       <div className="mt-3">
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />

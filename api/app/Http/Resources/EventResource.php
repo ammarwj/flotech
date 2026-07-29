@@ -39,6 +39,10 @@ class EventResource extends JsonResource
             'location_address' => $this->location_address,
             // Named courts for scheduling; [] when the organizer hasn't set any.
             'courts' => $this->courts ?? [],
+            // Competition rules the organizer set for this event. Cast so an
+            // event that has never been configured binds as {} rather than [].
+            // Organizer-only: the public resource has no business carrying it.
+            'rules_config' => (object) ($this->rules_config ?? []),
             'description' => $this->description,
             'banner_url' => $this->banner_url,
             // Format, bracket config, fee and team cap live on each category.

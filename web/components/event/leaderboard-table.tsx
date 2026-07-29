@@ -54,11 +54,21 @@ export function LeaderboardTable({
       a.player_name.localeCompare(b.player_name)
   );
 
+  // Standard competition ranking ("1224"): an equal tally is an equal rank, and
+  // the tied players consume the places behind them. The tiebreakers above only
+  // decide the order rows are printed in — they must not split the number shown,
+  // otherwise two players on 7 goals read as 1st and 2nd in a top-scorer list.
+  const ranks = sorted.reduce<number[]>((acc, r, i) => {
+    const tied = i > 0 && (sorted[i - 1].stats[sortKey] ?? 0) === (r.stats[sortKey] ?? 0);
+    acc.push(tied ? acc[i - 1] : i + 1);
+    return acc;
+  }, []);
+
   const exportCsv = () => {
     const csv = toCsv(
       ["Peringkat", "No.", "Pemain", "Tim", ...columns.map((c) => c.label)],
       sorted.map((r, i) => [
-        i + 1,
+        ranks[i],
         r.jersey_number ?? "",
         r.player_name,
         r.team_name,
@@ -124,7 +134,9 @@ export function LeaderboardTable({
           <tbody>
             {sorted.map((r, i) => (
               <tr key={r.player_id} className="border-t border-border">
-                <td className="px-2 py-3 text-center font-mono text-muted-foreground">{i + 1}</td>
+                <td className="px-2 py-3 text-center font-mono text-muted-foreground">
+                  {ranks[i]}
+                </td>
                 <td className="px-3 py-3">
                   <div className="flex items-center gap-2.5">
                     <span

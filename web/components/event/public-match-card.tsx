@@ -5,7 +5,8 @@ import { timeOf, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 import { PublicStatusBadge } from "./public-status-badge";
-import type { Match } from "@/types/api";
+import { MatchDisciplineNotice } from "./match-discipline-notice";
+import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
 /** Team crest: real logo when uploaded, gradient fallback otherwise. */
 function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undefined }) {
@@ -92,6 +93,9 @@ export function PublicMatchCard({
   match: m,
   categoryLabel,
   phase,
+  bans,
+  sport,
+  disciplineRules,
   onClick,
 }: {
   match: Match;
@@ -103,6 +107,19 @@ export function PublicMatchCard({
    * round number alone can't tell a semifinal from a Round of 16.
    */
   phase: string;
+  /**
+   * Players barred from this fixture by accumulated cards. Empty for a fixture
+   * already played or cancelled — the server never puts one in the map.
+   *
+   * Required rather than optional-with-a-default, the same call the organizer's
+   * MatchCardHeader makes: this card has two callers (the per-category schedule
+   * and the combined "Semua" list), and a defaulted prop lets one of them ship
+   * silently warning-free. A missing prop must be a type error.
+   */
+  bans: DisciplineBan[];
+  /** Names the cards; the sport owns its own labels. Null = not loaded yet. */
+  sport: SportDef | null;
+  disciplineRules: DisciplineRules | null;
   onClick: () => void;
 }) {
   const tz = useEventTimezone();
@@ -139,6 +156,9 @@ export function PublicMatchCard({
           {done && <span className="sc">{m.away_score}</span>}
         </div>
         <RubberLines match={m} />
+        {/* Renders nothing when nobody is suspended. Text and badges only — the
+            card is a button, and this must not become a nested control. */}
+        <MatchDisciplineNotice bans={bans} sport={sport} rules={disciplineRules} />
       </div>
       <div className="match-meta">
         <PublicStatusBadge status={m.status} />

@@ -75,6 +75,17 @@ class EventController extends Controller
         $categories = $data['categories'] ?? null;
         unset($data['categories']);
 
+        // rules_config is one column holding several independent rulebooks, so a
+        // plain update() would let the form that knows about one of them delete
+        // the rest. Merge per namespace instead — the same guard `officials`
+        // needs on the registration form.
+        if (array_key_exists('rules_config', $data)) {
+            $data['rules_config'] = [
+                ...($model->rules_config ?? []),
+                ...($data['rules_config'] ?? []),
+            ];
+        }
+
         $model->update($data);
 
         if ($categories !== null) {

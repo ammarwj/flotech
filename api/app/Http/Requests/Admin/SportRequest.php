@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\Sport;
+use App\Support\DisciplineRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -35,6 +36,10 @@ class SportRequest extends FormRequest
             // one is, so an empty list is a mistake rather than a meaningful state.
             'participant_modes' => ['nullable', 'array', 'min:1'],
             'participant_modes.*' => [Rule::in(Sport::MODES)],
+            // Card thresholds this sport's events inherit. Absent keys fall
+            // through to DisciplineRules::DEFAULTS, so a partial object is fine.
+            'discipline_config' => ['nullable', 'array'],
+            ...DisciplineRules::validationRules('discipline_config.'),
             'default_match_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],

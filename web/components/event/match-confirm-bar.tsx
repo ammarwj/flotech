@@ -36,6 +36,7 @@ export function MatchConfirmBar({
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["leaderboard", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memperbarui konfirmasi.").message),
   });

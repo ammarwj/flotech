@@ -65,6 +65,7 @@ export function MatchStatsEditor({
     onSuccess: () => {
       toast.success("Statistik disimpan");
       qc.invalidateQueries({ queryKey: ["leaderboard", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["match-stats", orgId, matchId] });
       setEdits({});
     },

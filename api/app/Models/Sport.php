@@ -28,6 +28,7 @@ class Sport extends Model
         'icon',
         'scoring',
         'participant_modes',
+        'discipline_config',
         'default_match_minutes',
         'is_active',
         'sort_order',
@@ -37,6 +38,7 @@ class Sport extends Model
     {
         return [
             'participant_modes' => 'array',
+            'discipline_config' => 'array',
             'default_match_minutes' => 'integer',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
@@ -57,6 +59,18 @@ class Sport extends Model
     public function supportsMode(string $mode): bool
     {
         return in_array($mode, $this->participantModes(), true);
+    }
+
+    /**
+     * This sport's default card thresholds. Empty means "no opinion" — the
+     * fallbacks in DisciplineRules::DEFAULTS apply — which is also what a sport
+     * that books nobody returns.
+     *
+     * @return array<string, mixed>
+     */
+    public function disciplineConfig(): array
+    {
+        return $this->discipline_config ?: [];
     }
 
     public function stats(): HasMany

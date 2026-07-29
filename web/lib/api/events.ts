@@ -50,6 +50,7 @@ export type EventInput = Partial<
     | "courts"
     | "description"
     | "banner_url"
+    | "rules_config"
   >
 > & {
   slug?: string;

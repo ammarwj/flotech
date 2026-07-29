@@ -187,10 +187,31 @@ export interface SportStatDef {
   key: string;
   label: string;
   short: string;
-  /** 'goal' cross-checks the score, 'assist' can't outnumber the goals. */
-  role: "goal" | "assist" | null;
+  /**
+   * What the stat means to the engine. 'goal' cross-checks the score, 'assist'
+   * can't outnumber the goals, and 'yellow'/'red' are what the suspension
+   * engine reads — it may not look for a stat key by name, since an admin can
+   * rename keys from /admin/sports.
+   */
+  role: "goal" | "assist" | "yellow" | "red" | null;
   /** Weight in the fair-play tiebreaker (yellow 1, red 3). 0 = not misconduct. */
   fair_play_weight: number;
+}
+
+/**
+ * When a card turns into a ban. Every field is optional at rest: a sport or an
+ * event that never set one inherits the layer below it.
+ */
+export interface DisciplineRuleValues {
+  /** Yellows that accumulate into a ban. */
+  yellow_threshold?: number;
+  yellow_ban_matches?: number;
+  red_ban_matches?: number;
+  /** Yellows inside one match that amount to a sending-off. 0 = rule off. */
+  yellows_per_expulsion?: number;
+  expulsion_ban_matches?: number;
+  /** Group-stage yellows wiped at the bracket. Hybrid categories only. */
+  reset_yellow_on_knockout?: boolean;
 }
 
 /** A position a player of this sport can hold. The key is what a roster stores. */
@@ -214,6 +235,8 @@ export interface SportDef {
   /** Entrant shapes this sport can be run with. Squad-only for most sports. */
   participant_modes: ParticipantType[];
   default_match_minutes: number;
+  /** Card thresholds this sport's events inherit; {} = platform defaults. */
+  discipline_config: DisciplineRuleValues;
   stats: SportStatDef[];
   positions: SportPositionDef[];
   official_roles: SportOfficialRoleDef[];
@@ -559,9 +582,76 @@ export interface SportEvent {
   courts: string[];
   description: string | null;
   banner_url: string | null;
+  /** Competition rules the organizer set, namespaced. {} when never configured. */
+  rules_config: EventRulesConfig;
   /** The competitions inside this event; each carries its own format & fee. */
   categories: EventCategory[];
   teams_count?: number;
+}
+
+/**
+ * `events.rules_config`, one column holding several independent rulebooks. The
+ * update endpoint merges per namespace, so a form that only knows about one of
+ * them can't wipe the rest.
+ */
+export interface EventRulesConfig {
+  discipline?: DisciplineRuleValues;
+}
+
+/**
+ * Why a player is barred from a fixture. `second_yellow` is a sending-off for
+ * two cautions in one match — a different fact from the accumulation ban, which
+ * builds up across the tournament.
+ */
+export type BanReason = "red_card" | "second_yellow" | "yellow_accumulation";
+
+/** One player kept out of one fixture. */
+export interface DisciplineBan {
+  player_id: string;
+  player_name: string;
+  jersey_number: string | null;
+  team_id: string;
+  team_name: string;
+  reason: BanReason;
+  /** Fixtures still owed, counting this one. */
+  bans_remaining: number;
+}
+
+/** A player's running card tally across the category. */
+export interface DisciplinePlayer {
+  player_id: string;
+  player_name: string;
+  jersey_number: string | null;
+  team_id: string;
+  team_name: string;
+  yellow_total: number;
+  red_total: number;
+  /** Yellows since the last ban was issued — the count that resets. */
+  yellow_running: number;
+  bans_issued: number;
+  bans_served: number;
+  bans_remaining: number;
+}
+
+/**
+ * Card accumulation for one category, derived server-side on every read.
+ *
+ * `enabled` is false for a sport with no card stat at all (badminton, volleyball
+ * — see `tracksDiscipline`), and everything else is then empty.
+ */
+export interface Discipline {
+  enabled: boolean;
+  rules: DisciplineRules | null;
+  players: DisciplinePlayer[];
+  /** Upcoming fixture id => who may not play in it. */
+  matches: Record<string, DisciplineBan[]>;
+}
+
+/** The rules as resolved for a category: sport defaults under event overrides. */
+export interface DisciplineRules extends Required<DisciplineRuleValues> {
+  /** The sport's own stat keys, so the UI can name a card from its label. */
+  yellow_stat_key: string | null;
+  red_stat_key: string | null;
 }
 
 /** A photo in one of an event's albums. */

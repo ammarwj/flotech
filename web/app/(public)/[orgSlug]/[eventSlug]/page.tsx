@@ -527,6 +527,7 @@ export default function PublicEventPage() {
               eventSlug={params.eventSlug}
               categories={categories}
               playerStats={playerStats}
+              sport={ev.sport ?? null}
             />
           ) : (
             <PublicResults
@@ -539,6 +540,7 @@ export default function PublicEventPage() {
               context={selectedCategory!.standings_context}
               activeTab={activeTab}
               playerStats={playerStats}
+              sport={ev.sport ?? null}
             />
           )}
         </>

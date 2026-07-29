@@ -17,6 +17,7 @@ use App\Models\Team;
 use App\Notifications\NewTeamRegistered;
 use App\Notifications\TeamRegistrationSubmitted;
 use App\Services\Catalog;
+use App\Services\DisciplineService;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
 use App\Services\RegistrationService;
@@ -131,6 +132,23 @@ class PublicEventController extends Controller
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         return ApiResponse::success($standings->compute($category));
+    }
+
+    /**
+     * Card tallies and who they keep off the pitch, for one competition
+     * category. The same payload the organizer reads.
+     *
+     * Public on purpose: an opposing squad and the crowd have as much reason to
+     * know who may not take the field as the panitia does, and finding out from
+     * the schedule beats finding out at kickoff. Nothing here is new to the
+     * page — names and shirt numbers are already published by the roster and
+     * the leaderboard; what this adds is why a player is sitting out.
+     */
+    public function discipline(DisciplineService $discipline, string $orgSlug, string $eventSlug, string $categorySlug): JsonResponse
+    {
+        $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
+
+        return ApiResponse::success($discipline->forCategory($category));
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Sport;
 use App\Models\User;
+use App\Services\Catalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -275,6 +276,20 @@ class CatalogTest extends TestCase
             'Target Man',
             collect($futsal['positions'])->firstWhere('key', 'pivot')['label'],
         );
+    }
+
+    public function test_the_catalog_resolves_card_stat_keys_by_role(): void
+    {
+        // The suspension engine asks the catalog which stat is a booking, and it
+        // has to get a straight "none" for a sport that doesn't book anyone —
+        // otherwise the feature switches itself on where it can never fire.
+        $this->assertSame('yellow_cards', Catalog::statKeyForRole('football', 'yellow'));
+        $this->assertSame('red_cards', Catalog::statKeyForRole('football', 'red'));
+
+        $this->assertNull(Catalog::statKeyForRole('badminton', 'yellow'));
+        // Volleyball is the interesting one: squad-based and stat-tracking, yet
+        // it has no card column.
+        $this->assertNull(Catalog::statKeyForRole('volleyball', 'yellow'));
     }
 
     public function test_only_super_admin_can_manage_the_catalog(): void

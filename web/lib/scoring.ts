@@ -1,9 +1,12 @@
 import type {
+  BanReason,
+  DisciplineRules,
   EventCategory,
   Match,
   MatchRubber,
   ParticipantType,
   SportDef,
+  SportStatDef,
   SportEvent,
   Standing,
   StandingsContext,
@@ -78,6 +81,77 @@ export function showsPlayerStats(
   sport: Pick<SportDef, "participant_modes"> | null | undefined
 ): boolean {
   return !isRacketSport(sport);
+}
+
+/**
+ * The card columns of a sport, found by what they mean rather than what they
+ * are called. An admin may rename `yellow_cards` from /admin/sports; the role
+ * is the part that is load-bearing.
+ */
+export function disciplineStatDefs(
+  sport: Pick<SportDef, "stats"> | null | undefined
+): { yellow: SportStatDef | null; red: SportStatDef | null } {
+  const stats = sport?.stats ?? [];
+
+  return {
+    yellow: stats.find((s) => s.role === "yellow") ?? null,
+    red: stats.find((s) => s.role === "red") ?? null,
+  };
+}
+
+/**
+ * The only shape `tracksDiscipline` needs. Kept this narrow so the admin sports
+ * page — whose rows spell the key `stat_key`, not `key` — can ask the same
+ * question as the organizer pages instead of writing its own copy of the rule.
+ */
+type CardBearing = { stats: readonly { role: SportStatDef["role"] }[] };
+
+/**
+ * Whether this sport books players at all, and so whether card accumulation and
+ * playing bans mean anything for it.
+ *
+ * Deliberately *not* `showsPlayerStats`, even though both are about stats.
+ * Volleyball and basketball field squads and keep a leaderboard, yet neither has
+ * a card column — a test borrowed from there would switch this feature on for
+ * two sports where it can never fire, and hand the organizer an endpoint that is
+ * empty forever. Asking the stats directly also means a sport an admin gives
+ * cards to tomorrow gets the feature without a deploy.
+ */
+export function tracksDiscipline(sport: CardBearing | null | undefined): boolean {
+  return (sport?.stats ?? []).some((s) => s.role === "yellow" || s.role === "red");
+}
+
+/**
+ * Why a player is sitting out, in words the organizer uses — "kartu merah",
+ * "2 kartu kuning (dikeluarkan)", "akumulasi 3 kartu kuning". The card's name
+ * comes from the sport's own label, and the numbers from the rules in force for
+ * this category.
+ */
+export function banReasonLabel(
+  reason: BanReason,
+  sport: Pick<SportDef, "stats"> | null | undefined,
+  rules:
+    | Pick<DisciplineRules, "yellow_threshold" | "yellows_per_expulsion">
+    | null
+    | undefined
+): string {
+  const { yellow, red } = disciplineStatDefs(sport);
+
+  if (reason === "red_card") {
+    return (red?.label ?? "Kartu merah").toLowerCase();
+  }
+
+  const label = (yellow?.label ?? "Kartu kuning").toLowerCase();
+
+  // Two cautions in one match, not a tally that built up over the tournament —
+  // spelling out "dikeluarkan" is what keeps the two apart on the card.
+  if (reason === "second_yellow") {
+    return `${rules?.yellows_per_expulsion ?? 2} ${label} (dikeluarkan)`;
+  }
+
+  const threshold = rules?.yellow_threshold;
+
+  return threshold ? `akumulasi ${threshold} ${label}` : `akumulasi ${label}`;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  Discipline,
   DrawMethod,
   KnockoutPlan,
   Leaderboard,
@@ -346,6 +347,23 @@ export async function getLeaderboard(
   return data.data;
 }
 
+/**
+ * Card tallies for a category, plus who they bar from which upcoming fixture.
+ *
+ * A category-wide read rather than a field on each match: the answer is an
+ * aggregation over every fixture, so it cannot be assembled a row at a time.
+ */
+export async function getDiscipline(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Discipline> {
+  const { data } = await apiClient.get<ApiEnvelope<Discipline>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/discipline`
+  );
+  return data.data;
+}
+
 export interface MatchSchedulePayload {
   scheduled_at: string | null;
   venue?: string | null;
@@ -443,6 +461,23 @@ export async function getPublicLeaderboard(
 ): Promise<Leaderboard> {
   const { data } = await apiClient.get<ApiEnvelope<Leaderboard>>(
     `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/leaderboard`
+  );
+  return data.data;
+}
+
+/**
+ * Card tallies and playing bans, as the public schedule reads them.
+ *
+ * The same payload the organizer gets — a suspension is a fact about the
+ * fixture, so the two views must not be able to disagree about it.
+ */
+export async function getPublicDiscipline(
+  orgSlug: string,
+  eventSlug: string,
+  categorySlug: string
+): Promise<Discipline> {
+  const { data } = await apiClient.get<ApiEnvelope<Discipline>>(
+    `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/discipline`
   );
   return data.data;
 }

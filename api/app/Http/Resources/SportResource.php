@@ -24,6 +24,9 @@ class SportResource extends JsonResource
             'icon' => $this->icon,
             'scoring' => $this->scoring,
             'participant_modes' => $this->participantModes(),
+            // Cast so an empty rulebook serializes as {} and the admin form can
+            // bind to it, rather than arriving as [].
+            'discipline_config' => (object) $this->disciplineConfig(),
             'default_match_minutes' => (int) $this->default_match_minutes,
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) $this->sort_order,

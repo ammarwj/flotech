@@ -3,14 +3,21 @@
 import { useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 
-import { getPublicMatches } from "@/lib/api/matches";
+import { getPublicDiscipline, getPublicMatches } from "@/lib/api/matches";
 import { isBye, isKnockout as isKnockoutFormat, phaseLabel } from "@/lib/bracket";
+import { tracksDiscipline } from "@/lib/scoring";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { MatchDayTabs } from "./match-day-tabs";
 import { PublicMatchCard } from "./public-match-card";
 import { MatchDetailDialog } from "./match-detail-dialog";
-import type { EventCategory, Match } from "@/types/api";
+import type {
+  DisciplineBan,
+  DisciplineRules,
+  EventCategory,
+  Match,
+  SportDef,
+} from "@/types/api";
 
 /**
  * Every category's fixtures in one chronological list — the "Semua" filter.
@@ -24,12 +31,15 @@ export function PublicAllSchedule({
   eventSlug,
   categories,
   playerStats,
+  sport,
 }: {
   orgSlug: string;
   eventSlug: string;
   categories: EventCategory[];
   /** Whether this sport publishes player stats at all — see showsPlayerStats. */
   playerStats: boolean;
+  /** Gates the discipline fetch and names the cards — see PublicResults. */
+  sport: SportDef | null;
 }) {
   const tz = useEventTimezone();
   const [dateKey, setDateKey] = useState<string | null>(null);
@@ -43,6 +53,18 @@ export function PublicAllSchedule({
       queryKey: ["public-matches", orgSlug, eventSlug, c.slug],
       queryFn: () => getPublicMatches(orgSlug, eventSlug, c.slug),
       retry: false,
+    })),
+  });
+
+  // Same shape, same key layout as the fixtures above, and for the same reason:
+  // the single-category panel caches under exactly these keys, so switching
+  // between "Semua" and one category refetches nothing.
+  const disciplineResults = useQueries({
+    queries: categories.map((c) => ({
+      queryKey: ["public-discipline", orgSlug, eventSlug, c.slug],
+      queryFn: () => getPublicDiscipline(orgSlug, eventSlug, c.slug),
+      retry: false,
+      enabled: tracksDiscipline(sport),
     })),
   });
 
@@ -69,6 +91,20 @@ export function PublicAllSchedule({
       matches.push(m);
     }
   });
+
+  // Flattened across categories the same way the fixtures are: the combined
+  // list has no category of its own, so the lookup has to be by match id.
+  const bansByMatchId = new Map<string, DisciplineBan[]>();
+  // The rulebook only names the cards in the warning, and every category of an
+  // event runs the same sport — so the first one that answered will do.
+  let disciplineRules: DisciplineRules | null = null;
+  for (const r of disciplineResults) {
+    if (!r.data?.enabled) continue;
+    disciplineRules ??= r.data.rules;
+    for (const [matchId, bans] of Object.entries(r.data.matches ?? {})) {
+      bansByMatchId.set(matchId, bans);
+    }
+  }
 
   const dateGroups = groupByDate(matches, tz);
   const activeDateKey =
@@ -101,6 +137,9 @@ export function PublicAllSchedule({
                       match={m}
                       phase={phaseById.get(m.id) ?? ""}
                       categoryLabel={category?.name}
+                      bans={bansByMatchId.get(m.id) ?? []}
+                      sport={sport}
+                      disciplineRules={disciplineRules}
                       onClick={() => setOpen({ match: m, categoryLabel: category?.name ?? "" })}
                     />
                   );

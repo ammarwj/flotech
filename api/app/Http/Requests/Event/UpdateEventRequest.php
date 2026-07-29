@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
+use App\Support\DisciplineRules;
 use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -37,6 +38,12 @@ class UpdateEventRequest extends FormRequest
             'courts.*' => ['string', 'max:255'],
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
+            // Same shape as the store request. The controller merges this into
+            // the stored column per namespace rather than replacing it, so a
+            // form that only knows about `discipline` can't wipe its neighbours.
+            'rules_config' => ['sometimes', 'nullable', 'array'],
+            'rules_config.discipline' => ['sometimes', 'nullable', 'array'],
+            ...DisciplineRules::validationRules('rules_config.discipline.'),
             // Categories are only touched when the client sends them; the
             // controller full-replaces the list when present.
             ...EventCategoryRules::make('sometimes'),

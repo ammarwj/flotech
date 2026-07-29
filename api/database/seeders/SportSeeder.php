@@ -7,6 +7,7 @@ use App\Models\SportOfficialRole;
 use App\Models\SportPosition;
 use App\Models\SportStat;
 use App\Services\Catalog;
+use App\Support\DisciplineRules;
 use Illuminate\Database\Seeder;
 
 /**
@@ -20,8 +21,11 @@ class SportSeeder extends Seeder
         $goalStats = [
             ['stat_key' => 'goals', 'label' => 'Gol', 'short' => 'G', 'role' => 'goal'],
             ['stat_key' => 'assists', 'label' => 'Assist', 'short' => 'A', 'role' => 'assist'],
-            ['stat_key' => 'yellow_cards', 'label' => 'Kartu Kuning', 'short' => 'KK', 'fair_play_weight' => 1],
-            ['stat_key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM', 'fair_play_weight' => 3],
+            // The role is what the suspension engine reads; fair_play_weight is
+            // only the standings tiebreaker. Two meanings, two columns — an admin
+            // retuning the weight must not change who is allowed to play.
+            ['stat_key' => 'yellow_cards', 'label' => 'Kartu Kuning', 'short' => 'KK', 'role' => 'yellow', 'fair_play_weight' => 1],
+            ['stat_key' => 'red_cards', 'label' => 'Kartu Merah', 'short' => 'KM', 'role' => 'red', 'fair_play_weight' => 3],
         ];
 
         // A bench looks the same in every sport, so this list is shared rather
@@ -161,11 +165,18 @@ class SportSeeder extends Seeder
             $positions = $data['positions'];
             unset($data['stats'], $data['positions']);
 
+            // Only a sport that books players gets a rulebook, and "books
+            // players" is derived from the stats rather than listed a second
+            // time — a config on a sport with no card column would claim the
+            // feature is on where it can never fire.
+            $books = collect($stats)->contains(fn ($s) => in_array($s['role'] ?? null, ['yellow', 'red'], true));
+
             $sport = Sport::updateOrCreate(
                 ['slug' => $data['slug']],
                 [
                     ...$data,
                     'participant_modes' => $data['participant_modes'] ?? ['team'],
+                    'discipline_config' => $books ? DisciplineRules::DEFAULTS : null,
                     'is_active' => true,
                     'sort_order' => $order,
                 ],

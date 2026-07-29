@@ -42,6 +42,7 @@ export function SetScoreEditor({
       toast.success("Skor disimpan");
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan skor.").message),
   });

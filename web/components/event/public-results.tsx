@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { getPublicMatches, getPublicStandings, getPublicLeaderboard } from "@/lib/api/matches";
+import {
+  getPublicDiscipline,
+  getPublicMatches,
+  getPublicStandings,
+  getPublicLeaderboard,
+} from "@/lib/api/matches";
 import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
@@ -12,7 +17,7 @@ import {
   playableMatches,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
-import { standingsLegend } from "@/lib/scoring";
+import { standingsLegend, tracksDiscipline } from "@/lib/scoring";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
@@ -22,9 +27,16 @@ import { GroupStandings } from "./group-standings";
 import { BracketView } from "./bracket-view";
 import { DoubleBracketView } from "./double-bracket-view";
 import { LeaderboardTable } from "./leaderboard-table";
+import { DisciplineTable } from "./discipline-table";
 import { PublicMatchCard } from "./public-match-card";
 import { MatchDetailDialog } from "./match-detail-dialog";
-import type { BracketConfig, FormatEngine, Match, StandingsContext } from "@/types/api";
+import type {
+  BracketConfig,
+  FormatEngine,
+  Match,
+  SportDef,
+  StandingsContext,
+} from "@/types/api";
 
 export type ResultsTab = "schedule" | "standings" | "bracket" | "stats";
 
@@ -43,6 +55,7 @@ export function PublicResults({
   context,
   activeTab,
   playerStats,
+  sport,
 }: {
   orgSlug: string;
   eventSlug: string;
@@ -56,6 +69,13 @@ export function PublicResults({
   activeTab: ResultsTab;
   /** Whether this sport publishes player stats at all — see showsPlayerStats. */
   playerStats: boolean;
+  /**
+   * The whole sport, not a boolean like `playerStats` above: the discipline
+   * panel needs it twice over — to decide whether the sport books players at
+   * all, and to name a card from the sport's own label rather than a hardcoded
+   * "kartu kuning".
+   */
+  sport: SportDef | null;
 }) {
   const catalog = useCatalog();
   const isKnockout = isKnockoutFormat(engine);
@@ -88,6 +108,16 @@ export function PublicResults({
     // Same reason as the standings gate above: the Statistik tab isn't offered
     // for a racket sport, so the request would answer a question nobody asked.
     enabled: playerStats,
+  });
+  // Who may not take the field, and why. Skipped entirely for a sport with no
+  // card column — see tracksDiscipline, which asks the stats rather than
+  // borrowing the playerStats gate above: volleyball and basketball keep a
+  // leaderboard yet can never produce a booking.
+  const disciplineQuery = useQuery({
+    queryKey: ["public-discipline", orgSlug, eventSlug, categorySlug],
+    queryFn: () => getPublicDiscipline(orgSlug, eventSlug, categorySlug),
+    retry: false,
+    enabled: tracksDiscipline(sport),
   });
 
   const matches = matchesQuery.data ?? [];
@@ -154,6 +184,9 @@ export function PublicResults({
                       key={m.id}
                       match={m}
                       phase={phaseLabel(m, matches, isKnockout)}
+                      bans={disciplineQuery.data?.matches?.[m.id] ?? []}
+                      sport={sport}
+                      disciplineRules={disciplineQuery.data?.rules ?? null}
                       onClick={() => setOpenMatch(m)}
                     />
                   ))}
@@ -162,8 +195,18 @@ export function PublicResults({
             </div>
           )
         ) : activeTab === "stats" ? (
-          <div style={{ maxWidth: 900 }}>
+          <div className="grid gap-8" style={{ maxWidth: 900 }}>
             {leaderboardQuery.data && <LeaderboardTable leaderboard={leaderboardQuery.data} />}
+            {disciplineQuery.data?.enabled && (
+              <section className="grid gap-3">
+                <h3 className="text-sm font-bold">Disiplin & larangan bermain</h3>
+                <DisciplineTable
+                  players={disciplineQuery.data.players}
+                  sport={sport}
+                  rules={disciplineQuery.data.rules}
+                />
+              </section>
+            )}
           </div>
         ) : (
           <div style={{ maxWidth: isHybrid ? 1120 : 760 }}>

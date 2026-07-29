@@ -151,6 +151,9 @@ Route::prefix('v1')->group(function () {
         Route::get('categories/{categorySlug}/matches', [PublicEventController::class, 'matches']);
         Route::get('categories/{categorySlug}/standings', [PublicEventController::class, 'standings']);
         Route::get('categories/{categorySlug}/leaderboard', [PublicEventController::class, 'leaderboard']);
+        // Who may not take the field, and why. Public for the same reason the
+        // schedule is: the squad facing them needs it as much as the panitia.
+        Route::get('categories/{categorySlug}/discipline', [PublicEventController::class, 'discipline']);
         // Player stats of a single fixture, for the match detail dialog.
         Route::get('matches/{match}/stats', [PublicEventController::class, 'matchStats']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
@@ -250,6 +253,10 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);
             Route::get('events/{event}/categories/{category}/standings', [MatchController::class, 'standings']);
             Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
+            // Card accumulation and who it bars from the next fixture. A read,
+            // and the operator typing results is exactly who needs it — so it
+            // stays outside the org.admin group.
+            Route::get('events/{event}/categories/{category}/discipline', [MatchController::class, 'discipline']);
             Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             // Fix a wrong seed in place, instead of rebuilding the whole bracket.

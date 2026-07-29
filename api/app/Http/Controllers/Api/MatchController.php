@@ -11,6 +11,7 @@ use App\Models\GameMatch;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Services\Catalog;
+use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
 use App\Services\KnockoutPlanService;
 use App\Services\MatchResultService;
@@ -41,6 +42,7 @@ class MatchController extends Controller
         protected GroupDrawService $draw,
         protected MatchResultService $results,
         protected KnockoutPlanService $plans,
+        protected DisciplineService $discipline,
     ) {}
 
     /**
@@ -710,6 +712,22 @@ class MatchController extends Controller
         $categoryModel = $this->category($request, $event, $category);
 
         return ApiResponse::success($this->stats->leaderboard($categoryModel));
+    }
+
+    /**
+     * Card tallies and who they keep off the pitch, for a whole category.
+     *
+     * One endpoint rather than a field on MatchResource: the answer is an
+     * aggregation across every fixture of the category, so a per-match resource
+     * could only produce it by loading the category once per row — including on
+     * the public match list, which reads the same tally through
+     * PublicEventController::discipline().
+     */
+    public function discipline(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        return ApiResponse::success($this->discipline->forCategory($categoryModel));
     }
 
     /**

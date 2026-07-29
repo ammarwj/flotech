@@ -11,6 +11,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  RectangleVertical,
   Trash2,
   Trophy,
   X,
@@ -23,13 +24,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Card, CardContent } from "@/components/ui/card";
+import { InfoHint } from "@/components/ui/info-hint";
 import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { rupiah } from "@/lib/labels";
 import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { disciplineStatDefs, tracksDiscipline } from "@/lib/scoring";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
 import type { FieldErrors } from "@/lib/api/errors";
@@ -408,6 +412,21 @@ export function EventForm({
     banner_url: initial?.banner_url ?? "",
   });
 
+  // Card thresholds, held as strings so a cleared field stays cleared. Empty
+  // means "follow the sport default" all the way to the server — see
+  // DisciplineRules, which strips nulls before merging its three layers.
+  const [discipline, setDiscipline] = useState(() => {
+    const d = initial?.rules_config?.discipline;
+    return {
+      yellow_threshold: d?.yellow_threshold?.toString() ?? "",
+      yellow_ban_matches: d?.yellow_ban_matches?.toString() ?? "",
+      red_ban_matches: d?.red_ban_matches?.toString() ?? "",
+      yellows_per_expulsion: d?.yellows_per_expulsion?.toString() ?? "",
+      expulsion_ban_matches: d?.expulsion_ban_matches?.toString() ?? "",
+      reset_yellow_on_knockout: d?.reset_yellow_on_knockout ?? false,
+    };
+  });
+
   // Each event runs one-or-more categories; a new event starts with one blank.
   const [categories, setCategories] = useState<CategoryDraft[]>(() =>
     initial?.categories?.length
@@ -507,6 +526,31 @@ export function EventForm({
 
   // Fall back to the first catalog entry until the user picks one.
   const sportValue = v.sport_type || sports[0]?.slug || "";
+  const selectedSport = sports.find((s) => s.slug === sportValue) ?? null;
+  // What this sport's cards are actually called, and what it defaults to —
+  // both shown as placeholders so a blank field reads as "inherited", not "0".
+  const sportCards = disciplineStatDefs(selectedSport);
+  const sportDiscipline = selectedSport?.discipline_config ?? {};
+  // Lowercased card names for the explanation panels, which read as prose. The
+  // sport owns its labels, so a cabang that calls them something else says so
+  // everywhere instead of only in the column headings.
+  const yellowWord = (sportCards.yellow?.label ?? "kartu kuning").toLowerCase();
+  const redWord = (sportCards.red?.label ?? "kartu merah").toLowerCase();
+
+  /** Blank = inherit, so it must leave as an absent key rather than a null. */
+  const num = (raw: string): number | undefined => {
+    const n = Number(raw.trim());
+    return raw.trim() === "" || Number.isNaN(n) ? undefined : n;
+  };
+
+  const cleanedDiscipline = {
+    yellow_threshold: num(discipline.yellow_threshold),
+    yellow_ban_matches: num(discipline.yellow_ban_matches),
+    red_ban_matches: num(discipline.red_ban_matches),
+    yellows_per_expulsion: num(discipline.yellows_per_expulsion),
+    expulsion_ban_matches: num(discipline.expulsion_ban_matches),
+    reset_yellow_on_knockout: discipline.reset_yellow_on_knockout,
+  };
   const fallbackFormat = tournament_formats[0]?.key ?? "";
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -555,7 +599,16 @@ export function EventForm({
     // Drop blank court rows so an empty input never becomes a nameless court.
     const cleanedCourts = (v.courts ?? []).map((c) => c.trim()).filter(Boolean);
 
-    onSubmit({ ...v, sport_type: sportValue, courts: cleanedCourts, categories: cleanedCategories });
+    onSubmit({
+      ...v,
+      sport_type: sportValue,
+      courts: cleanedCourts,
+      categories: cleanedCategories,
+      // Only sent for a sport that books players. A saved rulebook on an event
+      // switched to a cardless sport stays where it is, dormant, and comes back
+      // if the sport does — silently deleting it would be a surprise.
+      ...(tracksDiscipline(selectedSport) ? { rules_config: { discipline: cleanedDiscipline } } : {}),
+    });
   };
 
   const days = durationDays(v.start_date, v.end_date);
@@ -693,6 +746,180 @@ export function EventForm({
           </Button>
         </CardContent>
       </Card>
+
+      {/* Only for a sport that books players. Volleyball and basketball field
+        squads and keep a leaderboard, yet have no card column — which is why the
+        test is the sport's own stats, not whether it is a racket sport. */}
+      {tracksDiscipline(selectedSport) && (
+        <Card>
+          <SectionHeader
+            icon={RectangleVertical}
+            title="Disiplin & Sanksi"
+            description="Kapan akumulasi kartu membuat pemain tidak boleh bermain."
+          />
+          <CardContent className="grid gap-4">
+            {/* items-end, because a label that wraps to two lines would
+                otherwise push its own input below its neighbours'. */}
+            <div className="grid items-end gap-4 sm:grid-cols-3">
+              <div className="grid gap-2">
+                {/* The marker sits beside the Label, never inside it: a <label>
+                    may not wrap interactive content, and nested there a tap on
+                    the icon would also focus the input behind it. */}
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="yellow-threshold" className="font-semibold">
+                    {sportCards.yellow?.label ?? "Kartu kuning"} untuk 1 larangan
+                  </Label>
+                  <InfoHint label="Penjelasan akumulasi kartu kuning">
+                    Berapa {yellowWord} yang <b>menumpuk sepanjang turnamen</b> sebelum
+                    pemain kena larangan. Terkumpul di laga mana saja — 1 di laga 2, 1 di
+                    laga 5, 1 di laga 9 sudah cukup. Begitu larangan terbit, hitungannya
+                    kembali ke nol.
+                  </InfoHint>
+                </div>
+                <Input
+                  id="yellow-threshold"
+                  type="number"
+                  min={1}
+                  max={20}
+                  inputMode="numeric"
+                  value={discipline.yellow_threshold}
+                  onChange={(e) =>
+                    setDiscipline((d) => ({ ...d, yellow_threshold: e.target.value }))
+                  }
+                  placeholder={sportDiscipline.yellow_threshold?.toString() ?? "3"}
+                />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="yellow-ban" className="font-semibold">
+                    Lama larangan (akumulasi)
+                  </Label>
+                  <InfoHint label="Penjelasan lama larangan akumulasi">
+                    Berapa pertandingan pemain absen setelah {yellowWord}-nya menumpuk
+                    sampai batas di sebelah kiri. Isi <b>0</b> kalau akumulasi di turnamen
+                    ini tidak berbuah larangan sama sekali.
+                  </InfoHint>
+                </div>
+                <Input
+                  id="yellow-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  inputMode="numeric"
+                  value={discipline.yellow_ban_matches}
+                  onChange={(e) =>
+                    setDiscipline((d) => ({ ...d, yellow_ban_matches: e.target.value }))
+                  }
+                  placeholder={sportDiscipline.yellow_ban_matches?.toString() ?? "1"}
+                />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="red-ban" className="font-semibold">
+                    Lama larangan ({redWord})
+                  </Label>
+                  {/* Last column on desktop, so the panel hangs from the right
+                      edge instead of running off the card. */}
+                  <InfoHint label="Penjelasan lama larangan kartu merah" align="end">
+                    Berapa pertandingan pemain absen setelah menerima {redWord}. Berlaku
+                    langsung, tanpa menunggu kartu lain. Kalau di satu laga tercatat{" "}
+                    {redWord} <b>dan</b> {yellowWord} sekaligus, sistem membacanya sebagai
+                    satu kejadian — larangannya tidak dobel.
+                  </InfoHint>
+                </div>
+                <Input
+                  id="red-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  inputMode="numeric"
+                  value={discipline.red_ban_matches}
+                  onChange={(e) =>
+                    setDiscipline((d) => ({ ...d, red_ban_matches: e.target.value }))
+                  }
+                  placeholder={sportDiscipline.red_ban_matches?.toString() ?? "1"}
+                />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="yellow-expulsion" className="font-semibold">
+                    {sportCards.yellow?.label ?? "Kartu kuning"} 1 laga = dikeluarkan
+                  </Label>
+                  <InfoHint label="Penjelasan dikeluarkan karena kartu kuning">
+                    Berapa {yellowWord} <b>di dalam satu pertandingan</b> yang dihitung
+                    sebagai pengusiran — bukan penumpukan lintas laga seperti kolom paling
+                    kiri. {yellowWord} yang berujung pengusiran{" "}
+                    <b>tidak ikut dihitung lagi</b> ke akumulasi, supaya satu kejadian tidak
+                    dihukum dua kali. Isi <b>0</b> untuk mematikan aturan ini.
+                  </InfoHint>
+                </div>
+                <Input
+                  id="yellow-expulsion"
+                  type="number"
+                  min={0}
+                  max={10}
+                  inputMode="numeric"
+                  value={discipline.yellows_per_expulsion}
+                  onChange={(e) =>
+                    setDiscipline((d) => ({ ...d, yellows_per_expulsion: e.target.value }))
+                  }
+                  placeholder={sportDiscipline.yellows_per_expulsion?.toString() ?? "2"}
+                />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="expulsion-ban" className="font-semibold">
+                    Lama larangan (dikeluarkan)
+                  </Label>
+                  <InfoHint label="Penjelasan lama larangan dikeluarkan">
+                    Berapa pertandingan pemain absen setelah dikeluarkan karena{" "}
+                    {yellowWord} di laga yang sama. Terpisah dari larangan akumulasi —
+                    keduanya bisa berjalan berurutan kalau memang dua kejadian berbeda.
+                  </InfoHint>
+                </div>
+                <Input
+                  id="expulsion-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  inputMode="numeric"
+                  value={discipline.expulsion_ban_matches}
+                  onChange={(e) =>
+                    setDiscipline((d) => ({ ...d, expulsion_ban_matches: e.target.value }))
+                  }
+                  placeholder={sportDiscipline.expulsion_ban_matches?.toString() ?? "1"}
+                />
+              </div>
+            </div>
+            {/* The per-field markers above carry the rules now; what is left here
+                is the one thing that belongs to the whole block. */}
+            <FieldHint>
+              Kosongkan untuk mengikuti aturan bawaan cabang — angka pada placeholder itulah
+              yang sedang berlaku. Larangan dianggap dijalani di pertandingan resmi tim
+              berikutnya, dan sistem hanya memperingatkan: keputusan menurunkan pemain tetap
+              di tangan panitia.
+            </FieldHint>
+
+            <label className="flex items-start gap-3">
+              <Switch
+                checked={discipline.reset_yellow_on_knockout}
+                onCheckedChange={(checked) =>
+                  setDiscipline((d) => ({ ...d, reset_yellow_on_knockout: checked }))
+                }
+              />
+              <span className="grid gap-1">
+                <span className="text-sm font-semibold">
+                  Hapus akumulasi kartu kuning saat masuk babak gugur
+                </span>
+                <FieldHint>
+                  Hanya berlaku untuk kategori Grup + Knockout — cuma format itu yang menandai
+                  laganya sebagai babak gugur. Larangan yang sudah terbit tetap harus dijalani.
+                </FieldHint>
+              </span>
+            </label>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <SectionHeader

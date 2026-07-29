@@ -25,8 +25,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
-import { participantLabel, participantModes } from "@/lib/scoring";
-import type { ParticipantType } from "@/types/api";
+import { participantLabel, participantModes, tracksDiscipline } from "@/lib/scoring";
+import type { DisciplineRuleValues, ParticipantType } from "@/types/api";
 
 type SportForm = {
   slug: string;
@@ -36,6 +36,8 @@ type SportForm = {
   scoring: "goal" | "set";
   participant_modes: ParticipantType[];
   default_match_minutes: number;
+  /** Card thresholds this sport's events inherit; {} = platform defaults. */
+  discipline_config: DisciplineRuleValues;
   is_active: boolean;
   sort_order: number;
 };
@@ -52,6 +54,7 @@ const EMPTY: SportForm = {
   // Every sport fields a squad; racket sports add the other two.
   participant_modes: ["team"],
   default_match_minutes: 60,
+  discipline_config: {},
   is_active: true,
   sort_order: 0,
 };
@@ -164,6 +167,7 @@ export default function AdminSportsPage() {
       scoring: sport.scoring,
       participant_modes: participantModes(sport),
       default_match_minutes: sport.default_match_minutes,
+      discipline_config: sport.discipline_config ?? {},
       is_active: sport.is_active,
       sort_order: sport.sort_order,
     });
@@ -201,6 +205,22 @@ export default function AdminSportsPage() {
     setRoles((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const sports = query.data ?? [];
+  // The rulebook only means something once the sport has a card column, and
+  // those are edited in the stats list below — so it appears when editing a
+  // sport that already books players, never on the blank create form.
+  const editingSport = sports.find((s) => s.id === editingId) ?? null;
+
+  /** Blank = fall back to the platform default, so it must leave as no key. */
+  const setRule = (key: keyof DisciplineRuleValues, raw: string) =>
+    setForm((f) => {
+      const next = { ...f.discipline_config };
+      const n = Number(raw.trim());
+
+      if (raw.trim() === "" || Number.isNaN(n)) delete next[key];
+      else next[key] = n as never;
+
+      return { ...f, discipline_config: next };
+    });
 
   return (
     <div>
@@ -341,6 +361,83 @@ export default function AdminSportsPage() {
           </div>
         </div>
 
+        {tracksDiscipline(editingSport) && (
+          <div className="grid gap-3 rounded-xl border border-border bg-[var(--surface-2)] p-3">
+            <div>
+              <p className="text-sm font-semibold">Akumulasi kartu</p>
+              <p className="text-xs text-muted-foreground">
+                Bawaan untuk event cabang ini. Organizer bisa menimpanya per event, dan
+                kolom yang dikosongkan di sini memakai bawaan platform (3 / 1 / 1 / 2 / 1).
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-threshold">Kartu kuning per larangan</Label>
+                <Input
+                  id="disc-threshold"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={form.discipline_config.yellow_threshold ?? ""}
+                  onChange={(e) => setRule("yellow_threshold", e.target.value)}
+                  placeholder="3"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-yellow-ban">Lama larangan (akumulasi)</Label>
+                <Input
+                  id="disc-yellow-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={form.discipline_config.yellow_ban_matches ?? ""}
+                  onChange={(e) => setRule("yellow_ban_matches", e.target.value)}
+                  placeholder="1"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-red-ban">Lama larangan (kartu merah)</Label>
+                <Input
+                  id="disc-red-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={form.discipline_config.red_ban_matches ?? ""}
+                  onChange={(e) => setRule("red_ban_matches", e.target.value)}
+                  placeholder="1"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-expulsion">Kartu kuning 1 laga = dikeluarkan</Label>
+                <Input
+                  id="disc-expulsion"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={form.discipline_config.yellows_per_expulsion ?? ""}
+                  onChange={(e) => setRule("yellows_per_expulsion", e.target.value)}
+                  placeholder="2"
+                />
+                {/* 0 is a real setting here, not an empty field — a sport whose
+                    rules never turn cautions into a dismissal sets it. */}
+                <p className="text-xs text-muted-foreground">0 = aturan ini dimatikan.</p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-expulsion-ban">Lama larangan (dikeluarkan)</Label>
+                <Input
+                  id="disc-expulsion-ban"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={form.discipline_config.expulsion_ban_matches ?? ""}
+                  onChange={(e) => setRule("expulsion_ban_matches", e.target.value)}
+                  placeholder="1"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -464,6 +561,12 @@ export default function AdminSportsPage() {
                         <option value="">— tanpa role —</option>
                         <option value="goal">Gol (= skor)</option>
                         <option value="assist">Assist</option>
+                        {/* What the suspension engine looks for. It reads the
+                          role, never the key, so a sport may name its cards
+                          anything. Bobot fair play beside this is a separate
+                          question — it only weighs the standings tiebreaker. */}
+                        <option value="yellow">Kartu kuning (akumulasi)</option>
+                        <option value="red">Kartu merah (larangan)</option>
                       </Select>
                       <Input
                         type="number"

@@ -14,8 +14,16 @@ class SportStat extends Model
 {
     use HasUuids;
 
-    /** Meanings the engine understands; anything else is a plain counter. */
-    public const ROLES = ['goal', 'assist'];
+    /**
+     * Meanings the engine understands; anything else is a plain counter.
+     *
+     * 'goal' cross-checks the score and 'assist' can't outnumber it. 'yellow'
+     * and 'red' are what the suspension engine reads: it may not look for a
+     * stat_key literal, because an admin can rename keys from /admin/sports and
+     * a sport whose card is called `kartu_kuning` would silently lose the
+     * feature. A sport with neither simply doesn't book players.
+     */
+    public const ROLES = ['goal', 'assist', 'yellow', 'red'];
 
     protected $fillable = [
         'sport_id',

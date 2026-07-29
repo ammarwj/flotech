@@ -51,6 +51,7 @@ class Catalog
                     'icon' => $s->icon,
                     'scoring' => $s->scoring,
                     'participant_modes' => $s->participantModes(),
+                    'discipline_config' => $s->disciplineConfig(),
                     'default_match_minutes' => $s->default_match_minutes,
                     'stats' => $s->stats->map(fn ($stat) => [
                         'key' => $stat->stat_key,
@@ -139,6 +140,19 @@ class Catalog
         }
 
         return null;
+    }
+
+    /**
+     * This sport's default card thresholds, as stored. Empty means the fallbacks
+     * in DisciplineRules::DEFAULTS apply — and note that empty is *not* the same
+     * as "this sport has no cards": that question is answered by whether a stat
+     * carries the 'yellow' or 'red' role.
+     *
+     * @return array<string, mixed>
+     */
+    public static function disciplineConfig(?string $slug): array
+    {
+        return self::sport($slug)['discipline_config'] ?? [];
     }
 
     /** stat_key => disciplinary weight, for the fair-play tiebreaker. */

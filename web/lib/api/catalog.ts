@@ -24,7 +24,7 @@ export interface AdminSportStat {
   stat_key: string;
   label: string;
   short: string;
-  role: "goal" | "assist" | null;
+  role: "goal" | "assist" | "yellow" | "red" | null;
   fair_play_weight: number;
   sort_order?: number;
 }
