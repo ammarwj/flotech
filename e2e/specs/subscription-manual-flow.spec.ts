@@ -1,7 +1,8 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 
 import { expect, signIn, test, toast } from "../fixtures/test";
 import { unique } from "../fixtures/api";
+import { largeBitmap } from "../fixtures/large-image";
 
 /**
  * Buying the first plan by bank transfer, end to end: onboarding → transfer →
@@ -149,9 +150,15 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     // propagates on Cloudflare's schedule, so waiting for onLoad makes this
     // test flaky on a CDN we don't control. That the dialog was handed a proof
     // URL is ours; that a CDN has caught up is not.
+    //
+    // `.webp` while `uploadProof` picks a `.png` is the assertion, not a
+    // detail: the extension changing between the file chosen and the object
+    // stored is the only end-to-end evidence that the receipt went through the
+    // WebP pipeline rather than being PUT to the bucket untouched. Matching
+    // `.+\.` alone would pass either way.
     await expect(dialog.getByRole("link", { name: "Tab baru" })).toHaveAttribute(
       "href",
-      /payment-proofs\/.+\.png$/,
+      /payment-proofs\/.+\.webp$/,
     );
     // Twice over: once in the dialog's subtitle, once in the details list.
     await expect(dialog.getByText(orgName).first()).toBeVisible();
@@ -189,6 +196,112 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     // The banner is keyed off the org having no plan; it must let go now.
     await page.goto("/organizer");
     await expect(page.getByText("Pembayaran paketmu sedang diverifikasi")).toBeHidden();
+  });
+
+  /**
+   * What the receipt upload does to the file on its way out.
+   *
+   * Here rather than in a spec of its own because the upload box only exists
+   * while the gateway is off, and this file already owns that switch. It is
+   * about the pipeline, not the plan, so it stops at the payment step.
+   *
+   * Two things PHPUnit structurally cannot see: `compressToWebp` is a browser
+   * API (canvas → `toBlob`), and the client-side format guard never reaches the
+   * server at all. The endpoint's own re-encode is covered by the assertion on
+   * the stored `.webp` URL in the test above.
+   */
+  test("bukti dikompres jadi WebP sebelum dikirim, dan non-gambar ditolak di klien", async ({
+    page,
+    api,
+  }) => {
+    const account = await api.registerUser("bukti");
+    await signIn(page, account.email);
+
+    // Record every upload attempt, so "nothing was sent" is provable rather
+    // than inferred from the absence of a success message.
+    const uploads: Request[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/uploads/")) uploads.push(req);
+    });
+
+    // Watch what the client hands to the transport, not what goes on the wire:
+    // Chromium streams multipart uploads, so `postDataBuffer()` on the request
+    // is null and the bytes are unreadable from the Node side. `FormData.append`
+    // is where `uploadImage` puts the file, and patching it sees the File object
+    // itself — name, type and compressed size — regardless of whether axios ends
+    // up using XHR or fetch.
+    await page.addInitScript(() => {
+      const appended: { name: string; type: string; size: number }[] = [];
+      (window as unknown as Record<string, unknown>).__appendedFiles = appended;
+      const original = FormData.prototype.append;
+      FormData.prototype.append = function (this: FormData, ...args: unknown[]) {
+        const value = args[1];
+        if (value instanceof File) {
+          appended.push({ name: value.name, type: value.type, size: value.size });
+        }
+        return (original as (...a: unknown[]) => void).apply(this, args);
+      } as typeof FormData.prototype.append;
+    });
+
+    await page.goto("/onboarding");
+    await page.getByLabel("Nama organisasi").fill(unique("EO Bukti"));
+    await page.getByRole("button", { name: "Lanjutkan" }).click();
+    await page.getByRole("button", { name: "Pilih paket" }).first().click();
+    await expect(page.getByRole("heading", { name: "Selesaikan pembayaran" })).toBeVisible();
+
+    const input = page.locator('input[type="file"]');
+
+    // ── A PDF is refused before any request is made ───────────────────────
+    // `accept="image/*"` only filters the picker's dialog; drag-and-drop and
+    // any non-browser client walk straight past it, so the guard in the change
+    // handler is the real one. setInputFiles ignores `accept` too, which is
+    // exactly what makes it able to test that guard.
+    await input.setInputFiles({
+      name: "bukti.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4"),
+    });
+    await expect(page.getByText("Bukti harus berupa gambar (JPG, PNG, atau WebP).")).toBeVisible();
+    expect(uploads, "a rejected file must not reach the network").toHaveLength(0);
+
+    // ── An oversized image is downscaled and re-encoded ───────────────────
+    const source = largeBitmap();
+    await input.setInputFiles(source);
+
+    await expect(page.getByText("Bukti terkirim, menunggu verifikasi admin")).toBeVisible();
+    // The guard's message clears once a valid file goes through.
+    await expect(page.getByText("Bukti harus berupa gambar (JPG, PNG, atau WebP).")).toBeHidden();
+
+    expect(uploads).toHaveLength(1);
+    const [upload] = uploads;
+
+    // The pipeline switch itself: receipts used to take a presigned URL and PUT
+    // the raw file straight to the bucket, which is the one path that skipped
+    // every resize. `/uploads/sign` must not be involved any more.
+    expect(upload.url()).toContain("/uploads/image");
+    expect(upload.method()).toBe("POST");
+
+    // What the client actually produced. This is the only evidence available for
+    // the *client* leg: the stored URL is always `.webp` because the endpoint
+    // mints the key itself, so the URL cannot tell a converted upload from a
+    // re-encoded one.
+    const sent = await page.evaluate(
+      () => (window as unknown as { __appendedFiles: { name: string; type: string; size: number }[] }).__appendedFiles,
+    );
+    expect(sent).toHaveLength(1);
+
+    // Converted, not merely shrunk.
+    expect(sent[0].type).toBe("image/webp");
+    expect(sent[0].name).toBe("struk-transfer.webp");
+
+    // Compare the bytes sent against the bytes picked — the assertion the 12 MB
+    // BMP exists for. An assertion that the upload merely "succeeded" would pass
+    // just as well with the original file on the wire.
+    expect(sent[0].size).toBeGreaterThan(0);
+    expect(sent[0].size).toBeLessThan(source.buffer.length / 10);
+    // And it now fits the endpoint's own `max:5120` rule, which the raw file
+    // (~12 MB) would have failed outright.
+    expect(sent[0].size).toBeLessThan(5 * 1024 * 1024);
   });
 });
 

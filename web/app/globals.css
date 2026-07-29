@@ -420,6 +420,84 @@ img { max-width: 100%; display: block; }
   .reveal { opacity: 1; transform: none; transition: none; }
 }
 
+/* ---- sidebar nav groups ----
+   The admin menu carries six headings, so the question a glance has to answer is
+   which rows belong to which heading. The rows hang off a hairline spine to say
+   it structurally, and the row you're on thickens its own segment of that spine —
+   which is also what makes "you are here" survive in peripheral vision.
+
+   Kept here rather than in utilities because the fold is animated: `display:
+   none` can't transition, so the rows stay in the box and 1fr → 0fr closes it. */
+/* Outfit, not the rows' Inter: a heading has to read as a different *class* of
+   thing than the links under it, and the display face does that at a size where
+   weight alone wouldn't. Its state colours stay in the component — they're
+   conditional on where you are. */
+.nav-group-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.nav-group-label:hover {
+  color: var(--text);
+}
+/* A folded group is the only place the active row can hide, so its heading is
+   what has to say "it's in here". Ordered after :hover — equal specificity, so
+   source order is what keeps hovering a folded group from hiding that. */
+.nav-group-label[data-holds-active="true"] {
+  color: var(--brand-600);
+}
+[data-theme="dark"] .nav-group-label[data-holds-active="true"] {
+  color: var(--brand-500);
+}
+
+.nav-group-rows {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* Clipping belongs to the container, not to the row wrapper: the active
+     marker is drawn in the wrapper's left padding, and a wrapper that clipped
+     its own padding box would shave the marker down to the spine's 1px. */
+  overflow: hidden;
+  transition: grid-template-rows 0.22s var(--ease);
+}
+.nav-group-rows[data-open="false"] {
+  grid-template-rows: 0fr;
+}
+.nav-group-rows > * {
+  /* min-height:0 is what lets the 0fr track actually collapse its content. The
+     2px block padding is room for a focused row's outline, which the container
+     would otherwise clip on the first and last row of every group; it survives
+     collapsing because the track height, not this box, sets what's visible. */
+  min-height: 0;
+  padding-block: 2px;
+  /* The spine. margin-left keeps it clear of the aside's own padding; the rows'
+     px-3 then sets where their icons land relative to it. */
+  margin-left: 3px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+/* Scoped to a group: the flat organizer menu has no spine, so an unscoped
+   marker would float in empty gutter next to its active row. */
+.nav-group-rows [aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--brand-600);
+}
+/* brand-600 is a light-mode blue; on --bg-alt in dark it all but disappears. */
+[data-theme="dark"] .nav-group-rows [aria-current="page"]::before {
+  background: var(--brand-500);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-group-rows { transition: none; }
+}
+
 /* ---- footer ---- */
 .footer {
   background: var(--bg-alt);

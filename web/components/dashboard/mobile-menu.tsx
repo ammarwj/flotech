@@ -22,9 +22,9 @@ import { useAuthStore } from "@/stores/auth-store";
  * mode without offering any way to change it. This panel is the only way to
  * switch hats on a phone.
  *
- * It carries the full menu for the same reason. MobileTabBar shows five items;
- * the admin menu has fourteen, so without the list here nine admin pages are
- * simply unreachable below `md`.
+ * It carries the full menu for the same reason. MobileTabBar shows only the five
+ * items flagged `mobile`, so without the grouped list here most of the admin
+ * pages are simply unreachable below `md`.
  */
 export function MobileMenu() {
   const [open, setOpen] = useState(false);

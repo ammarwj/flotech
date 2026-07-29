@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { CompleteWithdrawalInput } from "@/lib/api/admin-wallet";
 import type { Withdrawal } from "@/types/api";
 import { uploadImage } from "@/lib/api/events";
+import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,10 @@ export function CompleteWithdrawalDialog({
   const onFile = async (file: File) => {
     setUploading(true);
     try {
-      setProofUrl(await uploadImage(file, "payout-proofs"));
+      // Same 1600/0.85 as the payer-side receipt: a camera shot of an m-banking
+      // screen is text, and uncompressed it hits the endpoint's 5 MB cap.
+      const webp = await compressToWebp(file, { maxDim: 1600, quality: 0.85 });
+      setProofUrl(await uploadImage(webp, "payout-proofs"));
       toast.success("Bukti transfer terunggah");
     } catch {
       toast.error("Gagal mengunggah bukti transfer.");

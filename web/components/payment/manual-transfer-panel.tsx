@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Building2, Check, Clock, Copy, TriangleAlert, Upload } from "lucide-react";
 
-import { signUpload } from "@/lib/api/events";
+import { uploadImage } from "@/lib/api/events";
+import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -88,22 +89,32 @@ export function ManualTransferPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  /**
+   * Receipts go through the same downscale-to-WebP pipeline as every other image
+   * in the app: shrink here, upload to `/uploads/image`, which re-encodes again
+   * server-side. 1600px at 0.85 rather than the app's usual 1280/0.8 because a
+   * receipt is *text* — the amount and reference number have to stay legible to
+   * whoever verifies it.
+   */
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Bukti harus berupa gambar (JPG, PNG, atau WebP).");
+      return;
+    }
+
     setUploading(true);
     setError(null);
     try {
-      const signed = await signUpload(file.name, file.type, "payment-proofs");
-      // No upload_url in dev (object storage isn't configured) — the signed
-      // file_url is still usable, so don't block on the PUT.
-      if (signed.upload_url) {
-        await fetch(signed.upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
+      const webp = await compressToWebp(file, { maxDim: 1600, quality: 0.85 });
+      // compressToWebp hands back the original file when the browser can't
+      // decode it — an iPhone HEIC opened in desktop Chrome. Server-side GD is
+      // built without HEIC too, so uploading it would only earn a generic 422.
+      if (webp.type !== "image/webp") {
+        setError("Format gambar ini tidak didukung. Coba screenshot atau simpan ulang sebagai JPG.");
+        return;
       }
-      onSubmit(signed.file_url);
+      onSubmit(await uploadImage(webp, "payment-proofs"));
     } catch {
       setError("Gagal mengunggah bukti. Coba lagi.");
     } finally {
@@ -173,7 +184,7 @@ export function ManualTransferPanel({
       <label className="mt-4 block">
         <input
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*"
           className="hidden"
           disabled={uploading || pending}
           onChange={(e) => handleFile(e.target.files?.[0])}
