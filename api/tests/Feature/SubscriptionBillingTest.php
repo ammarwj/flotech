@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Organization;
 use App\Models\Plan;
+use App\Models\SiteSetting;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Notifications\SubscriptionActivated;
 use App\Services\BillingDocumentService;
+use App\Services\PlatformSettings;
 use App\Services\SubscriptionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -206,5 +208,96 @@ class SubscriptionBillingTest extends TestCase
                 'billing_cycle' => 'monthly',
             ])
             ->assertStatus(403);
+    }
+
+    /**
+     * A bill raised on one rail has to stay payable on whichever rail is live
+     * when the organizer gets round to it — pay() re-derives rather than
+     * replays, exactly as RegistrationService::startPayment() already does.
+     *
+     * Both directions in one test on purpose: asserting only the on-to-off flip
+     * would pass on an implementation that hard-codes `manual`.
+     */
+    public function test_pay_reopens_on_whichever_rail_is_live_now(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $plan = $this->plan();
+
+        SiteSetting::create([
+            'bank_name' => 'BCA',
+            'bank_code' => '014',
+            'account_number' => '9998887777',
+            'account_holder' => 'PT Flo Event Indonesia',
+        ]);
+
+        // Checkout on the gateway rail. Midtrans is unconfigured under test, so
+        // it auto-activates; push it back to the state a real unpaid bill is in.
+        $sub = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+        $sub->update(['status' => 'past_due', 'paid_at' => null, 'receipt_number' => null]);
+        $invoiceNumber = $sub->invoice_number;
+
+        PlatformSettings::put(['payment_gateway_enabled' => false], null);
+        PlatformSettings::flush();
+
+        $offline = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('manual', $offline['payment_method']);
+        $this->assertSame('9998887777', $offline['bank_account']['account_number']);
+        // Still the same one bill, however many times payment is reopened.
+        $this->assertSame($invoiceNumber, $offline['subscription']['invoice_number']);
+
+        $sub->update(['status' => 'past_due', 'paid_at' => null, 'receipt_number' => null]);
+
+        PlatformSettings::put(['payment_gateway_enabled' => true], null);
+        PlatformSettings::flush();
+
+        $online = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('gateway', $online['payment_method']);
+        $this->assertNull($online['bank_account']);
+        $this->assertSame($invoiceNumber, $online['subscription']['invoice_number']);
+    }
+
+    /**
+     * pay() re-derives the rail, so letting it run while a receipt is under
+     * review would flip the bill to gateway and strand that receipt in the
+     * super admin's queue.
+     */
+    public function test_pay_is_refused_while_a_proof_is_under_review(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $plan = $this->plan();
+
+        SiteSetting::create([
+            'bank_name' => 'BCA',
+            'account_number' => '9998887777',
+            'account_holder' => 'PT Flo Event Indonesia',
+        ]);
+
+        PlatformSettings::put(['payment_gateway_enabled' => false], null);
+        PlatformSettings::flush();
+
+        $sub = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/proof", [
+                'payment_proof_url' => 'https://cdn.test/proof.jpg',
+            ])
+            ->assertOk();
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->assertStatus(422);
+
+        $this->assertSame('manual', $sub->fresh()->payment_method);
+        $this->assertNotNull($sub->fresh()->payment_proof_url);
     }
 }

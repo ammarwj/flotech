@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\SiteSetting;
 use App\Models\Subscription;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -11,6 +12,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class SubscriptionResource extends JsonResource
 {
+    /**
+     * The platform's account is one row shared by every subscription in the
+     * response, so it is resolved once per request rather than per row — same
+     * memoization PlanResource uses for feature definitions, and for the same
+     * reason: both /subscriptions and /admin/subscriptions render collections.
+     */
+    private static ?SiteSetting $platformAccount = null;
+
     /**
      * @return array<string, mixed>
      */
@@ -31,6 +40,37 @@ class SubscriptionResource extends JsonResource
             'payment_type' => $this->payment_type,
             'paid_at' => $this->paid_at,
             'plan' => new PlanResource($this->whenLoaded('plan')),
+
+            // Manual transfer. `awaiting_verification` is derived, not stored —
+            // HasManualPayment explains why there is no status value for it.
+            'payment_method' => $this->payment_method,
+            'awaiting_verification' => $this->isAwaitingVerification(),
+            'payment_proof_url' => $this->payment_proof_url,
+            'payment_proof_uploaded_at' => $this->payment_proof_uploaded_at,
+            'payment_deadline_at' => $this->payment_deadline_at,
+            'rejected_reason' => $this->rejected_reason,
+            'verified_at' => $this->verified_at,
+            // Where to transfer, only while the bill is manual and unpaid.
+            'bank_account' => $this->when(
+                $this->isManual() && ! $this->isSettled(),
+                fn () => new PlatformBankAccountResource(static::platformAccount()),
+            ),
+            // The super admin queue lists rows across every organization.
+            'organization' => $this->whenLoaded('organization', fn () => [
+                'id' => $this->organization->id,
+                'name' => $this->organization->name,
+            ]),
         ];
+    }
+
+    private static function platformAccount(): SiteSetting
+    {
+        return static::$platformAccount ??= SiteSetting::current();
+    }
+
+    /** Drop the per-request memo. Tests that edit site_settings mid-request need it. */
+    public static function flushPlatformAccount(): void
+    {
+        static::$platformAccount = null;
     }
 }

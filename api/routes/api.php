@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
+use App\Http\Controllers\Api\Admin\SubscriptionController as AdminSubscriptionController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\ViewStatController as AdminViewStatController;
@@ -205,6 +206,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('subscriptions', [SubscriptionController::class, 'index']);
                 Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
                 Route::post('subscriptions/{subscription}/pay', [SubscriptionController::class, 'pay']);
+                // Transfer receipt for a manual plan payment (gateway is off).
+                Route::post('subscriptions/{subscription}/proof', [SubscriptionController::class, 'proof']);
                 Route::get('subscriptions/{subscription}/invoice', [SubscriptionController::class, 'invoice']);
                 Route::get('subscriptions/{subscription}/receipt', [SubscriptionController::class, 'receipt']);
             });
@@ -384,6 +387,13 @@ Route::prefix('v1')->group(function () {
             Route::get('payments', [AdminRefundController::class, 'index']);
             Route::post('ticket-orders/{ticketOrder}/refund', [AdminRefundController::class, 'refundTicketOrder']);
             Route::post('teams/{team}/refund', [AdminRefundController::class, 'refundTeam']);
+
+            // Manual plan payments waiting on us. Unlike the organizer's own
+            // verification queue, this money lands in the platform's account —
+            // so only a super admin may rule on the receipt.
+            Route::get('subscriptions', [AdminSubscriptionController::class, 'index']);
+            Route::post('subscriptions/{subscription}/approve', [AdminSubscriptionController::class, 'approve']);
+            Route::post('subscriptions/{subscription}/reject', [AdminSubscriptionController::class, 'reject']);
 
             Route::get('wallets', [AdminWalletController::class, 'index']);
             Route::post('wallets/{wallet}/adjust', [AdminWalletController::class, 'adjust']);

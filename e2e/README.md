@@ -46,6 +46,8 @@ API/web mati atau seeder belum pernah dijalankan.
 | `public-header.spec.ts` | header publik yang sadar status login |
 | `platform-settings.spec.ts` | saklar payment gateway di `/admin/settings` (lihat "Transfer manual" di bawah) |
 | `landing-content.spec.ts` | FAQ & testimoni landing yang diedit super admin — konten, bukan kode |
+| `subscription-manual.spec.ts` | rekening penerima pembayaran paket + antrean `/admin/subscriptions` (aman paralel) |
+| `subscription-manual-flow.spec.ts` | beli paket lewat transfer manual, ujung ke ujung — **`@gateway-off`, tidak ikut run default** |
 
 ## Cara kerjanya
 
@@ -86,19 +88,59 @@ Midtrans), jadi saldo dipasang lewat penyesuaian ledger milik super admin
 (`POST /admin/wallets/{id}/adjust`) — yang diuji flow-nya memang pencairan, bukan
 pemasukannya.
 
-**Transfer manual: sengaja tidak diuji penuh di sini.** `payment_gateway_enabled`
-itu setting **global platform** — tidak ada override per organisasi. Mematikannya
-dari sebuah spec akan mengalihkan jalur pembayaran semua spec lain yang sedang
-jalan berbarengan di DB dev yang sama; ini satu-satunya state yang tidak bisa
-diisolasi per test. Jadi pembagiannya:
+**Transfer manual: diisolasi lewat penjadwalan, bukan lewat data.**
+`payment_gateway_enabled` itu setting **global platform** — tidak ada override
+per organisasi. Mematikannya dari sebuah spec akan mengalihkan jalur pembayaran
+semua spec lain yang sedang jalan berbarengan di DB dev yang sama; ini
+satu-satunya state yang tidak bisa diisolasi per test. Jadi pembagiannya:
 
-- `api/tests/Feature/ManualPaymentTest.php` — aturan uangnya (order manual tidak
-  pernah mengkredit dompet, `platform_fee` = 0, siklus tolak/unggah ulang/acc,
-  operator tidak boleh meng-acc, `tickets:expire-manual`). Di sqlite in-memory
-  flag-nya per-test, jadi gateway boleh dimatikan sesuka hati.
-- `platform-settings.spec.ts` + `manual-payment.spec.ts` — bagian yang hanya
-  terlihat di browser: peringatannya muncul sebelum admin menyimpan, dan antrean
-  verifikasi bisa dibuka. Keduanya **tidak pernah menyimpan** saklar itu.
+- `api/tests/Feature/ManualPaymentTest.php` & `ManualSubscriptionTest.php` —
+  aturan uangnya (order manual tidak pernah mengkredit dompet, `platform_fee` =
+  0, langganan manual tidak pernah lewat cabang `mock`, siklus tolak/unggah
+  ulang/acc, siapa yang boleh meng-acc, kedua command `expire-manual`). Di
+  sqlite in-memory flag-nya per-test, jadi gateway boleh dimatikan sesuka hati.
+- `platform-settings.spec.ts`, `manual-payment.spec.ts`,
+  `subscription-manual.spec.ts` — bagian yang hanya terlihat di browser dan
+  tetap benar saat gateway **hidup**: peringatannya muncul sebelum admin
+  menyimpan, dan kedua antrean verifikasi bisa dibuka. Ketiganya **tidak pernah
+  menyimpan** saklar itu.
+- `subscription-manual-flow.spec.ts` — alur penuhnya (onboarding → transfer →
+  tolak → unggah ulang → acc → paket aktif). Ini **memang** mematikan saklarnya,
+  karena fiturnya cuma ada saat saklar itu mati; berhenti di depan pintu berarti
+  alur ini tidak pernah terbukti jalan di browser sama sekali. Isolasinya lewat
+  jadwal: ditandai `@gateway-off`, dibuang dari run lain oleh `grepInvert` di
+  `playwright.config.ts`, dan dijalankan sendirian:
+
+  ```bash
+  bun run test:gateway-off     # GATEWAY_OFF=1 + --grep @gateway-off + --workers=1
+  ```
+
+  `afterAll`-nya menyalakan saklar itu lagi **walaupun test-nya gagal** — kalau
+  tidak, run yang crash meninggalkan DB dev dalam mode transfer manual, yang
+  persis terlihat seperti bug aplikasi. Jangan pernah menaruh test di file itu
+  kalau ia tidak butuh saklarnya; tempatnya `subscription-manual.spec.ts`, yang
+  ikut run default tanpa biaya.
+
+Kalau langkah unggah bukti tiba-tiba gagal di beberapa spec sekaligus
+(`subscription-manual-flow`, `wallet-payout`, foto pemain di `manual-team`),
+curigai R2 lebih dulu, bukan aplikasinya — ketiganya memakai jalur yang sama:
+minta tanda tangan ke API kita, PUT byte-nya ke R2, kirim `file_url` balik.
+Cara memisahkan CORS dari bucket yang salah adalah menembak PUT presigned itu
+dari server:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@flo-event.id","password":"password"}' | jq -r .data.access_token)
+URL=$(curl -s -X POST http://localhost:8000/api/v1/uploads/sign -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"file_name":"probe.png","content_type":"image/png","folder":"payment-proofs"}' | jq -r .data.upload_url)
+curl -o /dev/null -w '%{http_code}\n' -X PUT --data-binary @fixtures/transfer-proof.png \
+  -H 'Content-Type: image/png' "$URL"
+```
+
+`404` di sini berarti bucketnya (`R2_BUCKET` di `api/.env`) yang salah/tidak ada
+— bukan CORS, dan bukan spec-nya.
 
 ## Catatan lingkungan
 

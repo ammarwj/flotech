@@ -31,6 +31,26 @@
             Tagihan ini telah dibayar pada {{ $date($subscription->paid_at) }}. Kwitansi
             {{ $subscription->receipt_number }} diterbitkan sebagai bukti pembayaran.
         </p>
+    @elseif ($bank && $bank->hasBankAccount())
+        <p class="muted" style="margin-top: 24px;">
+            Mohon transfer tepat sejumlah di atas ke rekening berikut sebelum
+            {{ $date($dueAt) }}, lalu unggah bukti transfernya di dashboard. Paket akan aktif
+            setelah pembayaran kami verifikasi.
+        </p>
+        <table style="margin-top: 12px;">
+            <tr>
+                <td class="key muted">Bank</td>
+                <td>{{ $bank->bank_name }}{{ $bank->bank_code ? ' ('.$bank->bank_code.')' : '' }}</td>
+            </tr>
+            <tr>
+                <td class="key muted">No. rekening</td>
+                <td>{{ $bank->account_number }}</td>
+            </tr>
+            <tr>
+                <td class="key muted">Atas nama</td>
+                <td>{{ $bank->account_holder }}</td>
+            </tr>
+        </table>
     @else
         <p class="muted" style="margin-top: 24px;">
             Mohon selesaikan pembayaran sebelum {{ $date($dueAt) }}. Paket akan aktif segera setelah

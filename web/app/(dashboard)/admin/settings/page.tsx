@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Info, TriangleAlert } from "lucide-react";
 
 import { getPlatformSettings, updatePlatformSettings } from "@/lib/api/admin-wallet";
+import { getAdminSiteSettings } from "@/lib/api/landing";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
@@ -44,8 +46,24 @@ export default function AdminSettingsPage() {
     },
   });
 
+  // Same query key as /admin/site-settings, so opening both pages costs one
+  // request. Needed here only to warn *before* the switch is flipped: without a
+  // platform account nobody can buy a plan, and the reactive half of that rule
+  // is a 422 the organizer sees at checkout.
+  const siteSettings = useQuery({
+    queryKey: ["admin-site-settings"],
+    queryFn: getAdminSiteSettings,
+  });
+
   const settings = query.data?.settings ?? [];
   const orgsWithoutBank = query.data?.orgs_without_bank_account ?? 0;
+  const platformBankMissing =
+    !!siteSettings.data &&
+    !(
+      siteSettings.data.bank_name &&
+      siteSettings.data.account_number &&
+      siteSettings.data.account_holder
+    );
 
   // `values` holds only what the admin has touched; anything else reads straight
   // from the server, so no effect is needed to seed the form.
@@ -101,6 +119,24 @@ export default function AdminSettingsPage() {
                 </>
               )}
             </p>
+            <p className="mt-2 text-muted-foreground">
+              Pembelian paket juga beralih ke transfer manual — organizer transfer ke rekening
+              flo-event lalu kamu verifikasi di{" "}
+              <Link href="/admin/subscriptions" className="font-medium text-foreground underline">
+                Verifikasi Langganan
+              </Link>
+              .
+            </p>
+            {platformBankMissing && (
+              <p className="mt-2 font-semibold text-foreground">
+                Rekening penerima pembayaran paket belum diisi — tidak ada organizer yang bisa
+                membeli paket selama gateway mati.{" "}
+                <Link href="/admin/site-settings" className="underline">
+                  Isi sekarang
+                </Link>
+                .
+              </p>
+            )}
           </div>
         </Card>
       )}

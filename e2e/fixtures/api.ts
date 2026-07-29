@@ -102,6 +102,9 @@ export class Api {
       data: {
         full_name: fullName,
         email,
+        // Required since RegisterRequest gained it; the value is never asserted
+        // on, it just has to be a plausible Indonesian number.
+        phone: "081234567890",
         password: PASSWORD,
         password_confirmation: PASSWORD,
         ...(defaultMode ? { default_mode: defaultMode } : {}),
@@ -312,6 +315,49 @@ export class Api {
     for (const row of rows.filter((r) => r[field]?.includes(marker))) {
       await this.request.delete(`${API_URL}/admin/${resource}/${row.id}`, { headers: this.auth(adminToken) });
     }
+  }
+
+  // ---- Platform rails & the platform's own bank account ----
+
+  /**
+   * The payment-gateway kill switch.
+   *
+   * Platform-wide with no per-org override, so this is the one piece of state
+   * the suite cannot isolate: turning it off reroutes payments for every spec
+   * running beside it. Only the `@gateway-off` specs may call it, and only
+   * while the run is serialized — see e2e/README.md.
+   */
+  async setGateway(adminToken: string, enabled: boolean): Promise<void> {
+    // `sometimes` on every rule, so one key alone is a valid payload — the
+    // payout rules keep whatever the developer has set them to.
+    const res = await this.request.put(`${API_URL}/admin/settings`, {
+      headers: this.auth(adminToken),
+      data: { payment_gateway_enabled: enabled },
+    });
+    await this.unwrap(res, `Set payment gateway ${enabled ? "on" : "off"}`);
+  }
+
+  async siteSettings(adminToken: string): Promise<Record<string, unknown>> {
+    const res = await this.request.get(`${API_URL}/admin/site-settings`, {
+      headers: this.auth(adminToken),
+    });
+    return this.unwrap<Record<string, unknown>>(res, "Baca site settings");
+  }
+
+  /**
+   * Where an organizer transfers for a plan while the gateway is off.
+   *
+   * Global like landing content, so a spec that writes it owns putting it back
+   * — `siteSettings()` first, restore in teardown. Harmless while the gateway
+   * is up (PaymentRails::platformDestination returns before reading it), but a
+   * leftover would still show up in the next developer's admin form.
+   */
+  async updateSiteSettings(adminToken: string, payload: Record<string, unknown>): Promise<void> {
+    const res = await this.request.put(`${API_URL}/admin/site-settings`, {
+      headers: this.auth(adminToken),
+      data: payload,
+    });
+    await this.unwrap(res, "Simpan site settings");
   }
 
   // ---- Wallet (§5.7) ----

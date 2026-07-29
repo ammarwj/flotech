@@ -10,8 +10,10 @@ import {
   getSubscriptionDocument,
   getSubscriptions,
   paySubscription,
+  submitSubscriptionProof,
 } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
+import { checkoutOutcome } from "@/lib/checkout";
 import { formatPlanFeature } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { BILLING_CYCLE_LABELS, rupiah } from "@/lib/labels";
@@ -23,6 +25,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SubscriptionStatusBadge } from "@/components/shared/status-badge";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
+import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import {
   DocumentPreviewDialog,
   type PreviewDocument,
@@ -63,17 +66,43 @@ export default function SubscriptionPage() {
   const pay = useMutation({
     mutationFn: (sub: Subscription) => paySubscription(orgId!, sub.id),
     onSuccess: (res) => {
-      if (res.redirect_url) {
-        window.location.assign(res.redirect_url);
+      const outcome = checkoutOutcome(res);
+
+      if (outcome === "redirect") {
+        window.location.assign(res.redirect_url!);
         return;
       }
-      // Dev/mock: no gateway configured, so the invoice settled immediately.
+
       qc.invalidateQueries({ queryKey: ["organizations"] });
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
+
+      if (outcome === "manual") {
+        toast.info("Selesaikan transfer manual", {
+          description: "Instruksi transfer sudah muncul di atas halaman ini.",
+        });
+        return;
+      }
+
+      if (outcome === "failed") {
+        toast.error("Pembayaran belum bisa dibuka", { description: "Coba lagi beberapa saat lagi." });
+        return;
+      }
+
       toast.success("Tagihan lunas", { description: "Paket kamu sudah aktif." });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuka pembayaran.").message),
     onSettled: () => setBusyId(null),
+  });
+
+  const proof = useMutation({
+    mutationFn: ({ sub, url }: { sub: Subscription; url: string }) =>
+      submitSubscriptionProof(orgId!, sub.id, url),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      toast.success("Bukti terkirim", { description: "Admin flo-event akan memverifikasinya." });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti pembayaran.").message),
   });
 
   const openDocument = useMutation({
@@ -113,6 +142,10 @@ export default function SubscriptionPage() {
   }
 
   const subs = subsQuery.data ?? [];
+  // The bill the organizer still has to settle by hand. `payment_method` is
+  // snapshotted per row, so this survives the gateway coming back up.
+  const pendingManual =
+    subs.find((s) => s.status === "past_due" && s.payment_method === "manual") ?? null;
   const plan = org.plan;
   const currentCycle = subs.find((s) => s.status === "active")?.billing_cycle ?? null;
   const remaining = daysUntil(org.plan_expires_at);
@@ -132,6 +165,19 @@ export default function SubscriptionPage() {
           </Button>
         }
       />
+
+      {pendingManual && (
+        <ManualTransferPanel
+          payee="platform"
+          bankAccount={pendingManual.bank_account}
+          amount={pendingManual.amount}
+          deadlineAt={pendingManual.payment_deadline_at}
+          awaitingVerification={pendingManual.awaiting_verification}
+          rejectedReason={pendingManual.rejected_reason}
+          pending={proof.isPending}
+          onSubmit={(url) => proof.mutate({ sub: pendingManual, url })}
+        />
+      )}
 
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -216,7 +262,10 @@ export default function SubscriptionPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{sub.plan?.name ?? "Paket dihapus"}</span>
-                    <SubscriptionStatusBadge status={sub.status} />
+                    <SubscriptionStatusBadge
+                      status={sub.status}
+                      awaitingVerification={sub.awaiting_verification}
+                    />
                     <span className="font-semibold tabular-nums">{rupiah(sub.amount)}</span>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -227,7 +276,9 @@ export default function SubscriptionPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {sub.status === "past_due" && (
+                  {/* Manual bills are settled through the panel above, not a
+                      Snap redirect — and pay() would re-derive the rail. */}
+                  {sub.status === "past_due" && sub.payment_method === "gateway" && (
                     <Button
                       size="sm"
                       disabled={busyId === sub.id}

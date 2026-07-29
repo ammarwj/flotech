@@ -25,6 +25,15 @@ export default defineConfig({
   // More browsers than that pool just queues requests behind each other.
   fullyParallel: true,
   workers: process.env.CI ? 2 : 4,
+
+  /**
+   * `payment_gateway_enabled` is platform-wide with no per-org override — the
+   * one piece of state a spec cannot isolate by owning its own data. Specs that
+   * have to switch it off are tagged `@gateway-off` and skipped here, then run
+   * on their own (`bun run test:gateway-off`, which pins --workers=1) so
+   * nothing else is in flight while the rails are rerouted.
+   */
+  grepInvert: process.env.GATEWAY_OFF ? undefined : /@gateway-off/,
   retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
   expect: { timeout: 10_000 },

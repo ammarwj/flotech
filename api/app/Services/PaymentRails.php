@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\PaymentException;
 use App\Models\BankAccount;
 use App\Models\Organization;
+use App\Models\SiteSetting;
 use Illuminate\Support\Carbon;
 
 /**
@@ -17,8 +18,10 @@ use Illuminate\Support\Carbon;
  * nothing to take a fee from, and letting organizers opt in would simply end
  * fee revenue.
  *
- * Ticket purchase and registration payment both ask this, so the rule lives
- * here rather than in three controllers.
+ * Ticket purchase, registration payment and plan checkout all ask this, so the
+ * rule lives here rather than in three controllers. The first two collect money
+ * *for* an organizer; the third collects it *from* one — see the two
+ * destination methods below, which differ by more than their return type.
  */
 class PaymentRails
 {
@@ -71,5 +74,40 @@ class PaymentRails
         }
 
         return null;
+    }
+
+    /**
+     * The account an organizer pays *us* into for a plan — and the signal that
+     * this payment is a manual one. Null means Midtrans, or free.
+     *
+     * Deliberately not destinationFor(). That one answers "where does a buyer
+     * send money to this organizer", and it also demands the `payment_gateway`
+     * entitlement. Subscription money flows the other way, and asking for an
+     * entitlement here would refuse every brand-new organization: an org is
+     * born with plan_id null, so PlanGate grants it nothing at all. Buying the
+     * first plan is the one flow that has to work without a plan.
+     *
+     * @throws PaymentException when the gateway is off and no platform account is on file
+     */
+    public function platformDestination(float $amount): ?SiteSetting
+    {
+        // A free plan collects nothing, so it needs no rail.
+        if ($amount <= 0) {
+            return null;
+        }
+
+        if (! $this->isManual()) {
+            return null;
+        }
+
+        $settings = SiteSetting::current();
+
+        if (! $settings->hasBankAccount()) {
+            throw new PaymentException(
+                'Pembayaran paket sedang dialihkan ke transfer manual, tetapi rekening tujuan belum disiapkan. Hubungi admin flo-event.',
+            );
+        }
+
+        return $settings;
     }
 }

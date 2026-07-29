@@ -102,6 +102,15 @@ export interface SiteSettings {
   /** CTA of the Professional plan card. Empty = fall back to `contact_email`. */
   sales_email: string | null;
   social_links: SocialLinks;
+  /**
+   * The platform's own account — where an organizer transfers for a plan while
+   * a super admin has the gateway switched off. Admin endpoint only; the public
+   * footer shape omits these entirely.
+   */
+  bank_name?: string | null;
+  bank_code?: string | null;
+  account_number?: string | null;
+  account_holder?: string | null;
 }
 
 export interface Organization {
@@ -131,11 +140,23 @@ export interface Organization {
   payment_gateway_enabled: boolean;
   /** Whether a primary payout account exists — the manual-transfer destination. */
   has_bank_account: boolean;
+  /**
+   * A manual plan payment sitting in the super admin's queue. Derived, and it
+   * rides here rather than on its own endpoint because the banner reading it
+   * renders for `operator` members too, who can't call /subscriptions.
+   */
+  subscription_awaiting_verification: boolean;
 }
 
 export type SubscriptionStatus = "active" | "past_due" | "cancelled" | "expired";
 
-export interface Subscription {
+/**
+ * Extends ManualPaymentFields (declared further down) for the same reason ticket
+ * orders and teams do: while the payment gateway is off, an organizer pays for a
+ * plan by bank transfer and uploads a receipt. The difference is who verifies it
+ * — a super admin, because the money lands in the platform's own account.
+ */
+export interface Subscription extends ManualPaymentFields {
   id: string;
   organization_id: string;
   plan_id: string | null;
@@ -152,13 +173,20 @@ export interface Subscription {
   payment_type: string | null;
   paid_at: string | null;
   plan?: Plan;
+  /** Where to transfer. Only on an unpaid manual bill. */
+  bank_account?: PublicBankAccount | null;
+  /** Only in the super admin's verification queue, which spans organizations. */
+  organization?: { id: string; name: string };
 }
 
-export interface CheckoutResult {
+/**
+ * Same shape as every other "start a payment" response — see PaymentStart. Read
+ * it through `checkoutOutcome()` in lib/checkout.ts rather than branching on
+ * `redirect_url` here: a null one means "manual", "activated" or "the gateway
+ * call failed", and only the subscription's own status tells them apart.
+ */
+export interface CheckoutResult extends PaymentStart {
   subscription: Subscription;
-  snap_token: string | null;
-  redirect_url: string | null;
-  mock: boolean;
 }
 
 // The vocabulary below is admin-managed data (see /catalog), so these are open

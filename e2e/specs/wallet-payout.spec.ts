@@ -114,14 +114,24 @@ test.describe("§5.7 & §5.8 Dompet & penarikan dana", () => {
     await addBankAccount(page);
     await requestWithdrawal(page, rules.minimum_withdrawal);
 
-    // The reason is collected in a native prompt.
-    adminPage.once("dialog", (d) => d.accept("Rekening tidak valid"));
     await adminPage.goto("/admin/withdrawals");
     await payoutRow(adminPage, organizer.org.name, "Tolak")
       .getByRole("button", { name: "Tolak", exact: true })
       .click();
 
+    // The reason is collected in an in-app dialog (usePrompt), not a native
+    // window.prompt — a page-level "dialog" handler would wait forever.
+    const dialog = adminPage.getByRole("dialog");
+    await expect(dialog.getByText("Tolak penarikan?")).toBeVisible();
+    await dialog.getByLabel("Alasan menolak").fill("Rekening tidak valid");
+    await dialog.getByRole("button", { name: "Tolak penarikan" }).click();
+
     await expect(toast(adminPage, /dikembalikan ke saldo organizer/i)).toBeVisible();
+
+    // The point of rejecting: the money goes back to where it came from, rather
+    // than staying parked in a request nobody will ever complete.
+    await page.goto("/organizer/wallet");
+    await expect(page.getByText("Ditolak").first()).toBeVisible();
   });
 });
 

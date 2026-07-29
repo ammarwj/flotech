@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { getPublicPlans } from "@/lib/api/plans";
 import { checkoutSubscription } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
+import { checkoutOutcome } from "@/lib/checkout";
 import { getActiveEventLimit, getMaxYearlyDiscount } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,13 +33,33 @@ export default function UpgradePage() {
   const checkout = useMutation({
     mutationFn: (plan: Plan) => checkoutSubscription(orgId!, plan.id, cycle),
     onSuccess: (res) => {
-      if (res.redirect_url) {
-        window.location.assign(res.redirect_url);
+      const outcome = checkoutOutcome(res);
+
+      if (outcome === "redirect") {
+        window.location.assign(res.redirect_url!);
         return;
       }
-      // Dev/mock: subscription auto-activated and the plan switched.
+
       qc.invalidateQueries({ queryKey: ["organizations"] });
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
+
+      if (outcome === "manual") {
+        // The transfer panel lives on the subscription page, not in this grid.
+        toast.info("Selesaikan transfer manual", {
+          description: "Payment gateway sedang mati. Transfer ke rekening flo-event dan unggah buktinya.",
+        });
+        router.push("/organizer/subscription");
+        return;
+      }
+
+      if (outcome === "failed") {
+        toast.error("Pembayaran belum bisa dibuka", {
+          description: "Tagihan sudah terbit tapi belum lunas. Coba lagi dari halaman Langganan.",
+        });
+        router.push("/organizer/subscription");
+        return;
+      }
+
       toast.success("Paket berhasil diperbarui", {
         description: "Kapasitas event aktifmu kini bertambah.",
         action: { label: "Buat event", onClick: () => router.push("/organizer/events/new") },

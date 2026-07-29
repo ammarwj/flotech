@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\PaymentException;
 use App\Models\Organization;
 use App\Models\Plan;
+use App\Models\SiteSetting;
 use App\Models\Subscription;
+use App\Models\User;
 use App\Notifications\SubscriptionActivated;
 use App\Notifications\SubscriptionInvoiceIssued;
 use Illuminate\Notifications\Notification;
@@ -19,7 +22,9 @@ use Throwable;
  * invoice, and applying a paid one to its organization.
  *
  * Unlike ticket and registration payments, subscription money is the
- * platform's revenue — it never touches an organizer wallet.
+ * platform's revenue — it never touches an organizer wallet. That holds on
+ * both rails, which is why the "manual money must not touch the wallet"
+ * invariant has nothing to say here.
  *
  * Numbering: a subscription gets its invoice number the moment it is created
  * (an unpaid invoice is still a document you can hand to finance) and its
@@ -27,19 +32,30 @@ use Throwable;
  */
 class SubscriptionService
 {
-    public function __construct(protected MidtransService $midtrans) {}
+    public function __construct(
+        protected MidtransService $midtrans,
+        protected PaymentRails $rails,
+    ) {}
 
     /**
-     * Create a pending subscription and its Snap transaction. Without Midtrans
-     * credentials the subscription is activated immediately (dev convenience).
+     * Create a pending subscription and open its payment. On the gateway rail
+     * that is a Snap transaction (and without Midtrans credentials the
+     * subscription activates immediately, a dev convenience); with the gateway
+     * switched off it is a manual transfer to the platform's own account.
      *
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool}
+     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
     public function checkout(Organization $org, Plan $plan, string $cycle): array
     {
         $amount = $cycle === 'yearly' ? (float) $plan->price_yearly : (float) $plan->price_monthly;
         $startsAt = Carbon::now();
         $expiresAt = $cycle === 'yearly' ? $startsAt->copy()->addYear() : $startsAt->copy()->addMonth();
+
+        // Asked *before* the row exists: a refused checkout must not burn an
+        // invoice number, and nextNumber() has no way to hand one back. A
+        // non-null account is itself the signal that this payment is manual.
+        $bank = $this->rails->platformDestination($amount);
+        $manual = $bank !== null;
 
         $subscription = $org->subscriptions()->create([
             'plan_id' => $plan->id,
@@ -49,9 +65,11 @@ class SubscriptionService
             'status' => 'past_due', // awaiting payment; flips to active on settlement
             'starts_at' => $startsAt,
             'expires_at' => $expiresAt,
+            'payment_method' => $manual ? 'manual' : 'gateway',
+            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
         ]);
 
-        $result = $this->openSnap($subscription);
+        $result = $this->start($subscription, $bank);
 
         // Only when the bill is genuinely outstanding. Without a payment gateway
         // configured openSnap() activates on the spot, and mailing "please pay"
@@ -72,15 +90,59 @@ class SubscriptionService
      * abandoned order id simply expires at Midtrans; a late webhook for it
      * finds no row and 404s, which is harmless.
      *
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool}
+     * The rail is re-derived rather than replayed: a bill raised while the
+     * gateway was up has to stay payable after a super admin switches it off,
+     * and the other way round. RegistrationService::startPayment() already
+     * rewrites payment_method on every retry for the same reason — the
+     * snapshot rule means "never derived at read time", not "frozen while
+     * unpaid". Nothing downstream of a subscription depends on the old value:
+     * there is no wallet credit and no platform fee to keep consistent with it.
+     *
+     * The caller refuses this while a proof is under review, so a re-derive
+     * can't strand one.
+     *
+     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
     public function pay(Subscription $subscription): array
     {
-        return $this->openSnap($subscription);
+        $bank = $this->rails->platformDestination((float) $subscription->amount);
+        $manual = $bank !== null;
+
+        $subscription->update([
+            'payment_method' => $manual ? 'manual' : 'gateway',
+            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
+        ]);
+
+        return $this->start($subscription, $bank);
     }
 
     /**
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool}
+     * Open payment on whichever rail this subscription is on.
+     *
+     * The manual branch returns before openSnap() ever runs. That is the point:
+     * `mock` means "no Midtrans server key", not "paid", and a manual
+     * subscription reaching that branch would activate a plan nobody paid for.
+     *
+     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     */
+    protected function start(Subscription $subscription, ?SiteSetting $bank): array
+    {
+        if ($bank === null) {
+            return $this->openSnap($subscription);
+        }
+
+        return [
+            'subscription' => $subscription->load('plan'),
+            'snap_token' => null,
+            'redirect_url' => null,
+            'mock' => false,
+            'payment_method' => 'manual',
+            'bank_account' => $bank,
+        ];
+    }
+
+    /**
+     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
     protected function openSnap(Subscription $subscription): array
     {
@@ -108,6 +170,8 @@ class SubscriptionService
             'snap_token' => $snap['token'],
             'redirect_url' => $snap['redirect_url'],
             'mock' => $snap['mock'],
+            'payment_method' => 'gateway',
+            'bank_account' => null,
         ];
     }
 
@@ -139,6 +203,53 @@ class SubscriptionService
         if (! $alreadyActive) {
             $this->mail($subscription, fn (Subscription $s) => new SubscriptionActivated($s));
         }
+    }
+
+    /**
+     * The organizer uploads their transfer receipt for a super admin to check.
+     *
+     * @throws PaymentException
+     */
+    public function submitProof(Subscription $subscription, string $proofUrl): void
+    {
+        if (! $subscription->isManual()) {
+            throw new PaymentException('Tagihan ini tidak dibayar lewat transfer manual.');
+        }
+
+        if ($subscription->status !== 'past_due') {
+            throw new PaymentException('Tagihan ini sudah tidak menunggu pembayaran.');
+        }
+
+        $subscription->attachProof($proofUrl);
+    }
+
+    /**
+     * Accept a manual transfer into the platform's own account, which activates
+     * the plan. Approving is the whole payment — no money moves on its own —
+     * so this is super_admin work, never an organizer's.
+     *
+     * @throws PaymentException
+     */
+    public function approveProof(Subscription $subscription, User $admin): void
+    {
+        if (! $subscription->isAwaitingVerification()) {
+            throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
+        }
+
+        $subscription->markVerified($admin);
+        $this->activate($subscription->fresh(), 'manual_transfer');
+    }
+
+    /**
+     * @throws PaymentException
+     */
+    public function rejectProof(Subscription $subscription, string $reason, Carbon $deadline): void
+    {
+        if (! $subscription->isAwaitingVerification()) {
+            throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
+        }
+
+        $subscription->rejectProof($reason, $deadline);
     }
 
     /**

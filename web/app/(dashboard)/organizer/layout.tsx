@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { ManualModeBanner } from "@/components/payment/manual-mode-banner";
+import { SubscriptionPendingBanner } from "@/components/payment/subscription-pending-banner";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -44,6 +45,7 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
   return (
     <>
       <ManualModeBanner />
+      <SubscriptionPendingBanner />
       {children}
     </>
   );

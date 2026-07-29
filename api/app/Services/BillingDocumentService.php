@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\SiteSetting;
 use App\Models\Subscription;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
@@ -76,6 +77,12 @@ class BillingDocumentService
             'subscription' => $subscription,
             'issuer' => config('billing'),
             'dueAt' => Carbon::parse($subscription->created_at)->addDays((int) config('billing.due_days', 7)),
+            // Only an unpaid manual bill needs it: an invoice telling the
+            // organizer to transfer, without saying where, can't be acted on
+            // outside the app — which is the whole point of a PDF.
+            'bank' => $subscription->isManual() && ! $subscription->isSettled()
+                ? SiteSetting::current()
+                : null,
             // Blade renders a child's sections before the layout runs, so the
             // formatters have to reach both — pass them in as view data.
             'money' => fn ($n) => 'Rp '.number_format((float) $n, 0, ',', '.'),

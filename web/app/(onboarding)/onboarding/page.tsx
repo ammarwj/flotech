@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, Building2, CreditCard } from "lucide-react";
+import { Check, Building2, CreditCard, Receipt } from "lucide-react";
 
 import { getPublicPlans } from "@/lib/api/plans";
-import { createOrganization, checkoutSubscription } from "@/lib/api/organizations";
+import {
+  createOrganization,
+  checkoutSubscription,
+  getSubscriptions,
+  submitSubscriptionProof,
+} from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
+import { checkoutOutcome } from "@/lib/checkout";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { getMaxYearlyDiscount } from "@/lib/plan";
 import { useAuthStore } from "@/stores/auth-store";
@@ -24,13 +30,15 @@ import {
   type BillingCycle,
 } from "@/components/subscription/plan-card";
 import { PlanGrid } from "@/components/subscription/plan-grid";
+import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { cn } from "@/lib/utils";
-import type { Plan } from "@/types/api";
+import type { Plan, Subscription } from "@/types/api";
 
-function Steps({ step }: { step: 1 | 2 }) {
+function Steps({ step }: { step: 1 | 2 | 3 }) {
   const items = [
     { n: 1, label: "Organisasi", icon: Building2 },
     { n: 2, label: "Paket", icon: CreditCard },
+    { n: 3, label: "Pembayaran", icon: Receipt },
   ];
   return (
     <div className="mb-8 flex items-center gap-3">
@@ -47,13 +55,29 @@ function Steps({ step }: { step: 1 | 2 }) {
               {step > n ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               {label}
             </div>
-            {i === 0 && <div className="h-px w-8 bg-border" />}
+            {i < items.length - 1 && <div className="h-px w-8 bg-border" />}
           </div>
         );
       })}
     </div>
   );
 }
+
+const STEP_COPY: Record<1 | 2 | 3, { title: string; description: string }> = {
+  1: {
+    title: "Buat organisasi",
+    description: "Organisasi adalah ruang kerja untuk semua turnamenmu.",
+  },
+  2: {
+    title: "Pilih paket",
+    description: "Pilih paket untuk mengaktifkan organisasimu. Upgrade kapan saja sesuai kebutuhan.",
+  },
+  3: {
+    title: "Selesaikan pembayaran",
+    description:
+      "Paketmu aktif setelah transfer diverifikasi admin flo-event. Kamu tetap bisa membuka dashboard sambil menunggu.",
+  },
+};
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -76,7 +100,24 @@ export default function OnboardingPage() {
   // to a dashboard they can't use. Deriving the step (rather than storing it)
   // keeps the freshly created org and the refetched one from disagreeing.
   const pendingOrgId = createdOrgId ?? (org && !org.plan ? org.id : null);
-  const step: 1 | 2 = pendingOrgId ? 2 : 1;
+
+  // Step 3 exists only while the payment gateway is off: the plan was chosen but
+  // has to be paid for by bank transfer and approved by a super admin first.
+  // Polled because that approval happens elsewhere; the effect below takes over
+  // the moment `org.plan` lands.
+  const subsQuery = useQuery({
+    queryKey: ["subscriptions", pendingOrgId],
+    queryFn: () => getSubscriptions(pendingOrgId!),
+    enabled: !!pendingOrgId,
+    refetchInterval: 30_000,
+  });
+
+  // `payment_method` is snapshotted per row, so this survives a super admin
+  // switching the gateway back on halfway through onboarding.
+  const pendingManual =
+    subsQuery.data?.find((s) => s.status === "past_due" && s.payment_method === "manual") ?? null;
+
+  const step: 1 | 2 | 3 = !pendingOrgId ? 1 : pendingManual ? 3 : 2;
 
   // Step 1 creates an organization, and nothing on the API side stops a second
   // one — but useActiveOrg() only ever reads data[0], so a duplicate would be an
@@ -100,13 +141,28 @@ export default function OnboardingPage() {
   const checkout = useMutation({
     mutationFn: (plan: Plan) => checkoutSubscription(pendingOrgId!, plan.id, cycle),
     onSuccess: (res) => {
-      if (res.redirect_url) {
-        window.location.assign(res.redirect_url);
+      const outcome = checkoutOutcome(res);
+
+      if (outcome === "redirect") {
+        window.location.assign(res.redirect_url!);
         return;
       }
-      // Dev/mock: subscription auto-activated and the plan switched.
+
       qc.invalidateQueries({ queryKey: ["organizations"] });
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
+
+      if (outcome === "manual") {
+        // No navigation: the step derives itself from the bill that now exists.
+        return;
+      }
+
+      if (outcome === "failed") {
+        toast.error("Pembayaran belum bisa dibuka", {
+          description: "Tagihan sudah terbit. Coba lagi dari halaman Langganan.",
+        });
+        return;
+      }
+
       toast.success("Langganan aktif. Selamat datang!");
       router.push("/organizer");
     },
@@ -114,16 +170,25 @@ export default function OnboardingPage() {
     onSettled: () => setPendingPlanId(null),
   });
 
+  const proof = useMutation({
+    mutationFn: ({ sub, url }: { sub: Subscription; url: string }) =>
+      submitSubscriptionProof(pendingOrgId!, sub.id, url),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      // Also the org: `subscription_awaiting_verification` rides on that
+      // payload, and it is what the dashboard's pending banner reads.
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      toast.success("Bukti terkirim", { description: "Admin flo-event akan memverifikasinya." });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti pembayaran.").message),
+  });
+
   return (
     <div className="mx-auto max-w-4xl">
       <Steps step={step} />
       <PageHeader
-        title={step === 1 ? "Buat organisasi" : "Pilih paket"}
-        description={
-          step === 1
-            ? "Organisasi adalah ruang kerja untuk semua turnamenmu."
-            : "Pilih paket untuk mengaktifkan organisasimu. Upgrade kapan saja sesuai kebutuhan."
-        }
+        title={STEP_COPY[step].title}
+        description={STEP_COPY[step].description}
       />
 
       {step === 1 && (
@@ -188,6 +253,27 @@ export default function OnboardingPage() {
               />
             ))}
           </PlanGrid>
+        </div>
+      )}
+
+      {step === 3 && pendingManual && (
+        <div className="max-w-lg">
+          <ManualTransferPanel
+            payee="platform"
+            bankAccount={pendingManual.bank_account}
+            amount={pendingManual.amount}
+            deadlineAt={pendingManual.payment_deadline_at}
+            awaitingVerification={pendingManual.awaiting_verification}
+            rejectedReason={pendingManual.rejected_reason}
+            pending={proof.isPending}
+            onSubmit={(url) => proof.mutate({ sub: pendingManual, url })}
+          />
+          <Button variant="outline" onClick={() => router.push("/organizer")}>
+            Lihat dashboard
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Fitur organisasi masih terkunci sampai pembayaranmu diverifikasi.
+          </p>
         </div>
       )}
     </div>

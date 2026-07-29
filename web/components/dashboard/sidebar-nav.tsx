@@ -15,6 +15,7 @@ import {
   CreditCard,
   Wallet,
   Banknote,
+  BadgeCheck,
   ReceiptText,
   MessageSquareQuote,
   HelpCircle,
@@ -75,9 +76,9 @@ export const PARTICIPANT_NAV: NavItem[] = [
 /**
  * SaaS super-admin navigation.
  *
- * The longest menu of the three — fourteen entries against the organizer's
+ * The longest menu of the three — fifteen entries against the organizer's
  * seven — so the bottom tab bar only ever carries the five most-used ones and
- * MobileMenu is what makes the other nine reachable on a phone.
+ * MobileMenu is what makes the other ten reachable on a phone.
  */
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Ringkasan", icon: LayoutDashboard, mobile: true },
@@ -91,6 +92,7 @@ export const ADMIN_NAV: NavItem[] = [
     short: "Penarikan",
   },
   { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },
+  { href: "/admin/subscriptions", label: "Verifikasi Langganan", icon: BadgeCheck },
   { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
   { href: "/admin/testimonials", label: "Testimoni", icon: MessageSquareQuote },
   { href: "/admin/faqs", label: "FAQ", icon: HelpCircle },

@@ -120,7 +120,10 @@ test.describe("Tim manual (pendaftaran di luar aplikasi)", () => {
     // Public page: open the "Tim Peserta" tab, click the team, see the photo.
     await page.goto(`/${organizer.org.slug}/${event.slug}`);
     await page.getByRole("button", { name: "Tim Peserta" }).click();
-    await page.getByRole("button", { name: new RegExp(teamName) }).click();
+    // Case-insensitive on purpose: the public team card renders its name
+    // uppercased, and a RegExp name — unlike a plain string — is matched
+    // verbatim by getByRole.
+    await page.getByRole("button", { name: new RegExp(teamName, "i") }).click();
     await expect(page.getByRole("img", { name: playerName })).toBeVisible();
   });
 });

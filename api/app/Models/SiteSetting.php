@@ -9,7 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * How visitors reach flo-event itself: the contact details and social profiles
- * rendered in the landing footer. Exactly one row — see `current()`.
+ * rendered in the landing footer, plus the platform's own bank account — where
+ * an organizer transfers for a plan while the payment gateway is off. Exactly
+ * one row — see `current()`.
  */
 class SiteSetting extends Model
 {
@@ -20,6 +22,10 @@ class SiteSetting extends Model
         'contact_phone',
         'sales_email',
         'social_links',
+        'bank_name',
+        'bank_code',
+        'account_number',
+        'account_holder',
     ];
 
     protected function casts(): array
@@ -37,6 +43,18 @@ class SiteSetting extends Model
     public static function current(): self
     {
         return static::query()->first() ?? new static;
+    }
+
+    /**
+     * Whether a plan can actually be paid for by hand. `bank_code` is optional
+     * — it is a convenience for the buyer's banking app, not part of the
+     * address — so it deliberately isn't required here.
+     */
+    public function hasBankAccount(): bool
+    {
+        return filled($this->bank_name)
+            && filled($this->account_number)
+            && filled($this->account_holder);
     }
 
     /**

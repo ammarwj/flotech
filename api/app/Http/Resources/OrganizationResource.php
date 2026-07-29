@@ -48,6 +48,11 @@ class OrganizationResource extends JsonResource
             // One extra query per org. This resource only ever renders the orgs
             // the current user belongs to (realistically one), never a listing.
             'has_bank_account' => $this->bankAccounts()->where('is_primary', true)->exists(),
+            // A manual plan payment sitting in the super admin's queue. It lives
+            // here rather than behind its own endpoint because the banner that
+            // reads it renders on every organizer page — including for
+            // `operator` members, who the org.admin-guarded /subscriptions 403s.
+            'subscription_awaiting_verification' => $this->subscriptions()->awaitingVerification()->exists(),
         ];
     }
 }

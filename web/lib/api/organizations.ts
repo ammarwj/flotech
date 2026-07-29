@@ -85,6 +85,19 @@ export async function paySubscription(orgId: string, subId: string): Promise<Che
   return data.data;
 }
 
+/** The organizer's transfer receipt for a manual plan payment. */
+export async function submitSubscriptionProof(
+  orgId: string,
+  subId: string,
+  proofUrl: string
+): Promise<Subscription> {
+  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
+    `/organizations/${orgId}/subscriptions/${subId}/proof`,
+    { payment_proof_url: proofUrl }
+  );
+  return data.data;
+}
+
 export interface SubscriptionDocument {
   blob: Blob;
   fileName: string;

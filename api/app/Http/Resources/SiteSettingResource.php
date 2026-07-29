@@ -24,6 +24,14 @@ class SiteSettingResource extends JsonResource
             'contact_phone' => $this->contact_phone,
             'sales_email' => $this->sales_email,
             'social_links' => $this->socialLinksMap(),
+            // The platform's own payout account, behind `superadmin`. Its public
+            // counterpart deliberately omits these: the footer has no business
+            // with them, and a full account number belongs only in a manual
+            // payment flow — see PlatformBankAccountResource.
+            'bank_name' => $this->bank_name,
+            'bank_code' => $this->bank_code,
+            'account_number' => $this->account_number,
+            'account_holder' => $this->account_holder,
         ];
     }
 }

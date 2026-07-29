@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertCircle, Mail, Share2 } from "lucide-react";
+import { AlertCircle, Banknote, Mail, Share2 } from "lucide-react";
 
 import { SectionHeader } from "@/components/event/section-header";
 import { PageHeader } from "@/components/shared/page-header";
@@ -30,6 +30,9 @@ function FieldError({ message }: { message?: string }) {
 }
 
 type ContactField = "contact_email" | "contact_phone" | "sales_email";
+type BankField = "bank_name" | "bank_code" | "account_number" | "account_holder";
+/** Every plain-text field on this page — they all share one `draft` map. */
+type TextField = ContactField | BankField;
 
 const EMPTY_SOCIALS = Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p.key, ""])) as Record<
   SocialPlatform,
@@ -42,11 +45,11 @@ export default function AdminSiteSettingsPage() {
 
   // Only what the admin has touched; everything else reads straight from the
   // server, so no effect is needed to seed the form (pattern from /admin/settings).
-  const [draft, setDraft] = useState<Partial<Record<ContactField, string>>>({});
+  const [draft, setDraft] = useState<Partial<Record<TextField, string>>>({});
   const [socialDraft, setSocialDraft] = useState<Partial<Record<SocialPlatform, string>>>({});
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
 
-  const contact = (field: ContactField) => draft[field] ?? query.data?.[field] ?? "";
+  const contact = (field: TextField) => draft[field] ?? query.data?.[field] ?? "";
   const social = (key: SocialPlatform) =>
     socialDraft[key] ?? query.data?.social_links?.[key] ?? EMPTY_SOCIALS[key];
 
@@ -59,6 +62,10 @@ export default function AdminSiteSettingsPage() {
         social_links: Object.fromEntries(
           SOCIAL_PLATFORMS.map((p) => [p.key, social(p.key).trim() || null])
         ),
+        bank_name: contact("bank_name").trim() || null,
+        bank_code: contact("bank_code").trim() || null,
+        account_number: contact("account_number").trim() || null,
+        account_holder: contact("account_holder").trim() || null,
       }),
     onSuccess: () => {
       setServerErrors({});
@@ -85,7 +92,7 @@ export default function AdminSiteSettingsPage() {
     <>
       <PageHeader
         title="Kontak & Sosmed"
-        description="Cara pengunjung menghubungi flo-event. Tampil di footer semua halaman publik — yang dikosongkan tidak ditampilkan."
+        description="Cara pengunjung menghubungi flo-event, plus rekening penerima pembayaran paket. Kontak & sosmed tampil di footer semua halaman publik — yang dikosongkan tidak ditampilkan."
       />
 
       {query.isError && (
@@ -185,6 +192,73 @@ export default function AdminSiteSettingsPage() {
               <p className="text-xs text-muted-foreground sm:col-span-2">
                 Isi username saja atau tempel tautan profil lengkap — keduanya akan disimpan sebagai
                 tautan. Kosongkan untuk menghapus.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <SectionHeader
+              icon={Banknote}
+              title="Rekening Penerima Pembayaran Paket"
+              description="Rekening flo-event sendiri. Dipakai hanya saat payment gateway dimatikan di Pengaturan Platform — organizer transfer ke sini lalu mengunggah bukti untuk kamu verifikasi."
+            />
+            <CardContent className="grid gap-5 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="bank_name">Nama bank</Label>
+                <Input
+                  id="bank_name"
+                  value={contact("bank_name")}
+                  onChange={(e) => setDraft((d) => ({ ...d, bank_name: e.target.value }))}
+                  aria-invalid={!!serverErrors.bank_name}
+                  className={invalidCls("bank_name")}
+                  placeholder="BCA"
+                />
+                <FieldError message={serverErrors.bank_name} />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="bank_code">Kode bank</Label>
+                <Input
+                  id="bank_code"
+                  value={contact("bank_code")}
+                  onChange={(e) => setDraft((d) => ({ ...d, bank_code: e.target.value }))}
+                  aria-invalid={!!serverErrors.bank_code}
+                  className={invalidCls("bank_code")}
+                  placeholder="014"
+                />
+                <FieldError message={serverErrors.bank_code} />
+                <p className="text-xs text-muted-foreground">Opsional.</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="account_number">Nomor rekening</Label>
+                <Input
+                  id="account_number"
+                  value={contact("account_number")}
+                  onChange={(e) => setDraft((d) => ({ ...d, account_number: e.target.value }))}
+                  aria-invalid={!!serverErrors.account_number}
+                  className={invalidCls("account_number")}
+                  placeholder="1234567890"
+                />
+                <FieldError message={serverErrors.account_number} />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="account_holder">Atas nama</Label>
+                <Input
+                  id="account_holder"
+                  value={contact("account_holder")}
+                  onChange={(e) => setDraft((d) => ({ ...d, account_holder: e.target.value }))}
+                  aria-invalid={!!serverErrors.account_holder}
+                  className={invalidCls("account_holder")}
+                  placeholder="PT Flo Event Indonesia"
+                />
+                <FieldError message={serverErrors.account_holder} />
+              </div>
+
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Nama bank, nomor rekening, dan atas nama wajib terisi ketiganya. Kalau kosong,
+                organizer tidak bisa membeli paket sama sekali selama gateway dimatikan.
               </p>
             </CardContent>
           </Card>

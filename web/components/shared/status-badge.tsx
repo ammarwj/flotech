@@ -132,7 +132,23 @@ const SUBSCRIPTION_VARIANT: Record<SubscriptionStatus, Variant> = {
   expired: "neutral",
 };
 
-export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus }) {
+/**
+ * `awaitingVerification` is a derived flag, not a status value — a manual bill
+ * under review is still `past_due`. It stays a separate prop for that reason:
+ * widening SubscriptionStatus would leave both label maps below silently
+ * undefined for the new member.
+ */
+export function SubscriptionStatusBadge({
+  status,
+  awaitingVerification = false,
+}: {
+  status: SubscriptionStatus;
+  awaitingVerification?: boolean;
+}) {
+  if (awaitingVerification) {
+    return <Badge variant="warning">Menunggu verifikasi</Badge>;
+  }
+
   return (
     <Badge variant={SUBSCRIPTION_VARIANT[status]}>{SUBSCRIPTION_STATUS_LABELS[status]}</Badge>
   );

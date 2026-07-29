@@ -49,6 +49,12 @@ class MidtransWebhookController extends Controller
         };
     }
 
+    /**
+     * This is the `default` arm above, so it also catches order ids with no
+     * prefix we recognise — which is safe: a manual subscription never gets a
+     * `midtrans_order_id` at all, so the lookup below cannot reach one and
+     * settle a plan Midtrans was never asked about.
+     */
     protected function handleSubscription(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
         $subscription = Subscription::where('midtrans_order_id', $orderId)->first();

@@ -37,6 +37,13 @@ class UpdateSiteSettingsRequest extends FormRequest
             'sales_email' => ['nullable', 'email', 'max:255'],
             'social_links' => ['nullable', 'array'],
             ...SocialPlatforms::rules(),
+            // Deliberately no "all three or none": an admin must be able to save
+            // a half-filled form. Whether the account is usable is a different
+            // question, asked at checkout by SiteSetting::hasBankAccount().
+            'bank_name' => ['nullable', 'string', 'max:60'],
+            'bank_code' => ['nullable', 'string', 'max:10'],
+            'account_number' => ['nullable', 'string', 'max:40'],
+            'account_holder' => ['nullable', 'string', 'max:100'],
         ];
     }
 
@@ -49,6 +56,9 @@ class UpdateSiteSettingsRequest extends FormRequest
             'contact_email.email' => 'Format email kontak tidak valid.',
             'sales_email.email' => 'Format email sales tidak valid.',
             'contact_phone.max' => 'Nomor telepon maksimal 20 karakter.',
+            'bank_name.max' => 'Nama bank maksimal 60 karakter.',
+            'account_number.max' => 'Nomor rekening maksimal 40 karakter.',
+            'account_holder.max' => 'Nama pemilik rekening maksimal 100 karakter.',
             ...SocialPlatforms::messages(),
         ];
     }

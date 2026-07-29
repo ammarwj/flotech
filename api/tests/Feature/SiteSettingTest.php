@@ -146,4 +146,37 @@ class SiteSettingTest extends TestCase
             ->assertOk()
             ->assertJsonCount(0, 'data.social_links');
     }
+
+    /**
+     * The platform's own account belongs in the plan payment flow, not in the
+     * footer every visitor loads. Asserting only that the admin can read it
+     * back would pass even if the public resource leaked it too, so compare the
+     * two payloads in one test.
+     */
+    public function test_platform_bank_details_reach_the_admin_form_but_never_the_public_footer(): void
+    {
+        $this->actingAs($this->superAdmin(), 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'contact_email' => 'halo@flo-event.id',
+                'bank_name' => 'BCA',
+                'bank_code' => '014',
+                'account_number' => '9998887777',
+                'account_holder' => 'PT Flo Event Indonesia',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.account_number', '9998887777');
+
+        $this->actingAs($this->superAdmin(), 'api')
+            ->getJson('/api/v1/admin/site-settings')
+            ->assertOk()
+            ->assertJsonPath('data.bank_name', 'BCA')
+            ->assertJsonPath('data.account_holder', 'PT Flo Event Indonesia');
+
+        $this->getJson('/api/v1/site-settings')
+            ->assertOk()
+            ->assertJsonPath('data.contact_email', 'halo@flo-event.id')
+            ->assertJsonMissingPath('data.bank_name')
+            ->assertJsonMissingPath('data.account_number')
+            ->assertJsonMissingPath('data.account_holder');
+    }
 }

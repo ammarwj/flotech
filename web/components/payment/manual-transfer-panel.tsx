@@ -10,11 +10,39 @@ import { Card } from "@/components/ui/card";
 import type { PublicBankAccount } from "@/types/api";
 
 /**
- * What a buyer sees when the payment gateway is off: the organizer's account,
- * and a box to upload the transfer receipt for them to verify.
+ * Who is being paid, and therefore who verifies the receipt. Everything else
+ * about the panel — the account block, the upload box, the deadline — is
+ * identical, so this is one prop and one copy map rather than six text props.
+ * Defaulting to `organizer` keeps the two buyer-facing callers untouched.
+ */
+type Payee = "organizer" | "platform";
+
+const COPY: Record<Payee, Record<string, string>> = {
+  organizer: {
+    title: "Transfer manual",
+    body: "Transfer tepat sejumlah di bawah ke rekening penyelenggara, lalu unggah bukti transfernya. Penyelenggara akan memverifikasi secara manual.",
+    awaitingTitle: "Bukti terkirim, menunggu verifikasi",
+    awaitingBody:
+      "Penyelenggara akan memeriksa buktimu. Halaman ini diperbarui otomatis begitu pembayaranmu diterima.",
+    deadlineNote: "setelah itu pesanan dibatalkan otomatis.",
+  },
+  platform: {
+    title: "Transfer manual ke flo-event",
+    body: "Payment gateway sedang bermasalah, jadi pembayaran paket dilakukan lewat transfer bank. Transfer tepat sejumlah di bawah, lalu unggah bukti transfernya.",
+    awaitingTitle: "Bukti terkirim, menunggu verifikasi admin",
+    awaitingBody:
+      "Tim flo-event akan memeriksa buktimu. Paketmu aktif otomatis begitu pembayaran diterima.",
+    deadlineNote: "setelah itu tagihan dibatalkan dan kamu perlu checkout ulang.",
+  },
+};
+
+/**
+ * What a payer sees when the payment gateway is off: the destination account,
+ * and a box to upload the transfer receipt for someone to verify.
  *
- * Shared by the e-ticket page and the team registration page — the two things
- * a buyer can pay for.
+ * Three callers: the e-ticket page and the team registration page (a buyer
+ * paying an organizer), and the subscription/onboarding pages (an organizer
+ * paying the platform).
  */
 export function ManualTransferPanel({
   bankAccount,
@@ -24,6 +52,7 @@ export function ManualTransferPanel({
   rejectedReason,
   onSubmit,
   pending = false,
+  payee = "organizer",
 }: {
   bankAccount: PublicBankAccount | null | undefined;
   amount: number;
@@ -32,7 +61,9 @@ export function ManualTransferPanel({
   rejectedReason: string | null;
   onSubmit: (proofUrl: string) => void;
   pending?: boolean;
+  payee?: Payee;
 }) {
+  const copyText = COPY[payee];
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -42,11 +73,8 @@ export function ManualTransferPanel({
       <Card className="mb-6 flex items-start gap-3 border-[color-mix(in_srgb,var(--brand-600)_40%,transparent)] bg-[color-mix(in_srgb,var(--brand-600)_6%,transparent)] p-5">
         <Clock className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand-600)]" />
         <div>
-          <p className="font-semibold">Bukti terkirim, menunggu verifikasi</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Penyelenggara akan memeriksa buktimu. Halaman ini diperbarui otomatis begitu
-            pembayaranmu diterima.
-          </p>
+          <p className="font-semibold">{copyText.awaitingTitle}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{copyText.awaitingBody}</p>
         </div>
       </Card>
     );
@@ -88,11 +116,8 @@ export function ManualTransferPanel({
       <div className="flex items-start gap-3">
         <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]" />
         <div>
-          <p className="font-semibold">Transfer manual</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Transfer tepat sejumlah di bawah ke rekening penyelenggara, lalu unggah bukti
-            transfernya. Penyelenggara akan memverifikasi secara manual.
-          </p>
+          <p className="font-semibold">{copyText.title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{copyText.body}</p>
         </div>
       </div>
 
@@ -140,7 +165,7 @@ export function ManualTransferPanel({
         {deadlineAt && (
           <p className="text-xs text-muted-foreground">
             Selesaikan sebelum <strong className="text-foreground">{fmtDeadline(deadlineAt)}</strong>{" "}
-            — setelah itu pesanan dibatalkan otomatis.
+            — {copyText.deadlineNote}
           </p>
         )}
       </div>

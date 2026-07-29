@@ -4,6 +4,7 @@ import type {
   AdminWallet,
   ApiEnvelope,
   PlatformSettingsPayload,
+  Subscription,
   Withdrawal,
   WithdrawalStatus,
 } from "@/types/api";
@@ -86,6 +87,33 @@ export async function updatePlatformSettings(
   const { data } = await apiClient.put<ApiEnvelope<PlatformSettingsPayload>>(
     "/admin/settings",
     values
+  );
+  return data.data;
+}
+
+// ---- Manual plan payments ----
+
+/**
+ * Plan payments transferred straight into the platform's own account while the
+ * gateway is off. Unlike an event's queue, ruling on these is super_admin work:
+ * approving activates a paid plan on nothing but a receipt.
+ */
+export async function getPendingSubscriptions(): Promise<Subscription[]> {
+  const { data } = await apiClient.get<ApiEnvelope<Subscription[]>>("/admin/subscriptions");
+  return data.data;
+}
+
+export async function approveSubscription(id: string): Promise<Subscription> {
+  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
+    `/admin/subscriptions/${id}/approve`
+  );
+  return data.data;
+}
+
+export async function rejectSubscription(id: string, reason: string): Promise<Subscription> {
+  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
+    `/admin/subscriptions/${id}/reject`,
+    { reason }
   );
   return data.data;
 }

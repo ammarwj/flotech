@@ -13,6 +13,9 @@
         'shopeepay' => 'ShopeePay',
         'qris' => 'QRIS',
         'cstore' => 'Gerai retail',
+        // Not a Midtrans payment type: written by SubscriptionService when a
+        // super admin accepts a transfer receipt while the gateway is off.
+        'manual_transfer' => 'Transfer manual (diverifikasi admin)',
     ];
 @endphp
 

@@ -13,6 +13,7 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
     await page.goto("/register");
     await page.getByLabel("Nama lengkap").fill("Organizer Baru");
     await page.getByLabel("Email").fill(email);
+    await page.getByLabel("No. HP").fill("081234567890");
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Konfirmasi password").fill(PASSWORD);
     await page.getByRole("button", { name: "Daftar" }).click();
@@ -30,6 +31,7 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
     await page.getByRole("radio", { name: "Peserta" }).click();
     await page.getByLabel("Nama lengkap").fill("Peserta Baru");
     await page.getByLabel("Email").fill(email);
+    await page.getByLabel("No. HP").fill("081234567890");
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Konfirmasi password").fill(PASSWORD);
     await page.getByRole("button", { name: "Daftar" }).click();
