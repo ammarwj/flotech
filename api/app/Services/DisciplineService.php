@@ -46,6 +46,14 @@ class DisciplineService
     private const STAGE_RANK = ['group' => 0, 'playoff' => 1, 'knockout' => 2];
 
     /**
+     * The `matches` map is keyed by fixture id and holds two kinds of entry,
+     * told apart by `status`: 'upcoming' is a player who may not take the field
+     * in a fixture still to be played, 'served' is one who sat a ban out in a
+     * fixture already finished and confirmed. Without the second kind the
+     * feature is invisible the moment it does its job — a played fixture leaves
+     * $pending forever, and "nobody was ever banned here" then looks exactly
+     * like "somebody was, and served it here".
+     *
      * @return array{enabled: bool, rules: array<string, mixed>|null, players: array<int, array<string, mixed>>, matches: object}
      */
     public function forCategory(EventCategory $category): array
@@ -110,6 +118,28 @@ class DisciplineService
                     if ($remaining > 0) {
                         $owed[$playerId] = $remaining - 1;
                         $served[$playerId] = ($served[$playerId] ?? 0) + 1;
+
+                        // The fixture the ban was actually sat out in, recorded
+                        // here rather than derived afterwards: once this match
+                        // is finished and confirmed it is gone from $pending for
+                        // good, and no reader downstream could reconstruct which
+                        // fixture discharged the ban.
+                        //
+                        // $people and $reason are necessarily populated by now —
+                        // a ban can only be served from the match *after* the one
+                        // that issued it, so both were written in an earlier turn
+                        // of this loop.
+                        if (isset($people[$playerId])) {
+                            $bans[$match->id][] = [
+                                ...$people[$playerId],
+                                'reason' => $reason[$playerId] ?? 'yellow_accumulation',
+                                // Before the decrement, so the field means the
+                                // same thing under both statuses: fixtures owed
+                                // counting this one.
+                                'bans_remaining' => $remaining,
+                                'status' => 'served',
+                            ];
+                        }
                     }
                 }
 
@@ -213,6 +243,7 @@ class DisciplineService
                         ...$person,
                         'reason' => $reason[$playerId] ?? 'yellow_accumulation',
                         'bans_remaining' => $remaining,
+                        'status' => 'upcoming',
                     ];
                 }
             }

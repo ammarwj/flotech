@@ -633,6 +633,16 @@ export interface EventRulesConfig {
  */
 export type BanReason = "red_card" | "second_yellow" | "yellow_accumulation";
 
+/**
+ * Whether this ban is still to be sat out, or already was.
+ *
+ * `served` exists so the fixture that discharged a ban can still be read after
+ * it has been played — without it the feature goes blank the moment it works,
+ * and "nobody was ever banned here" looks identical on screen to "somebody was,
+ * and served it right here".
+ */
+export type BanStatus = "upcoming" | "served";
+
 /** One player kept out of one fixture. */
 export interface DisciplineBan {
   player_id: string;
@@ -641,8 +651,9 @@ export interface DisciplineBan {
   team_id: string;
   team_name: string;
   reason: BanReason;
-  /** Fixtures still owed, counting this one. */
+  /** Fixtures still owed, counting this one. Same meaning under both statuses. */
   bans_remaining: number;
+  status: BanStatus;
 }
 
 /** A player's running card tally across the category. */
@@ -671,7 +682,10 @@ export interface Discipline {
   enabled: boolean;
   rules: DisciplineRules | null;
   players: DisciplinePlayer[];
-  /** Upcoming fixture id => who may not play in it. */
+  /**
+   * Fixture id => the bans touching it. Includes fixtures already played: see
+   * `BanStatus`.
+   */
   matches: Record<string, DisciplineBan[]>;
 }
 

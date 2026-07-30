@@ -799,4 +799,118 @@ class DisciplineTest extends TestCase
         $this->assertArrayHasKey($next, (array) $public['matches']);
         $this->assertSame($players['Budi'], ((array) $public['matches'])[$next][0]['player_id']);
     }
+
+    public function test_a_served_ban_stays_visible_on_the_fixture_that_discharged_it(): void
+    {
+        // Before this, a ban vanished from the schedule the moment it was
+        // served: the fixture that discharged it is finished and confirmed, so
+        // it leaves $pending and the map came back empty. An organizer looking
+        // back at that fixture could not tell "nobody was banned here" from
+        // "somebody was, and sat it out right here" — which is the reading that
+        // makes a missing card diagnosable at all.
+        $event = $this->event();
+        [$home, $players] = $this->team($event, 'Garuda FC', ['Budi']);
+        [$away] = $this->team($event, 'Rajawali United', ['Lawan']);
+
+        $first = $this->fixture($event, $home, $away, '2026-08-01 10:00:00');
+        $this->finish($first);
+        $this->cards($first, [$players['Budi'] => ['red' => 1]]);
+
+        $second = $this->fixture($event, $home, $away, '2026-08-02 10:00:00');
+
+        // Still to be played: the warning is the only entry.
+        $before = (array) $this->discipline($event)['matches'];
+        $this->assertSame('upcoming', $before[$second][0]['status']);
+
+        $this->finish($second);
+
+        $payload = $this->discipline($event);
+        $after = (array) $payload['matches'];
+
+        $this->assertArrayHasKey($second, $after, 'the fixture that served the ban reports nothing');
+        $this->assertSame($players['Budi'], $after[$second][0]['player_id']);
+        $this->assertSame('served', $after[$second][0]['status']);
+        $this->assertSame('red_card', $after[$second][0]['reason']);
+
+        // The tally agrees: nothing is owed any more, so the entry above is a
+        // record of the past rather than a warning that failed to clear.
+        $row = $this->playerRow($payload, $players['Budi']);
+        $this->assertSame(0, $row['bans_remaining']);
+        $this->assertSame(1, $row['bans_served']);
+    }
+
+    public function test_an_upcoming_ban_and_a_served_one_are_told_apart(): void
+    {
+        // The control the test above cannot be: one payload carrying both
+        // statuses at once. Asserting a served entry on its own passes just as
+        // happily against an engine that stamps every entry 'served'.
+        $event = $this->event();
+        [$home, $players] = $this->team($event, 'Garuda FC', ['Budi', 'Andi']);
+        [$away] = $this->team($event, 'Rajawali United', ['Lawan']);
+
+        $first = $this->fixture($event, $home, $away, '2026-08-01 10:00:00');
+        $this->finish($first);
+        $this->cards($first, [$players['Budi'] => ['red' => 1]]);
+
+        // Budi's ban is discharged here; Andi picks his up in the same match,
+        // so it is still owed when the schedule runs out of played fixtures.
+        $second = $this->fixture($event, $home, $away, '2026-08-02 10:00:00');
+        $this->finish($second);
+        $this->cards($second, [$players['Andi'] => ['red' => 1]]);
+
+        $third = $this->fixture($event, $home, $away, '2026-08-03 10:00:00');
+
+        $bans = (array) $this->discipline($event)['matches'];
+
+        $served = collect($bans[$second] ?? [])->firstWhere('player_id', $players['Budi']);
+        $upcoming = collect($bans[$third] ?? [])->firstWhere('player_id', $players['Andi']);
+
+        $this->assertNotNull($served, 'Budi is missing from the fixture he sat out');
+        $this->assertNotNull($upcoming, 'Andi is missing from the fixture he must sit out');
+        $this->assertNotSame(
+            $served['status'],
+            $upcoming['status'],
+            'a discharged ban and an outstanding one are reported identically',
+        );
+        $this->assertSame('served', $served['status']);
+        $this->assertSame('upcoming', $upcoming['status']);
+
+        // And the fixture that issued Andi's ban does not also claim he served
+        // it there, even though it now writes served entries of its own.
+        $this->assertSame(
+            [$players['Budi']],
+            array_column($bans[$second], 'player_id'),
+            'the banning fixture served its own ban',
+        );
+    }
+
+    public function test_a_two_match_ban_counts_the_fixture_it_is_reported_on(): void
+    {
+        // bans_remaining has to mean the same thing under both statuses, or the
+        // notice reads "sisa 2 laga" on one row and "sisa 1" on the next for the
+        // same untouched ban. A one-match ban would pass either way, so the
+        // rule is only pinned down by a two-match one.
+        $event = $this->event('mini_soccer', 'league', [
+            'rules_config' => ['discipline' => ['red_ban_matches' => 2]],
+        ]);
+        [$home, $players] = $this->team($event, 'Garuda FC', ['Budi']);
+        [$away] = $this->team($event, 'Rajawali United', ['Lawan']);
+
+        $first = $this->fixture($event, $home, $away, '2026-08-01 10:00:00');
+        $this->finish($first);
+        $this->cards($first, [$players['Budi'] => ['red' => 1]]);
+
+        $second = $this->fixture($event, $home, $away, '2026-08-02 10:00:00');
+        $this->finish($second);
+        $third = $this->fixture($event, $home, $away, '2026-08-03 10:00:00');
+
+        $bans = (array) $this->discipline($event)['matches'];
+
+        // Counting itself: two owed walking into the fixture he sat out, one
+        // walking into the one still to come.
+        $this->assertSame(2, $bans[$second][0]['bans_remaining']);
+        $this->assertSame('served', $bans[$second][0]['status']);
+        $this->assertSame(1, $bans[$third][0]['bans_remaining']);
+        $this->assertSame('upcoming', $bans[$third][0]['status']);
+    }
 }
