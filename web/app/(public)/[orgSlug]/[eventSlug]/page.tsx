@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { useUrlState } from "@/lib/hooks/use-url-state";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
 import { showsPlayerStats } from "@/lib/scoring";
 import type { EventStatus, PublicEvent, PublicTeam } from "@/types/api";
@@ -75,22 +76,45 @@ function OrganizerCard({ organization }: { organization: PublicEvent["organizati
 
 type TabKey = "info" | "teams" | ResultsTab;
 
-/** Sentinel category id for the combined, all-categories schedule. */
+/** Sentinel category slug for the combined, all-categories schedule. */
 const ALL_CATEGORIES = "all";
 
+function PageLoading() {
+  return (
+    <div className="container" style={{ paddingBlock: 96, textAlign: "center", color: "var(--text-muted)" }}>
+      Memuat…
+    </div>
+  );
+}
+
+/**
+ * Wrapped because the view below reads the query string, and useSearchParams()
+ * needs a Suspense boundary above it to build.
+ */
 export default function PublicEventPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <PublicEventView />
+    </Suspense>
+  );
+}
+
+function PublicEventView() {
   const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   const base = `/${params.orgSlug}/${params.eventSlug}`;
-  const [tab, setTab] = useState<TabKey>("info");
+  // Tab dan kategori hidup di URL supaya refresh — atau back dari halaman
+  // pendaftaran/tiket — mendarat di tempat yang sama, dan tautannya bisa
+  // di-share. Kategori dikunci lewat slug, kosakata publik yang sama dengan
+  // `?category=` di form pendaftaran.
+  const { params: urlState, setParams } = useUrlState();
+  const tab = (urlState.get("tab") ?? "info") as TabKey;
+  const categoryParam = urlState.get("category") ?? "";
   const [openTeam, setOpenTeam] = useState<PublicTeam | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
-  // Which category's schedule/standings/bracket the competition tabs show —
-  // always a real category, never "Semua".
-  const [categoryId, setCategoryId] = useState<string>("");
-  // "Semua" only applies to the schedule, so it is kept apart from the category
-  // choice: switching tabs must not throw away the category the user picked.
-  const [scheduleAll, setScheduleAll] = useState(false);
+  // "Semua" only applies to the schedule, so the category the user picked is
+  // remembered apart from it: switching tabs must not throw that choice away.
+  const [lastCategorySlug, setLastCategorySlug] = useState("");
 
   const query = useQuery({
     queryKey: ["public-event", params.orgSlug, params.eventSlug],
@@ -114,13 +138,7 @@ export default function PublicEventPage() {
     );
   }, [allTeams, teamSearch]);
 
-  if (query.isLoading) {
-    return (
-      <div className="container" style={{ paddingBlock: 96, textAlign: "center", color: "var(--text-muted)" }}>
-        Memuat…
-      </div>
-    );
-  }
+  if (query.isLoading) return <PageLoading />;
 
   if (query.isError || !query.data) {
     return (
@@ -178,15 +196,19 @@ export default function PublicEventPage() {
   // Bracket while a league category is picked lands on the first category that
   // has a bracket rather than on an empty panel.
   const tabCategories = categoriesFor(activeTab);
+  // On "Semua" the URL holds no real category, so the last one clicked stands in
+  // for it on the tabs that can't show a combined view.
+  const wantedSlug = categoryParam === ALL_CATEGORIES ? lastCategorySlug : categoryParam;
   const selectedCategory =
-    tabCategories.find((c) => c.id === categoryId) ?? tabCategories[0] ?? null;
+    tabCategories.find((c) => c.slug === wantedSlug) ?? tabCategories[0] ?? null;
   // Preselect the viewed category on the registration form.
   const registerHref = selectedCategory
     ? `${base}/register?category=${selectedCategory.slug}`
     : `${base}/register`;
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
-  const isAll = scheduleAll && activeTab === "schedule" && categories.length > 1;
+  const isAll =
+    categoryParam === ALL_CATEGORIES && activeTab === "schedule" && categories.length > 1;
   // "Pendaftaran ditutup" hanya berarti sesuatu selama eventnya belum mulai.
   // Begitu berlangsung/selesai/batal, statusnya sudah tampil di badge hero dan
   // pill itu cuma jadi tombol mati di bawah judul.
@@ -289,7 +311,8 @@ export default function PublicEventPage() {
           <PillTabs
             items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
             activeKey={activeTab}
-            onSelect={(key) => setTab(key as TabKey)}
+            // Info adalah default, jadi ia tidak perlu ditulis ke URL.
+            onSelect={(key) => setParams({ tab: key === "info" ? undefined : key })}
           />
         </div>
       </section>
@@ -506,16 +529,12 @@ export default function PublicEventPage() {
                     ...(activeTab === "schedule"
                       ? [{ key: ALL_CATEGORIES, label: "Semua" }]
                       : []),
-                    ...tabCategories.map((c) => ({ key: c.id, label: c.name })),
+                    ...tabCategories.map((c) => ({ key: c.slug, label: c.name })),
                   ]}
-                  activeKey={isAll ? ALL_CATEGORIES : (selectedCategory?.id ?? "")}
+                  activeKey={isAll ? ALL_CATEGORIES : (selectedCategory?.slug ?? "")}
                   onSelect={(key) => {
-                    if (key === ALL_CATEGORIES) {
-                      setScheduleAll(true);
-                      return;
-                    }
-                    setScheduleAll(false);
-                    setCategoryId(key);
+                    if (key !== ALL_CATEGORIES) setLastCategorySlug(key);
+                    setParams({ category: key });
                   }}
                 />
               </div>

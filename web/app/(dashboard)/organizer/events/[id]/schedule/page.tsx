@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -74,6 +74,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useUrlState } from "@/lib/hooks/use-url-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
@@ -107,12 +108,28 @@ import type {
 
 type Tab = "schedule" | "standings" | "bracket" | "stats";
 
+/**
+ * Wrapped because the view below reads the query string, and useSearchParams()
+ * needs a Suspense boundary above it to build.
+ */
 export default function SchedulePage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+      <ScheduleView />
+    </Suspense>
+  );
+}
+
+function ScheduleView() {
   const { orgId } = useActiveOrg();
   const confirm = useConfirm();
   const { id: eventId } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<Tab | null>(null);
-  const [categoryId, setCategoryId] = useState<string>("");
+  // Tab dan kategori hidup di URL supaya refresh — atau back dari halaman lain —
+  // tidak melempar organizer kembali ke tab awal. Tab yang absen berarti "ikut
+  // default kategorinya", peran yang dulu dipegang null.
+  const { params: urlState, setParams } = useUrlState();
+  const tab = urlState.get("tab") as Tab | null;
+  const categoryId = urlState.get("category") ?? "";
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
@@ -188,8 +205,6 @@ export default function SchedulePage() {
     catalog.tiebreakersFor(context).map((t) => t.key),
     context,
   );
-  const activeTab: Tab = tab ?? (isKnockout ? "bracket" : "schedule");
-
   // Registrations are event-wide; the group draw and the manual-match dialog
   // both narrow to this category's approved teams below.
   const teamsQuery = useQuery({
@@ -261,7 +276,7 @@ export default function SchedulePage() {
     mutationFn: () => generateKnockout(orgId!, eventId, catId!),
     onSuccess: () => {
       toast.success("Bracket knockout dibuat dari tim yang lolos fase grup");
-      setTab("bracket");
+      setParams({ tab: "bracket" });
       setPlanDialog(false);
       refreshEventData();
     },
@@ -390,7 +405,7 @@ export default function SchedulePage() {
       // The decider was asked for from the table, but its score is entered on
       // the schedule — leaving the organizer where they clicked would hide the
       // fixture they just made.
-      if (decider) setTab("schedule");
+      if (decider) setParams({ tab: "schedule" });
       refreshEventData();
     },
     onError: (err) =>
@@ -482,6 +497,15 @@ export default function SchedulePage() {
           ["stats", "Statistik", Goal],
         ];
 
+  // The tab now survives a category switch (it comes from the URL), so it can
+  // name a panel this category has no tab for — ?tab=bracket on a league. Same
+  // shape as the public page: anything not on offer falls back to the default.
+  const activeTab: Tab = tabs.some(([k]) => k === tab)
+    ? (tab as Tab)
+    : isKnockout
+      ? "bracket"
+      : "schedule";
+
   return (
     <EventTimezoneProvider timezone={tz}>
       <div>
@@ -540,9 +564,8 @@ export default function SchedulePage() {
               items={categories.map((c) => ({ key: c.id, label: c.name }))}
               activeKey={selectedCategory?.id ?? ""}
               onSelect={(key) => {
-                setCategoryId(key);
                 // Tabs and matchday differ per category — recompute defaults.
-                setTab(null);
+                setParams({ category: key, tab: undefined });
                 setDateKey(null);
               }}
             />
@@ -553,7 +576,7 @@ export default function SchedulePage() {
           <PillTabs
             items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
             activeKey={activeTab}
-            onSelect={(key) => setTab(key as Tab)}
+            onSelect={(key) => setParams({ tab: key })}
           />
         </div>
 
