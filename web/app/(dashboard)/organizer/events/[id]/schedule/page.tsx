@@ -1008,17 +1008,22 @@ function MatchCard({
   const level = home !== "" && home === away;
   const needsPenalties = knockout && level;
 
+  // A running score and a final one go through the same door, and the status
+  // travels with the click rather than being hardcoded: saving mid-match used to
+  // stamp `finished`, which killed the LIVE badge and — for an org admin, whose
+  // save auto-confirms — seated a "winner" in the next round off a half-time
+  // scoreline.
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (status: "ongoing" | "finished") =>
       updateMatchResult(orgId, match.id, {
         home_score: home === "" ? null : Number(home),
         away_score: away === "" ? null : Number(away),
         home_penalty: needsPenalties && homePen !== "" ? Number(homePen) : null,
         away_penalty: needsPenalties && awayPen !== "" ? Number(awayPen) : null,
-        status: "finished",
+        status,
       }),
-    onSuccess: () => {
-      toast.success("Hasil disimpan");
+    onSuccess: (_, status) => {
+      toast.success(status === "finished" ? "Hasil disimpan" : "Skor disimpan");
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
@@ -1061,9 +1066,9 @@ function MatchCard({
     </Button>
   );
 
-  // Cancelled: read-only. The score row below hardcodes `status: "finished"` on
-  // save, so leaving it live would let one click un-cancel the fixture through
-  // the other endpoint — the two doors would disagree in the UI.
+  // Cancelled: read-only. The score row below writes a status along with the
+  // score, so leaving it live would let "Selesaikan" un-cancel the fixture
+  // through the other endpoint — the two doors would disagree in the UI.
   if (match.status === "cancelled") {
     return (
       <Card className="p-3 opacity-60">
@@ -1234,6 +1239,13 @@ function MatchCard({
     !needsPenalties ||
     (homePen !== "" && awayPen !== "" && homePen !== awayPen);
   const canSave = home !== "" && away !== "" && dirty && penaltiesOk;
+  // A live match splits the one button in two, and the two ask different things.
+  // Saving a running score wants nothing but a change — half a scoreline is the
+  // whole point. Finishing wants a complete one, but *not* a change: an
+  // organizer who already saved the final score as ongoing still has to be able
+  // to end the match.
+  const live = match.status === "ongoing";
+  const canFinish = home !== "" && away !== "" && penaltiesOk;
 
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
@@ -1289,18 +1301,39 @@ function MatchCard({
           >
             <Goal className="h-4 w-4" />
           </Button>
-          <Button
-            size="sm"
-            variant={canSave ? "default" : "outline"}
-            disabled={!canSave || save.isPending}
-            onClick={() => save.mutate()}
-          >
-            {save.isPending
-              ? "…"
-              : match.status === "finished" && !dirty
-                ? "Tersimpan"
-                : "Simpan"}
-          </Button>
+          {live ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!dirty || save.isPending}
+                onClick={() => save.mutate("ongoing")}
+              >
+                {save.isPending ? "…" : "Simpan"}
+              </Button>
+              <Button
+                size="sm"
+                variant={canFinish ? "default" : "outline"}
+                disabled={!canFinish || save.isPending}
+                onClick={() => save.mutate("finished")}
+              >
+                Selesaikan
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant={canSave ? "default" : "outline"}
+              disabled={!canSave || save.isPending}
+              onClick={() => save.mutate("finished")}
+            >
+              {save.isPending
+                ? "…"
+                : match.status === "finished" && !dirty
+                  ? "Tersimpan"
+                  : "Simpan"}
+            </Button>
+          )}
         </div>
       </div>
 

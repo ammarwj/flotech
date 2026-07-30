@@ -299,6 +299,83 @@ class MatchStatusTest extends TestCase
         $this->assertSame($survivor, $parent->fresh()->away_team_id);
     }
 
+    /**
+     * A running score saved mid-match must stay a running score.
+     *
+     * Asserted by **comparison**, on one fixture: the same endpoint, the same
+     * saver, twice — once as 'ongoing' and once as 'finished'. Asserting only
+     * that the ongoing save stored its score would pass even if the status were
+     * stamped 'finished' anyway, which is precisely the bug this guards. What
+     * separates the two calls is the bracket slot upstairs.
+     */
+    public function test_saving_a_score_as_ongoing_neither_confirms_nor_advances(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->event($org);
+        $this->generate($user, $org, $event);
+
+        $tie = $this->slot($event, 1, 0);
+        $url = "/api/v1/organizations/{$org->id}/matches/{$tie->id}";
+
+        // Half time. The saver runs the org, so this is the case that used to
+        // auto-confirm and seat a "winner" upstairs off an unfinished game.
+        $this->actingAs($user, 'api')
+            ->patchJson($url, ['status' => 'ongoing', 'home_score' => 1, 'away_score' => 0])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ongoing')
+            ->assertJsonPath('data.confirmed', false);
+
+        $tie->refresh();
+        $this->assertSame(1, $tie->home_score, 'the running score is still recorded');
+        $this->assertNull($tie->confirmed_at);
+        $this->assertNull($this->slot($event, 2, 0)->home_team_id, 'nobody advances at half time');
+
+        // Full time, same fixture, same door.
+        $this->actingAs($user, 'api')
+            ->patchJson($url, ['status' => 'finished', 'home_score' => 2, 'away_score' => 1])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'finished')
+            ->assertJsonPath('data.confirmed', true);
+
+        $this->assertNotNull(
+            $this->slot($event, 2, 0)->home_team_id,
+            'finishing is what advances the winner',
+        );
+    }
+
+    /**
+     * Only a finished match owes a complete scoreline — a live one may have
+     * nothing typed yet. This is what lets the organizer press save the moment
+     * the first goal goes in.
+     */
+    public function test_an_ongoing_save_accepts_an_incomplete_scoreline(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->event($org);
+        $this->generate($user, $org, $event);
+
+        $tie = $this->slot($event, 1, 0);
+
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/matches/{$tie->id}", [
+                'status' => 'ongoing', 'home_score' => 1, 'away_score' => null,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ongoing');
+
+        // The same payload with 'finished' is the 422 that proves the leniency
+        // above belongs to 'ongoing' and not to the endpoint as a whole.
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/matches/{$tie->id}", [
+                'status' => 'finished', 'home_score' => 1, 'away_score' => null,
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame('ongoing', $tie->fresh()->status);
+    }
+
     public function test_status_endpoint_is_scoped_to_the_organization(): void
     {
         $owner = User::factory()->create();

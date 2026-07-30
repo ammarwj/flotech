@@ -158,6 +158,10 @@
 .match-team .match-sets + .sc { margin-left: 16px; }
 .match-team.lose { color: var(--text-muted); }
 .match-team.lose .sc { color: var(--text-muted); }
+/* A score still being played, tinted to the same colour as the pulsing LIVE
+   badge in the meta column so the two read as one statement. Neither row is
+   dimmed here — `.lose` needs a result, and this fixture hasn't got one. */
+.match-team .sc--live { color: var(--danger); }
 
 /* Partai of a squad tie, listed under the two squad names. Sits inside
    `.match-teams` so it stays in the middle column on desktop and inherits the

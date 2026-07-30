@@ -123,11 +123,19 @@ export function PublicMatchCard({
   onClick: () => void;
 }) {
   const tz = useEventTimezone();
-  const done = m.status === "finished" && m.home_score !== null && m.away_score !== null;
+  const live = m.status === "ongoing";
+  const hasScore = m.home_score !== null && m.away_score !== null;
+  const done = m.status === "finished" && hasScore;
   const cancelled = m.status === "cancelled";
   const time = timeOf(m.scheduled_at, tz);
+  // Nobody has lost at half time, so the dimming that marks a beaten side stays
+  // tied to a finished result — a live 1–0 reads with both names solid.
   const winner = done ? matchWinnerId(m) : null;
-  const sets = done && m.sets?.length ? m.sets : null;
+  // A running score is worth as much to whoever is reading the schedule as a
+  // final one, and the organizer can save one mid-match now. RubberLines below
+  // has always shown live partai for exactly this reason.
+  const showScore = done || (live && hasScore);
+  const sets = showScore && m.sets?.length ? m.sets : null;
 
   return (
     <button
@@ -147,13 +155,13 @@ export function PublicMatchCard({
           <Crest name={m.home_team?.name ?? "TBD"} logoUrl={m.home_team?.logo_url} />
           <span className="truncate">{m.home_team?.name ?? "TBD"}</span>
           {sets && <SetColumns sets={sets} side="home" />}
-          {done && <span className="sc">{m.home_score}</span>}
+          {showScore && <span className={cn("sc", live && "sc--live")}>{m.home_score}</span>}
         </div>
         <div className={cn("match-team", winner && winner !== m.away_team_id && "lose")}>
           <Crest name={m.away_team?.name ?? "TBD"} logoUrl={m.away_team?.logo_url} />
           <span className="truncate">{m.away_team?.name ?? "TBD"}</span>
           {sets && <SetColumns sets={sets} side="away" />}
-          {done && <span className="sc">{m.away_score}</span>}
+          {showScore && <span className={cn("sc", live && "sc--live")}>{m.away_score}</span>}
         </div>
         <RubberLines match={m} />
         {/* Renders nothing when nobody is suspended. Text and badges only — the

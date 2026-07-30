@@ -15,8 +15,13 @@ type Settable = Exclude<MatchStatus, "finished">;
 /**
  * Move a fixture between scheduled / ongoing / cancelled.
  *
- * There is deliberately **no "Selesai" button**. A match is finished by saving
- * its score, and the surest way to say so is to not offer another way.
+ * There is deliberately **no "Selesai" button here**. A match is finished by
+ * saving its score, so that button lives in the score row beside the score it
+ * needs — which is also why `finished` is absent from this endpoint's
+ * `Rule::in`. What this component owns is the way *back*: "Lanjutkan" returns a
+ * finished match to ongoing, withdrawing its winner from the next round on the
+ * way. Without it a match ended too early could only be un-done by cancelling
+ * it first, three clicks through a status that means something else.
  */
 export function MatchStatusActions({
   orgId,
@@ -38,7 +43,9 @@ export function MatchStatusActions({
     onSuccess: (updated) => {
       toast.success(
         updated.status === "ongoing"
-          ? "Pertandingan dimulai"
+          ? match.status === "finished"
+            ? "Pertandingan dilanjutkan"
+            : "Pertandingan dimulai"
           : updated.status === "cancelled"
             ? "Pertandingan dibatalkan"
             : "Pertandingan dikembalikan ke terjadwal"
@@ -69,6 +76,23 @@ export function MatchStatusActions({
     if (ok) mutation.mutate("cancelled");
   };
 
+  const resume = async () => {
+    // Only a confirmed result has anything to take back; an unconfirmed one has
+    // touched neither the table nor the bracket, so asking would be noise.
+    const ok =
+      !match.confirmed ||
+      (await confirm({
+        title: "Lanjutkan pertandingan ini?",
+        description: "Pertandingan kembali berstatus berlangsung. Skornya tetap tersimpan.",
+        consequences: knockout
+          ? "Tim yang sudah lolos ke babak berikutnya dikeluarkan lagi dari slotnya."
+          : "Hasil yang sudah final dicabut dari klasemen sampai diselesaikan lagi.",
+        confirmLabel: "Lanjutkan",
+        icon: PlayCircle,
+      }));
+    if (ok) mutation.mutate("ongoing");
+  };
+
   const cancelBtn = (
     <Button
       size="sm"
@@ -97,9 +121,25 @@ export function MatchStatusActions({
     );
   }
 
-  // A finished match keeps only the escape hatch; its confirm button comes from
-  // MatchConfirmBar beside this.
-  if (match.status === "finished") return cancelBtn;
+  // A finished match keeps only the two escape hatches; its confirm button comes
+  // from MatchConfirmBar beside this.
+  if (match.status === "finished") {
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={mutation.isPending}
+          onClick={() => void resume()}
+          className="text-muted-foreground"
+        >
+          <PlayCircle className="h-4 w-4" />
+          Lanjutkan
+        </Button>
+        {cancelBtn}
+      </>
+    );
+  }
 
   return (
     <>

@@ -36,8 +36,14 @@ export function SetScoreEditor({
   const homeWon = clean.filter((s) => s.home > s.away).length;
   const awayWon = clean.filter((s) => s.away > s.home).length;
 
+  // The status travels with the click rather than being hardcoded: saving a
+  // running set score used to stamp `finished`, ending a match that was still
+  // being played. See the twin editor in the goal-based card.
+  const live = match.status === "ongoing";
+
   const save = useMutation({
-    mutationFn: () => updateMatchResult(orgId, match.id, { status: "finished", sets: clean }),
+    mutationFn: (status: "ongoing" | "finished") =>
+      updateMatchResult(orgId, match.id, { status, sets: clean }),
     onSuccess: () => {
       toast.success("Skor disimpan");
       qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
@@ -103,9 +109,33 @@ export function SetScoreEditor({
           <Plus className="h-4 w-4" />
           Tambah set
         </Button>
-        <Button size="sm" onClick={() => save.mutate()} disabled={clean.length === 0 || save.isPending}>
-          {save.isPending ? "Menyimpan…" : "Simpan skor"}
-        </Button>
+        {live ? (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => save.mutate("ongoing")}
+              disabled={clean.length === 0 || save.isPending}
+            >
+              {save.isPending ? "Menyimpan…" : "Simpan skor"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => save.mutate("finished")}
+              disabled={clean.length === 0 || save.isPending}
+            >
+              Selesaikan
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => save.mutate("finished")}
+            disabled={clean.length === 0 || save.isPending}
+          >
+            {save.isPending ? "Menyimpan…" : "Simpan skor"}
+          </Button>
+        )}
       </div>
     </div>
   );
