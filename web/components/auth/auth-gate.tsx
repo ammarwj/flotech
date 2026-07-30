@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { isAxiosError, type AxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -62,14 +63,28 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           const res = await impersonateAdminUser(targetId, {
             // The store is still empty, so the interceptor won't override this.
             headers: { Authorization: `Bearer ${token}` },
-          });
+            // Keeps a 401 on this very request from re-entering the response
+            // interceptor, which would find the same pending id and mint again.
+            _retry: true,
+          } as AxiosRequestConfig & { _retry?: boolean });
           if (active) startImpersonation(res.access_token, res.user);
           return;
-        } catch {
-          // User deleted, promoted to super admin, or we are no longer an
-          // admin: drop the id and fall through to the normal session.
-          writePendingImpersonation(null);
-          if (active) toast.error("Sesi login-sebagai berakhir.");
+        } catch (err) {
+          // Only a refusal is permanent — user deleted, promoted to super
+          // admin, or we are no longer an admin. A network blip or a 5xx says
+          // nothing about whether this session is still allowed, and dropping
+          // the id there would end a legitimate impersonation for good.
+          const status = isAxiosError(err) ? err.response?.status : undefined;
+          const refused = status !== undefined && status >= 400 && status < 500;
+
+          if (refused) writePendingImpersonation(null);
+          if (active) {
+            toast.error(
+              refused
+                ? "Sesi login-sebagai berakhir."
+                : "Gagal memulihkan sesi login-sebagai. Muat ulang untuk mencoba lagi."
+            );
+          }
         }
       }
 
