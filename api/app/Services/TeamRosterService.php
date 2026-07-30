@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\PurgeMediaJob;
 use App\Models\Team;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -47,7 +48,9 @@ class TeamRosterService
             }
         }
 
+        $stale = $team->players()->whereKeyNot($keepIds)->pluck('photo_url')->all();
         $team->players()->whereKeyNot($keepIds)->delete();
+        $this->purgePruned($stale, $team->players()->pluck('photo_url')->all());
 
         $this->syncDerivedName($team, $players);
     }
@@ -169,7 +172,9 @@ class TeamRosterService
             }
         }
 
+        $stale = $team->officials()->whereKeyNot($keepIds)->pluck('photo_url')->all();
         $team->officials()->whereKeyNot($keepIds)->delete();
+        $this->purgePruned($stale, $team->officials()->pluck('photo_url')->all());
     }
 
     /**
@@ -228,6 +233,32 @@ class TeamRosterService
             ])->id;
         }
 
+        $stale = $team->documents()->whereKeyNot($keepIds)->pluck('file_url')->all();
         $team->documents()->whereKeyNot($keepIds)->delete();
+        $this->purgePruned($stale, $team->documents()->pluck('file_url')->all());
+    }
+
+    /**
+     * Delete the stored files of rows this sync just pruned.
+     *
+     * A value that is still on the team afterwards is *not* stale, even though
+     * the row holding it was: a client may move a photo onto a new roster row
+     * while dropping the one it came from, and from here the two are the same
+     * request. Deleting it would take out the photo just saved.
+     *
+     * All three callers run inside the registration transactions, hence
+     * afterCommit() — a rollback must not leave surviving rows pointing at
+     * files that are already gone.
+     *
+     * @param  array<int, string|null>  $stale
+     * @param  array<int, string|null>  $remaining
+     */
+    private function purgePruned(array $stale, array $remaining): void
+    {
+        $gone = array_diff(array_filter($stale), array_filter($remaining));
+
+        if ($gone !== []) {
+            PurgeMediaJob::dispatch(array_values($gone))->afterCommit();
+        }
     }
 }

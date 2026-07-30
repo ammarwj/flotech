@@ -47,7 +47,21 @@ $testServices = [
     'BROADCAST_CONNECTION' => 'null',
 ];
 
-foreach ([...$testDatabase, ...$testGateway, ...$testServices] as $key => $value) {
+/**
+ * And storage, for the same reason as the gateway: .env carries real R2
+ * credentials, so anything that deletes an object aimed at the live bucket while
+ * Storage::fake('public') faked a disk the code was not writing to — assertions
+ * passed or failed against a disk nothing touched. Blank credentials put uploads
+ * and cleanup on the local `public` disk, the branch UploadController and
+ * MediaCleanupService already take in development.
+ */
+$testStorage = [
+    'R2_ACCESS_KEY_ID' => '',
+    'R2_SECRET_ACCESS_KEY' => '',
+    'R2_PUBLIC_URL' => '',
+];
+
+foreach ([...$testDatabase, ...$testGateway, ...$testServices, ...$testStorage] as $key => $value) {
     putenv("{$key}={$value}");
     $_ENV[$key] = $value;
     $_SERVER[$key] = $value;

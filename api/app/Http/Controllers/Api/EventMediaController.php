@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\PurgeMediaJob;
 use App\Models\Event;
 use App\Models\EventPhoto;
 use App\Models\EventSponsor;
@@ -78,7 +79,12 @@ class EventMediaController extends Controller
 
     public function destroyPhoto(Request $request, string $organization, string $photo): JsonResponse
     {
-        $this->photo($request, $photo)->delete();
+        $model = $this->photo($request, $photo);
+        $url = $model->photo_url;
+
+        $model->delete();
+
+        PurgeMediaJob::dispatch([$url])->afterCommit();
 
         return ApiResponse::success(null, 'Foto dihapus');
     }
@@ -117,7 +123,12 @@ class EventMediaController extends Controller
 
     public function destroySponsor(Request $request, string $organization, string $sponsor): JsonResponse
     {
-        $this->sponsor($request, $sponsor)->delete();
+        $model = $this->sponsor($request, $sponsor);
+        $url = $model->logo_url;
+
+        $model->delete();
+
+        PurgeMediaJob::dispatch([$url])->afterCommit();
 
         return ApiResponse::success(null, 'Sponsor dihapus');
     }

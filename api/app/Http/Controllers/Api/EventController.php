@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
+use App\Jobs\PurgeMediaJob;
 use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\Organization;
 use App\Services\Catalog;
+use App\Services\MediaCleanupService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +23,7 @@ use Illuminate\Validation\ValidationException;
 
 class EventController extends Controller
 {
-    public function __construct(protected PlanGate $gate) {}
+    public function __construct(protected PlanGate $gate, protected MediaCleanupService $media) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -205,7 +207,20 @@ class EventController extends Controller
             }
         }
 
-        $event->categories()->whereNotIn('id', $keep)->delete();
+        $dropped = $event->categories()->whereNotIn('id', $keep)->pluck('id');
+
+        if ($dropped->isNotEmpty()) {
+            // Categories hold no files of their own; what leaks here is every
+            // file of the teams they cascade away. Collected before the delete,
+            // for the same reason as destroy().
+            $urls = $this->media->teamUrls(
+                $event->teams()->whereIn('category_id', $dropped)->pluck('id')->all()
+            );
+
+            $event->categories()->whereKey($dropped)->delete();
+
+            PurgeMediaJob::dispatch($urls)->afterCommit();
+        }
     }
 
     /**
@@ -262,9 +277,20 @@ class EventController extends Controller
         return $slug;
     }
 
+    /**
+     * Deleting an event cascades all the way down — teams, rosters, matches,
+     * orders, certificates. Their file keys only exist on those rows, so they
+     * are read here, before the delete, and purged once the row is gone.
+     */
     public function destroy(Request $request, string $organization, string $event): JsonResponse
     {
-        $this->find($request, $event)->delete();
+        $model = $this->find($request, $event);
+
+        $urls = $this->media->eventUrls($model);
+
+        $model->delete();
+
+        PurgeMediaJob::dispatch($urls)->afterCommit();
 
         return ApiResponse::success(null, 'Event dihapus');
     }
