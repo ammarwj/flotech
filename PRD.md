@@ -1,6 +1,6 @@
 # 📋 Product Requirements Document (PRD)
 ## flo-event — Sports Event Management SaaS Platform
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Tanggal:** Juli 2026
 **Status:** Draft
 **Penulis:** Product Team
@@ -73,8 +73,10 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 | Ikon | Cabang | Format Didukung | Jenis Peserta |
 |------|--------|----------------|---------------|
 | ⚽ | Sepak Bola | Liga, Knockout, Hybrid, Grup + Playoff | Tim |
-| 🥅 | Futsal | Liga, Knockout, Hybrid | Tim |
+| 🥅 | Mini Soccer | Liga, Knockout, Hybrid | Tim |
+| 🏟️ | Futsal | Liga, Knockout, Hybrid | Tim |
 | 🏐 | Voli | Liga, Knockout, Pool Play | Tim |
+| 🏀 | Basket | Liga, Knockout, Hybrid | Tim |
 | 🏸 | Badminton | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
 | 🎾 | Tenis | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
 | 🏓 | Tenis Meja | Liga, Knockout, Round Robin | Tunggal, Ganda, Tim (beregu) |
@@ -88,7 +90,7 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 | Untuk | Value |
 |-------|-------|
-| **Organizer Pemula** | Mulai gratis, zero learning curve, setup event dalam 10 menit |
+| **Organizer Pemula** | Mulai dari Rp 49.000/bulan, zero learning curve, setup event dalam 10 menit |
 | **Organizer Profesional** | Kelola ratusan tim, tiket massal, laporan komprehensif, sertifikat otomatis |
 | **Peserta** | Pendaftaran mudah, info real-time, jadwal di genggaman |
 | **Penonton** | Beli tiket online, masuk dengan QR, pantau skor langsung |
@@ -106,11 +108,13 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - SaaS Super Admin memiliki akses lintas tenant untuk monitoring
 
 #### FR-02: Subscription & Paket
-- Organizer mendaftar dan memilih paket (Free / Starter / Pro / Professional)
+- Organizer mendaftar dan memilih paket (Basic / Starter / Pro / Professional). **Tidak ada tier gratis** — organisasi baru lahir **tanpa paket** dan wajib checkout sebelum bisa membuat event
+- **Tanpa paket = nol entitlement, bukan unlimited.** Gate limit memeriksa "punya paket?" sebelum membaca nilainya; nilai yang absen tidak boleh terbaca sebagai "tanpa batas"
 - Akses fitur dikontrol berdasarkan paket aktif tenant
 - SaaS Super Admin dapat membuat, mengubah, dan menonaktifkan paket beserta fiturnya
 - Fitur per paket dikonfigurasi di database (bukan hardcode)
 - Upgrade/downgrade paket mandiri dari dashboard organizer
+- Tiap checkout menerbitkan **satu baris langganan yang sekaligus tagihannya** — invoice PDF saat dibuat, kwitansi saat lunas (§4.27)
 
 #### FR-03: Manajemen Event
 - Organizer dapat membuat event sesuai kuota paket
@@ -131,11 +135,13 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 #### FR-05: Manajemen Tim & Pemain
 - Profil tim dengan logo dan data lengkap
 - Roster pemain dengan foto dan data individu; **posisi dipilih dari master posisi per cabang** (FR-18), bukan teks bebas
+- **Bench tim (pelatih, manajer, ofisial)** disimpan terpisah dari pemain; perannya dipilih dari master peran ofisial per cabang (FR-18). Bench selalu opsional, termasuk untuk kategori tunggal/ganda (§4.3)
 - Lock roster setelah deadline organizer
 
 #### FR-06: Jadwal Pertandingan
 - Generate jadwal otomatis per format turnamen
 - Edit jadwal manual dengan notifikasi ke peserta
+- **Daftar lapangan bernama per event** (`events.courts`): penjadwalan memilih lapangan dari dropdown, dan generator otomatis memberi nama jalur sesuai daftar itu
 - Kalender publik tanpa login
 
 #### FR-07: Input Hasil Pertandingan
@@ -145,19 +151,25 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 #### FR-08: Klasemen Real-time
 - Aturan klasemen yang dapat dikonfigurasi per cabang dan per event
-- Update otomatis, halaman publik
+- **Tiebreaker berurut & dapat disusun organizer**, termasuk head-to-head (mini-liga saat lebih dari dua tim seri), selisih gol/game/partai, fair play, dan **laga penentuan** (adu penalti untuk cabang gol, laga ulang untuk cabang set)
+- Update otomatis, halaman publik; hasil klasemen di-cache dan diinvalidasi saat hasil berubah
 
 #### FR-09: Statistik Pemain
 - Akumulasi statistik individual per event
-- Leaderboard: top scorer, top assist, MVP, fair play
+- Leaderboard: top scorer, top assist, MVP, fair play — menampilkan nomor punggung dan dapat dibatasi jumlah barisnya
 
 #### FR-10: Bracket Turnamen
-- Visualisasi bracket knockout interaktif, auto-update
+- Visualisasi bracket knockout interaktif, auto-update, termasuk **perebutan juara 3**
+- **Bagan babak pertama bisa diundi lebih dulu dalam bentuk slot** ("Juara Grup A" v "Runner-up Grup B") sebelum tim pengisinya diketahui, lengkap dengan jam & lapangan (§4.8)
+- Bracket dapat dibuat ulang / dihapus tanpa menghapus fixture fase grup
 - Sharable & embeddable link
 
 #### FR-11: Dashboard Admin
 - Multi-role: Super Admin SaaS, Event Admin, Operator
 - KPI real-time per event, manajemen semua modul
+- **Statistik kunjungan halaman event** (views & unique visitor harian) untuk organizer dan Super Admin
+- Super Admin: statistik platform, manajemen user (ubah tipe akun, reset password), dan **impersonasi** akun organizer untuk menelusuri masalah — dengan banner peringatan yang selalu tampil selama sesi impersonasi
+- User dapat mengganti passwordnya sendiri dari halaman Akun
 
 #### FR-12: Generator Sertifikat
 - Organizer upload file background sertifikat (JPG/PNG) ke R2
@@ -176,6 +188,7 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - **Semua pembayaran masuk ke satu akun merchant milik platform** (tidak ada split payment / sub-merchant per organizer)
 - Platform fee dihitung & dicatat per transaksi sesuai paket organizer
 - Refund dikelola Super Admin
+- **Jalur cadangan transfer manual** saat gateway dimatikan Super Admin (FR-24)
 
 #### FR-15: Tiket QR Code + Scan Check-in
 - Tiket digital dengan QR Code unik per tiket
@@ -194,8 +207,10 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Ledger immutable + audit otomatis; refund mengoreksi saldo organizer
 
 #### FR-18: Katalog & Pengaturan Platform
-- Cabang olahraga, format turnamen, kolom statistik, **posisi pemain per cabang**, tiebreaker, metode undian, tier sponsor: dikelola Super Admin dari panel, tanpa deploy
-- Aturan pencairan (minimal penarikan, biaya admin, masa tahan) dapat diubah Super Admin dan berlaku instan untuk penarikan baru
+- Cabang olahraga, format turnamen, kolom statistik, **posisi pemain per cabang**, **peran ofisial per cabang**, tiebreaker, metode undian, tier sponsor: dikelola Super Admin dari panel, tanpa deploy
+- **Peran kartu (`role`) pada kolom statistik** menandai mana yang kartu kuning dan mana yang merah — sumber tunggal fitur larangan bermain (FR-25)
+- Aturan pencairan (minimal penarikan, biaya admin, masa tahan) dan **saklar payment gateway** dapat diubah Super Admin dan berlaku instan
+- **Konten & identitas platform** (testimoni, FAQ, kontak, sosmed, rekening platform) dikelola Super Admin — tidak ada konten landing yang hardcode (§4.26)
 
 #### FR-19: Media Event (Galeri & Sponsor)
 - Album foto per event dan logo sponsor bertingkat (tier), tampil di landing page publik
@@ -223,6 +238,25 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Kategori beregu pada cabang raket dimainkan sebagai **tie berisi beberapa partai** (mis. Ganda Putra → Tunggal Putra → Ganda Campuran); daftar partai adalah template di kategori dan bisa disesuaikan per pertandingan
 - **Skor tie diturunkan, bukan diketik**: `Spanyol 3-0 Argentina` = jumlah partai yang dimenangkan; tiap partai punya lineup (dipilih dari roster) dan skor set sendiri
 - Klasemen beregu memakai partai sebagai pengganti gol, dengan **agregat poin set** sebagai tiebreaker tambahan
+
+#### FR-24: Transfer Manual (Jalur Cadangan Pembayaran)
+- Super Admin dapat **mematikan payment gateway** dari panel; seluruh platform lalu beralih ke transfer manual — **bukan pilihan per organisasi** dan bukan fitur paket
+- Pembeli tiket & tim yang mendaftar transfer ke **rekening organizer**, mengunggah bukti; org admin meng-acc per event. Pembelian **paket langganan** transfer ke **rekening platform**, di-acc Super Admin
+- **Uang transfer manual tidak pernah menyentuh dompet organizer** dan tidak dipotong platform fee — uangnya memang tidak pernah lewat platform
+- `payment_method` **di-snapshot per order**: order yang lahir saat gateway mati tetap manual seumur hidupnya walau gateway dinyalakan lagi
+- Order manual tanpa bukti kedaluwarsa otomatis agar tidak menahan kuota; yang sudah ada buktinya hanya bisa ditutup organizer
+
+#### FR-25: Akumulasi Kartu & Larangan Bermain
+- Sistem memberi tahu **siapa yang tidak boleh turun di laga berikutnya** berdasarkan akumulasi kartu kuning, kartu merah, dan pengusiran (dua kuning dalam satu laga)
+- Ambang & durasi larangan berlapis: default platform → default cabang → override per event
+- **Suspensi selalu dihitung ulang dari data kartu, tidak pernah disimpan** — koreksi statistik ke bawah langsung menganulir larangannya
+- Tampil di **dua permukaan** — peringatan pada kartu pertandingan dan tabel disiplin di tab Statistik — dan **keduanya juga publik**, karena squad lawan & penonton punya alasan yang sama untuk tahu
+- **Peringatan, bukan blokir**: sistem tidak tahu siapa yang benar-benar diturunkan, jadi keputusan tetap di tangan panitia. Larangan yang sudah dijalani ditandai sebagai selesai, bukan menghilang
+
+#### FR-26: Konten & Identitas Platform
+- Testimoni, FAQ, kontak (email/telepon), lima profil sosmed flo-event, email sales, dan rekening platform dikelola Super Admin — **tidak ada konten landing yang hardcode**
+- Harga & daftar fitur di landing page diturunkan dari katalog paket yang sama dengan halaman Upgrade
+- Semua unggahan gambar **dikompres ke WebP** di sisi server; berkas yang barisnya dihapus ikut dibersihkan dari bucket
 
 ### 2.2 Non-Functional Requirements
 
@@ -253,35 +287,34 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 
 ### 3.1 Paket Langganan
 
-| Fitur | Free | Starter | Pro | Professional |
+**Tidak ada tier gratis.** Paket termurah adalah **Basic**. Organisasi yang baru dibuat **belum punya paket sama sekali** (`plan_id` kosong) dan harus checkout dulu — bukan otomatis mendarat di tier gratis.
+
+| Fitur (`feature_key`) | Basic | Starter | Pro | Professional |
 |-------|:----:|:-------:|:---:|:------------:|
-| **Harga/bulan** | Rp 0 | Rp 149.000 | Rp 399.000 | Rp 999.000 |
-| **Max Event Aktif** | 1 | 3 | 10 | Unlimited |
-| **Max Tim per Event** | 8 | 32 | 128 | Unlimited |
+| **Harga/bulan** | Rp 49.000 | Rp 149.000 | Rp 399.000 | Rp 999.000 |
+| **Max Event Aktif** (`max_active_events`) | 1 | 3 | 10 | Unlimited |
+| **Max Tim per Event** (`max_teams_per_event`) | 8 | 32 | 128 | Unlimited |
 | **Landing Page Event** | ✅ | ✅ | ✅ | ✅ |
 | **Registrasi Tim** | ✅ | ✅ | ✅ | ✅ |
 | **Jadwal & Klasemen** | ✅ | ✅ | ✅ | ✅ |
 | **Bracket Turnamen** | ✅ | ✅ | ✅ | ✅ |
-| **Input Hasil** | ✅ | ✅ | ✅ | ✅ |
-| **Statistik Pemain** | Basic | ✅ | ✅ | ✅ |
-| **Payment Gateway** | ❌ | ✅ | ✅ | ✅ |
-| **Tiket QR Code** | ❌ | ✅ | ✅ | ✅ |
-| **Max Tiket per Event** | — | 500 | 5.000 | Unlimited |
-| **Export Excel** | ❌ | ✅ | ✅ | ✅ |
-| **Export PDF** | ❌ | ✅ | ✅ | ✅ |
-| **Generator Sertifikat** | ❌ | ✅ | ✅ | ✅ |
-| **Upload Background Kustom** | ❌ | ✅ | ✅ | ✅ |
-| **Kirim Sertifikat via Email** | ❌ | ❌ | ✅ | ✅ |
-| **Laporan Turnamen** | ❌ | Basic | Full | Full + Custom |
-| **Custom Subdomain** | ❌ | ❌ | ✅ | ✅ |
-| **Custom Domain** | ❌ | ❌ | ❌ | ✅ |
-| **Max Operator** | 1 | 3 | 10 | Unlimited |
-| **Storage** | 2 GB | 10 GB | 50 GB | 200 GB |
-| **Priority Support** | ❌ | ❌ | ✅ | ✅ (Dedicated) |
-| **White Label** | ❌ | ❌ | ❌ | ✅ |
-| **Platform Fee Tiket** | — | 3% | 2% | 1% |
+| **Input Hasil & Statistik Pemain** | ✅ | ✅ | ✅ | ✅ |
+| **Payment Gateway** (`payment_gateway`) | ✅ | ✅ | ✅ | ✅ |
+| **Tiket QR Code** (`qr_tickets`) | ❌ | ✅ | ✅ | ✅ |
+| **Max Tiket per Event** (`max_tickets_per_event`) | — | 500 | 5.000 | Unlimited |
+| **Export Excel / PDF** (`export_data`) | ❌ | ✅ | ✅ | ✅ |
+| **Generator Sertifikat** (`certificate_generator`) | ❌ | ✅ | ✅ | ✅ |
+| **Kirim Sertifikat via Email** (`certificate_email`) | ❌ | ❌ | ✅ | ✅ |
+| **Custom Domain** (`custom_domain`) | ❌ | ❌ | ❌ | ✅ |
+| **API Access** (`api_access`) | ❌ | ❌ | ❌ | ✅ |
+| **Platform Fee Tiket** (`ticket_fee_percent`) | — | 3% | 2% | 1% |
+| **Platform Fee Registrasi** (`registration_fee_percent`) | 4% | 3% | 2% | 1% |
 
 > **Catatan:** Seluruh batas dan fitur per paket dapat diubah oleh SaaS Super Admin melalui panel admin tanpa perubahan kode.
+>
+> **Basic tidak punya `ticket_fee_percent`** karena tanpa `qr_tickets` paket itu memang tidak bisa menjual tiket — tidak ada yang perlu dipotong.
+>
+> **Dua tabel, dua peran.** `plan_features` menyimpan **nilai** per paket (dibaca gating); `feature_definitions` adalah **katalog** label/tipe/urutannya (dibaca manusia). Feature key yang punya nilai tapi tak punya definisi tidak akan pernah muncul di halaman Upgrade. Baris yang masih rencana produk — storage quota, batas operator, white label, priority support, laporan bertingkat — **belum menjadi feature key**, jadi sengaja tidak dicantumkan di tabel ini.
 
 ### 3.2 Mengapa Storage Dibatasi
 
@@ -298,11 +331,12 @@ Storage R2 adalah satu-satunya resource yang berbayar per GB. Estimasi 1 event t
 
 ### 3.4 Billing Model
 
-- **Siklus:** Bulanan atau tahunan (diskon 20% tahunan)
-- **Payment:** Midtrans (kartu kredit, transfer bank, QRIS)
+- **Siklus:** Bulanan atau tahunan (diskon 20% tahunan; harga tahunan **diturunkan** dari harga bulanan + persen diskon, tidak diketik terpisah)
+- **Payment:** Midtrans (kartu kredit, transfer bank, QRIS). Saat gateway dimatikan Super Admin, checkout paket beralih ke **transfer manual ke rekening platform** dengan verifikasi Super Admin (§4.25)
 - **Auto-renewal** dengan notifikasi 7 hari sebelum perpanjangan
-- **Grace period** 7 hari setelah jatuh tempo sebelum downgrade ke Free
+- **Grace period** 7 hari setelah jatuh tempo; setelah itu organisasi kembali **tanpa paket** (bukan turun ke tier gratis — tier itu tidak ada) dan kehilangan seluruh entitlement sampai membayar
 - **Downgrade:** Fitur terkunci, data tetap aman
+- Setiap tagihan punya **dokumen PDF-nya sendiri** — invoice sejak dibuat, kwitansi setelah lunas (§4.27)
 
 ### 3.5 SaaS Admin — Konfigurasi Paket
 
@@ -328,6 +362,7 @@ Terpisah dari paket, karena ini kebijakan **platform**, bukan per-tenant. Disimp
 | Minimal penarikan | Rp 100.000 | 0 – 100.000.000 |
 | Biaya admin per penarikan | Rp 5.000 | 0 – 1.000.000 |
 | Masa tahan setelah event selesai | 0 hari | 0 – 90 |
+| Payment gateway aktif | ya / tidak | boolean — mematikannya mengalihkan **seluruh** platform ke transfer manual (§4.25) |
 
 Perubahan berlaku untuk penarikan **baru**. Penarikan yang sudah diajukan menyimpan snapshot aturan yang berlaku saat itu, sehingga riwayat tidak pernah ditulis ulang.
 
@@ -372,6 +407,12 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 
 **Peserta tunggal & ganda** (§4.23) memakai tabel yang sama: satu entri berisi 1 atau 2 pemain, tanpa nama tim dan tanpa logo. Namanya **diturunkan dari roster** (`"Dimas"`, `"Dimas / Ammar"`) di satu tempat — layanan roster yang dipakai ketiga alur pendaftaran — sehingga klasemen, bracket, kartu pertandingan, sertifikat, dan halaman publik membacanya seperti nama tim biasa.
 
+**Bench tim (pelatih & ofisial):** pelatih, asisten, manajer tim, fisioterapis, dan ofisial disimpan **terpisah dari pemain**, dengan peran yang dipilih dari master peran per cabang (§4.16) dan urutan tampil sesuai urutan input.
+
+> **Ofisial bukan pemain.** Roster pemain dibaca lima hal yang tak ada urusannya dengan pelatih: validasi jumlah pemain (ganda = tepat 2), penurunan nama entri tunggal/ganda, pemilih lineup partai, statistik & leaderboard, dan daftar penerima sertifikat. Satu baris pelatih di dalam roster merusak kelimanya sekaligus — memisahkan tabelnya membuat kelimanya tidak perlu tahu fitur ini ada.
+
+Bench **selalu opsional** dan berlaku untuk semua jenis peserta — pemain tunggal badminton pun punya pelatih. Cabang yang belum punya master peran tetap bisa mengisi ofisial tanpa peran.
+
 **Kontrol:** tim manager edit data hingga deadline, organizer dapat lock roster dan diskualifikasi tim
 
 ---
@@ -381,8 +422,10 @@ Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
 - **Jadwal dibuat per kategori** (§4.22): format & bracket diambil dari kategori yang dipilih, dan hanya tim di kategori itu yang diundi
 - Generate otomatis: round-robin, knockout, hybrid
 - Edit manual: tanggal, waktu, lapangan/venue
-- Tampilan publik: list view + kalender view, filter per hari/grup/babak; event multi-kategori menampilkan pemilih kategori
-- Status: Upcoming / Live / Selesai / Ditunda
+- **Lapangan bernama per event.** Organizer mendaftarkan nama lapangan sekali di form event; sesudahnya penjadwalan memilih dari dropdown alih-alih mengetik bebas, dan generator otomatis melabeli jalurnya dengan nama itu (bukan "Lapangan 1..N" generik). Event tanpa daftar lapangan tetap memakai teks bebas seperti sebelumnya
+- **Fase laga diturunkan, bukan dipilih.** Di kategori hybrid, laga manual antara dua tim yang satu grup otomatis menjadi laga fase grup — tidak ada dropdown "Fase" yang bisa membuat klasemen dan gate bracket melihat dua kenyataan berbeda. Pengecualiannya hanya **laga penentuan**, yang gunanya justru memisahkan dua tim tanpa menyentuh klasemen
+- Tampilan publik: list view + kalender view, filter per hari/grup/babak, diurutkan berdasarkan jam kickoff; event multi-kategori menampilkan pemilih kategori. Filter aktif disinkronkan ke URL supaya bisa dibagikan & bertahan saat refresh
+- Status: Upcoming / Live / Selesai / Ditunda. Skor boleh disimpan saat laga **masih berjalan**, jadi skor sementara bisa tampil di halaman publik tanpa harus menyelesaikan laganya lebih dulu
 
 ---
 
@@ -420,7 +463,22 @@ Klasemen, leaderboard, dan bracket dihitung **per kategori** (§4.22). Aturan de
 | Badminton / Tenis / Tenis Meja / Padel | 2 | — | 0 | Rasio game → Rasio poin |
 | Kategori beregu (raket) | 3 | 1 | 0 | Head-to-head → Selisih partai → **Selisih poin partai** |
 
-Untuk kategori beregu, kolom "gol memasukkan/kemasukan" pada tabel klasemen **membaca partai** — 3-0 berarti tiga partai dimenangkan, bukan tiga gol. Judul kolomnya ikut berubah (PM / PK / SP) supaya tidak menyesatkan. Dua regu yang berbagi tie 3-3 dipisahkan oleh **agregat poin seluruh set** (tiebreaker `rubber_points`).
+Untuk kategori beregu, kolom "gol memasukkan/kemasukan" pada tabel klasemen **membaca partai** — 3-0 berarti tiga partai dimenangkan, bukan tiga gol. Judul kolomnya ikut berubah (PM / PK / SP) supaya tidak menyesatkan. Dua regu yang berbagi tie 3-3 dipisahkan oleh **agregat poin seluruh set** (tiebreaker `rubber_points`). Tabel klasemen menyertakan **legenda kolom** karena artinya berbeda antar cabang.
+
+**Tiebreaker yang tersedia** (urutannya disusun organizer per kategori, dan setiap opsi menunjuk komparator yang benar-benar ada di kode):
+
+| Tiebreaker | Arti |
+|-----------|------|
+| `head_to_head` | Hasil pertemuan langsung. Saat **lebih dari dua** tim seri, dihitung sebagai **mini-liga** di antara mereka saja — bukan perbandingan berpasangan yang bisa saling bertentangan |
+| `goal_difference` / `goals_scored` | Selisih & jumlah gol; di cabang set otomatis berarti selisih/jumlah game, di kategori beregu berarti selisih partai |
+| `set_difference` / `point_difference` / `rubber_points` | Rasio set dan agregat poin |
+| `fair_play` | Bobot kartu (bobot per kartu diatur Super Admin per cabang) |
+| `playoff` | **Laga penentuan**: adu penalti untuk cabang gol, laga ulang untuk cabang set. Organizer membuat fixture penentuan langsung dari tabel klasemen |
+| `drawing_lots` | Undian |
+
+> **Tiebreaker lama diterjemahkan, bukan dibuang.** Event yang tersimpan dengan kosakata sepak bola lalu cabangnya diganti tetap memakai prioritas yang dipilih organizer — "Selisih Gol" dibaca sebagai "Selisih Game" di badminton. Terjemahan itu hidup di satu tempat saja, supaya tabel tidak pernah mengurutkan berdasarkan sesuatu yang berbeda dari yang tertulis di halaman event.
+
+Perhitungan klasemen **di-cache** dan diinvalidasi saat ada hasil yang berubah — halaman publik event besar tidak menghitung ulang seluruh liga tiap kali dibuka.
 
 ---
 
@@ -440,8 +498,15 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 ### 4.8 Bracket Turnamen
 
 - Single & Double Elimination, Hybrid
-- Visualisasi interaktif, responsive, auto-update
+- Visualisasi interaktif, responsive, auto-update; **perebutan juara 3** tampil sebagai laga tersendiri di samping final
 - Highlight jalur tim, share link & embed code
+- Bracket bisa **dihapus & dibuat ulang** tanpa menghilangkan fixture fase grup
+
+**Undian babak pertama dalam bentuk slot.** Sebelum fase grup selesai, organizer sudah bisa menyusun bagan babak pertama memakai **slot kualifikasi** — "Juara Grup A" v "Runner-up Grup B" — lengkap dengan jam kickoff & lapangan yang sudah dibooking. Rencana itu **disimpan** dan bertahan walau klasemen di bawahnya masih bergerak; saat bracket akhirnya digenerate, slot diisi penghuninya hari itu.
+
+> Rencana undian sengaja disimpan terpisah dari konfigurasi format. Sebuah bagan yang sudah diundi adalah **artefak undian**, bukan setelan format — kalau ditumpangkan ke konfigurasi bracket, form event akan diam-diam membuangnya karena hanya mengenali key yang ia tahu.
+
+**Kesiapan bracket butuh dua angka, bukan satu:** jumlah laga grup **dan** jumlah laga grup yang belum selesai. "0 belum selesai" berarti dua hal yang berlawanan — semua laga sudah dimainkan, atau belum ada laga grup sama sekali. Satu fungsi menjawab keduanya untuk seluruh UI, supaya tidak ada layar yang menulis "bracket siap dibuat" tepat di atas tombol yang mati.
 
 ---
 
@@ -456,6 +521,14 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 | Event Admin | Event tertentu yang ditugaskan |
 | Operator | Input hasil + scan tiket (per event) |
 | Tim Manager | Data tim sendiri |
+
+> **Endpoint uang & langganan wajib `org.admin`.** Middleware `tenant` sendirian meloloskan member `operator` (petugas scan tiket) — yang tidak boleh mengganti rekening tujuan, menarik dana, membeli paket, meng-acc bukti transfer, atau membaca invoice organisasi.
+
+**Statistik kunjungan event.** Setiap halaman event publik mencatat view dan unique visitor per hari (visitor dikenali lewat hash, bukan identitas), diringkas per event dan per organisasi — organizer melihat traffic event-nya, Super Admin melihat traffic seluruh platform.
+
+**Panel Super Admin** juga mencakup: statistik platform (tenant, event, transaksi), manajemen user termasuk mengubah tipe akun & reset password, antrean verifikasi pembayaran manual langganan, serta **impersonasi** akun organizer untuk menelusuri laporan masalah. Sesi impersonasi selalu menampilkan banner dan bisa diakhiri kapan saja untuk kembali ke akun asli.
+
+**Akun user sendiri:** halaman Akun memuat ubah profil dan **ganti password** (butuh password lama).
 
 ---
 
@@ -582,13 +655,17 @@ Cabang olahraga dan vokabuler turnamen tidak lagi hardcode — semuanya data yan
 
 | Dikelola | Contoh |
 |----------|--------|
-| Cabang olahraga | Sepak Bola, Futsal, Badminton, Padel, Voli (+ warna, durasi match default, set-based atau tidak) |
-| Kolom statistik per cabang | gol, assist, kartu, ace, smash… |
+| Cabang olahraga | Sepak Bola, Mini Soccer, Futsal, Badminton, Tenis, Tenis Meja, Padel, Voli, Basket (+ warna, durasi match default, set-based atau tidak, jenis peserta yang didukung) |
+| Kolom statistik per cabang | gol, assist, kartu, ace, smash… masing-masing dengan **peran** (`goal`/`assist`/`yellow`/`red`) |
 | Posisi pemain per cabang | Kiper/Bek/Gelandang/Penyerang (bola), Anchor/Flank/Pivot (futsal), Setter/Libero (voli)… disimpan sebagai `position_key` + label yang bisa diubah |
+| **Peran ofisial per cabang** | Pelatih Kepala, Asisten Pelatih, Manajer Tim, Fisioterapis, Ofisial — disimpan sebagai `role_key` + label yang bisa diubah |
+| **Aturan disiplin per cabang** | Ambang kartu kuning, lama larangan, aturan pengusiran (§4.24) |
 | Format turnamen | Liga, Liga 2 Putaran, Knockout, Hybrid, Grup + Playoff |
 | Tiebreaker, metode undian, ronde knockout, tier sponsor | — |
 
-Master **posisi** menjadi sumber tunggal validasi roster: label boleh diganti kapan saja tanpa memindahkan data karena `position_key` yang tersimpan, dan posisi yang **masih dipakai pemain tidak bisa dihapus**.
+Master **posisi** dan **peran ofisial** menjadi sumber tunggal validasinya masing-masing: label boleh diganti kapan saja tanpa memindahkan data karena yang tersimpan adalah key-nya, dan key yang **masih dipakai** (pemain / ofisial) tidak bisa dihapus.
+
+**Peran kartu bukan nama key.** Yang menentukan sebuah kolom statistik adalah kartu kuning atau merah adalah kolom `role`, bukan tulisan `stat_key`-nya — admin bebas mengganti nama key, dan fitur larangan bermain tetap jalan. `role` juga sengaja dipisah dari **bobot fair play**: bobot itu kriteria klasemen yang memang boleh di-tune admin, dan menempelkan semantik suspensi padanya membuat mengedit klasemen diam-diam mengubah siapa yang boleh bermain.
 
 **Format adalah preset di atas engine.** Engine (`league`, `knockout`, `hybrid`) hidup di kode; admin bisa membuat preset "Liga 2 Putaran" (engine `league`, default `legs: 2`) tanpa deploy — tapi **tidak bisa** mengarang engine yang tidak ada implementasinya. Preset ini dipilih **per kategori kompetisi** (§4.22), bukan per event, sehingga satu event bisa menjalankan beberapa format sekaligus.
 
@@ -640,7 +717,7 @@ Semua peristiwa penting mengirim email; daftarnya:
 | Tim mendaftar (publik) | Manager tim + owner organisasi | `TeamRegistrationSubmitted`, `NewTeamRegistered` |
 | Status tim berubah (approved/rejected/disqualified) | Manager tim | `TeamStatusChanged` |
 | Pembayaran pendaftaran lunas | Manager tim | `RegistrationPaid` |
-| Invoice & aktivasi langganan | Owner organisasi | `SubscriptionInvoiceIssued`, `SubscriptionActivated` |
+| Invoice & aktivasi langganan | Owner organisasi | `SubscriptionInvoiceIssued`, `SubscriptionActivated` — email aktivasi **melampirkan invoice PDF** |
 | Penarikan dana selesai/ditolak | Owner organisasi | `WithdrawalCompleted`, `WithdrawalRejected` |
 | Sertifikat terbit (opsional) | Penerima | `CertificateIssuedMail` (§4.10) |
 
@@ -721,15 +798,123 @@ Satu event bisa mencampur format (Tunggal = liga, Ganda = knockout), jadi **tab 
 
 ---
 
+### 4.24 Akumulasi Kartu & Larangan Bermain
+
+Panitia perlu tahu **siapa yang tidak boleh turun di laga berikutnya**. Datanya sudah lama ada (statistik kartu per laga); yang ditambahkan adalah cara membacanya.
+
+**Aturan berlapis tiga**, digabung per key: default platform → default cabang (`/admin/sports`) → override per event (form event).
+
+| Aturan | Default | Arti |
+|--------|:-------:|------|
+| Ambang kartu kuning | 3 | Kuning terakumulasi sebanyak ini menerbitkan larangan |
+| Larangan akibat akumulasi | 1 laga | |
+| Larangan akibat kartu merah | 1 laga | |
+| Kuning per pengusiran | 2 | Dua kuning **dalam satu laga** = dikeluarkan, bukan akumulasi. `0` mematikan aturan ini |
+| Larangan akibat pengusiran | 1 laga | |
+| Reset kuning saat masuk knockout | tidak | Hanya berlaku di format hybrid — satu-satunya format yang benar-benar punya penanda "masuk knockout" |
+
+Field yang **dikosongkan** di form event berarti "ikut aturan cabang", bukan nol; placeholder tiap input menampilkan nilai cabang yang sedang berlaku.
+
+**Dua permukaan, satu sumber:** peringatan di kartu pertandingan (jadwal organizer **dan** jadwal publik) dan tabel disiplin di tab Statistik (organizer **dan** publik). Tidak ada tab disiplin tersendiri.
+
+> **Publik memang disengaja.** Squad lawan dan penonton punya alasan yang sama dengan panitia untuk tahu siapa yang tidak boleh turun — dan tahu dari jadwal lebih baik daripada tahu saat kick-off. Nama & nomor punggung sudah publik lewat roster dan leaderboard; yang baru hanya alasan sanksinya.
+
+**Keputusan desain yang menentukan perilakunya:**
+
+- **Suspensi diturunkan, tidak pernah disimpan.** Menyimpan statistik laga menghapus lalu menulis ulang seluruh barisnya, jadi koreksi ke bawah (organizer sadar 3 kuning itu salah ketik) tidak memancarkan peristiwa apa pun yang bisa didengar sebuah kolom status. Larangan tersimpan akan hidup lebih lama dari kartu penyebabnya.
+- **Hanya hasil resmi yang dihitung** (selesai **dan** dikonfirmasi) — gate yang sama dengan leaderboard dan klasemen, supaya angka kuning di tab Statistik dan angka kuning di peringatan tidak berbeda di layar yang sama.
+- **Fase tidak difilter.** Larangan adalah fakta administratif tentang seorang pemain, bukan kriteria klasemen; yang terbit di fase grup jelas terbawa ke knockout.
+- **Satu insiden dihukum sekali.** Kuning yang menghasilkan pengusiran dibuang dari pencacah akumulasi, dan kartu merah di laga yang sama menyerapnya — statistik per laga tidak punya urutan, jadi "kuning kedua yang jadi merah" tidak bisa dibedakan dari "dua kuning + merah langsung", dan yang pertama itulah yang biasanya diketik organizer.
+- **Larangan yang sudah dijalani ditandai "selesai"**, bukan menghilang — kalau tidak, fitur ini jadi tak terlihat tepat saat ia bekerja, dan "tidak pernah ada yang dilarang" akan tampak sama persis dengan "ada, dan sudah menjalaninya".
+- **Peringatan saja, tanpa blokir.** Cabang gol tidak punya input lineup, jadi sistem tidak tahu siapa yang benar-benar diturunkan; larangan **diasumsikan** dijalani di laga resmi berikutnya dan keputusan tetap milik panitia.
+
+Fitur ini menyala sendiri untuk cabang yang **punya kolom kartu** — bukan untuk semua cabang beregu. Voli & basket punya leaderboard tapi tidak punya kartu sama sekali; cabang yang besok diberi kolom kartu oleh admin langsung mendapat fitur ini tanpa deploy.
+
+---
+
+### 4.25 Transfer Manual (Cadangan Saat Gateway Mati)
+
+Kalau Midtrans bermasalah, Super Admin mematikan payment gateway di `/admin/settings` dan **seluruh platform** beralih ke transfer manual.
+
+```
+[Gateway OFF]
+  Tiket & registrasi tim   → transfer ke REKENING ORGANIZER
+                             → pembeli unggah bukti
+                             → org admin acc di antrean per event
+                             → tiket terbit / tim berstatus lunas
+
+  Pembelian paket          → transfer ke REKENING PLATFORM
+                             → organizer unggah bukti
+                             → Super Admin acc di /admin/subscriptions
+                             → paket aktif + kwitansi terbit
+```
+
+**Kenapa ini global, bukan pilihan organisasi:** transfer manual tidak bisa dipotong fee. Kalau tiap org boleh memilih, tidak ada yang mau memakai gateway dan pendapatan fee platform habis. Karena itu **`manual_transfer` bukan feature key** — alasannya dijelaskan ke user lewat FAQ dan footnote di halaman harga, bukan sebagai baris fitur di kartu paket.
+
+**Aturan yang menjaganya tetap benar:**
+
+- **Uang manual tidak pernah menyentuh dompet organizer**, dan `platform_fee`-nya nol. Uangnya masuk ke rekening organizer dan memang tidak pernah lewat platform — menulis kredit untuknya membuat saldo mengklaim dana yang tidak kita pegang. Uang langganan sebaliknya: itu pendapatan platform dan tidak pernah menyentuh dompet siapa pun di jalur mana pun.
+- **`payment_method` di-snapshot per order.** Gateway bisa dinyalakan lagi kapan saja; order yang lahir saat outage tetap manual seumur hidupnya — pola yang sama dengan `platform_fee` dan snapshot rekening di penarikan.
+- **"Menunggu verifikasi" adalah status turunan**, bukan nilai `status` baru — kode lama menjaga diri dengan memeriksa daftar status yang ia kenal, jadi menyelipkan nilai baru akan melewati guard itu diam-diam.
+- **Kuota tidak boleh disandera.** Order manual tidak punya webhook expire, jadi ada sapuan berkala yang membatalkan order lewat tenggat **yang belum ada buktinya**; yang sudah ada buktinya tidak pernah hangus otomatis — itu keputusan organizer.
+- **Meng-acc bukti = menerbitkan tiket valid tanpa uang masuk**, jadi aksinya wajib `org.admin`; operator tidak boleh.
+- Nomor rekening penuh hanya dikirim dari alur pembayaran manual; di tempat lain nomor rekening tetap disamarkan.
+- Antrean pembayaran manual per event **selalu ditampilkan**, bukan hanya saat gateway mati — order berbukti tidak pernah kedaluwarsa sendiri, jadi menyembunyikan tautannya begitu gateway nyala akan menelantarkannya.
+
+---
+
+### 4.26 Konten & Identitas Platform
+
+Landing page flo-event tidak memuat konten hardcode. Empat hal berikut dikelola Super Admin dan langsung tampil di publik:
+
+| Dikelola di | Isi |
+|-------------|-----|
+| `/admin/plans` | Paket, harga, dan katalog fitur — dipakai bersama oleh section Harga dan halaman Upgrade |
+| `/admin/testimonials` | Testimoni ("Kata Mereka") |
+| `/admin/faqs` | FAQ |
+| `/admin/site-settings` | Email & telepon kontak, email sales, lima profil sosmed, dan **rekening platform** untuk pembayaran paket manual (§4.25) |
+
+- **`is_active` memisahkan dua pembaca dari tabel yang sama:** endpoint publik menyaring yang aktif dan mengurutkannya; endpoint admin mengirim semua baris supaya yang nonaktif masih bisa dilihat dan dinyalakan lagi.
+- **Avatar testimoni bukan gambar** — inisial di atas gradient CSS, sehingga tidak ada berkas yang perlu diunggah dan dikelola.
+- **Handle sosmed dinormalisasi saat validasi**: `@floevent`, `tiktok.com/@floevent`, atau URL penuh sama-sama disimpan sebagai tautan lengkap, jadi form maupun halaman publik cukup me-render `<a>`. Peta platform-nya dipakai bersama dengan sosmed organizer (§4.19).
+- **Konsekuensi yang disengaja:** harga, testimoni, dan FAQ di-fetch di klien, jadi teksnya tidak ada di HTML SSR.
+
+**Siklus hidup berkas.** Semua unggahan gambar di-re-encode ke **WebP** di server (ukuran turun tanpa organizer perlu memikirkannya), dan berkas yang barisnya dihapus — media event, logo tim, foto pemain, dokumen registrasi — ikut dibersihkan dari bucket lewat job penghapusan. Tanpa itu, key objeknya hilang bersama baris yang menyebutnya dan orphan-nya tidak bisa ditemukan lagi.
+
+---
+
+### 4.27 Langganan & Dokumen Tagihan
+
+Tiap checkout paket menulis **satu baris langganan — itu sekaligus tagihannya**. Tidak ada tabel invoice terpisah.
+
+```
+Checkout  → baris langganan (belum lunas) + NOMOR INVOICE + Snap token
+          → invoice PDF bisa diunduh sejak detik ini
+Bayar     → (gateway) webhook Midtrans   |  (manual) Super Admin acc bukti
+          → NOMOR KWITANSI terbit, paket aktif, masa berlaku diperpanjang
+          → email aktivasi + invoice terlampir
+```
+
+- **Tagihan yang belum dibayar tetap dokumen sah**, jadi nomor invoice lahir saat checkout; nomor kwitansi lahir saat lunas. Format `INV/2026/07/0001`, urutan reset tiap bulan.
+- **Aktivasi wajib idempoten** — webhook Midtrans dikirim ulang, dan kwitansi kedua tidak boleh terbit untuk pembayaran yang sama.
+- Membuka ulang tagihan yang belum lunas membuat order gateway baru (nomor invoice tetap), karena Snap token kedaluwarsa ~24 jam.
+- **Identitas penerbit dokumen ada di konfigurasi**, tidak di-hardcode di template PDF.
+- Unduhan PDF lewat API ber-auth — access token disimpan di memori, jadi tautan `<a href>` polos ke endpoint API akan ditolak.
+
+---
+
 ## 5. User Flow
 
 ### 5.1 Organizer — Onboarding & Buat Event
 
 ```
 [Daftar Akun — pilih peran "Organizer"] → [Verifikasi Email]
-  → [Onboarding: Buat Organisasi]
+  → [Onboarding: Buat Organisasi]           (lahir TANPA paket — belum ada entitlement)
   → [Dashboard Organizer — Welcome]
-  → Pilih Paket → [Bayar Subscription] (jika berbayar)
+  → Pilih Paket → [Bayar Subscription]
+      ├─ gateway nyala → Midtrans Snap → webhook → paket aktif
+      └─ gateway mati  → transfer ke rekening platform + unggah bukti
+                       → Super Admin acc → paket aktif        (§4.25)
   → [Buat Event Baru]
       → Detail event & cabang
       → Tambah kategori (format, biaya, batas tim per kategori)
@@ -750,8 +935,11 @@ Satu event bisa mencampur format (Tunggal = liga, Ganda = knockout), jadi **tab 
   → "Daftar Sekarang" → [Buat Akun (peran "Peserta") / Login]
   → Pilih kategori kompetisi (otomatis jika hanya satu)
   → Isi Form Registrasi (nama tim, logo, data pemain + posisi dari master cabang)
+  → Isi bench tim (pelatih/ofisial — opsional)
   → Upload dokumen → Submit → [Email: Pendaftaran diterima]
   → [Bayar] (jika berbayar) → Konfirmasi → [Email: Pembayaran lunas]
+      └─ gateway mati → transfer ke rekening organizer + unggah bukti
+                      → org admin acc di antrean pembayaran event  (§4.25)
   → [Menunggu Approval]
   → [Email: Disetujui/Ditolak]
   → Area Peserta → Lihat jadwal & update roster
@@ -1208,7 +1396,7 @@ organizations (
   updated_at        TIMESTAMP DEFAULT NOW()
 )
 
--- SUBSCRIPTIONS
+-- SUBSCRIPTIONS — satu baris = satu tagihan sekaligus satu langganan (§4.27)
 subscriptions (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id   UUID REFERENCES organizations(id),
@@ -1218,10 +1406,53 @@ subscriptions (
   status            ENUM('active','past_due','cancelled','expired') DEFAULT 'active',
   starts_at         TIMESTAMP NOT NULL,
   expires_at        TIMESTAMP NOT NULL,
+  invoice_number    VARCHAR(30) UNIQUE,              -- INV/2026/07/0001, lahir saat checkout
+  receipt_number    VARCHAR(30) UNIQUE,              -- lahir saat lunas; unique = jaring pengaman idempotensi
   midtrans_order_id VARCHAR(100),
+  midtrans_token    TEXT,
   paid_at           TIMESTAMP,
-  created_at        TIMESTAMP DEFAULT NOW()
+
+  -- Transfer manual ke rekening PLATFORM saat gateway dimatikan (§4.25).
+  -- Tidak ada nilai `status` baru: "menunggu verifikasi" diturunkan dari kolom bukti.
+  payment_method            VARCHAR(10) DEFAULT 'gateway',  -- gateway | manual, di-SNAPSHOT
+  payment_proof_url         TEXT,
+  payment_proof_uploaded_at TIMESTAMP,
+  payment_deadline_at       TIMESTAMP,
+  rejected_reason           TEXT,
+  verified_by               UUID REFERENCES users(id),
+  verified_at               TIMESTAMP,
+
+  created_at        TIMESTAMP DEFAULT NOW(),
+  INDEX (payment_method, status)   -- antrean verifikasi + sapuan tagihan terlantar
 )
+
+-- SITE SETTINGS — satu baris, identitas & kontak flo-event sendiri (§4.26).
+-- BUKAN di platform_settings: tabel itu kebijakan pencairan yang nilainya di-cast
+-- ke float|int|bool, dan sebuah URL yang lewat sana akan kembali sebagai 0.0.
+site_settings (
+  id              UUID PK,
+  contact_email   VARCHAR(255),
+  contact_phone   VARCHAR(30),
+  sales_email     VARCHAR(255),      -- CTA kartu paket Professional; kosong = pakai contact_email
+  social_links    JSONB,             -- { "instagram": "https://…", … } — sama seperti organizations
+  -- Rekening PLATFORM, tujuan pembayaran paket manual. Nama kolom sengaja
+  -- meniru bank_accounts supaya bentuk JSON-nya identik dan klien tak perlu adapter.
+  bank_name       VARCHAR(60),
+  bank_code       VARCHAR(10),
+  account_number  VARCHAR(40),
+  account_holder  VARCHAR(100),
+  updated_by      UUID FK → users NULL,
+  created_at, updated_at
+)
+
+-- TESTIMONIALS & FAQS — konten landing yang diedit Super Admin (§4.26).
+-- `is_active` memisahkan endpoint publik (aktif saja, urut sort_order) dari
+-- endpoint admin (semua baris, supaya yang nonaktif bisa dinyalakan lagi).
+testimonials ( id UUID PK, name, role, quote TEXT, initials VARCHAR(4), rating TINYINT,
+               avatar_preset VARCHAR(30),   -- gradient CSS, BUKAN berkas gambar
+               is_active BOOLEAN, sort_order INT, created_at, updated_at )
+faqs         ( id UUID PK, question, answer TEXT,
+               is_active BOOLEAN, sort_order INT, created_at, updated_at )
 ```
 
 ### 7.2 Users & Auth Tables
@@ -1239,6 +1470,7 @@ users (
   default_mode      VARCHAR(20) DEFAULT 'organizer',  -- organizer | participant: mode dashboard saat login
   is_verified       BOOLEAN DEFAULT FALSE,
   email_verified_at TIMESTAMP,
+  last_seen_at      TIMESTAMP,                        -- untuk statistik user aktif di panel admin
   created_at        TIMESTAMP DEFAULT NOW(),
   updated_at        TIMESTAMP DEFAULT NOW()
 )
@@ -1284,9 +1516,15 @@ events (
   registration_close  TIMESTAMP,
   location_name       VARCHAR(255),
   location_address    TEXT,
+  -- Nama lapangan yang dipakai event ini: ["Lapangan A","Lapangan B"] (§4.4).
+  -- NULL = tidak ada daftar; venue tetap teks bebas seperti sebelumnya.
+  courts              JSONB,
   description         TEXT,
   banner_url          TEXT,
-  rules_config        JSONB,                         -- custom scoring rules
+  timezone            VARCHAR(40),                   -- zona waktu jadwal event
+  -- SATU kolom berisi BEBERAPA rulebook: scoring, dan discipline (§4.24).
+  -- Update wajib menggabung per namespace, bukan menimpa seluruh kolom.
+  rules_config        JSONB,
   created_at          TIMESTAMP DEFAULT NOW(),
   updated_at          TIMESTAMP DEFAULT NOW(),
   UNIQUE(organization_id, slug)
@@ -1307,6 +1545,12 @@ event_categories (
   -- Template partai untuk tie beregu; NULL kalau kategori ini bukan beregu raket.
   -- [{"label":"Ganda Putra","type":"double"}, ...]
   rubber_format     JSONB,
+  -- Undian babak pertama dalam SLOT, disimpan sebelum tim pengisinya diketahui (§4.8):
+  -- [{"order":0,"home":"A1","away":"B2","scheduled_at":null,"venue":null}]
+  -- Kolom tersendiri, BUKAN key di bracket_config: yang itu setelan format yang
+  -- di-round-trip form event lewat whitelist, jadi isinya akan diam-diam terbuang.
+  -- NULL = seed bracket otomatis dari klasemen (perilaku semua kategori lama).
+  knockout_plan     JSONB,
   registration_fee  DECIMAL(12,2) DEFAULT 0,
   max_teams         INT,
   sort_order        SMALLINT DEFAULT 0,
@@ -1344,6 +1588,20 @@ players (
   photo_url         TEXT,
   is_active         BOOLEAN DEFAULT TRUE,
   created_at        TIMESTAMP DEFAULT NOW()
+)
+
+-- TEAM OFFICIALS — bench tim: pelatih, manajer, ofisial (§4.3).
+-- SENGAJA terpisah dari players: lima pembaca roster (validasi jumlah pemain,
+-- penurunan nama entri tunggal/ganda, pemilih lineup partai, statistik pemain,
+-- daftar penerima sertifikat) tidak boleh melihat pelatih sebagai pemain.
+team_officials (
+  id          UUID PK,
+  team_id     UUID FK → teams ON DELETE CASCADE,
+  full_name   VARCHAR(255),
+  role        VARCHAR(30),      -- sport_official_roles.role_key; NULL bila cabang tak punya master
+  photo_url   TEXT,
+  sort_order  SMALLINT,         -- urutan input; bench tak punya urutan alami spt nomor punggung
+  created_at, updated_at
 )
 
 -- REGISTRATION DOCUMENTS
@@ -1457,9 +1715,33 @@ player_stats (
 )
 
 -- Tambahan untuk format Hybrid (grup → playoff) dan adu penalti:
---   matches.stage        → 'group' | 'knockout' (fase pertandingan)
+--   matches.stage        → NULL | 'group' | 'knockout' | 'playoff'
 --   matches.penalties_*  → skor adu penalti saat knockout imbang
 --   teams.seed_pot       → pot unggulan untuk undian grup
+--
+-- INVARIAN `stage`: dua pembacanya harus sepakat soal NULL. Klasemen menghitung
+-- stage NULL *dan* 'group' (di liga & knockout tunggal laga normalnya NULL),
+-- sementara gate bracket hanya menghitung 'group'. Selisih itu pernah menjadi bug
+-- nyata: laga grup yang diketik tangan tersimpan NULL, jadi klasemen benar
+-- sementara gate melihat 0 laga grup dan menolak membuat bracket — organizer
+-- melihat fase grup selesai di setiap tabel, tapi tombolnya mati tanpa alasan.
+-- 'playoff' = laga penentuan: sengaja TIDAK dihitung klasemen, karena gunanya
+-- justru memisahkan dua tim tanpa mengubah tabel yang menyeri-kan mereka.
+-- Ada command backfill idempoten untuk menstempel laga grup lama.
+
+-- EVENT VIEW DAILY / VISITORS — statistik kunjungan halaman event publik (§4.9).
+-- Visitor dikenali lewat hash, bukan identitas; baris harian di-upsert.
+event_view_daily (
+  id UUID PK, event_id UUID FK → events, organization_id UUID FK → organizations,
+  viewed_on DATE, views BIGINT, unique_visitors BIGINT,
+  created_at, updated_at,
+  UNIQUE(event_id, viewed_on)
+)
+event_view_visitors (
+  id UUID PK, event_id UUID FK → events, viewed_on DATE,
+  visitor_hash CHAR(64), created_at,
+  UNIQUE(event_id, viewed_on, visitor_hash)
+)
 
 -- EVENT PHOTOS — galeri per event (§4.17)
 event_photos (
@@ -1520,7 +1802,22 @@ ticket_orders (
   midtrans_order_id VARCHAR(100) UNIQUE,
   midtrans_token    TEXT,
   paid_at           TIMESTAMP,
-  created_at        TIMESTAMP DEFAULT NOW()
+
+  -- Transfer manual ke rekening ORGANIZER saat gateway dimatikan (§4.25).
+  -- `teams` membawa tujuh kolom yang sama persis untuk biaya pendaftaran.
+  -- payment_method DI-SNAPSHOT: order yang lahir saat gateway mati tetap manual
+  -- seumur hidupnya walau gateway dinyalakan lagi. Order manual TIDAK PERNAH
+  -- dikreditkan ke dompet dan platform_fee-nya nol — uangnya tak lewat platform.
+  payment_method            VARCHAR(10) DEFAULT 'gateway',   -- gateway | manual
+  payment_proof_url         TEXT,
+  payment_proof_uploaded_at TIMESTAMP,
+  payment_deadline_at       TIMESTAMP,
+  rejected_reason           TEXT,
+  verified_by               UUID REFERENCES users(id),
+  verified_at               TIMESTAMP,
+
+  created_at        TIMESTAMP DEFAULT NOW(),
+  INDEX (payment_method, status)
 )
 
 -- TICKETS (per tiket individu)
@@ -1653,6 +1950,10 @@ sports (
   -- Bentuk peserta yang boleh dipakai kategori cabang ini (§4.23).
   -- Default ["team"]; cabang raket ["single","double","team"].
   participant_modes     JSONB,
+  -- Default aturan disiplin cabang ini (§4.24); NULL untuk cabang tanpa kartu.
+  -- { yellow_threshold, yellow_ban_matches, red_ban_matches,
+  --   yellows_per_expulsion, expulsion_ban_matches, reset_yellow_on_knockout }
+  discipline_config     JSONB,
   default_match_minutes INT,
   is_active             BOOLEAN,
   sort_order            INT
@@ -1661,8 +1962,29 @@ sports (
 -- SPORT STATS — kolom statistik pemain per cabang (gol, assist, ace, ...)
 sport_stats (
   id        UUID PK,
-  sport_id  UUID FK → sports,
-  key, label, sort_order
+  sport_id  UUID FK → sports ON DELETE CASCADE,
+  stat_key VARCHAR(30), label, short VARCHAR(6), sort_order,
+  -- Apa arti kolom ini bagi sistem: goal | assist | yellow | red (NULL = sekadar angka).
+  -- Inilah yang dibaca fitur larangan bermain — BUKAN tulisan stat_key (admin bebas
+  -- menggantinya) dan BUKAN fair_play_weight (itu bobot tiebreaker klasemen yang
+  -- memang boleh di-tune; menumpanginya membuat mengedit klasemen mengubah siapa
+  -- yang boleh bermain).
+  role             VARCHAR(10),
+  fair_play_weight TINYINT DEFAULT 0,   -- kuning 1, merah 3
+  UNIQUE(sport_id, stat_key)
+)
+
+-- SPORT OFFICIAL ROLES — master peran bench per cabang (§4.3). Klon persis
+-- sport_positions: team_officials.role menyimpan role_key, label bebas diubah,
+-- dan role_key yang masih dipakai ofisial tidak bisa dihapus.
+sport_official_roles (
+  id          UUID PK,
+  sport_id    UUID FK → sports ON DELETE CASCADE,
+  role_key    VARCHAR(30),      -- head_coach | assistant_coach | team_manager | physio | official
+  label       VARCHAR,
+  sort_order  SMALLINT,
+  created_at, updated_at,
+  UNIQUE(sport_id, role_key)
 )
 
 -- SPORT POSITIONS — master posisi pemain per cabang. Sumber tunggal validasi
@@ -1695,7 +2017,8 @@ config_options (
 -- baris di sini hanya meng-override.
 platform_settings (
   id         UUID PK,
-  key        VARCHAR(60) UNIQUE,   -- wallet_minimum_withdrawal | wallet_admin_fee | wallet_hold_days
+  key        VARCHAR(60) UNIQUE,   -- wallet_minimum_withdrawal | wallet_admin_fee |
+                                   -- wallet_hold_days | payment_gateway_enabled (bool)
   value      VARCHAR,
   updated_by UUID FK → users NULL,
   created_at, updated_at
@@ -1790,6 +2113,20 @@ CREATE INDEX idx_wallet_tx_release    ON wallet_transactions(status, available_a
 CREATE INDEX idx_withdrawals_status   ON withdrawals(status, created_at);
 CREATE INDEX idx_withdrawals_org      ON withdrawals(organization_id, status);
 CREATE INDEX idx_bank_accounts_org    ON bank_accounts(organization_id);
+
+-- Bench, disiplin & kunjungan
+CREATE UNIQUE INDEX idx_official_roles ON sport_official_roles(sport_id, role_key);
+CREATE INDEX idx_team_officials_team   ON team_officials(team_id);
+CREATE UNIQUE INDEX idx_view_daily_day ON event_view_daily(event_id, viewed_on);
+CREATE INDEX idx_view_daily_org        ON event_view_daily(organization_id, viewed_on);
+CREATE UNIQUE INDEX idx_view_visitor   ON event_view_visitors(event_id, viewed_on, visitor_hash);
+
+-- Antrean pembayaran manual (§4.25) — dibaca antrean verifikasi & sapuan expire
+CREATE INDEX idx_orders_manual         ON ticket_orders(payment_method, status);
+CREATE INDEX idx_teams_manual          ON teams(payment_method, payment_status);
+CREATE INDEX idx_subs_manual           ON subscriptions(payment_method, status);
+CREATE UNIQUE INDEX idx_subs_invoice   ON subscriptions(invoice_number);
+CREATE UNIQUE INDEX idx_subs_receipt   ON subscriptions(receipt_number);
 ```
 
 ---
@@ -2289,6 +2626,27 @@ Launch:
   → Dokumentasi API (L5-Swagger / Scribe)
 ```
 
+#### Phase 7 — Penyempurnaan Turnamen & Operasional (berjalan)
+
+Fitur yang lahir dari pemakaian nyata, bukan dari rencana awal:
+
+```
+Turnamen:
+  → Bench tim (pelatih & ofisial) + master peran per cabang        §4.3, §4.16
+  → Lapangan bernama per event & penjadwalan berbasis lapangan     §4.4
+  → Undian babak pertama dalam slot + perebutan juara 3            §4.8
+  → Tiebreaker head-to-head mini-liga, laga penentuan, cache       §4.6
+  → Fase laga grup diturunkan otomatis + command backfill          §4.4
+  → Akumulasi kartu & larangan bermain (organizer + publik)        §4.24
+
+Operasional & bisnis:
+  → Transfer manual untuk tiket, registrasi, dan PAKET             §4.25
+  → Dokumen tagihan langganan (invoice & kwitansi PDF)             §4.27
+  → Konten & identitas platform dikelola Super Admin               §4.26
+  → Statistik kunjungan event, impersonasi, manajemen user         §4.9
+  → Kompresi WebP & pembersihan berkas yatim di R2                 §4.26
+```
+
 ---
 
 ### 10.2 API Design Convention
@@ -2510,7 +2868,7 @@ Verifikasi publik:  flo-event.id/verify/CERT-2026-07-0001
 | Q3 2026 | Pencairan **otomatis** via Midtrans Iris (menggantikan transfer manual §4.15) |
 | Q3 2026 | Sinkronisasi refund dari dashboard Midtrans ke dompet (webhook `refund` / `partial_refund`) |
 | Q3 2026 | Live scoring WebSocket |
-| Q4 2026 | Tambahan cabang olahraga (basket, tenis) |
+| Q4 2026 | Kuota storage & batas operator sebagai feature key (§3.1) |
 | Q1 2027 | Mobile app (React Native) |
 | Q2 2027 | Streaming embed (YouTube/FB Live) |
 | Q3 2027 | White label + custom domain (Professional) |
@@ -2532,15 +2890,23 @@ Verifikasi publik:  flo-event.id/verify/CERT-2026-07-0001
 | Saldo dompet melenceng dari ledger | Low | Critical | Semua mutasi lewat satu service + row lock; unique index per sumber; audit harian `wallet:audit` |
 | Operator organisasi menyalahgunakan dompet | Medium | Critical | Endpoint uang wajib `org.admin` — member `operator` (petugas scan) ditolak |
 | Refund Midtrans tidak sinkron dengan dompet | Medium | High | Prosedur: refund selalu lewat panel admin; webhook refund masuk roadmap Q3 2026 |
+| Gateway down saat event sedang jualan tiket | Medium | High | Saklar gateway global → transfer manual ke rekening organizer, `payment_method` di-snapshot per order (§4.25) |
+| Order manual terlantar menahan kuota | Medium | Medium | Sapuan berkala membatalkan order lewat tenggat **yang belum ada buktinya**; yang berbukti ditutup organizer |
+| Bukti transfer palsu di-acc | Low | High | Acc wajib `org.admin` (langganan: Super Admin), bukti tersimpan + `verified_by`/`verified_at` |
+| Larangan bermain salah karena koreksi statistik | Medium | Medium | Suspensi **diturunkan tiap request**, tidak pernah disimpan (§4.24) |
+| Berkas yatim menumpuk di R2 | Medium | Low | Job pembersihan menghapus objek saat barisnya dihapus; unggahan dikompres ke WebP (§4.26) |
+| Impersonasi disalahgunakan | Low | High | Hanya `super_admin`, banner selalu tampil selama sesi, ada test khusus alur ini |
 
 ---
 
 *Dokumen ini adalah living document yang diperbarui setiap sprint.*
 
-**Version:** 1.2.0
-**Last Updated:** Juli 2026
+**Version:** 1.3.0
+**Last Updated:** 30 Juli 2026
 **Next Review:** Agustus 2026
 **Owner:** Product Team flo-event
+
+**Changelog v1.3.0** — Akumulasi kartu & larangan bermain (FR-25 / §4.24); transfer manual sebagai jalur cadangan saat gateway mati, kini termasuk pembelian paket ke rekening platform (FR-24 / §4.25); konten & identitas platform (testimoni, FAQ, kontak, sosmed, rekening) dikelola Super Admin (FR-26 / §4.26); dokumen tagihan langganan (§4.27); bench tim — pelatih & ofisial — dengan master peran per cabang (§4.3, §4.16); lapangan bernama per event (§4.4); undian babak pertama dalam bentuk slot + perebutan juara 3 (§4.8); tiebreaker head-to-head mini-liga & laga penentuan, plus cache klasemen (§4.6); statistik kunjungan event, impersonasi Super Admin, manajemen user & ganti password (§4.9); Mini Soccer & Basket masuk katalog cabang; **tabel paket disamakan dengan katalog fitur yang benar-benar ada — tier Free dihapus, Basic Rp 49.000 jadi paket termurah** (§3.1); kompresi WebP & pembersihan berkas yatim.
 
 **Changelog v1.2.0** — Jenis peserta tunggal / ganda / tim per kategori dan pertandingan beregu berbasis partai untuk cabang raket (FR-23 / §4.23); Tenis & Tenis Meja masuk katalog cabang; tiebreaker `rubber_points`; tab Klasemen/Bracket di halaman publik kini menyaring kategori, bukan menghilang.
 
