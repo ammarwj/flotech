@@ -55,7 +55,7 @@ class TestimonialSeeder extends Seeder
             [
                 'name' => 'Hendra Wijaya',
                 'role' => 'Padel Community Jakarta',
-                'quote' => 'Naik dari Basic ke Pro pas turnamen tahunan kami membesar. Upgrade-nya mulus, datanya aman semua. Worth it.',
+                'quote' => 'Turnamen bulanan kami cukup pakai Starter, yang tahunan baru ambil Professional. Bayar per event bikin biayanya nempel ke event yang memang besar. Worth it.',
                 'initials' => 'HW',
                 'avatar_preset' => 'amber',
                 'rating' => 5,

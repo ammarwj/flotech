@@ -13,31 +13,31 @@ class FaqSeeder extends Seeder
         $faqs = [
             [
                 'question' => 'Paket paling murah mulai dari berapa?',
-                'answer' => 'Paket Basic Rp 49.000/bulan — kamu bisa menjalankan 1 event aktif dengan maksimal 8 tim, lengkap dengan jadwal, klasemen, dan bracket. Upgrade kapan saja saat butuh fitur tiket atau sertifikat. Bayar tahunan untuk hemat 20%.',
+                'answer' => 'Paket Starter Rp 150.000, sekali bayar untuk satu event — bukan langganan bulanan. Kamu dapat 1 kategori berisi maksimal 32 peserta, lengkap dengan pendaftaran online, jadwal, klasemen, bracket, dan tiket QR. Tidak ada masa berlaku: event yang berjalan lintas bulan tidak dikenai biaya tambahan.',
                 'is_active' => true,
                 'sort_order' => 10,
             ],
             [
                 'question' => 'Cabang olahraga apa saja yang didukung?',
-                'answer' => 'Saat ini sepak bola, futsal, badminton, padel, dan voli — masing-masing dengan aturan skor, statistik, dan klasemen yang sesuai. Basket dan tenis menyusul di roadmap berikutnya.',
+                'answer' => 'Sembilan cabang: sepak bola, mini soccer, futsal, voli, basket, badminton, tenis, tenis meja, dan padel — masing-masing dengan aturan skor, statistik, dan klasemen yang sesuai. Cabang raket juga mendukung nomor tunggal, ganda, dan beregu berpartai.',
                 'is_active' => true,
                 'sort_order' => 20,
             ],
             [
                 'question' => 'Bagaimana cara kerja generator sertifikat?',
-                'answer' => 'Kamu upload desain sertifikatmu sendiri (JPG/PNG), atur posisi tiap elemen — nama, tim, penghargaan, logo, tanda tangan — lalu generate batch. Setiap sertifikat dapat nomor unik dan QR verifikasi, bisa di-download ZIP atau dikirim via email (paket Pro ke atas).',
+                'answer' => 'Kamu upload desain sertifikatmu sendiri (JPG/PNG), atur posisi tiap elemen — nama, tim, penghargaan, logo, tanda tangan — lalu generate batch. Setiap sertifikat dapat nomor unik dan QR verifikasi, bisa di-download ZIP atau dikirim via email. Tersedia di paket Professional.',
                 'is_active' => true,
                 'sort_order' => 30,
             ],
             [
-                'question' => 'Apakah saya bisa upgrade atau downgrade paket?',
-                'answer' => 'Bisa, langsung dari dashboard kapan saja. Saat downgrade, fitur premium terkunci tapi seluruh data turnamenmu tetap aman dan tersimpan.',
+                'question' => 'Kalau event berikutnya butuh paket yang lebih besar?',
+                'answer' => 'Tinggal beli paket itu saat membuat event berikutnya. Paket dibeli per event dan menempel di event tersebut, jadi tidak ada upgrade atau downgrade yang tiba-tiba mengunci fitur di tengah turnamen yang sedang berjalan. Kamu bahkan boleh menjalankan dua event dengan paket berbeda di waktu yang sama. Kalau terlanjur salah pilih, hubungi kami selama paketnya belum dipakai untuk event.',
                 'is_active' => true,
                 'sort_order' => 40,
             ],
             [
                 'question' => 'Metode pembayaran apa yang tersedia?',
-                'answer' => 'Lewat Midtrans: Virtual Account semua bank besar, QRIS, e-wallet (GoPay/OVO/DANA/ShopeePay), serta kartu kredit/debit. Berlaku untuk langganan, biaya registrasi, dan pembelian tiket.',
+                'answer' => 'Lewat Midtrans: Virtual Account semua bank besar, QRIS, e-wallet (GoPay/OVO/DANA/ShopeePay), serta kartu kredit/debit. Berlaku untuk pembelian paket, biaya registrasi, dan pembelian tiket.',
                 'is_active' => true,
                 'sort_order' => 50,
             ],

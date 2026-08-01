@@ -23,8 +23,8 @@ import { unique } from "../fixtures/api";
 // race if they ran side by side.
 test.describe.configure({ mode: "serial" });
 
-test.describe("Langganan transfer manual — permukaan saat gateway hidup", () => {
-  test("antrean verifikasi langganan dapat dibuka dan jujur ketika kosong", async ({
+test.describe("Pembelian paket lewat transfer manual — permukaan saat gateway hidup", () => {
+  test("antrean verifikasi pembelian dapat dibuka dan jujur ketika kosong", async ({
     adminPage: page,
   }) => {
     // Reachable even while the gateway is up, deliberately: a plan bill that
@@ -32,7 +32,7 @@ test.describe("Langganan transfer manual — permukaan saat gateway hidup", () =
     // the moment Midtrans recovers would strand an organizer who has paid.
     await page.goto("/admin/plan-orders");
 
-    await expect(page.getByRole("heading", { name: "Verifikasi Langganan" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Verifikasi Pembelian Paket" })).toBeVisible();
 
     // The line that separates this queue from an organizer's own: this money
     // lands in flo-event's account, so approving is issuing a plan on trust.
@@ -48,14 +48,14 @@ test.describe("Langganan transfer manual — permukaan saat gateway hidup", () =
     ).toBeVisible();
   });
 
-  test("menu admin memuat antrean langganan", async ({ adminPage: page }) => {
+  test("menu admin memuat antrean pembelian paket", async ({ adminPage: page }) => {
     await page.goto("/admin");
 
-    const link = page.getByRole("link", { name: "Verifikasi Langganan" });
+    const link = page.getByRole("link", { name: "Verifikasi Pembelian" });
     await expect(link).toBeVisible();
 
     await link.click();
-    await expect(page).toHaveURL(/\/admin\/subscriptions$/);
+    await expect(page).toHaveURL(/\/admin\/plan-orders$/);
   });
 
   test("rekening penerima pembayaran paket tersimpan dan bertahan setelah reload", async ({

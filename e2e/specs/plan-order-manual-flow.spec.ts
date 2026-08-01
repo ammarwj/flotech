@@ -5,9 +5,14 @@ import { unique } from "../fixtures/api";
 import { largeBitmap } from "../fixtures/large-image";
 
 /**
- * Buying the first plan by bank transfer, end to end: onboarding → transfer →
- * super admin rejects → organizer re-uploads → super admin approves → the plan
- * is live.
+ * Buying the first plan by bank transfer, end to end: onboarding → create-event
+ * → transfer → super admin rejects → organizer re-uploads → super admin
+ * approves → the credit is ready to spend.
+ *
+ * Onboarding is one step now, and buying is no longer part of it. An
+ * organization exists without a plan and buys per event, so the picker lives on
+ * the create-event page — which is where onboarding drops you, and where this
+ * spec therefore has to go to reach a payment at all.
  *
  * ── Why this file is opt-out of the default run ──────────────────────────────
  *
@@ -26,7 +31,7 @@ import { largeBitmap } from "../fixtures/large-image";
  * The `@gateway-off` tag is filtered out of every other run by `grepInvert` in
  * playwright.config.ts, and that script pins `--workers=1`, so nothing else is
  * in flight while the switch is down. Never add a test here that doesn't need
- * the switch — it belongs in subscription-manual.spec.ts, which runs for free.
+ * the switch — it belongs in plan-order-manual.spec.ts, which runs for free.
  *
  * `afterAll` restores the switch even when the body fails; a crashed run would
  * otherwise leave the developer's database on manual transfer, which looks
@@ -93,26 +98,34 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     // A brand-new account with no organization at all — the `organizer` fixture
     // is no use here, because it hands out an org that already has a plan and
     // onboarding is precisely what we're testing.
-    const account = await api.registerUser("langganan");
+    const account = await api.registerUser("paket");
     const orgName = unique("EO Manual");
 
     await signIn(page, account.email);
 
-    // ── Step 1: the organization ──────────────────────────────────────────
+    // ── The organization, and that is the whole of onboarding ─────────────
     await page.goto("/onboarding");
     await expect(page.getByRole("heading", { name: "Buat organisasi" })).toBeVisible();
 
     await page.getByLabel("Nama organisasi").fill(orgName);
-    await page.getByRole("button", { name: "Lanjutkan" }).click();
+    await page.getByRole("button", { name: "Selesai" }).click();
 
-    // ── Step 2: the plan ──────────────────────────────────────────────────
-    await expect(page.getByRole("heading", { name: "Pilih paket" })).toBeVisible();
-    await page.getByRole("button", { name: "Pilih paket" }).first().click();
+    // Straight to creating an event — an organization needs to buy nothing to
+    // exist. No plan means no entitlements at all, not "unlimited", so the
+    // picker stands in for the form rather than beside it: the hidden form is
+    // what proves the gate held.
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
+    await expect(page.getByRole("heading", { name: "Pilih paket untuk event ini" })).toBeVisible();
+    await expect(page.getByLabel("Nama event")).toBeHidden();
 
-    // ── Step 3: exists only because the gateway is off ────────────────────
+    // ── Buying, with the gateway off ──────────────────────────────────────
     // No redirect to Midtrans, and — the invariant worth naming — no silent
-    // activation either: `mock` means "no server key", never "paid".
-    await expect(page.getByRole("heading", { name: "Selesaikan pembayaran" })).toBeVisible();
+    // activation either: `mock` means "no server key", never "paid". The
+    // transfer panel lives on the billing page, so a checkout that settled on
+    // the spot would land somewhere else entirely and this would fail.
+    await page.getByRole("button", { name: "Beli paket" }).first().click();
+
+    await expect(page).toHaveURL(/\/organizer\/billing$/);
     await expect(page.getByText("Transfer manual ke flo-event")).toBeVisible();
     await expect(page.getByText(PLATFORM_ACCOUNT.account_number)).toBeVisible();
     await expect(page.getByText(PLATFORM_ACCOUNT.account_holder)).toBeVisible();
@@ -121,18 +134,13 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await expect(page.getByText("Bukti terkirim, menunggu verifikasi admin")).toBeVisible();
 
     // ── The wait: in, but entitled to nothing ─────────────────────────────
-    await page.getByRole("button", { name: "Lihat dashboard" }).click();
-    await expect(page).toHaveURL(/\/organizer$/);
+    await page.goto("/organizer");
     await expect(page.getByText("Pembayaran paketmu sedang diverifikasi")).toBeVisible();
 
-    // No plan means no entitlements at all — not "unlimited". The create-event
-    // page is where an organizer first meets that, and the exact wording is
-    // load-bearing: EventLimitNotice has a second branch for "cap reached",
-    // which must not tell someone to cancel events they don't have.
+    // An unpaid bill is not a credit. The picker has to still be standing —
+    // otherwise an organizer could create an event on money that never arrived.
     await page.goto("/organizer/events/new");
-    await expect(page.getByText("Organisasimu belum punya paket")).toBeVisible();
-    // The notice replaces the form, not the page header — so the form is what
-    // proves the gate held.
+    await expect(page.getByRole("heading", { name: "Pilih paket untuk event ini" })).toBeVisible();
     await expect(page.getByLabel("Nama event")).toBeHidden();
 
     // ── The super admin turns the receipt down ────────────────────────────
@@ -187,15 +195,24 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await expect(toast(adminPage, /paket sudah aktif/i)).toBeVisible();
 
     await page.goto("/organizer/billing");
-    await expect(page.getByText("Tanpa paket")).toBeHidden();
     await expect(page.getByText("Transfer manual ke flo-event")).toBeHidden();
+    // What was bought is a credit, not an entitlement: it shows up waiting for
+    // an event rather than switching anything on. That section only renders for
+    // orders that are paid *and* unspent, so it is the assertion that separates
+    // "settled" from "activated".
+    await expect(page.getByRole("heading", { name: "Paket siap dipakai" })).toBeVisible();
     // A receipt is only issued once the money is in, so its button is the
     // cheapest proof the bill actually settled.
     await expect(page.getByRole("button", { name: "Kwitansi" })).toBeVisible();
 
-    // The banner is keyed off the org having no plan; it must let go now.
+    // The banner is keyed off a payment awaiting verification; it must let go.
     await page.goto("/organizer");
     await expect(page.getByText("Pembayaran paketmu sedang diverifikasi")).toBeHidden();
+
+    // And the credit is spendable: the picker steps aside for the real form.
+    await page.goto("/organizer/events/new");
+    await expect(page.getByLabel("Nama event")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pilih paket untuk event ini" })).toBeHidden();
   });
 
   /**
@@ -245,9 +262,9 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
 
     await page.goto("/onboarding");
     await page.getByLabel("Nama organisasi").fill(unique("EO Bukti"));
-    await page.getByRole("button", { name: "Lanjutkan" }).click();
-    await page.getByRole("button", { name: "Pilih paket" }).first().click();
-    await expect(page.getByRole("heading", { name: "Selesaikan pembayaran" })).toBeVisible();
+    await page.getByRole("button", { name: "Selesai" }).click();
+    await page.getByRole("button", { name: "Beli paket" }).first().click();
+    await expect(page.getByText("Transfer manual ke flo-event")).toBeVisible();
 
     const input = page.locator('input[type="file"]');
 
