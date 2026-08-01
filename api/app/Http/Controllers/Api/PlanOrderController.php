@@ -44,7 +44,12 @@ class PlanOrderController extends Controller
         /** @var Organization $org */
         $org = $request->attributes->get('organization');
 
-        $orders = $org->planOrders()->with(['plan', 'event'])->latest()->get();
+        // `plan.features`, not just `plan`: PlanResource emits both `features`
+        // and `feature_details` behind whenLoaded('features'), and the
+        // create-event form reads the caps out of `features` to disable the
+        // controls a plan does not allow. Without it every cap reads as
+        // unlimited and the form only finds out on submit.
+        $orders = $org->planOrders()->with(['plan.features', 'event'])->latest()->get();
 
         return ApiResponse::success(EventPlanOrderResource::collection($orders));
     }

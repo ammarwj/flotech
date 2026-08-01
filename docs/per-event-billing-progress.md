@@ -337,7 +337,22 @@ Dijalankan dengan user baru di DB dev. **Semua lulus.**
 | Redirect rute lama | ✅ 308 ke `/organizer/plans`, `/organizer/billing`, `/admin/plan-orders` |
 | Jejak siklus di HTML | ✅ tidak ada `data-billing`/`bill-switch`; suffix hanya `/event` |
 
-**Belum diverifikasi lewat browser sungguhan** — Chrome memblokir `localhost:3000` (butuh izin site di extension). Yang diuji di atas adalah kontrak API + SSR, bukan interaksi klik.
+### Verifikasi lewat browser (setelah izin site diberikan)
+
+| Permukaan | Hasil |
+|---|---|
+| `/pricing` | ✅ 3 kartu `/event`, tanpa toggle, "Paling Populer" di Pro, matriks fitur persis tabel target, footnote fee 3/2/1% |
+| Sidebar | ✅ "Pembelian Paket" (bukan "Langganan") |
+| `/organizer/events/new` **tanpa** kredit | ✅ pemilih paket inline, form tidak muncul |
+| `/organizer/events/new` **dengan** kredit | ✅ banner "Kamu punya 1 paket yang belum dipakai" + form |
+| Cap proaktif di form | ✅ "Maks 32", hint paket, tombol "Tambah kategori" **mati**, baris "Paket Starter: maks 1 kategori, 32 peserta per kategori." |
+| `/organizer/billing` | ✅ "Paket siap dipakai" + riwayat yang menyebut event tiap order |
+| PDF invoice | ✅ kolom **Event** berisi nama event, "Berlaku untuk 1 event", status **Lunas** |
+
+**Dua bug ditemukan dan diperbaiki lewat verifikasi ini** — keduanya tidak akan tertangkap oleh typecheck atau test API:
+
+1. **`PlanOrderController::index` hanya eager-load `plan`, bukan `plan.features`.** Akibatnya `features` kosong, semua cap terbaca *unlimited*, dan form tidak mematikan kontrol apa pun. Gate server tetap menolak — jadi gejalanya adalah user mengisi seluruh form lalu ditolak saat submit, persis yang gate proaktif ada untuk mencegahnya.
+2. **`invoice.blade.php` masih memetakan status lama.** `@default` jatuh ke "Kedaluwarsa", jadi setiap invoice **lunas** tercetak "Kedaluwarsa". Nilai `active` sudah tidak ada; sekarang `paid` → "Lunas" dan default → "Menunggu pembayaran" (order paket tidak punya jam yang bisa habis).
 
 **Data uji tertinggal di DB dev**: org `eo-uji-perevent` dengan 2 event, 2 order, 2 pesanan tiket, 15 foto. Hapus kalau mengganggu.
 

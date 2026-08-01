@@ -131,7 +131,7 @@ class EventPlanOrderService
         }
 
         return [
-            'order' => $order->load('plan'),
+            'order' => $order->load('plan.features'),
             'snap_token' => null,
             'redirect_url' => null,
             'mock' => false,
@@ -170,7 +170,7 @@ class EventPlanOrderService
         }
 
         return [
-            'order' => $order->load('plan'),
+            'order' => $order->load('plan.features'),
             'snap_token' => $snap['token'],
             'redirect_url' => $snap['redirect_url'],
             'mock' => $snap['mock'],

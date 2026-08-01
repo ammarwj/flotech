@@ -15,11 +15,15 @@
     <tr>
         <td class="key muted">Status</td>
         <td>
+            {{-- The status set is past_due | paid | cancelled. The default is
+                 deliberately the pending wording, not an "expired" one: a plan
+                 order has no clock to run out, and a document that invents a
+                 state the column cannot hold is worse than one that guesses
+                 conservatively. --}}
             @switch($order->status)
-                @case('active') Lunas @break
-                @case('past_due') Menunggu pembayaran @break
+                @case('paid') Lunas @break
                 @case('cancelled') Dibatalkan @break
-                @default Kedaluwarsa
+                @default Menunggu pembayaran
             @endswitch
         </td>
     </tr>
