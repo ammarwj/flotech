@@ -314,6 +314,33 @@ Checklist verifikasi manual (19 poin, §10 rencana):
 
 ---
 
+## Verifikasi alur beli → buat event (2026-08-01, lewat API + SSR)
+
+Dijalankan dengan user baru di DB dev. **Semua lulus.**
+
+| Yang diuji | Hasil |
+|---|---|
+| Registrasi → buat org **tanpa** `plan_id` | ✅ payload org tidak lagi punya `plan_id`/`plan_expires_at`/`plan` |
+| Buat event **tanpa** kredit | ✅ 403 `plan_order_required` |
+| Checkout Starter | ✅ `past_due`, `INV/2026/08/0001`, `event_id: null` |
+| Settle (jalur webhook) | ✅ `paid` + `KW/2026/08/0001`, **`event_id` tetap null** — kredit, bukan entitlement |
+| `unconsumed_plan_orders_count` | ✅ 0 → 1 setelah lunas → 0 setelah dipakai |
+| Buat event dengan kredit | ✅ `plan=Starter` menempel di event |
+| Buat event **kedua** | ✅ 403, dan jumlah event tetap **1** (bukan cuma 403 — kreditnya benar-benar habis) |
+| `max_categories` (Starter=1) | ✅ tolak 2 kategori, `max_categories` |
+| `max_teams_per_category` (32) | ✅ 422 di `categories.0.max_teams`, bukan 403 |
+| `qr_tickets` (Starter punya) | ✅ kategori tiket dibuat |
+| **Dua event, satu org, entitlement berbeda** | ✅ galeri & sponsor: **tolak** di Starter, **izinkan** di Professional |
+| Cap galeri = total event, bukan per-request | ✅ 1+20 ditolak, 1+14 lolos (=15), +1 ditolak |
+| **Fee dari paket event** | ✅ tiket Rp50.000 identik → **3%** (Starter) vs **1%** (Professional) |
+| Halaman frontend | ✅ `/`, `/pricing`, `/organizer/plans`, `/organizer/billing`, `/organizer/events/new`, `/onboarding` semua 200 |
+| Redirect rute lama | ✅ 308 ke `/organizer/plans`, `/organizer/billing`, `/admin/plan-orders` |
+| Jejak siklus di HTML | ✅ tidak ada `data-billing`/`bill-switch`; suffix hanya `/event` |
+
+**Belum diverifikasi lewat browser sungguhan** — Chrome memblokir `localhost:3000` (butuh izin site di extension). Yang diuji di atas adalah kontrak API + SSR, bukan interaksi klik.
+
+**Data uji tertinggal di DB dev**: org `eo-uji-perevent` dengan 2 event, 2 order, 2 pesanan tiket, 15 foto. Hapus kalau mengganggu.
+
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 
 - [ ] Daftar admin untuk kredit lunas menganggur > N hari + email pengingat (§11.1)
