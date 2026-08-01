@@ -63,12 +63,20 @@ pun yang membuka landing dev, jadi spec yang membuatnya wajib menyapunya lagi.
 punya entitlement sama sekali (`PlanGate::withinLimit()` menolaknya lebih dulu)
 dan bahkan tidak bisa membuat event. `createOrg()` karena itu mengirim `plan_id`
 — defaultnya `pro`, override per spec kalau yang diuji justru batas paketnya.
-⚠️ **Fixture `grantCredit` belum jalan.** Paket kini dibeli per event: `createEvent`
-menghabiskan satu plan order yang sudah lunas, dan tidak ada jalan mengaturnya lewat
-API selama `MIDTRANS_SERVER_KEY` terisi di `api/.env` — checkout mengembalikan
-redirect Snap sungguhan dan meninggalkan ordernya `past_due`. Lihat komentar di
-`fixtures/api.ts` untuk dua jalan keluarnya. Sampai itu diputuskan, spec yang
-membuat event akan gagal di setup.
+Paket dibeli per event: `createEvent` menghabiskan satu plan order yang sudah lunas,
+dan `grantCredit` mengaturnya dengan **mem-POST notifikasi Midtrans sendiri** —
+signature-nya cuma `sha512(order_id + status_code + gross_amount + server_key)`.
+
+Karena itu e2e butuh **`MIDTRANS_SERVER_KEY`** di environment-nya (key sandbox yang
+sama dengan di `api/.env`):
+
+```
+MIDTRANS_SERVER_KEY=SB-Mid-server-xxx bun run test
+```
+
+Sengaja tidak memakai jalan yang lebih mudah — menjalankan API tanpa server key
+sama sekali. Itu membuat `openSnap()` melunasi di tempat dan **melewati webhook**,
+jadi baik pemeriksaan signature maupun routing order id tidak akan pernah teruji.
 
 **API dipakai untuk menyiapkan, browser untuk menguji.** Yang dibuktikan sebuah
 test hidup di UI; yang sekadar perlu ada sebelumnya dibangun lewat `fixtures/api.ts`,

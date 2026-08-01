@@ -369,19 +369,24 @@ Dijalankan dengan user baru di DB dev. **Semua lulus.**
 | Reassign paket oleh **super_admin** | ✅ event pindah Starter → Professional, dan galeri yang tadinya **ditolak** di event yang sama jadi **diizinkan** |
 | Buku order setelah reassign | ✅ order lama dilepas (bukan dihapus), **tidak ada event dengan 2 order** |
 
-## ⛔ Blokir: e2e tidak bisa mengatur kredit lunas
+## Jalur webhook Midtrans — terverifikasi, dan itu yang membuka blokir e2e
 
-`createEvent` sekarang menghabiskan plan order yang **sudah lunas**, dan tidak ada cara mengaturnya lewat API selama `MIDTRANS_SERVER_KEY` terisi di `api/.env`: `plan-orders/checkout` mengembalikan redirect Snap sungguhan dan meninggalkan ordernya `past_due`.
+Signature webhook cuma `sha512(order_id + status_code + gross_amount + server_key)`, dan key-nya ada di `api/.env`. Artinya notifikasi Midtrans bisa **dikirim sendiri** tanpa Midtrans dan tanpa tunnel.
 
-Satu-satunya jalur pelunasan yang ada adalah rel manual (gateway dimatikan → unggah bukti → super_admin acc), tapi kill switch-nya **platform-wide** — suite ini sengaja men-serialize spec `@gateway-off` justru karena keadaan itu tidak bisa diisolasi. Membayar ongkos itu di setup tiap spec tidak layak.
+Diuji langsung (2026-08-01):
 
-Dua jalan keluar, keduanya butuh **keputusan**, bukan tebakan:
+| Uji | Hasil |
+|---|---|
+| Webhook `PLN-` + signature benar | `past_due` → **`paid`** + kwitansi terbit |
+| `event_id` setelah settle | **tetap null** — kredit, bukan entitlement |
+| Webhook `SUB-` (id lama sebelum rename) | **ikut settle** lewat arm `default` |
+| Signature salah | **403 "Signature tidak valid."** |
 
-**(a) Jalankan e2e dengan `MIDTRANS_SERVER_KEY` kosong.** `openSnap()` sudah punya kemudahan dev ini — `$snap['mock']` melunasi di tempat. Perubahan konfigurasi, tanpa kode baru. Konsekuensinya spec pembayaran gateway sungguhan tidak bisa diuji di run yang sama.
+`fixtures/api.ts::grantCredit` memakai jalur ini, dan `createEvent` memanggilnya. **E2E butuh `MIDTRANS_SERVER_KEY` di environment-nya.**
 
-**(b) Tambah endpoint super_admin "comp paket".** Kebutuhan bisnis nyata (support, itikad baik, kompensasi), tapi juga permukaan keamanan baru: ia memberi entitlement tanpa uang masuk.
+Sengaja **bukan** opsi "jalankan API tanpa server key": itu membuat `openSnap()` melunasi di tempat dan **melewati webhook sepenuhnya**, jadi baik pemeriksaan signature maupun routing order id tidak akan pernah teruji. Jalur ini justru menutup keduanya.
 
-`fixtures/api.ts::grantCredit` sengaja **melempar error** alih-alih diam-diam tidak mengatur apa-apa.
+> **MCP Midtrans tidak relevan untuk ini.** Kendalanya bukan cara bicara ke Midtrans, melainkan notifikasi sandbox harus **sampai** ke API — `localhost:8000` tidak terjangkau dari server mereka, jadi itu butuh tunnel + webhook URL di dashboard. Berguna untuk eksplorasi manual, bukan untuk test otomatis.
 
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 

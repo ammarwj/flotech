@@ -1,5 +1,7 @@
 import type { APIRequestContext } from "@playwright/test";
 
+import { createHash } from "node:crypto";
+
 import { API_URL } from "../playwright.config";
 
 /** Every API response is wrapped in the same envelope (see App\Support\ApiResponse). */
@@ -157,28 +159,63 @@ export class Api {
   /**
    * A paid, unspent plan order — the credit `createEvent` spends.
    *
-   * ⚠️ UNRESOLVED. There is no way to arrange one through the API while
-   * MIDTRANS_SERVER_KEY is populated in api/.env: `plan-orders/checkout` returns
-   * a real Snap redirect and leaves the order `past_due`. The only settling path
-   * that exists is the manual rail (gateway off → upload proof → super admin
-   * approves), and the kill switch is platform-wide — the suite serializes
-   * `@gateway-off` specs precisely because it cannot be isolated, so every spec
-   * paying that cost in setup is not viable.
+   * Settled by posting the Midtrans notification ourselves rather than by
+   * paying: `plan-orders/checkout` returns a real Snap redirect and leaves the
+   * order `past_due`, and nothing else moves it. The signature is just
+   * sha512(order_id + status_code + gross_amount + server_key), so with the key
+   * in hand this is exactly the callback Midtrans would send.
    *
-   * Two ways out, both needing a decision rather than a guess:
-   *   a) run e2e against an API with MIDTRANS_SERVER_KEY blank, which is the
-   *      dev convenience openSnap() already has (`$snap['mock']` settles on the
-   *      spot) — a config change, no new code;
-   *   b) add a super_admin "comp a plan" endpoint, which is a real business
-   *      need (support, goodwill) but also a real new security surface.
+   * Deliberately not the alternative of running the API with
+   * MIDTRANS_SERVER_KEY blank: that makes openSnap() settle on the spot and
+   * skips the webhook entirely, so neither the signature check nor the order-id
+   * routing would ever be exercised. This way the fixture pays for itself by
+   * covering both.
    *
-   * Until then this throws rather than silently arranging nothing.
+   * Requires MIDTRANS_SERVER_KEY in the e2e environment — the same sandbox key
+   * api/.env already holds.
    */
-  async grantCredit(_token: string, _orgId: string, _plan: PlanSlug = "pro"): Promise<never> {
-    throw new Error(
-      "grantCredit belum diimplementasikan — lihat komentar di fixtures/api.ts. " +
-        "e2e butuh keputusan: jalankan API tanpa MIDTRANS_SERVER_KEY, atau tambah endpoint comp paket."
-    );
+  async grantCredit(token: string, orgId: string, plan: PlanSlug = "pro"): Promise<string> {
+    const serverKey = process.env.MIDTRANS_SERVER_KEY;
+    if (!serverKey) {
+      throw new Error(
+        "MIDTRANS_SERVER_KEY tidak ada di environment e2e. Kredit paket disetel " +
+          "lewat webhook Midtrans, dan signature-nya butuh key itu (lihat e2e/README.md)."
+      );
+    }
+
+    const checkout = await this.request.post(`${API_URL}/organizations/${orgId}/plan-orders/checkout`, {
+      headers: this.auth(token),
+      data: { plan_id: await this.planId(plan) },
+    });
+    const result = await this.unwrap<{
+      plan_order: { id: string; amount: number; midtrans_order_id: string | null };
+    }>(checkout, `Checkout paket ${plan}`);
+
+    const order = result.plan_order;
+    if (!order.midtrans_order_id) {
+      throw new Error("Checkout tidak menghasilkan order id Midtrans — gateway sedang mati?");
+    }
+
+    // Midtrans sends gross_amount with two decimals.
+    const gross = order.amount.toFixed(2);
+    const statusCode = "200";
+    const signature = createHash("sha512")
+      .update(order.midtrans_order_id + statusCode + gross + serverKey)
+      .digest("hex");
+
+    const webhook = await this.request.post(`${API_URL}/webhooks/midtrans`, {
+      data: {
+        order_id: order.midtrans_order_id,
+        status_code: statusCode,
+        gross_amount: gross,
+        signature_key: signature,
+        transaction_status: "settlement",
+        payment_type: "bank_transfer",
+      },
+    });
+    await this.unwrap(webhook, `Settle paket ${plan}`);
+
+    return order.id;
   }
 
   /**
@@ -191,6 +228,11 @@ export class Api {
    * overrides any spec uses — `max_teams`, `registration_fee` — are category-level).
    */
   async createEvent(token: string, orgId: string, overrides: Record<string, unknown> = {}): Promise<Event> {
+    // Creating an event spends a paid plan order, so arrange one first. `pro` is
+    // the roomiest catalogue plan that still isn't unlimited, which is what the
+    // cap-related specs downstream want.
+    await this.grantCredit(token, orgId);
+
     const res = await this.request.post(`${API_URL}/organizations/${orgId}/events`, {
       headers: this.auth(token),
       data: {
