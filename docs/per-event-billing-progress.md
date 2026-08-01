@@ -40,7 +40,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 6 | Exporter Excel/PDF + katup super_admin | `[x]` |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[x]` |
 | 8 | Halaman frontend | `[x]` |
-| 9 | Test backend + e2e | `[ ]` |
+| 9 | Test backend + e2e | `[x]` *(e2e: fixture kredit terblokir, lihat catatan)* |
 | 10 | Docs (`CLAUDE.md`) + verifikasi manual | `[ ]` |
 
 ---
@@ -259,32 +259,32 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `admin/subscriptions/page.tsx` → `admin/plan-orders/page.tsx` — tambah kolom event
 - [x] `grep -rn "data-billing\|bill-switch\|billing_cycle\|price_monthly\|BillingCycle" web` → nol hasil
 
-## Tahap 9 — Test baru
+## Tahap 9 — Test baru  ✅ *(19 test komparatif + 5 test backfill lulus; e2e terblokir)*
 
 > Fixture (`CreatesPlannedEvents`) dan migrasi 45 file test sudah selesai di **Tahap 3**; perbaikan test lain sudah dikerjakan di tahap penyebabnya. Tahap ini tinggal **menambah** test yang membuktikan perilaku baru.
 
 19 test baru §9.2 — **semuanya komparatif** (assert satu nilai akan lolos walau fiturnya tidak pernah jalan):
-- [ ] 1. dua event satu org → entitlement berbeda *(kunci utama)*
-- [ ] 2. `platform_fee` dari paket **event**, bukan org (3% vs 1%, harga identik, satu test)
-- [ ] 3. fee pendaftaran key sama + manual = 0 **dengan ledger kosong** di kedua paket
-- [ ] 4. kredit lunas dipakai **tepat sekali** (assert jumlah event 0→1→**1**)
-- [ ] 5. organizer bisa memilih kredit mana yang dipakai (assert Starter **masih** utuh)
-- [ ] 6. event mempertahankan paketnya walau paket lebih besar dibeli belakangan
-- [ ] 7. `max_categories` menolak **seluruh** create (assert event **dan** `event_id` tak tersentuh)
-- [ ] 8. `max_teams` kategori tidak boleh lewat cap paket (422 + kasus yang lolos di test yang sama)
-- [ ] 9. cap per **kategori**, bukan per event (2+2 lolos, ke-3 di A gagal)
-- [ ] 10. cap galeri menghitung **total event**, bukan satu request (10 lolos, 10 berikutnya ditolak)
-- [ ] 11. galeri ditolak tanpa boolean-nya *(jebakan "null lolos bebas")*
-- [ ] 12. logo sponsor ditolak di Starter, diterima di Pro (body identik byte-per-byte)
-- [ ] 13. profil publik baru kaya setelah ada event yang membawanya
-- [ ] 14. key pensiun **tidak memberi apa-apa**
-- [ ] 15. `events:backfill-plan` idempoten (**jalankan dua kali**)
-- [ ] 16. `activate()` idempoten **dan tidak menulis ke `organizations`**
-- [ ] 17. `online_registration` & `qr_tickets` bisa dimatikan per event
-- [ ] 18. export butuh paket (403 vs file non-kosong, satu test)
-- [ ] 19. operator tidak bisa membuat event
-- [ ] `php artisan test` hijau (kecuali 2–3 flaky baseline)
-- [ ] E2E: `subscription-manual*.spec.ts`, `auth-onboarding.spec.ts`, `fixtures/api.ts` + spec baru **beli → buat → terpakai**
+- [x] 1. dua event satu org → entitlement berbeda *(kunci utama)*
+- [x] 2. `platform_fee` dari paket **event**, bukan org (3% vs 1%, harga identik, satu test)
+- [x] 3. fee pendaftaran key sama + manual = 0 **dengan ledger kosong** di kedua paket
+- [x] 4. kredit lunas dipakai **tepat sekali** (assert jumlah event 0→1→**1**)
+- [x] 5. organizer bisa memilih kredit mana yang dipakai (assert Starter **masih** utuh)
+- [x] 6. event mempertahankan paketnya walau paket lebih besar dibeli belakangan
+- [x] 7. `max_categories` menolak **seluruh** create (assert event **dan** `event_id` tak tersentuh)
+- [x] 8. `max_teams` kategori tidak boleh lewat cap paket (422 + kasus yang lolos di test yang sama)
+- [x] 9. cap per **kategori**, bukan per event (2+2 lolos, ke-3 di A gagal)
+- [x] 10. cap galeri menghitung **total event**, bukan satu request (10 lolos, 10 berikutnya ditolak)
+- [x] 11. galeri ditolak tanpa boolean-nya *(jebakan "null lolos bebas")*
+- [x] 12. logo sponsor ditolak di Starter, diterima di Pro (body identik byte-per-byte)
+- [x] 13. profil publik baru kaya setelah ada event yang membawanya
+- [x] 14. key pensiun **tidak memberi apa-apa**
+- [x] 15. `events:backfill-plan` idempoten (**jalankan dua kali**)
+- [x] 16. `activate()` idempoten **dan tidak menulis ke `organizations`**
+- [x] 17. `online_registration` & `qr_tickets` bisa dimatikan per event
+- [x] 18. export butuh paket (403 vs file non-kosong, satu test)
+- [x] 19. operator tidak bisa membuat event
+- [x] `php artisan test` hijau (kecuali 2–3 flaky baseline)
+- [~] E2E: spec di-rename ke `plan-order-manual*.spec.ts`, rute & `billing_cycle` dibersihkan, typecheck lulus. **Tapi `fixtures/api.ts::grantCredit` belum bisa diimplementasikan** — lihat blokir di bawah. Spec baru "beli → buat → terpakai" menunggu itu.
 
 ## Tahap 10 — Docs + verifikasi manual
 
@@ -368,6 +368,20 @@ Dijalankan dengan user baru di DB dev. **Semua lulus.**
 | Reassign paket oleh **org admin** | ✅ 403 "Hanya untuk Super Admin." |
 | Reassign paket oleh **super_admin** | ✅ event pindah Starter → Professional, dan galeri yang tadinya **ditolak** di event yang sama jadi **diizinkan** |
 | Buku order setelah reassign | ✅ order lama dilepas (bukan dihapus), **tidak ada event dengan 2 order** |
+
+## ⛔ Blokir: e2e tidak bisa mengatur kredit lunas
+
+`createEvent` sekarang menghabiskan plan order yang **sudah lunas**, dan tidak ada cara mengaturnya lewat API selama `MIDTRANS_SERVER_KEY` terisi di `api/.env`: `plan-orders/checkout` mengembalikan redirect Snap sungguhan dan meninggalkan ordernya `past_due`.
+
+Satu-satunya jalur pelunasan yang ada adalah rel manual (gateway dimatikan → unggah bukti → super_admin acc), tapi kill switch-nya **platform-wide** — suite ini sengaja men-serialize spec `@gateway-off` justru karena keadaan itu tidak bisa diisolasi. Membayar ongkos itu di setup tiap spec tidak layak.
+
+Dua jalan keluar, keduanya butuh **keputusan**, bukan tebakan:
+
+**(a) Jalankan e2e dengan `MIDTRANS_SERVER_KEY` kosong.** `openSnap()` sudah punya kemudahan dev ini — `$snap['mock']` melunasi di tempat. Perubahan konfigurasi, tanpa kode baru. Konsekuensinya spec pembayaran gateway sungguhan tidak bisa diuji di run yang sama.
+
+**(b) Tambah endpoint super_admin "comp paket".** Kebutuhan bisnis nyata (support, itikad baik, kompensasi), tapi juga permukaan keamanan baru: ia memberi entitlement tanpa uang masuk.
+
+`fixtures/api.ts::grantCredit` sengaja **melempar error** alih-alih diam-diam tidak mengatur apa-apa.
 
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 

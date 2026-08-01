@@ -30,7 +30,7 @@ test.describe("Langganan transfer manual — permukaan saat gateway hidup", () =
     // Reachable even while the gateway is up, deliberately: a plan bill that
     // already carries a receipt never expires on its own, so hiding this page
     // the moment Midtrans recovers would strand an organizer who has paid.
-    await page.goto("/admin/subscriptions");
+    await page.goto("/admin/plan-orders");
 
     await expect(page.getByRole("heading", { name: "Verifikasi Langganan" })).toBeVisible();
 

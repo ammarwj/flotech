@@ -136,7 +136,7 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await expect(page.getByLabel("Nama event")).toBeHidden();
 
     // ── The super admin turns the receipt down ────────────────────────────
-    await adminPage.goto("/admin/subscriptions");
+    await adminPage.goto("/admin/plan-orders");
     await expect(adminPage.getByText(orgName)).toBeVisible();
 
     await openReview(adminPage, orgName);
@@ -173,7 +173,7 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await expect(adminPage.getByText(orgName)).toBeHidden();
 
     // ── The organizer sees why, and replaces it ───────────────────────────
-    await page.goto("/organizer/subscription");
+    await page.goto("/organizer/billing");
     await expect(page.getByText("Bukti sebelumnya ditolak")).toBeVisible();
     await expect(page.getByText("Nominal tidak cocok.")).toBeVisible();
 
@@ -181,12 +181,12 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await expect(page.getByText("Bukti terkirim, menunggu verifikasi admin")).toBeVisible();
 
     // ── Approved: the plan finally lands ──────────────────────────────────
-    await adminPage.goto("/admin/subscriptions");
+    await adminPage.goto("/admin/plan-orders");
     await openReview(adminPage, orgName);
     await adminPage.getByRole("dialog").getByRole("button", { name: "Terima pembayaran" }).click();
     await expect(toast(adminPage, /paket sudah aktif/i)).toBeVisible();
 
-    await page.goto("/organizer/subscription");
+    await page.goto("/organizer/billing");
     await expect(page.getByText("Tanpa paket")).toBeHidden();
     await expect(page.getByText("Transfer manual ke flo-event")).toBeHidden();
     // A receipt is only issued once the money is in, so its button is the

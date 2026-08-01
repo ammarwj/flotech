@@ -46,7 +46,7 @@ API/web mati atau seeder belum pernah dijalankan.
 | `public-header.spec.ts` | header publik yang sadar status login |
 | `platform-settings.spec.ts` | saklar payment gateway di `/admin/settings` (lihat "Transfer manual" di bawah) |
 | `landing-content.spec.ts` | FAQ & testimoni landing yang diedit super admin — konten, bukan kode |
-| `subscription-manual.spec.ts` | rekening penerima pembayaran paket + antrean `/admin/subscriptions` (aman paralel) |
+| `subscription-manual.spec.ts` | rekening penerima pembayaran paket + antrean `/admin/plan-orders` (aman paralel) |
 | `subscription-manual-flow.spec.ts` | beli paket lewat transfer manual, ujung ke ujung — **`@gateway-off`, tidak ikut run default** |
 
 ## Cara kerjanya
@@ -63,9 +63,12 @@ pun yang membuka landing dev, jadi spec yang membuatnya wajib menyapunya lagi.
 punya entitlement sama sekali (`PlanGate::withinLimit()` menolaknya lebih dulu)
 dan bahkan tidak bisa membuat event. `createOrg()` karena itu mengirim `plan_id`
 — defaultnya `pro`, override per spec kalau yang diuji justru batas paketnya.
-Paketnya dipasang langsung, bukan lewat `subscriptions/checkout`, karena
-`MIDTRANS_SERVER_KEY` terisi di `api/.env`: checkout memulangkan redirect Snap
-sungguhan dan meninggalkan org dalam keadaan belum bayar.
+⚠️ **Fixture `grantCredit` belum jalan.** Paket kini dibeli per event: `createEvent`
+menghabiskan satu plan order yang sudah lunas, dan tidak ada jalan mengaturnya lewat
+API selama `MIDTRANS_SERVER_KEY` terisi di `api/.env` — checkout mengembalikan
+redirect Snap sungguhan dan meninggalkan ordernya `past_due`. Lihat komentar di
+`fixtures/api.ts` untuk dua jalan keluarnya. Sampai itu diputuskan, spec yang
+membuat event akan gagal di setup.
 
 **API dipakai untuk menyiapkan, browser untuk menguji.** Yang dibuktikan sebuah
 test hidup di UI; yang sekadar perlu ada sebelumnya dibangun lewat `fixtures/api.ts`,

@@ -28,9 +28,6 @@ class PlanGate
      */
     private static array $memo = [];
 
-    /** @var array<string, array<string, bool>> */
-    private static array $orgMemo = [];
-
     public function value(Event $event, string $featureKey): ?string
     {
         return $this->planValue($event->plan, $featureKey);
@@ -121,10 +118,15 @@ class PlanGate
      *
      * Everything else must go through the event-keyed methods above. A third
      * caller appearing here is a sign that feature is really per-event.
+     *
+     * Deliberately not memoized, unlike planValue() above. This has exactly two
+     * callers and each asks once per request, so a cache would save nothing —
+     * while making the answer go stale the moment an event is created in the
+     * same request. One EXISTS query is the cheaper trade.
      */
     public function orgAllows(Organization $org, string $featureKey): bool
     {
-        return self::$orgMemo[$org->id][$featureKey] ??= $org->events()
+        return $org->events()
             ->whereHas('plan.features', fn ($q) => $q->where('feature_key', $featureKey)->where('value', 'true'))
             ->exists();
     }
@@ -133,6 +135,5 @@ class PlanGate
     public static function flush(): void
     {
         self::$memo = [];
-        self::$orgMemo = [];
     }
 }

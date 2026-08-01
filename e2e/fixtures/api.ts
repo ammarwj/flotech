@@ -143,23 +143,42 @@ export class Api {
   }
 
   /**
-   * An organization that can actually do something.
-   *
-   * There is no free tier: an org created without a plan has *no* entitlements
-   * (PlanGate::withinLimit denies a planless org outright), so it cannot even
-   * create an event — every spec downstream would fail in setup with a 403.
-   *
-   * The plan is set here rather than through `subscriptions/checkout` because
-   * MIDTRANS_SERVER_KEY is populated in api/.env: checkout returns a real Snap
-   * redirect and leaves the org *unpaid*, so it would arrange nothing. Buying a
-   * plan is not what these specs prove; having one is their precondition.
+   * A bare organization. It owns nothing yet — entitlements live on events now,
+   * and an event is created by spending a paid plan order (see `grantCredit`).
    */
-  async createOrg(token: string, name = unique("EO"), plan: PlanSlug = "pro"): Promise<Org> {
+  async createOrg(token: string, name = unique("EO")): Promise<Org> {
     const res = await this.request.post(`${API_URL}/organizations`, {
       headers: this.auth(token),
-      data: { name, plan_id: await this.planId(plan) },
+      data: { name },
     });
     return this.unwrap<Org>(res, `Buat organisasi ${name}`);
+  }
+
+  /**
+   * A paid, unspent plan order — the credit `createEvent` spends.
+   *
+   * ⚠️ UNRESOLVED. There is no way to arrange one through the API while
+   * MIDTRANS_SERVER_KEY is populated in api/.env: `plan-orders/checkout` returns
+   * a real Snap redirect and leaves the order `past_due`. The only settling path
+   * that exists is the manual rail (gateway off → upload proof → super admin
+   * approves), and the kill switch is platform-wide — the suite serializes
+   * `@gateway-off` specs precisely because it cannot be isolated, so every spec
+   * paying that cost in setup is not viable.
+   *
+   * Two ways out, both needing a decision rather than a guess:
+   *   a) run e2e against an API with MIDTRANS_SERVER_KEY blank, which is the
+   *      dev convenience openSnap() already has (`$snap['mock']` settles on the
+   *      spot) — a config change, no new code;
+   *   b) add a super_admin "comp a plan" endpoint, which is a real business
+   *      need (support, goodwill) but also a real new security surface.
+   *
+   * Until then this throws rather than silently arranging nothing.
+   */
+  async grantCredit(_token: string, _orgId: string, _plan: PlanSlug = "pro"): Promise<never> {
+    throw new Error(
+      "grantCredit belum diimplementasikan — lihat komentar di fixtures/api.ts. " +
+        "e2e butuh keputusan: jalankan API tanpa MIDTRANS_SERVER_KEY, atau tambah endpoint comp paket."
+    );
   }
 
   /**
