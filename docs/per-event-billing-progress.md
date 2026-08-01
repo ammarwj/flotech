@@ -45,6 +45,46 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 
 ---
 
+## Temuan kondisi DB prod (2026-08-01, sebelum migrasi apa pun)
+
+Diperiksa dari salinan prod di `flo_event`. **Seeder di repo sudah menyimpang dari prod** — admin rupanya sudah menyetel katalognya lewat `/admin/plans`.
+
+| | Seeder di repo | DB prod |
+|---|---|---|
+| Jumlah paket | 4 (`basic`, `starter`, `pro`, `professional`) | **3** — `basic` **tidak ada** |
+| Harga | basic 49rb · starter 149rb · pro 399rb · professional 999rb | **150rb · 350rb · 800rb** — sudah = harga target |
+| `feature_definitions` | 12 | 12 |
+| `plan_features` | — | 31 baris |
+
+Volume: `events` **100** · `organizations` **196** (176 punya paket) · `subscriptions` **32** (21 `active`).
+
+Matriks fitur prod saat ini:
+
+| key | starter | pro | professional | catatan |
+|---|---|---|---|---|
+| `max_active_events` | 1 | 1 | -1 | dipensiunkan |
+| `max_teams_per_event` | 32 | 128 | -1 | **angkanya sudah = target**, tinggal ganti makna jadi per-kategori |
+| `payment_gateway` | true | true | true | tetap |
+| `qr_tickets` | true | true | true | tetap |
+| `max_tickets_per_event` | 500 | 5000 | -1 | dipensiunkan |
+| `ticket_fee_percent` | 3 | 2 | 1 | **sudah identik dengan** `registration_fee_percent` |
+| `registration_fee_percent` | 3 | 2 | 1 | → dilebur jadi `platform_fee_percent` |
+| `certificate_generator` | `'false'` | `'false'` | true | sudah = target |
+| `certificate_email` | *(kosong)* | `'false'` | true | sudah = target |
+| `export_data` | `'false'` | true | true | sudah = target |
+| `custom_domain` | — | — | true | dipensiunkan |
+| `api_access` | — | — | true | dipensiunkan |
+
+**Konsekuensi yang harus ditangani:**
+
+1. **`basic` tidak ada di prod tapi masih dibuat seeder.** Langkah "pensiunkan `basic`" jadi no-op di prod (`where slug='basic'` kena 0 baris — aman), tapi **`migrate:fresh --seed` tetap akan melahirkannya**. Karena itu `basic` juga harus **dihapus dari `PlanSeeder`**, bukan cuma dipensiunkan lewat migrasi — kalau tidak, kedua jalur menghasilkan DB berbeda dan verifikasi silang gagal. Inilah drift yang langkah verifikasi itu memang ada untuk menangkapnya.
+2. **Peleburan dua key fee terbukti tidak kehilangan apa pun** — nilainya sudah identik di ketiga paket. Risiko yang ditulis §11.3 ternyata teoretis di data nyata.
+3. **`max_teams_per_event` 32/128/-1 sudah sama dengan target `max_teams_per_category`**, tapi **maknanya melonggar**: event dengan 3 kategori yang tadinya dibatasi 32 tim total kini boleh 32 per kategori. Semua event lama di-backfill ke Professional (unlimited) jadi tidak ada yang terdampak, tapi ini perlu disebut di catatan rilis.
+4. **Fitur "tidak dapat" disimpan sebagai `'false'` eksplisit di prod**, sementara rencana seeder menghilangkannya. Keduanya dirender dicoret oleh `PlanResource::isIncluded()`, jadi tampilannya sama — tapi supaya tidak ada dua representasi untuk satu arti, migrasi katalog **mengganti seluruh set fitur tiap paket** untuk 13 key terkelola (hapus key di luar set target, bukan cuma upsert).
+5. **Key yang belum ada sama sekali** dan harus lahir: `online_registration`, `max_categories`, `platform_fee_percent`, `sponsor_logos`, `organizer_profile`, `event_gallery`, `max_gallery_photos`.
+
+Backup pra-migrasi: `…/scratchpad/flo_event_pre_perevent.sql` (138 MB, `pg_dump` 2026-08-01). Scratchpad bersifat sementara — **ambil dump baru** kalau sesi berganti dan backup masih dibutuhkan.
+
 ## Katalog target (sumber kebenaran untuk seeder)
 
 | Item | Starter Rp150.000 | Pro Rp350.000 | Professional Rp800.000 |
