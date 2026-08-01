@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, Download } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { ExportButtons } from "@/components/event/export-buttons";
 import { crestGradient } from "@/lib/bracket";
-import { downloadCsv, slugifyFileName, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import type { Leaderboard } from "@/types/api";
 
@@ -27,17 +27,14 @@ function initials(name: string) {
  */
 export function LeaderboardTable({
   leaderboard,
-  eventName,
-  canExport = false,
+  exportFor,
 }: {
   leaderboard: Leaderboard;
-  /** Names the exported file. Without it, the export button is hidden. */
-  eventName?: string;
   /**
-   * Whether this event's plan includes `export_data`. Default false so the
-   * public view — which has no plan to ask — never renders the button.
+   * Where to download this table from. Omitted on the public view, which has no
+   * organization context and no plan to ask — so it renders no export at all.
    */
-  canExport?: boolean;
+  exportFor?: { orgId?: string; eventId: string; categoryId: string; enabled: boolean };
 }) {
   const { columns, primary, rows } = leaderboard;
   const [sortKey, setSortKey] = useState(primary);
@@ -70,21 +67,6 @@ export function LeaderboardTable({
     return acc;
   }, []);
 
-  const exportCsv = () => {
-    const csv = toCsv(
-      ["Peringkat", "No.", "Pemain", "Tim", ...columns.map((c) => c.label)],
-      sorted.map((r, i) => [
-        ranks[i],
-        r.jersey_number ?? "",
-        r.player_name,
-        r.team_name,
-        ...columns.map((c) => r.stats[c.key] ?? 0),
-      ])
-    );
-
-    downloadCsv(`statistik-pemain-${slugifyFileName(eventName ?? "event")}`, csv);
-  };
-
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -104,11 +86,16 @@ export function LeaderboardTable({
           ))}
         </Select>
 
-        {eventName && canExport && (
-          <Button variant="outline" size="sm" className="ml-auto" onClick={exportCsv}>
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+        {exportFor && (
+          <div className="ml-auto">
+            <ExportButtons
+              orgId={exportFor.orgId}
+              eventId={exportFor.eventId}
+              kind="leaderboard"
+              categoryId={exportFor.categoryId}
+              enabled={exportFor.enabled}
+            />
+          </div>
         )}
       </div>
 

@@ -37,7 +37,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 3 | `PlanGate` + call site backend | `[x]` |
 | 4 | Siklus order + rute + resource | `[x]` (digabung ke Tahap 3) |
 | 5 | Drop kolom paket di `organizations` | `[x]` |
-| 6 | Exporter Excel/PDF + katup super_admin | `[ ]` **ditunda ke setelah Tahap 8** |
+| 6 | Exporter Excel/PDF + katup super_admin | `[x]` |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[x]` |
 | 8 | Halaman frontend | `[x]` |
 | 9 | Test backend + e2e | `[ ]` |
@@ -215,15 +215,15 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] Hapus `plan_id` dari `StoreOrganizationRequest`
 - [x] Hapus 4× `->with('plan.features')` di `OrganizationController`
 
-## Tahap 6 — Exporter + katup super_admin  ⏸ *(ditunda: frontend didahulukan supaya aplikasi bisa dijalankan)*
+## Tahap 6 — Exporter + katup super_admin  ✅ *(selesai & diuji: xlsx/PDF asli, gate komparatif, katup admin)*
 
 > `maatwebsite/excel ^3.1` **sudah ada di `composer.json` tapi belum dipakai satu baris pun**; `barryvdh/laravel-dompdf` sudah dipakai sertifikat & invoice. **Tidak ada dependency baru.**
 
-- [ ] `app/Http/Controllers/Api/ExportController.php` — gate `export_data` di **baris pertama** tiap method
-- [ ] `app/Exports/{Registrations,TicketBuyers,Standings,Leaderboard}Export.php` — **pakai ulang** `StandingService` & `PlayerStatService::leaderboard()`, jangan tulis ulang agregasi (itu cara dua angka di layar yang sama jadi berbeda)
-- [ ] `resources/views/pdf/export.blade.php` — helper format **dioper sebagai view data**, bukan didefinisikan di layout (Blade menjalankan section anak sebelum layout)
-- [ ] Rute `GET organizations/{org}/events/{event}/exports/{kind}?format=xlsx|pdf` di bawah `tenant` + `org.admin`
-- [ ] `POST admin/events/{event}/reassign-plan` (§7) — unique index **tetap**; null-kan `event_id` lama lalu klaim baru dalam satu transaksi
+- [x] `app/Http/Controllers/Api/ExportController.php` — gate `export_data` di **baris pertama** tiap method
+- [x] `app/Exports/{Registrations,TicketBuyers,Standings,Leaderboard}Export.php` — **pakai ulang** `StandingService` & `PlayerStatService::leaderboard()`, jangan tulis ulang agregasi (itu cara dua angka di layar yang sama jadi berbeda)
+- [x] `resources/views/pdf/export.blade.php` — helper format **dioper sebagai view data**, bukan didefinisikan di layout (Blade menjalankan section anak sebelum layout)
+- [x] Rute `GET organizations/{org}/events/{event}/exports/{kind}?format=xlsx|pdf` di bawah `tenant` + `org.admin`
+- [x] `POST admin/events/{event}/reassign-plan` (§7) — unique index **tetap**; null-kan `event_id` lama lalu klaim baru dalam satu transaksi
 
 ## Tahap 7 — Tipe frontend + lib  ✅ *(selesai: `bun run build` hijau)*
 
@@ -249,7 +249,7 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `organizer/tickets/page.tsx` — empty state satu-halaman → **per-baris event**
 - [x] `organizer/certificates/page.tsx` + `generate/page.tsx` + template `new`/`[id]` (**yang terakhir belum punya gate sama sekali**)
 - [x] `organizer/events/[id]/media/page.tsx` — gate sponsor & galeri, tampilkan `n/15`
-- [~] Tombol export **di-gate** dengan `isExportEnabled(event)`, tapi masih CSV. Dropdown Excel/PDF + hapus `lib/csv.ts` menyusul di **Tahap 6** bersama exporter server. Label tombol leaderboard diperbaiki dari "Export Excel" (bohong — isinya CSV) jadi "Export CSV".
+- [x] Tombol export jadi **Excel + PDF sungguhan** lewat `ExportButtons`; `lib/csv.ts` dihapus. (Dua tombol, bukan dropdown — codebase ini tidak punya primitive dropdown dan formatnya cuma dua.)
 - [x] `components/subscription/plan-card.tsx` — hapus `BillingCycle`/`BillingCycleToggle`/prop `cycle`/baris coret/`Ditagih …/tahun`/badge hemat
 - [x] `components/landing/pricing.tsx` — tanpa toggle, `/event`, `platform_fee_percent`, **3 CTA self-serve** (mailto sales dilepas)
 - [x] `app/layout.tsx:52` — buang `data-billing`
@@ -356,9 +356,23 @@ Dijalankan dengan user baru di DB dev. **Semua lulus.**
 
 **Data uji tertinggal di DB dev**: org `eo-uji-perevent` dengan 2 event, 2 order, 2 pesanan tiket, 15 foto. Hapus kalau mengganggu.
 
+## Verifikasi Tahap 6 (2026-08-01)
+
+| Yang diuji | Hasil |
+|---|---|
+| Export di event **Starter** | ✅ 403 `export_data` |
+| Export di event **Professional** | ✅ xlsx asli (`Microsoft Excel 2007+`) & PDF asli |
+| Isi xlsx | ✅ header + data nyata (diperiksa lewat `sharedStrings.xml`) |
+| `standings` tanpa `category_id` | ✅ 422 dengan pesan yang menyebut field-nya |
+| Jenis export tak dikenal | ✅ 404 |
+| Reassign paket oleh **org admin** | ✅ 403 "Hanya untuk Super Admin." |
+| Reassign paket oleh **super_admin** | ✅ event pindah Starter → Professional, dan galeri yang tadinya **ditolak** di event yang sama jadi **diizinkan** |
+| Buku order setelah reassign | ✅ order lama dilepas (bukan dihapus), **tidak ada event dengan 2 order** |
+
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 
 - [ ] Daftar admin untuk kredit lunas menganggur > N hari + email pengingat (§11.1)
+- [ ] UI untuk `POST admin/events/{event}/reassign-plan` — endpoint & guard-nya sudah ada dan teruji, tapi belum ada tombolnya di `/admin/plan-orders`
 - [ ] Pertimbangkan mengganti label `max_teams_per_category` jadi "Entri per kategori" — "peserta" terbaca sebagai *orang*, padahal yang dihitung entri (§11.2)
 - [ ] Putuskan apakah butuh paket ke-4 `is_public: false` untuk deal enterprise, karena CTA "Hubungi Sales" dilepas (§11.4)
 

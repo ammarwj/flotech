@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
+use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
@@ -222,6 +223,13 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             // Status moves through its own guarded verb, never the form save.
             Route::patch('events/{event}/status', [EventController::class, 'updateStatus']);
+            // Downloads of this event's data. Behind org.admin with the rest of
+            // the data surface, and gated on the event's own `export_data` —
+            // this route exists precisely because gating /registrations instead
+            // would break the page that reads it.
+            Route::get('events/{event}/exports/{kind}', [ExportController::class, 'show'])
+                ->middleware('org.admin');
+
             Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
             // Offline registration: teams that signed up on paper or over chat.
             Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);
@@ -399,6 +407,9 @@ Route::prefix('v1')->group(function () {
             Route::get('plan-orders', [AdminPlanOrderController::class, 'index']);
             Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
             Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
+            // The escape hatch for an event stuck on the wrong plan — see the
+            // controller for why it is super_admin and not the organizer's own.
+            Route::post('events/{event}/reassign-plan', [AdminPlanOrderController::class, 'reassignPlan']);
 
             Route::get('wallets', [AdminWalletController::class, 'index']);
             Route::post('wallets/{wallet}/adjust', [AdminWalletController::class, 'adjust']);

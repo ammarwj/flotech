@@ -18,10 +18,10 @@ import {
 } from "lucide-react";
 
 import { getTicketOrders } from "@/lib/api/tickets";
-import { downloadCsv, slugifyFileName, toCsv } from "@/lib/csv";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
+import { ExportButtons } from "@/components/event/export-buttons";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -93,39 +93,6 @@ export default function TicketBuyersPage() {
   const soldTickets = paid.reduce((s, o) => s + o.quantity, 0);
   const revenue = paid.reduce((s, o) => s + o.total_price, 0);
 
-  const exportCsv = () => {
-    const csv = toCsv(
-      [
-        "Tanggal",
-        "Nama Pembeli",
-        "Email",
-        "Telepon",
-        "Kategori",
-        "Jumlah",
-        "Total",
-        "Status",
-        "Dibayar",
-        "Check-in",
-        "Nama di Tiket",
-      ],
-      visible.map((o) => [
-        fmtDateTime(o.created_at),
-        o.buyer_name,
-        o.buyer_email,
-        o.buyer_phone ?? "",
-        o.category?.name ?? "",
-        o.quantity,
-        o.total_price,
-        TICKET_ORDER_STATUS_LABELS[o.status],
-        fmtDateTime(o.paid_at),
-        `${(o.tickets ?? []).filter((t) => t.is_used).length}/${o.quantity}`,
-        (o.tickets ?? []).map((t) => t.holder_name ?? "—").join(", "),
-      ])
-    );
-
-    downloadCsv(`pembeli-tiket-${slugifyFileName(eventQuery.data?.name ?? "event")}`, csv);
-  };
-
   if (eventQuery.data && !ticketing) {
     return (
       <div>
@@ -160,15 +127,13 @@ export default function TicketBuyersPage() {
         backHref={`/organizer/events/${eventId}/tickets`}
         backLabel="Tiket"
         actions={
-          <Button
-            variant="outline"
-            onClick={exportCsv}
-            disabled={visible.length === 0 || !canExport}
-            title={canExport ? undefined : "Export tidak termasuk dalam paket event ini"}
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <ExportButtons
+            orgId={orgId ?? undefined}
+            eventId={eventId}
+            kind="ticket-buyers"
+            enabled={canExport}
+            size="default"
+          />
         }
       />
 

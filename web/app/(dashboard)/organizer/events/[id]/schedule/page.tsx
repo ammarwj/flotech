@@ -859,8 +859,12 @@ function ScheduleView() {
             {leaderboardQuery.data && (
               <LeaderboardTable
                 leaderboard={leaderboardQuery.data}
-                eventName={eventQuery.data?.name}
-                canExport={isExportEnabled(eventQuery.data)}
+                exportFor={{
+                  orgId: orgId ?? undefined,
+                  eventId,
+                  categoryId,
+                  enabled: isExportEnabled(eventQuery.data),
+                }}
               />
             )}
             {/* Same tab as the leaderboard on purpose: both are per-player
