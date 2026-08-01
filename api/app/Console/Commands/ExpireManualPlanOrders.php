@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
@@ -10,14 +10,14 @@ use Illuminate\Support\Carbon;
  * Cancel manual plan bills nobody ever paid.
  *
  * The sibling sweep on ticket orders exists to release held quota. This one
- * holds nothing — a subscription reserves no seats. What it enforces is the
+ * holds nothing — a plan order reserves no seats. What it enforces is the
  * deadline the transfer panel prints: an unenforced deadline is worse than
- * none, and without it "Bayar sekarang" would keep offering last month's price
+ * none, and without it "Bayar sekarang" would keep offering the price it was raised at
  * on a bill that has long since gone stale.
  *
  * A bill whose organizer *has* uploaded proof is never touched. That is also
- * what keeps Subscription::scopeAwaitingVerification() honest — it matches on
- * `status != 'active'`, so a cancelled row carrying a proof would sit in the
+ * what keeps EventPlanOrder::scopeAwaitingVerification() honest — it matches on
+ * `status != 'paid'`, so a cancelled row carrying a proof would sit in the
  * super admin's queue forever.
  *
  * Invoice numbers are not recycled, and that is deliberate: a cancelled invoice
@@ -26,15 +26,15 @@ use Illuminate\Support\Carbon;
  * filling gaps, so the sequence simply skips — which is already what happens to
  * an abandoned gateway checkout today.
  */
-class ExpireManualSubscriptions extends Command
+class ExpireManualPlanOrders extends Command
 {
-    protected $signature = 'subscriptions:expire-manual';
+    protected $signature = 'plan-orders:expire-manual';
 
     protected $description = 'Batalkan tagihan paket transfer manual yang lewat tenggat dan belum mengunggah bukti.';
 
     public function handle(): int
     {
-        $count = Subscription::query()
+        $count = EventPlanOrder::query()
             ->where('payment_method', 'manual')
             ->where('status', 'past_due')
             ->whereNull('payment_proof_url')

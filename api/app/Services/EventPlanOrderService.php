@@ -6,10 +6,10 @@ use App\Exceptions\PaymentException;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\SiteSetting;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Models\User;
-use App\Notifications\SubscriptionActivated;
-use App\Notifications\SubscriptionInvoiceIssued;
+use App\Notifications\PlanOrderPaid;
+use App\Notifications\PlanOrderInvoiceIssued;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -18,19 +18,19 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Owns the lifecycle of a plan subscription: checkout, retrying an unpaid
- * invoice, and applying a paid one to its organization.
+ * Owns the lifecycle of a plan order: checkout, retrying an unpaid invoice, and
+ * marking a paid one settled.
  *
- * Unlike ticket and registration payments, subscription money is the
- * platform's revenue — it never touches an organizer wallet. That holds on
- * both rails, which is why the "manual money must not touch the wallet"
- * invariant has nothing to say here.
+ * Unlike ticket and registration payments, plan money is the platform's own
+ * revenue — it never touches an organizer wallet. That holds on both rails,
+ * which is why the "manual money must not touch the wallet" invariant has
+ * nothing to say here.
  *
- * Numbering: a subscription gets its invoice number the moment it is created
- * (an unpaid invoice is still a document you can hand to finance) and its
- * receipt number only once it is actually paid.
+ * Numbering: an order gets its invoice number the moment it is created (an
+ * unpaid invoice is still a document you can hand to finance) and its receipt
+ * number only once it is actually paid.
  */
-class SubscriptionService
+class EventPlanOrderService
 {
     public function __construct(
         protected MidtransService $midtrans,
@@ -38,18 +38,20 @@ class SubscriptionService
     ) {}
 
     /**
-     * Create a pending subscription and open its payment. On the gateway rail
-     * that is a Snap transaction (and without Midtrans credentials the
-     * subscription activates immediately, a dev convenience); with the gateway
-     * switched off it is a manual transfer to the platform's own account.
+     * Create a pending plan order and open its payment. On the gateway rail
+     * that is a Snap transaction (and without Midtrans credentials the order
+     * settles immediately, a dev convenience); with the gateway switched off it
+     * is a manual transfer to the platform's own account.
      *
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     * No period is stamped. A plan is bought once for one event, so there is
+     * nothing to start or expire — what the order is waiting for is an event to
+     * be spent on, not a clock.
+     *
+     * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    public function checkout(Organization $org, Plan $plan, string $cycle): array
+    public function checkout(Organization $org, Plan $plan): array
     {
-        $amount = $cycle === 'yearly' ? (float) $plan->price_yearly : (float) $plan->price_monthly;
-        $startsAt = Carbon::now();
-        $expiresAt = $cycle === 'yearly' ? $startsAt->copy()->addYear() : $startsAt->copy()->addMonth();
+        $amount = (float) $plan->price;
 
         // Asked *before* the row exists: a refused checkout must not burn an
         // invoice number, and nextNumber() has no way to hand one back. A
@@ -57,25 +59,22 @@ class SubscriptionService
         $bank = $this->rails->platformDestination($amount);
         $manual = $bank !== null;
 
-        $subscription = $org->subscriptions()->create([
+        $order = $org->planOrders()->create([
             'plan_id' => $plan->id,
             'invoice_number' => $this->nextNumber('invoice'),
-            'billing_cycle' => $cycle,
             'amount' => $amount,
-            'status' => 'past_due', // awaiting payment; flips to active on settlement
-            'starts_at' => $startsAt,
-            'expires_at' => $expiresAt,
+            'status' => 'past_due', // awaiting payment; flips to paid on settlement
             'payment_method' => $manual ? 'manual' : 'gateway',
             'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
         ]);
 
-        $result = $this->start($subscription, $bank);
+        $result = $this->start($order, $bank);
 
         // Only when the bill is genuinely outstanding. Without a payment gateway
-        // configured openSnap() activates on the spot, and mailing "please pay"
+        // configured openSnap() settles on the spot, and mailing "please pay"
         // about an already-paid plan would be a lie.
-        if ($subscription->refresh()->status === 'past_due') {
-            $this->mail($subscription, fn (Subscription $s) => new SubscriptionInvoiceIssued($s));
+        if ($order->refresh()->status === 'past_due') {
+            $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderInvoiceIssued($o));
         }
 
         return $result;
@@ -95,44 +94,44 @@ class SubscriptionService
      * and the other way round. RegistrationService::startPayment() already
      * rewrites payment_method on every retry for the same reason — the
      * snapshot rule means "never derived at read time", not "frozen while
-     * unpaid". Nothing downstream of a subscription depends on the old value:
+     * unpaid". Nothing downstream of a plan order depends on the old value:
      * there is no wallet credit and no platform fee to keep consistent with it.
      *
      * The caller refuses this while a proof is under review, so a re-derive
      * can't strand one.
      *
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    public function pay(Subscription $subscription): array
+    public function pay(EventPlanOrder $order): array
     {
-        $bank = $this->rails->platformDestination((float) $subscription->amount);
+        $bank = $this->rails->platformDestination((float) $order->amount);
         $manual = $bank !== null;
 
-        $subscription->update([
+        $order->update([
             'payment_method' => $manual ? 'manual' : 'gateway',
             'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
         ]);
 
-        return $this->start($subscription, $bank);
+        return $this->start($order, $bank);
     }
 
     /**
-     * Open payment on whichever rail this subscription is on.
+     * Open payment on whichever rail this order is on.
      *
      * The manual branch returns before openSnap() ever runs. That is the point:
-     * `mock` means "no Midtrans server key", not "paid", and a manual
-     * subscription reaching that branch would activate a plan nobody paid for.
+     * `mock` means "no Midtrans server key", not "paid", and a manual order
+     * reaching that branch would hand out a credit nobody paid for.
      *
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    protected function start(Subscription $subscription, ?SiteSetting $bank): array
+    protected function start(EventPlanOrder $order, ?SiteSetting $bank): array
     {
         if ($bank === null) {
-            return $this->openSnap($subscription);
+            return $this->openSnap($order);
         }
 
         return [
-            'subscription' => $subscription->load('plan'),
+            'order' => $order->load('plan'),
             'snap_token' => null,
             'redirect_url' => null,
             'mock' => false,
@@ -142,31 +141,36 @@ class SubscriptionService
     }
 
     /**
-     * @return array{subscription: Subscription, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    protected function openSnap(Subscription $subscription): array
+    protected function openSnap(EventPlanOrder $order): array
     {
-        $org = $subscription->organization;
-        $orderId = 'SUB-'.Str::upper(Str::random(10));
+        $org = $order->organization;
+
+        // Newly minted ids carry PLN-; ids already at Midtrans keep their SUB-
+        // prefix and still settle, because MidtransWebhookController routes plan
+        // orders through its `default` arm rather than matching on the prefix.
+        // Adding a PLN- arm to that match would strand every outstanding SUB-.
+        $orderId = 'PLN-'.Str::upper(Str::random(10));
 
         $snap = $this->midtrans->createSnapTransaction(
-            ['order_id' => $orderId, 'gross_amount' => (int) round((float) $subscription->amount)],
+            ['order_id' => $orderId, 'gross_amount' => (int) round((float) $order->amount)],
             ['first_name' => $org->name, 'email' => $org->contact_email],
-            rtrim((string) config('app.frontend_url'), '/').'/organizer/subscription?status=success',
+            rtrim((string) config('app.frontend_url'), '/').'/organizer/billing?status=success',
         );
 
-        $subscription->update([
+        $order->update([
             'midtrans_order_id' => $orderId,
             'midtrans_token' => $snap['token'],
         ]);
 
         if ($snap['mock']) {
-            // No payment gateway configured — activate immediately for dev.
-            $this->activate($subscription);
+            // No payment gateway configured — settle immediately for dev.
+            $this->activate($order);
         }
 
         return [
-            'subscription' => $subscription->load('plan'),
+            'order' => $order->load('plan'),
             'snap_token' => $snap['token'],
             'redirect_url' => $snap['redirect_url'],
             'mock' => $snap['mock'],
@@ -176,32 +180,32 @@ class SubscriptionService
     }
 
     /**
-     * Apply a paid subscription to its organization.
+     * Mark a plan order paid.
+     *
+     * Nothing is written to the organization: a paid order is a *credit*, and it
+     * entitles nothing until an event spends it (EventController::store). The
+     * event does not exist yet at this point — the organizer pays first and
+     * creates the event afterwards — so there is nothing here to bind it to.
      *
      * Midtrans re-delivers webhooks, so this must be safe to run twice: an
      * already-issued receipt number is never reissued.
      */
-    public function activate(Subscription $subscription, ?string $paymentType = null): void
+    public function activate(EventPlanOrder $order, ?string $paymentType = null): void
     {
         // A receipt is only issued once, and so is the email carrying it. Without
         // this, a re-delivered webhook lands a second "you paid" in the inbox for
         // one payment.
-        $alreadyActive = $subscription->status === 'active';
+        $alreadyPaid = $order->status === 'paid';
 
-        $subscription->update([
-            'status' => 'active',
-            'paid_at' => $subscription->paid_at ?? Carbon::now(),
-            'receipt_number' => $subscription->receipt_number ?? $this->nextNumber('receipt'),
-            'payment_type' => $paymentType ?? $subscription->payment_type,
+        $order->update([
+            'status' => 'paid',
+            'paid_at' => $order->paid_at ?? Carbon::now(),
+            'receipt_number' => $order->receipt_number ?? $this->nextNumber('receipt'),
+            'payment_type' => $paymentType ?? $order->payment_type,
         ]);
 
-        $subscription->organization->update([
-            'plan_id' => $subscription->plan_id,
-            'plan_expires_at' => $subscription->expires_at,
-        ]);
-
-        if (! $alreadyActive) {
-            $this->mail($subscription, fn (Subscription $s) => new SubscriptionActivated($s));
+        if (! $alreadyPaid) {
+            $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderPaid($o));
         }
     }
 
@@ -210,17 +214,17 @@ class SubscriptionService
      *
      * @throws PaymentException
      */
-    public function submitProof(Subscription $subscription, string $proofUrl): void
+    public function submitProof(EventPlanOrder $order, string $proofUrl): void
     {
-        if (! $subscription->isManual()) {
+        if (! $order->isManual()) {
             throw new PaymentException('Tagihan ini tidak dibayar lewat transfer manual.');
         }
 
-        if ($subscription->status !== 'past_due') {
+        if ($order->status !== 'past_due') {
             throw new PaymentException('Tagihan ini sudah tidak menunggu pembayaran.');
         }
 
-        $subscription->attachProof($proofUrl);
+        $order->attachProof($proofUrl);
     }
 
     /**
@@ -230,26 +234,26 @@ class SubscriptionService
      *
      * @throws PaymentException
      */
-    public function approveProof(Subscription $subscription, User $admin): void
+    public function approveProof(EventPlanOrder $order, User $admin): void
     {
-        if (! $subscription->isAwaitingVerification()) {
+        if (! $order->isAwaitingVerification()) {
             throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
         }
 
-        $subscription->markVerified($admin);
-        $this->activate($subscription->fresh(), 'manual_transfer');
+        $order->markVerified($admin);
+        $this->activate($order->fresh(), 'manual_transfer');
     }
 
     /**
      * @throws PaymentException
      */
-    public function rejectProof(Subscription $subscription, string $reason, Carbon $deadline): void
+    public function rejectProof(EventPlanOrder $order, string $reason, Carbon $deadline): void
     {
-        if (! $subscription->isAwaitingVerification()) {
+        if (! $order->isAwaitingVerification()) {
             throw new PaymentException('Tidak ada bukti pembayaran yang menunggu verifikasi.');
         }
 
-        $subscription->rejectProof($reason, $deadline);
+        $order->rejectProof($reason, $deadline);
     }
 
     /**
@@ -257,17 +261,17 @@ class SubscriptionService
      * and the plan is applied, so a PDF render or queue hiccup must not bubble
      * into the Midtrans webhook and provoke a retry.
      *
-     * @param  callable(Subscription): Notification  $make
+     * @param  callable(EventPlanOrder): Notification  $make
      */
-    protected function mail(Subscription $subscription, callable $make): void
+    protected function mail(EventPlanOrder $order, callable $make): void
     {
         try {
-            $subscription->organization->owner?->notify(
-                $make($subscription->load(['plan', 'organization']))
+            $order->organization->owner?->notify(
+                $make($order->load(['plan', 'organization']))
             );
         } catch (Throwable $e) {
-            Log::error('Gagal mengirim email langganan', [
-                'subscription_id' => $subscription->id,
+            Log::error('Gagal mengirim email pembelian paket', [
+                'plan_order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
         }
@@ -292,7 +296,7 @@ class SubscriptionService
             // not allowed with aggregate functions"), so take the highest row and
             // lock *that* rather than locking a max(). Sequences are zero-padded,
             // so lexical order is numeric order.
-            $last = Subscription::where($column, 'like', "{$prefix}/{$period}/%")
+            $last = EventPlanOrder::where($column, 'like', "{$prefix}/{$period}/%")
                 ->orderByDesc($column)
                 ->lockForUpdate()
                 ->value($column);

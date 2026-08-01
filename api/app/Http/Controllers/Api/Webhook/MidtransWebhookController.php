@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api\Webhook;
 
 use App\Http\Controllers\Controller;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
 use App\Services\RegistrationService;
-use App\Services\SubscriptionService;
+use App\Services\EventPlanOrderService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -19,15 +19,20 @@ class MidtransWebhookController extends Controller
 {
     public function __construct(
         protected MidtransService $midtrans,
-        protected SubscriptionService $subscriptions,
+        protected EventPlanOrderService $orders,
         protected TicketService $tickets,
         protected RegistrationService $registration,
     ) {}
 
     /**
      * Handle Midtrans payment notification (HTTP callback). Routes by the
-     * order-id prefix: SUB- = subscription, TIX- = ticket order,
-     * REG- = team registration fee.
+     * order-id prefix: TIX- = ticket order, REG- = team registration fee, and
+     * everything else falls through to a plan order.
+     *
+     * Plan orders are matched by that `default` arm rather than by their own
+     * prefix on purpose. They used to be minted as SUB- and are now minted as
+     * PLN-; matching either prefix explicitly would strand every id of the
+     * other kind still outstanding at Midtrans.
      */
     public function handle(Request $request): JsonResponse
     {
@@ -45,27 +50,27 @@ class MidtransWebhookController extends Controller
         return match (true) {
             Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus),
             Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus),
-            default => $this->handleSubscription($orderId, $transactionStatus, $paymentType),
+            default => $this->handlePlanOrder($orderId, $transactionStatus, $paymentType),
         };
     }
 
     /**
      * This is the `default` arm above, so it also catches order ids with no
-     * prefix we recognise — which is safe: a manual subscription never gets a
+     * prefix we recognise — which is safe: a manual plan order never gets a
      * `midtrans_order_id` at all, so the lookup below cannot reach one and
      * settle a plan Midtrans was never asked about.
      */
-    protected function handleSubscription(string $orderId, string $status, ?string $paymentType = null): JsonResponse
+    protected function handlePlanOrder(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
-        $subscription = Subscription::where('midtrans_order_id', $orderId)->first();
-        if (! $subscription) {
-            return ApiResponse::error('Subscription tidak ditemukan.', null, 404);
+        $order = EventPlanOrder::where('midtrans_order_id', $orderId)->first();
+        if (! $order) {
+            return ApiResponse::error('Pembelian paket tidak ditemukan.', null, 404);
         }
 
         match ($status) {
-            'capture', 'settlement' => $this->subscriptions->activate($subscription, $paymentType),
-            'pending' => $subscription->update(['status' => 'past_due']),
-            'deny', 'cancel', 'expire' => $subscription->update(['status' => 'cancelled']),
+            'capture', 'settlement' => $this->orders->activate($order, $paymentType),
+            'pending' => $order->update(['status' => 'past_due']),
+            'deny', 'cancel', 'expire' => $order->update(['status' => 'cancelled']),
             default => null,
         };
 

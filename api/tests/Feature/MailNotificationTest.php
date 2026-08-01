@@ -9,12 +9,12 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Notifications\NewTeamRegistered;
 use App\Notifications\ResetPasswordNotification;
-use App\Notifications\SubscriptionActivated;
+use App\Notifications\PlanOrderPaid;
 use App\Notifications\TeamRegistrationSubmitted;
 use App\Notifications\TeamStatusChanged;
 use App\Notifications\WithdrawalCompleted;
 use App\Notifications\WithdrawalRejected;
-use App\Services\SubscriptionService;
+use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
@@ -35,7 +35,7 @@ class MailNotificationTest extends TestCase
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), 'price_monthly' => 50000, 'price_yearly' => 500000]);
+        $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), "price" => 50000, ]);
         $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => '10']);
 
         return Organization::create([
@@ -152,14 +152,14 @@ class MailNotificationTest extends TestCase
         $org = $this->org($owner);
         $plan = $org->plan;
 
-        $service = app(SubscriptionService::class);
-        $subscription = $service->checkout($org, $plan, 'monthly')['subscription'];
+        $service = app(EventPlanOrderService::class);
+        $subscription = $service->checkout($org, $plan)['order'];
 
         // Midtrans re-delivers; activate() runs twice for one payment.
         $service->activate($subscription->fresh());
         $service->activate($subscription->fresh());
 
-        Notification::assertSentToTimes($owner, SubscriptionActivated::class, 1);
+        Notification::assertSentToTimes($owner, PlanOrderPaid::class, 1);
     }
 
     public function test_the_organizer_hears_what_happened_to_their_payout(): void

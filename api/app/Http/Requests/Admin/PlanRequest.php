@@ -26,10 +26,10 @@ class PlanRequest extends FormRequest
                 Rule::unique('plans', 'slug')->ignore($planId),
             ],
             'description' => ['nullable', 'string'],
-            'price_monthly' => ['required', 'numeric', 'min:0'],
-            // No price_yearly: the controller derives it from the discount so the
-            // two can never disagree. See Plan::computeYearlyPrice().
-            'yearly_discount_percent' => ['numeric', 'min:0', 'max:100'],
+            // One price, charged once, for one event. There is no cycle to
+            // discount and nothing derived from this — what is typed here is
+            // what EventPlanOrderService charges.
+            'price' => ['required', 'numeric', 'min:0'],
             'is_active' => ['boolean'],
             'is_public' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],

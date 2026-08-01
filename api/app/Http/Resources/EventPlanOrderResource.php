@@ -3,20 +3,20 @@
 namespace App\Http\Resources;
 
 use App\Models\SiteSetting;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin Subscription
+ * @mixin EventPlanOrder
  */
-class SubscriptionResource extends JsonResource
+class EventPlanOrderResource extends JsonResource
 {
     /**
-     * The platform's account is one row shared by every subscription in the
-     * response, so it is resolved once per request rather than per row — same
-     * memoization PlanResource uses for feature definitions, and for the same
-     * reason: both /subscriptions and /admin/subscriptions render collections.
+     * The platform's account is one row shared by every order in the response,
+     * so it is resolved once per request rather than per row — same memoization
+     * PlanResource uses for feature definitions, and for the same reason: both
+     * /plan-orders and /admin/plan-orders render collections.
      */
     private static ?SiteSetting $platformAccount = null;
 
@@ -31,11 +31,19 @@ class SubscriptionResource extends JsonResource
             'plan_id' => $this->plan_id,
             'invoice_number' => $this->invoice_number,
             'receipt_number' => $this->receipt_number,
-            'billing_cycle' => $this->billing_cycle,
             'amount' => (float) $this->amount,
             'status' => $this->status,
-            'starts_at' => $this->starts_at,
-            'expires_at' => $this->expires_at,
+
+            // The consumption ledger. A paid order with `event_id: null` is a
+            // credit still waiting to be spent — the client filters on exactly
+            // this pair rather than calling a second endpoint for them.
+            'event_id' => $this->event_id,
+            'consumed_at' => $this->consumed_at,
+            'event' => $this->whenLoaded('event', fn () => [
+                'id' => $this->event->id,
+                'name' => $this->event->name,
+            ]),
+
             'midtrans_order_id' => $this->midtrans_order_id,
             'payment_type' => $this->payment_type,
             'paid_at' => $this->paid_at,

@@ -1,11 +1,10 @@
 {{--
-  Shared layout for the subscription billing documents. dompdf renders an old
+  Shared layout for the plan-order billing documents. dompdf renders an old
   HTML/CSS subset: tables for layout, no flexbox or grid.
 --}}
 @php
-    $org = $subscription->organization;
-    $plan = $subscription->plan;
-    $cycle = $subscription->billing_cycle === 'yearly' ? 'Tahunan' : 'Bulanan';
+    $org = $order->organization;
+    $plan = $order->plan;
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -76,22 +75,21 @@
     <table class="items">
         <tr>
             <th>Deskripsi</th>
-            <th style="width: 120px;">Periode</th>
+            <th style="width: 140px;">Event</th>
             <th class="right" style="width: 140px;">Jumlah</th>
         </tr>
         <tr>
             <td>
-                <div style="font-weight: bold;">Langganan paket {{ $plan?->name ?? '—' }}</div>
-                <div class="muted">Siklus {{ $cycle }}</div>
+                <div style="font-weight: bold;">Paket {{ $plan?->name ?? '—' }}</div>
+                <div class="muted">Berlaku untuk 1 event</div>
             </td>
-            <td class="muted">
-                {{ $date($subscription->starts_at) }}<br>s/d {{ $date($subscription->expires_at) }}
-            </td>
-            <td class="right">{{ $money($subscription->amount) }}</td>
+            {{-- A credit that has not been spent yet is still a valid document. --}}
+            <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
+            <td class="right">{{ $money($order->amount) }}</td>
         </tr>
         <tr class="total">
             <td colspan="2" class="right">Total</td>
-            <td class="right">{{ $money($subscription->amount) }}</td>
+            <td class="right">{{ $money($order->amount) }}</td>
         </tr>
     </table>
 

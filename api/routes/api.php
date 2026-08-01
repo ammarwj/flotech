@@ -11,7 +11,7 @@ use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
-use App\Http\Controllers\Api\Admin\SubscriptionController as AdminSubscriptionController;
+use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\ViewStatController as AdminViewStatController;
@@ -39,7 +39,7 @@ use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
-use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\PlanOrderController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
 use App\Http\Controllers\Api\UploadController;
@@ -203,13 +203,13 @@ Route::prefix('v1')->group(function () {
                 // is owner/admin only too.
                 Route::patch('/', [OrganizationController::class, 'update']);
                 Route::patch('plan', [OrganizationController::class, 'assignPlan']);
-                Route::get('subscriptions', [SubscriptionController::class, 'index']);
-                Route::post('subscriptions/checkout', [SubscriptionController::class, 'checkout']);
-                Route::post('subscriptions/{subscription}/pay', [SubscriptionController::class, 'pay']);
+                Route::get('plan-orders', [PlanOrderController::class, 'index']);
+                Route::post('plan-orders/checkout', [PlanOrderController::class, 'checkout']);
+                Route::post('plan-orders/{planOrder}/pay', [PlanOrderController::class, 'pay']);
                 // Transfer receipt for a manual plan payment (gateway is off).
-                Route::post('subscriptions/{subscription}/proof', [SubscriptionController::class, 'proof']);
-                Route::get('subscriptions/{subscription}/invoice', [SubscriptionController::class, 'invoice']);
-                Route::get('subscriptions/{subscription}/receipt', [SubscriptionController::class, 'receipt']);
+                Route::post('plan-orders/{planOrder}/proof', [PlanOrderController::class, 'proof']);
+                Route::get('plan-orders/{planOrder}/invoice', [PlanOrderController::class, 'invoice']);
+                Route::get('plan-orders/{planOrder}/receipt', [PlanOrderController::class, 'receipt']);
             });
 
             // Event CRUD + registrations management.
@@ -391,9 +391,9 @@ Route::prefix('v1')->group(function () {
             // Manual plan payments waiting on us. Unlike the organizer's own
             // verification queue, this money lands in the platform's account —
             // so only a super admin may rule on the receipt.
-            Route::get('subscriptions', [AdminSubscriptionController::class, 'index']);
-            Route::post('subscriptions/{subscription}/approve', [AdminSubscriptionController::class, 'approve']);
-            Route::post('subscriptions/{subscription}/reject', [AdminSubscriptionController::class, 'reject']);
+            Route::get('plan-orders', [AdminPlanOrderController::class, 'index']);
+            Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
+            Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
 
             Route::get('wallets', [AdminWalletController::class, 'index']);
             Route::post('wallets/{wallet}/adjust', [AdminWalletController::class, 'adjust']);

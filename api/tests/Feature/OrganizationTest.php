@@ -14,7 +14,7 @@ class OrganizationTest extends TestCase
 
     public function test_user_can_onboard_organization_with_free_plan(): void
     {
-        Plan::create(['name' => 'Free', 'slug' => 'free', 'price_monthly' => 0, 'price_yearly' => 0]);
+        Plan::create(['name' => 'Free', 'slug' => 'free', "price" => 0, ]);
         $user = User::factory()->create();
 
         $response = $this->actingAs($user, 'api')
@@ -88,27 +88,38 @@ class OrganizationTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_checkout_activates_subscription_when_midtrans_not_configured(): void
+    /**
+     * Without Midtrans credentials the Snap call is mocked and the order settles
+     * on the spot — a dev convenience, not a payment.
+     *
+     * What settling produces is a *credit*, not an entitlement: nothing is
+     * written to the organization, because the event the plan applies to does
+     * not exist yet. Creating one is what spends it.
+     */
+    public function test_checkout_settles_into_an_unspent_credit_when_midtrans_not_configured(): void
     {
-        $free = Plan::create(['name' => 'Free', 'slug' => 'free', 'price_monthly' => 0, 'price_yearly' => 0]);
-        $pro = Plan::create(['name' => 'Pro', 'slug' => 'pro', 'price_monthly' => 399000, 'price_yearly' => 3830000]);
+        $pro = Plan::create(['name' => 'Pro', 'slug' => 'pro', 'price' => 399000]);
         $user = User::factory()->create();
         $org = Organization::create([
             'name' => 'Org Pay',
             'slug' => 'org-pay',
             'owner_id' => $user->id,
-            'plan_id' => $free->id,
         ]);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/checkout", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $pro->id,
-                'billing_cycle' => 'monthly',
             ])
             ->assertCreated()
             ->assertJsonPath('data.mock', true)
-            ->assertJsonPath('data.subscription.status', 'active');
+            ->assertJsonPath('data.plan_order.status', 'paid')
+            ->assertJsonPath('data.plan_order.event_id', null);
 
-        $this->assertDatabaseHas('organizations', ['id' => $org->id, 'plan_id' => $pro->id]);
+        $this->assertDatabaseHas('event_plan_orders', [
+            'organization_id' => $org->id,
+            'plan_id' => $pro->id,
+            'status' => 'paid',
+            'event_id' => null,
+        ]);
     }
 }

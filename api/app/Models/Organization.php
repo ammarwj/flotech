@@ -113,9 +113,9 @@ class Organization extends Model
         return $this->hasMany(OrganizationMember::class);
     }
 
-    public function subscriptions(): HasMany
+    public function planOrders(): HasMany
     {
-        return $this->hasMany(Subscription::class);
+        return $this->hasMany(EventPlanOrder::class);
     }
 
     public function events(): HasMany

@@ -1,12 +1,12 @@
 @extends('pdf._document')
 
 @section('title', 'INVOICE')
-@section('number', $subscription->invoice_number)
+@section('number', $order->invoice_number)
 
 @section('meta')
     <tr>
         <td class="key muted">Tanggal terbit</td>
-        <td>{{ $date($subscription->created_at) }}</td>
+        <td>{{ $date($order->created_at) }}</td>
     </tr>
     <tr>
         <td class="key muted">Jatuh tempo</td>
@@ -15,7 +15,7 @@
     <tr>
         <td class="key muted">Status</td>
         <td>
-            @switch($subscription->status)
+            @switch($order->status)
                 @case('active') Lunas @break
                 @case('past_due') Menunggu pembayaran @break
                 @case('cancelled') Dibatalkan @break
@@ -26,10 +26,10 @@
 @endsection
 
 @section('body')
-    @if ($subscription->paid_at)
+    @if ($order->paid_at)
         <p class="muted" style="margin-top: 24px;">
-            Tagihan ini telah dibayar pada {{ $date($subscription->paid_at) }}. Kwitansi
-            {{ $subscription->receipt_number }} diterbitkan sebagai bukti pembayaran.
+            Tagihan ini telah dibayar pada {{ $date($order->paid_at) }}. Kwitansi
+            {{ $order->receipt_number }} diterbitkan sebagai bukti pembayaran.
         </p>
     @elseif ($bank && $bank->hasBankAccount())
         <p class="muted" style="margin-top: 24px;">

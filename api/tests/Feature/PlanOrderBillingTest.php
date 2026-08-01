@@ -5,16 +5,16 @@ namespace Tests\Feature;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\SiteSetting;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Models\User;
-use App\Notifications\SubscriptionActivated;
+use App\Notifications\PlanOrderPaid;
 use App\Services\BillingDocumentService;
 use App\Services\PlatformSettings;
-use App\Services\SubscriptionService;
+use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class SubscriptionBillingTest extends TestCase
+class PlanOrderBillingTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -23,9 +23,8 @@ class SubscriptionBillingTest extends TestCase
         return Plan::create([
             'name' => ucfirst($slug),
             'slug' => $slug,
-            'price_monthly' => 399000,
-            'price_yearly' => 3830000,
-        ]);
+            "price" => 399000,
+                    ]);
     }
 
     protected function org(User $owner, string $slug = 'org-bill'): Organization
@@ -41,9 +40,8 @@ class SubscriptionBillingTest extends TestCase
     protected function checkout(User $user, Organization $org, Plan $plan): array
     {
         return $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/checkout", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
-                'billing_cycle' => 'monthly',
             ])
             ->assertCreated()
             ->json('data');
@@ -58,9 +56,9 @@ class SubscriptionBillingTest extends TestCase
         // Midtrans is unconfigured in tests, so checkout auto-activates.
         $data = $this->checkout($user, $org, $plan);
 
-        $this->assertSame('active', $data['subscription']['status']);
-        $this->assertMatchesRegularExpression('#^INV/\d{4}/\d{2}/0001$#', $data['subscription']['invoice_number']);
-        $this->assertMatchesRegularExpression('#^KW/\d{4}/\d{2}/0001$#', $data['subscription']['receipt_number']);
+        $this->assertSame('paid', $data["plan_order"]['status']);
+        $this->assertMatchesRegularExpression('#^INV/\d{4}/\d{2}/0001$#', $data["plan_order"]['invoice_number']);
+        $this->assertMatchesRegularExpression('#^KW/\d{4}/\d{2}/0001$#', $data["plan_order"]['receipt_number']);
     }
 
     public function test_invoice_numbers_are_sequential_and_unique(): void
@@ -69,8 +67,8 @@ class SubscriptionBillingTest extends TestCase
         $org = $this->org($user);
         $plan = $this->plan();
 
-        $first = $this->checkout($user, $org, $plan)['subscription'];
-        $second = $this->checkout($user, $org, $plan)['subscription'];
+        $first = $this->checkout($user, $org, $plan)["plan_order"];
+        $second = $this->checkout($user, $org, $plan)["plan_order"];
 
         $this->assertStringEndsWith('/0001', $first['invoice_number']);
         $this->assertStringEndsWith('/0002', $second['invoice_number']);
@@ -86,12 +84,12 @@ class SubscriptionBillingTest extends TestCase
         $org = $this->org($user);
         $plan = $this->plan();
 
-        $id = $this->checkout($user, $org, $plan)['subscription']['id'];
-        $subscription = Subscription::findOrFail($id);
+        $id = $this->checkout($user, $org, $plan)["plan_order"]['id'];
+        $subscription = EventPlanOrder::findOrFail($id);
         $receipt = $subscription->receipt_number;
         $paidAt = $subscription->paid_at;
 
-        app(SubscriptionService::class)->activate($subscription->fresh(), 'bank_transfer');
+        app(EventPlanOrderService::class)->activate($subscription->fresh(), 'bank_transfer');
 
         $subscription->refresh();
         $this->assertSame($receipt, $subscription->receipt_number);
@@ -112,10 +110,10 @@ class SubscriptionBillingTest extends TestCase
         $org = $this->org($user);
         $plan = $this->plan();
 
-        $id = $this->checkout($user, $org, $plan)['subscription']['id'];
-        $subscription = Subscription::findOrFail($id);
+        $id = $this->checkout($user, $org, $plan)["plan_order"]['id'];
+        $subscription = EventPlanOrder::findOrFail($id);
 
-        $mail = (new SubscriptionActivated($subscription))->toMail($user);
+        $mail = (new PlanOrderPaid($subscription))->toMail($user);
         $names = array_column($mail->rawAttachments, 'name');
 
         $docs = app(BillingDocumentService::class);
@@ -144,30 +142,27 @@ class SubscriptionBillingTest extends TestCase
         $org = $this->org($user);
         $plan = $this->plan();
 
-        $paid = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+        $paid = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)["plan_order"]['id']);
 
         $this->actingAs($user, 'api')
-            ->get("/api/v1/organizations/{$org->id}/subscriptions/{$paid->id}/invoice")
+            ->get("/api/v1/organizations/{$org->id}/plan-orders/{$paid->id}/invoice")
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf');
 
         $this->actingAs($user, 'api')
-            ->get("/api/v1/organizations/{$org->id}/subscriptions/{$paid->id}/receipt")
+            ->get("/api/v1/organizations/{$org->id}/plan-orders/{$paid->id}/receipt")
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf');
 
-        $unpaid = $org->subscriptions()->create([
+        $unpaid = $org->planOrders()->create([
             'plan_id' => $plan->id,
             'invoice_number' => 'INV/2026/01/0099',
-            'billing_cycle' => 'monthly',
             'amount' => 399000,
             'status' => 'past_due',
-            'starts_at' => now(),
-            'expires_at' => now()->addMonth(),
         ]);
 
         $this->actingAs($user, 'api')
-            ->getJson("/api/v1/organizations/{$org->id}/subscriptions/{$unpaid->id}/receipt")
+            ->getJson("/api/v1/organizations/{$org->id}/plan-orders/{$unpaid->id}/receipt")
             ->assertStatus(403);
     }
 
@@ -176,12 +171,12 @@ class SubscriptionBillingTest extends TestCase
         $user = User::factory()->create();
         $org = $this->org($user);
         $plan = $this->plan();
-        $sub = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+        $sub = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)["plan_order"]['id']);
 
         $other = $this->org($user, 'org-other');
 
         $this->actingAs($user, 'api')
-            ->getJson("/api/v1/organizations/{$other->id}/subscriptions/{$sub->id}/invoice")
+            ->getJson("/api/v1/organizations/{$other->id}/plan-orders/{$sub->id}/invoice")
             ->assertStatus(404);
     }
 
@@ -199,13 +194,12 @@ class SubscriptionBillingTest extends TestCase
         $org->members()->create(['user_id' => $operator->id, 'role' => 'operator']);
 
         $this->actingAs($operator, 'api')
-            ->getJson("/api/v1/organizations/{$org->id}/subscriptions")
+            ->getJson("/api/v1/organizations/{$org->id}/plan-orders")
             ->assertStatus(403);
 
         $this->actingAs($operator, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/checkout", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
-                'billing_cycle' => 'monthly',
             ])
             ->assertStatus(403);
     }
@@ -233,7 +227,7 @@ class SubscriptionBillingTest extends TestCase
 
         // Checkout on the gateway rail. Midtrans is unconfigured under test, so
         // it auto-activates; push it back to the state a real unpaid bill is in.
-        $sub = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+        $sub = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)["plan_order"]['id']);
         $sub->update(['status' => 'past_due', 'paid_at' => null, 'receipt_number' => null]);
         $invoiceNumber = $sub->invoice_number;
 
@@ -241,14 +235,14 @@ class SubscriptionBillingTest extends TestCase
         PlatformSettings::flush();
 
         $offline = $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay")
             ->assertOk()
             ->json('data');
 
         $this->assertSame('manual', $offline['payment_method']);
         $this->assertSame('9998887777', $offline['bank_account']['account_number']);
         // Still the same one bill, however many times payment is reopened.
-        $this->assertSame($invoiceNumber, $offline['subscription']['invoice_number']);
+        $this->assertSame($invoiceNumber, $offline["plan_order"]['invoice_number']);
 
         $sub->update(['status' => 'past_due', 'paid_at' => null, 'receipt_number' => null]);
 
@@ -256,13 +250,13 @@ class SubscriptionBillingTest extends TestCase
         PlatformSettings::flush();
 
         $online = $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay")
             ->assertOk()
             ->json('data');
 
         $this->assertSame('gateway', $online['payment_method']);
         $this->assertNull($online['bank_account']);
-        $this->assertSame($invoiceNumber, $online['subscription']['invoice_number']);
+        $this->assertSame($invoiceNumber, $online["plan_order"]['invoice_number']);
     }
 
     /**
@@ -285,16 +279,16 @@ class SubscriptionBillingTest extends TestCase
         PlatformSettings::put(['payment_gateway_enabled' => false], null);
         PlatformSettings::flush();
 
-        $sub = Subscription::findOrFail($this->checkout($user, $org, $plan)['subscription']['id']);
+        $sub = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)["plan_order"]['id']);
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/proof", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/proof", [
                 'payment_proof_url' => 'https://cdn.test/proof.jpg',
             ])
             ->assertOk();
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub->id}/pay")
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay")
             ->assertStatus(422);
 
         $this->assertSame('manual', $sub->fresh()->payment_method);

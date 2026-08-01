@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Services\BillingDocumentService;
 use App\Support\MailLinks;
 use Illuminate\Bus\Queueable;
@@ -11,7 +11,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Proof of payment. Sent from SubscriptionService::activate(), which is
+ * Proof of payment. Sent from EventPlanOrderService::activate(), which is
  * idempotent — Midtrans re-delivers webhooks, and a second receipt must never
  * land in the inbox for one payment.
  *
@@ -23,11 +23,11 @@ use Illuminate\Notifications\Notification;
  * end up with a receipt for an invoice number it has never seen. Finance
  * generally wants the pair filed together anyway.
  */
-class SubscriptionActivated extends Notification implements ShouldQueue
+class PlanOrderPaid extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Subscription $subscription) {}
+    public function __construct(public EventPlanOrder $order) {}
 
     /**
      * @return array<int, string>
@@ -40,13 +40,13 @@ class SubscriptionActivated extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $docs = app(BillingDocumentService::class);
-        $sub = $this->subscription->loadMissing('plan', 'organization');
+        $sub = $this->order->loadMissing('plan', 'organization');
 
         return (new MailMessage)
             ->subject('Langganan '.$sub->plan->name.' aktif — '.config('brand.name'))
-            ->markdown('mail.subscription-activated', [
-                'subscription' => $sub,
-                'url' => MailLinks::subscription(),
+            ->markdown('mail.plan-order-paid', [
+                'order' => $sub,
+                'url' => MailLinks::billing(),
             ])
             // Invoice first: it's the document that came first, and mail clients
             // list attachments in the order they were added.

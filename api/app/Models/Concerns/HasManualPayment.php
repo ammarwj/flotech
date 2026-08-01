@@ -8,7 +8,7 @@ use Illuminate\Support\Carbon;
 
 /**
  * Shared by TicketOrder and Team — the two things a buyer can pay for — and by
- * Subscription, the one thing an organizer pays *us* for.
+ * EventPlanOrder, the one thing an organizer pays *us* for.
  *
  * There is deliberately no `awaiting_verification` status column. Both models
  * already carry a settled/unsettled status that older code guards on by value
@@ -19,7 +19,7 @@ use Illuminate\Support\Carbon;
  *
  * The three disagree on where the money state lives — `ticket_orders.status` vs
  * `teams.payment_status` (which is separate from `teams.status`, the organizer
- * admitting the team) vs `subscriptions.status` — so each names its own column,
+ * admitting the team) vs `event_plan_orders.status` — so each names its own column,
  * and each names the value that column takes once the money has arrived.
  */
 trait HasManualPayment
@@ -29,7 +29,7 @@ trait HasManualPayment
 
     /**
      * The value of that column meaning "the money arrived". Ticket orders and
-     * teams both say `paid`; a subscription says `active`, because its money
+     * teams both say `paid`; a plan order says `paid` too, because its money
      * column *is* its lifecycle column — there is no separate payment_status.
      */
     protected function settledValue(): string

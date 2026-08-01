@@ -6,89 +6,88 @@ use App\Models\Plan;
 use App\Models\PlanFeature;
 use Illuminate\Database\Seeder;
 
+/**
+ * The plan catalogue: three plans, each bought once for one event.
+ *
+ * There is no free tier and no subscription. The cheapest way to run an event
+ * is Starter at Rp 150.000, paid once; an event that spans a month boundary
+ * costs exactly the same, because nothing here is measured in time.
+ *
+ * Features a plan does *not* include are deliberately left out rather than
+ * written as `'false'`. PlanResource renders a missing value struck through
+ * exactly like an explicit false, so storing one only adds a plan_features row
+ * that means what its absence already meant.
+ *
+ * Keys must match the ones written by FeatureDefinitionSeeder and read by
+ * PlanGate. A key with a value but no definition never appears on the pricing
+ * card; a definition with no value appears struck through, which is the point.
+ *
+ * This seeder never deletes. Retiring a key or a plan on a database that is
+ * already running is a migration's job — a seeder that pruned would also wipe
+ * the custom keys a super admin added at /admin/plans.
+ */
 class PlanSeeder extends Seeder
 {
     public function run(): void
     {
         $plans = [
             [
-                'name' => 'Basic',
-                'slug' => 'basic',
-                'description' => 'Untuk komunitas kecil yang baru mulai.',
-                'price_monthly' => 49000,
-                'yearly_discount_percent' => 20,
-                'sort_order' => 1,
-                'features' => [
-                    'max_active_events' => '1',
-                    'max_teams_per_event' => '8',
-                    'payment_gateway' => 'true',
-                    'qr_tickets' => 'false',
-                    'certificate_generator' => 'false',
-                    'export_data' => 'false',
-                    // No ticket_fee_percent: without `qr_tickets` this plan
-                    // cannot sell tickets at all, so there is nothing to charge.
-                    'registration_fee_percent' => '4',
-                ],
-            ],
-            [
                 'name' => 'Starter',
                 'slug' => 'starter',
-                'description' => 'Untuk klub & kampus yang rutin gelar event.',
-                'price_monthly' => 149000,
-                'yearly_discount_percent' => 20,
-                'sort_order' => 2,
+                'description' => 'Untuk satu event kecil — 1 kategori, 32 peserta.',
+                'price' => 150000,
+                'sort_order' => 1,
                 'features' => [
-                    'max_active_events' => '3',
-                    'max_teams_per_event' => '32',
+                    'online_registration' => 'true',
+                    'max_categories' => '1',
+                    'max_teams_per_category' => '32',
                     'payment_gateway' => 'true',
+                    'platform_fee_percent' => '3',
                     'qr_tickets' => 'true',
-                    'max_tickets_per_event' => '500',
-                    'certificate_generator' => 'true',
-                    'export_data' => 'true',
-                    'ticket_fee_percent' => '3',
-                    'registration_fee_percent' => '3',
                 ],
             ],
             [
                 'name' => 'Pro',
                 'slug' => 'pro',
-                'description' => 'Untuk EO profesional & turnamen besar.',
-                'price_monthly' => 399000,
-                'yearly_discount_percent' => 20,
-                'sort_order' => 3,
+                'description' => 'Untuk satu event menengah — 4 kategori, 128 peserta per kategori.',
+                'price' => 350000,
+                'sort_order' => 2,
                 'features' => [
-                    'max_active_events' => '10',
-                    'max_teams_per_event' => '128',
+                    'online_registration' => 'true',
+                    'max_categories' => '4',
+                    'max_teams_per_category' => '128',
                     'payment_gateway' => 'true',
+                    'platform_fee_percent' => '2',
                     'qr_tickets' => 'true',
-                    'max_tickets_per_event' => '5000',
-                    'certificate_generator' => 'true',
-                    'certificate_email' => 'true',
                     'export_data' => 'true',
-                    'ticket_fee_percent' => '2',
-                    'registration_fee_percent' => '2',
+                    'sponsor_logos' => 'true',
+                    'organizer_profile' => 'true',
                 ],
             ],
             [
                 'name' => 'Professional',
                 'slug' => 'professional',
-                'description' => 'Untuk federasi & turnamen skala nasional.',
-                'price_monthly' => 999000,
-                'yearly_discount_percent' => 20,
-                'sort_order' => 4,
+                'description' => 'Untuk satu event besar — kategori & peserta tanpa batas.',
+                'price' => 800000,
+                'sort_order' => 3,
                 'features' => [
-                    'max_active_events' => '-1',
-                    'max_teams_per_event' => '-1',
+                    'online_registration' => 'true',
+                    'max_categories' => '-1',
+                    'max_teams_per_category' => '-1',
                     'payment_gateway' => 'true',
+                    'platform_fee_percent' => '1',
                     'qr_tickets' => 'true',
-                    'max_tickets_per_event' => '-1',
+                    'export_data' => 'true',
+                    'sponsor_logos' => 'true',
+                    'organizer_profile' => 'true',
                     'certificate_generator' => 'true',
                     'certificate_email' => 'true',
-                    'export_data' => 'true',
-                    'custom_domain' => 'true',
-                    'api_access' => 'true',
-                    'ticket_fee_percent' => '1',
-                    'registration_fee_percent' => '1',
+                    // The boolean is what denies and the number is what caps.
+                    // A numeric key on its own would grant the other two plans an
+                    // uncapped gallery, because PlanGate reads an absent limit as
+                    // unlimited.
+                    'event_gallery' => 'true',
+                    'max_gallery_photos' => '15',
                 ],
             ],
         ];
@@ -96,13 +95,6 @@ class PlanSeeder extends Seeder
         foreach ($plans as $data) {
             $features = $data['features'];
             unset($data['features']);
-
-            // Yearly price is derived, never seeded by hand — same rule the admin
-            // editor goes through, so the two can't drift apart.
-            $data['price_yearly'] = Plan::computeYearlyPrice(
-                (float) $data['price_monthly'],
-                (float) $data['yearly_discount_percent'],
-            );
 
             $plan = Plan::updateOrCreate(['slug' => $data['slug']], $data);
 

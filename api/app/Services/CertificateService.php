@@ -26,7 +26,7 @@ use Throwable;
  * Issues and renders certificates.
  *
  * The only thing allowed to mint a certificate number or write a PDF. Numbers
- * come from the same locked-sequence scheme as invoices (see SubscriptionService)
+ * come from the same locked-sequence scheme as invoices (see EventPlanOrderService)
  * because a certificate is a document too: it is quoted, verified and must never
  * collide.
  */

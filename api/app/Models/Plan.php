@@ -14,9 +14,7 @@ class Plan extends Model
         'name',
         'slug',
         'description',
-        'price_monthly',
-        'price_yearly',
-        'yearly_discount_percent',
+        'price',
         'is_active',
         'is_public',
         'sort_order',
@@ -25,28 +23,11 @@ class Plan extends Model
     protected function casts(): array
     {
         return [
-            'price_monthly' => 'decimal:2',
-            'price_yearly' => 'decimal:2',
-            'yearly_discount_percent' => 'decimal:2',
+            'price' => 'decimal:2',
             'is_active' => 'boolean',
             'is_public' => 'boolean',
             'sort_order' => 'integer',
         ];
-    }
-
-    /**
-     * `price_yearly` is derived, never typed in: the discount is the only knob a
-     * super admin turns. Keeping the billed column a function of that percentage
-     * is what stops the UI from promising a discount Midtrans never applies —
-     * SubscriptionService::checkout() charges price_yearly as-is.
-     *
-     * Rounded to the nearest thousand so prices stay presentable in rupiah.
-     */
-    public static function computeYearlyPrice(float $monthly, float $discountPercent): float
-    {
-        $full = $monthly * 12 * (1 - $discountPercent / 100);
-
-        return round($full / 1000) * 1000;
     }
 
     public function features(): HasMany
@@ -54,8 +35,15 @@ class Plan extends Model
         return $this->hasMany(PlanFeature::class);
     }
 
-    public function organizations(): HasMany
+    /**
+     * The events running on this plan.
+     *
+     * Load-bearing for Admin\PlanController::destroy(), which refuses to delete
+     * a plan that events still point at: the foreign key is nullOnDelete, so
+     * deleting one would silently strip entitlements off live tournaments.
+     */
+    public function events(): HasMany
     {
-        return $this->hasMany(Organization::class);
+        return $this->hasMany(Event::class);
     }
 }

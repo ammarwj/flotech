@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\SubscriptionResource;
-use App\Models\Subscription;
+use App\Http\Resources\EventPlanOrderResource;
+use App\Models\EventPlanOrder;
 use App\Models\User;
 use App\Services\PaymentRails;
-use App\Services\SubscriptionService;
+use App\Services\EventPlanOrderService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,38 +22,38 @@ use Illuminate\Http\Request;
  * being credited is exactly the party who uploaded the receipt — so it can
  * never sit behind `tenant`, however convenient that would be.
  */
-class SubscriptionController extends Controller
+class PlanOrderController extends Controller
 {
     public function __construct(
-        protected SubscriptionService $subscriptions,
+        protected EventPlanOrderService $orders,
         protected PaymentRails $rails,
     ) {}
 
     public function index(): JsonResponse
     {
-        $pending = Subscription::query()
+        $pending = EventPlanOrder::query()
             ->awaitingVerification()
             ->with(['plan', 'organization'])
             ->latest('payment_proof_uploaded_at')
             ->get();
 
-        return ApiResponse::success(SubscriptionResource::collection($pending));
+        return ApiResponse::success(EventPlanOrderResource::collection($pending));
     }
 
-    public function approve(Request $request, Subscription $subscription): JsonResponse
+    public function approve(Request $request, EventPlanOrder $planOrder): JsonResponse
     {
         /** @var User $admin */
         $admin = $request->user();
 
-        $this->subscriptions->approveProof($subscription, $admin);
+        $this->orders->approveProof($planOrder, $admin);
 
         return ApiResponse::success(
-            new SubscriptionResource($subscription->fresh()->load(['plan', 'organization'])),
-            'Pembayaran diterima. Paket sudah aktif.',
+            new EventPlanOrderResource($planOrder->fresh()->load(['plan', 'organization'])),
+            'Pembayaran diterima. Paket siap dipakai untuk satu event.',
         );
     }
 
-    public function reject(Request $request, Subscription $subscription): JsonResponse
+    public function reject(Request $request, EventPlanOrder $planOrder): JsonResponse
     {
         $reason = $request->validate([
             'reason' => ['required', 'string', 'max:500'],
@@ -61,10 +61,10 @@ class SubscriptionController extends Controller
             'reason.required' => 'Alasan penolakan wajib diisi.',
         ])['reason'];
 
-        $this->subscriptions->rejectProof($subscription, $reason, $this->rails->deadline());
+        $this->orders->rejectProof($planOrder, $reason, $this->rails->deadline());
 
         return ApiResponse::success(
-            new SubscriptionResource($subscription->fresh()->load(['plan', 'organization'])),
+            new EventPlanOrderResource($planOrder->fresh()->load(['plan', 'organization'])),
             'Bukti ditolak. Organizer dapat mengunggah ulang.',
         );
     }

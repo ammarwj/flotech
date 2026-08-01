@@ -22,9 +22,8 @@ class PlanAdminTest extends TestCase
             ->postJson('/api/v1/admin/plans', [
                 'name' => 'Enterprise',
                 'slug' => 'enterprise',
-                'price_monthly' => 1500000,
-                'price_yearly' => 15000000,
-            ])
+                "price" => 1500000,
+                            ])
             ->assertCreated()
             ->assertJsonPath('data.slug', 'enterprise');
 
@@ -43,9 +42,8 @@ class PlanAdminTest extends TestCase
         $plan = Plan::create([
             'name' => 'Pro',
             'slug' => 'pro-test',
-            'price_monthly' => 399000,
-            'price_yearly' => 3830000,
-        ]);
+            "price" => 399000,
+                    ]);
 
         $this->actingAs($this->superAdmin(), 'api')
             ->putJson("/api/v1/admin/plans/{$plan->id}/features", [
@@ -69,9 +67,8 @@ class PlanAdminTest extends TestCase
         Plan::create([
             'name' => 'Free',
             'slug' => 'free-pub',
-            'price_monthly' => 0,
-            'price_yearly' => 0,
-            'is_active' => true,
+            "price" => 0,
+                        'is_active' => true,
             'is_public' => true,
         ]);
 

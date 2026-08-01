@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Services\BillingDocumentService;
 use App\Support\MailLinks;
 use Illuminate\Bus\Queueable;
@@ -12,15 +12,15 @@ use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 
 /**
- * The bill, the moment it exists. A subscription row is its own invoice — an
+ * The bill, the moment it exists. A plan order row is its own invoice — an
  * unpaid one is still a valid document — so the PDF is attached from checkout,
  * not held back until payment.
  */
-class SubscriptionInvoiceIssued extends Notification implements ShouldQueue
+class PlanOrderInvoiceIssued extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Subscription $subscription) {}
+    public function __construct(public EventPlanOrder $order) {}
 
     /**
      * @return array<int, string>
@@ -33,15 +33,15 @@ class SubscriptionInvoiceIssued extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $docs = app(BillingDocumentService::class);
-        $sub = $this->subscription->loadMissing('plan', 'organization');
+        $sub = $this->order->loadMissing('plan', 'organization');
         $dueAt = Carbon::parse($sub->created_at)->addDays((int) config('billing.due_days', 7));
 
         return (new MailMessage)
             ->subject('Tagihan '.$sub->invoice_number.' — '.config('brand.name'))
-            ->markdown('mail.subscription-invoice-issued', [
-                'subscription' => $sub,
+            ->markdown('mail.plan-order-invoice-issued', [
+                'order' => $sub,
                 'dueAt' => $dueAt,
-                'url' => MailLinks::subscription(),
+                'url' => MailLinks::billing(),
             ])
             ->attachData(
                 $docs->bytes('invoice', $sub),

@@ -51,8 +51,8 @@ class OrganizationResource extends JsonResource
             // A manual plan payment sitting in the super admin's queue. It lives
             // here rather than behind its own endpoint because the banner that
             // reads it renders on every organizer page — including for
-            // `operator` members, who the org.admin-guarded /subscriptions 403s.
-            'subscription_awaiting_verification' => $this->subscriptions()->awaitingVerification()->exists(),
+            // `operator` members, who the org.admin-guarded /plan-orders 403s.
+            'plan_payment_awaiting_verification' => $this->planOrders()->awaitingVerification()->exists(),
         ];
     }
 }

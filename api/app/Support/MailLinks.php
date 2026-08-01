@@ -30,9 +30,9 @@ class MailLinks
         return self::base().'/organizer/events/'.$eventId.'/registrations';
     }
 
-    public static function subscription(): string
+    public static function billing(): string
     {
-        return self::base().'/organizer/subscription';
+        return self::base().'/organizer/billing';
     }
 
     public static function wallet(): string

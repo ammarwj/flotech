@@ -82,7 +82,7 @@ class PaymentRails
      *
      * Deliberately not destinationFor(). That one answers "where does a buyer
      * send money to this organizer", and it also demands the `payment_gateway`
-     * entitlement. Subscription money flows the other way, and asking for an
+     * entitlement. EventPlanOrder money flows the other way, and asking for an
      * entitlement here would refuse every brand-new organization: an org is
      * born with plan_id null, so PlanGate grants it nothing at all. Buying the
      * first plan is the one flow that has to work without a plan.

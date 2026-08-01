@@ -1,7 +1,7 @@
 @extends('pdf._document')
 
 @section('title', 'KWITANSI')
-@section('number', $subscription->receipt_number)
+@section('number', $order->receipt_number)
 
 @php
     $methods = [
@@ -13,7 +13,7 @@
         'shopeepay' => 'ShopeePay',
         'qris' => 'QRIS',
         'cstore' => 'Gerai retail',
-        // Not a Midtrans payment type: written by SubscriptionService when a
+        // Not a Midtrans payment type: written by EventPlanOrderService when a
         // super admin accepts a transfer receipt while the gateway is off.
         'manual_transfer' => 'Transfer manual (diverifikasi admin)',
     ];
@@ -22,15 +22,15 @@
 @section('meta')
     <tr>
         <td class="key muted">Tanggal bayar</td>
-        <td>{{ $date($subscription->paid_at) }}</td>
+        <td>{{ $date($order->paid_at) }}</td>
     </tr>
     <tr>
         <td class="key muted">Metode bayar</td>
-        <td>{{ $methods[$subscription->payment_type] ?? ($subscription->payment_type ?: '—') }}</td>
+        <td>{{ $methods[$order->payment_type] ?? ($order->payment_type ?: '—') }}</td>
     </tr>
     <tr>
         <td class="key muted">No. invoice</td>
-        <td>{{ $subscription->invoice_number ?? '—' }}</td>
+        <td>{{ $order->invoice_number ?? '—' }}</td>
     </tr>
 @endsection
 

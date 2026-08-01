@@ -3,14 +3,14 @@
 namespace App\Services;
 
 use App\Models\SiteSetting;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Renders the two billing documents a subscription can produce.
+ * Renders the two billing documents a plan order can produce.
  *
  * Invoice = the bill (exists from checkout, paid or not).
  * Receipt = proof of payment (exists only once paid_at is set).
@@ -20,14 +20,14 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class BillingDocumentService
 {
-    public function invoice(Subscription $subscription): Response
+    public function invoice(EventPlanOrder $order): Response
     {
-        return $this->render('invoice', $subscription, $subscription->invoice_number);
+        return $this->render('invoice', $order, $order->invoice_number);
     }
 
-    public function receipt(Subscription $subscription): Response
+    public function receipt(EventPlanOrder $order): Response
     {
-        return $this->render('receipt', $subscription, $subscription->receipt_number);
+        return $this->render('receipt', $order, $order->receipt_number);
     }
 
     /**
@@ -35,9 +35,9 @@ class BillingDocumentService
      *
      * @param  'invoice'|'receipt'  $kind
      */
-    public function bytes(string $kind, Subscription $subscription): string
+    public function bytes(string $kind, EventPlanOrder $order): string
     {
-        return $this->pdf($kind, $subscription)->output();
+        return $this->pdf($kind, $order)->output();
     }
 
     /**
@@ -45,17 +45,17 @@ class BillingDocumentService
      *
      * @param  'invoice'|'receipt'  $kind
      */
-    public function filename(string $kind, Subscription $subscription): string
+    public function filename(string $kind, EventPlanOrder $order): string
     {
-        $number = $kind === 'receipt' ? $subscription->receipt_number : $subscription->invoice_number;
+        $number = $kind === 'receipt' ? $order->receipt_number : $order->invoice_number;
 
-        return $this->label($kind).'-'.$this->slug($number, $subscription).'.pdf';
+        return $this->label($kind).'-'.$this->slug($number, $order).'.pdf';
     }
 
-    protected function render(string $view, Subscription $subscription, ?string $number): Response
+    protected function render(string $view, EventPlanOrder $order, ?string $number): Response
     {
-        return $this->pdf($view, $subscription)
-            ->download($this->label($view).'-'.$this->slug($number, $subscription).'.pdf');
+        return $this->pdf($view, $order)
+            ->download($this->label($view).'-'.$this->slug($number, $order).'.pdf');
     }
 
     protected function label(string $view): string
@@ -64,23 +64,23 @@ class BillingDocumentService
     }
 
     /** INV/2026/07/0002 → INV-2026-07-0002; slashes are not filename-safe. */
-    protected function slug(?string $number, Subscription $subscription): string
+    protected function slug(?string $number, EventPlanOrder $order): string
     {
-        return str_replace('/', '-', (string) ($number ?? $subscription->id));
+        return str_replace('/', '-', (string) ($number ?? $order->id));
     }
 
-    protected function pdf(string $view, Subscription $subscription): DomPdf
+    protected function pdf(string $view, EventPlanOrder $order): DomPdf
     {
-        $subscription->loadMissing('plan', 'organization');
+        $order->loadMissing('plan', 'organization');
 
         $pdf = Pdf::loadView("pdf.{$view}", [
-            'subscription' => $subscription,
+            'order' => $order,
             'issuer' => config('billing'),
-            'dueAt' => Carbon::parse($subscription->created_at)->addDays((int) config('billing.due_days', 7)),
+            'dueAt' => Carbon::parse($order->created_at)->addDays((int) config('billing.due_days', 7)),
             // Only an unpaid manual bill needs it: an invoice telling the
             // organizer to transfer, without saying where, can't be acted on
             // outside the app — which is the whole point of a PDF.
-            'bank' => $subscription->isManual() && ! $subscription->isSettled()
+            'bank' => $order->isManual() && ! $order->isSettled()
                 ? SiteSetting::current()
                 : null,
             // Blade renders a child's sections before the layout runs, so the

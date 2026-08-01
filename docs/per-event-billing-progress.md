@@ -32,7 +32,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | Tahap | Isi | Status |
 |---|---|---|
 | 0 | Setup tracker + branch | `[x]` |
-| 1 | Skema + rename model | `[ ]` |
+| 1 | Skema + rename model | `[x]` |
 | 2 | Katalog paket + backfill | `[ ]` |
 | 3 | `PlanGate` + call site backend | `[ ]` |
 | 4 | Siklus order + rute + resource | `[ ]` |
@@ -115,43 +115,43 @@ Key yang **dipensiunkan** (prune di migrasi, bukan seeder): `max_active_events`,
 - [x] Baseline test dicatat (lihat header)
 - [x] File tracker ini dibuat
 
-## Tahap 1 — Skema + rename model  *(test akan merah; itu wajar)*
+## Tahap 1 — Skema + rename model  ✅ *(selesai: 412 lulus, 2 flaky baseline)*
 
 Migrasi:
-- [ ] `2026_08_01_100000_convert_plans_to_one_time_price.php` — rename `price_monthly`→`price` (**dua `Schema::table` terpisah**, Postgres tidak andal rename+drop dalam satu blueprint), drop `price_yearly` + `yearly_discount_percent`
-- [ ] `2026_08_01_100001_add_plan_to_events_table.php` — `plan_id` nullable + FK `nullOnDelete` + index. **Nullable disengaja** (§1.2)
-- [ ] `2026_08_01_100002_rename_subscriptions_to_event_plan_orders.php` — rename tabel, tambah `event_id` (**unique**) + `consumed_at`, drop `billing_cycle`/`starts_at`/`expires_at`, `UPDATE status 'active'→'paid'`. Index lama `subscriptions_payment_method_status_index` dibiarkan bernama lama; `down()` menyesuaikan
-- [ ] `php artisan migrate:fresh` jalan tanpa error
+- [x] `2026_08_01_100000_convert_plans_to_one_time_price.php` — rename `price_monthly`→`price` (**dua `Schema::table` terpisah**, Postgres tidak andal rename+drop dalam satu blueprint), drop `price_yearly` + `yearly_discount_percent`
+- [x] `2026_08_01_100001_add_plan_to_events_table.php` — `plan_id` nullable + FK `nullOnDelete` + index. **Nullable disengaja** (§1.2)
+- [x] `2026_08_01_100002_rename_subscriptions_to_event_plan_orders.php` — rename tabel, tambah `event_id` (**unique**) + `consumed_at`, drop `billing_cycle`/`starts_at`/`expires_at`, `UPDATE status 'active'→'paid'`. Index lama `subscriptions_payment_method_status_index` dibiarkan bernama lama; `down()` menyesuaikan
+- [x] `php artisan migrate:fresh` jalan tanpa error
 
 Rename simbol PHP (mekanis, satu commit):
-- [ ] `app/Models/Subscription.php` → `EventPlanOrder.php` (+ `settledValue(): 'paid'`, `event()`, `scopeUnconsumed()`, fillable/casts)
-- [ ] `app/Services/SubscriptionService.php` → `EventPlanOrderService.php`
-- [ ] `app/Http/Resources/SubscriptionResource.php` → `EventPlanOrderResource.php`
-- [ ] `app/Http/Controllers/Api/SubscriptionController.php` → `PlanOrderController.php`
-- [ ] `app/Http/Controllers/Api/Admin/SubscriptionController.php` → `Admin/PlanOrderController.php`
-- [ ] `app/Http/Requests/Subscription/CheckoutRequest.php` → `PlanOrder/CheckoutRequest.php`
-- [ ] Notifikasi `SubscriptionActivated`/`SubscriptionInvoiceIssued` → `PlanOrderPaid`/`PlanOrderInvoiceIssued` + blade di `resources/views/mail/`
-- [ ] `app/Console/Commands/ExpireManualSubscriptions.php` → `ExpireManualPlanOrders.php` (signature `plan-orders:expire-manual`) + entri `routes/console.php`
-- [ ] `Organization::subscriptions()` → `planOrders()`
-- [ ] `Plan` model: fillable `price`, cast decimal, tambah `events()`, **hapus** `organizations()`
-- [ ] `Event` model: `plan_id` ke fillable, tambah `plan(): BelongsTo`
-- [ ] Hapus `Plan::computeYearlyPrice()` + `Admin\PlanController::withYearlyPrice()`
-- [ ] `grep -rn "Subscription\|billing_cycle\|price_monthly\|price_yearly" api/app api/routes api/resources` → nol hasil
-- [ ] `grep -rn "'active'" api/app` → tak ada sisa status order lama
+- [x] `app/Models/Subscription.php` → `EventPlanOrder.php` (+ `settledValue(): 'paid'`, `event()`, `scopeUnconsumed()`, fillable/casts)
+- [x] `app/Services/SubscriptionService.php` → `EventPlanOrderService.php`
+- [x] `app/Http/Resources/SubscriptionResource.php` → `EventPlanOrderResource.php`
+- [x] `app/Http/Controllers/Api/SubscriptionController.php` → `PlanOrderController.php`
+- [x] `app/Http/Controllers/Api/Admin/SubscriptionController.php` → `Admin/PlanOrderController.php`
+- [x] `app/Http/Requests/Subscription/CheckoutRequest.php` → `PlanOrder/CheckoutRequest.php`
+- [x] Notifikasi `SubscriptionActivated`/`SubscriptionInvoiceIssued` → `PlanOrderPaid`/`PlanOrderInvoiceIssued` + blade di `resources/views/mail/`
+- [x] `app/Console/Commands/ExpireManualSubscriptions.php` → `ExpireManualPlanOrders.php` (signature `plan-orders:expire-manual`) + entri `routes/console.php`
+- [x] `Organization::subscriptions()` → `planOrders()`
+- [x] `Plan` model: fillable `price`, cast decimal, tambah `events()`, **hapus** `organizations()`
+- [x] `Event` model: `plan_id` ke fillable, tambah `plan(): BelongsTo`
+- [x] Hapus `Plan::computeYearlyPrice()` + `Admin\PlanController::withYearlyPrice()`
+- [x] `grep -rn "Subscription\|billing_cycle\|price_monthly\|price_yearly" api/app api/routes api/resources` → nol hasil
+- [x] `grep -rn "'active'" api/app` → tak ada sisa status order lama
 
 Test yang dipecahkan tahap ini (perbaiki **sekarang**, bukan ditunda) — hanya yang kena rename, karena `organizations.plan_id` masih ada sehingga gate lama tetap sah:
-- [ ] `SubscriptionBillingTest`, `ManualSubscriptionTest` — nama tabel/model/rute/status, `billing_cycle` dilepas dari payload
-- [ ] `PlanAdminTest` — `price_monthly`/`price_yearly`/`yearly_discount_percent` → `price`
-- [ ] `MailNotificationTest` — nama kelas notifikasi + blade
-- [ ] ✅ `php artisan test` hijau (kecuali 2–3 flaky baseline)
+- [x] `SubscriptionBillingTest`, `ManualSubscriptionTest` — nama tabel/model/rute/status, `billing_cycle` dilepas dari payload
+- [x] `PlanAdminTest` — `price_monthly`/`price_yearly`/`yearly_discount_percent` → `price`
+- [x] `MailNotificationTest` — nama kelas notifikasi + blade
+- [x] ✅ `php artisan test` hijau (kecuali 2–3 flaky baseline)
 
 > **Prefix Midtrans `SUB-` untuk order lama TIDAK disentuh.** `MidtransWebhookController::handle()` merutekan order paket lewat arm `default`, jadi id `SUB-` yang masih beredar tetap settle. Id baru boleh `PLN-`; **jangan** menambah arm `PLN-` di match — itu justru menelantarkan yang lama.
 
 ## Tahap 2 — Katalog + backfill
 
 - [ ] `2026_08_01_100003_seed_per_event_plan_catalogue.php` — **4 langkah urut**: upsert 3 paket (match `slug`, id lama dipertahankan) → pensiunkan `basic` (`is_active`/`is_public` false + hapus `plan_features`-nya, **jangan delete barisnya**) → **prune** 7 key pensiun dari `plan_features` **dan** `feature_definitions` → tulis 13 definisi + nilai per paket
-- [ ] `database/seeders/PlanSeeder.php` — isi §4 (hapus loop `computeYearlyPrice`)
-- [ ] `database/seeders/FeatureDefinitionSeeder.php` — 13 definisi §4
+- [x] `database/seeders/PlanSeeder.php` — **dikerjakan di Tahap 1**: 3 paket, harga tunggal, fitur "tidak dapat" tidak ditulis
+- [x] `database/seeders/FeatureDefinitionSeeder.php` — **dikerjakan di Tahap 1**: 13 definisi
 - [ ] `app/Console/Commands/BackfillEventPlans.php` — `events:backfill-plan {--dry-run}`, idempoten (`whereNull('plan_id')` + `whereNotExists` order), `invoice_number`/`receipt_number` **null**
 - [ ] `2026_08_01_100004_backfill_event_plans.php` memanggil command itu
 - [ ] **Verifikasi silang**: `migrate` terhadap `flo_event` (salinan prod) vs `migrate:fresh --seed` di DB **sekali-pakai** `flo_event_scratch` → diff isi `plan_features` **harus identik**. ⚠️ jangan `migrate:fresh` di `flo_event`

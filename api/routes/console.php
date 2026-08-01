@@ -17,7 +17,7 @@ Schedule::command('wallet:audit')->dailyAt('01:00');
 // hold their ticket quota forever.
 Schedule::command('tickets:expire-manual')->hourly()->withoutOverlapping();
 // Same for plan bills, which hold no quota but do print a deadline.
-Schedule::command('subscriptions:expire-manual')->hourly()->withoutOverlapping();
+Schedule::command('plan-orders:expire-manual')->hourly()->withoutOverlapping();
 
 // The visitor dedup ledger is only useful on its own day; the daily roll-up it
 // feeds (event_view_daily) is kept forever.

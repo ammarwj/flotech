@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\SiteSetting;
-use App\Models\Subscription;
+use App\Models\EventPlanOrder;
 use App\Models\User;
 use App\Services\PlatformSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,7 +21,7 @@ use Tests\TestCase;
  * account and a super admin approves — which is why none of it is reachable
  * from PaymentRails::destinationFor().
  */
-class ManualSubscriptionTest extends TestCase
+class ManualPlanOrderTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -56,9 +56,8 @@ class ManualSubscriptionTest extends TestCase
         return Plan::create([
             'name' => 'Pro',
             'slug' => 'pro-'.uniqid(),
-            'price_monthly' => 399000,
-            'price_yearly' => 3830000,
-        ]);
+            "price" => 399000,
+                    ]);
     }
 
     /** A brand new organization: no plan, and therefore no entitlements at all. */
@@ -76,9 +75,8 @@ class ManualSubscriptionTest extends TestCase
     private function checkout(User $user, Organization $org, Plan $plan, int $status = 201): array
     {
         return $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/checkout", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
-                'billing_cycle' => 'monthly',
             ])
             ->assertStatus($status)
             ->json('data');
@@ -105,15 +103,17 @@ class ManualSubscriptionTest extends TestCase
         $this->platformAccount();
 
         // Rail 1 — gateway on. MIDTRANS_SERVER_KEY is blank under test, so the
-        // mock settles it immediately and the plan lands on the org.
+        // mock settles it immediately and the organizer is left holding a credit.
         $this->gateway(true);
         $gatewayOrg = $this->org($user);
         $viaGateway = $this->checkout($user, $gatewayOrg, $plan);
 
         $this->assertSame('gateway', $viaGateway['payment_method']);
         $this->assertNull($viaGateway['bank_account']);
-        $this->assertSame('active', $viaGateway['subscription']['status']);
-        $this->assertSame($plan->id, $gatewayOrg->fresh()->plan_id);
+        $this->assertSame('paid', $viaGateway["plan_order"]['status']);
+        // Paid, and waiting on an event rather than on a clock.
+        $this->assertNull($viaGateway["plan_order"]['event_id']);
+        $this->assertSame(1, $gatewayOrg->planOrders()->unconsumed()->count());
 
         // Rail 2 — gateway off. Same plan, same price, same user.
         $this->gateway(false);
@@ -122,13 +122,13 @@ class ManualSubscriptionTest extends TestCase
 
         $this->assertSame('manual', $viaManual['payment_method']);
         $this->assertSame('9998887777', $viaManual['bank_account']['account_number']);
-        $this->assertSame('past_due', $viaManual['subscription']['status']);
+        $this->assertSame('past_due', $viaManual["plan_order"]['status']);
         // `mock` means "no server key", never "paid" — a manual checkout must
         // not borrow that flag on its way past the auto-activate branch.
         $this->assertFalse($viaManual['mock']);
-        $this->assertNull($viaManual['subscription']['receipt_number']);
-        // No plan until a human says the money arrived.
-        $this->assertNull($manualOrg->fresh()->plan_id);
+        $this->assertNull($viaManual["plan_order"]['receipt_number']);
+        // No credit until a human says the money arrived.
+        $this->assertSame(0, $manualOrg->planOrders()->unconsumed()->count());
     }
 
     /**
@@ -145,13 +145,12 @@ class ManualSubscriptionTest extends TestCase
         $this->gateway(false); // no site_settings row at all
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/checkout", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
-                'billing_cycle' => 'monthly',
             ])
             ->assertStatus(422);
 
-        $this->assertDatabaseCount('subscriptions', 0);
+        $this->assertDatabaseCount("event_plan_orders", 0);
     }
 
     /**
@@ -208,10 +207,10 @@ class ManualSubscriptionTest extends TestCase
         $this->platformAccount();
         $this->gateway(false);
 
-        $sub = $this->checkout($user, $org, $plan)['subscription'];
+        $sub = $this->checkout($user, $org, $plan)["plan_order"];
 
         $uploaded = $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/subscriptions/{$sub['id']}/proof", [
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub['id']}/proof", [
                 'payment_proof_url' => 'https://cdn.test/proof.jpg',
             ])
             ->assertOk()
@@ -224,28 +223,28 @@ class ManualSubscriptionTest extends TestCase
         $admin = $this->superAdmin();
 
         $this->actingAs($admin, 'api')
-            ->getJson('/api/v1/admin/subscriptions')
+            ->getJson('/api/v1/admin/plan-orders')
             ->assertOk()
             ->assertJsonCount(1, 'data');
 
         $approved = $this->actingAs($admin, 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/approve")
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/approve")
             ->assertOk()
             ->json('data');
 
-        $this->assertSame('active', $approved['status']);
+        $this->assertSame('paid', $approved['status']);
         $this->assertNotNull($approved['receipt_number']);
-        $this->assertSame($plan->id, $org->fresh()->plan_id);
-        $this->assertNotNull($org->fresh()->plan_expires_at);
+        // The money is in; what the organizer holds is one unspent credit.
+        $this->assertSame(1, $org->planOrders()->unconsumed()->count());
 
         // A second approval must not mint a second receipt.
         $this->actingAs($admin, 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/approve")
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/approve")
             ->assertStatus(422);
 
         $this->assertSame(
             $approved['receipt_number'],
-            Subscription::find($sub['id'])->receipt_number,
+            EventPlanOrder::find($sub['id'])->receipt_number,
         );
     }
 
@@ -257,8 +256,8 @@ class ManualSubscriptionTest extends TestCase
         $this->platformAccount();
         $this->gateway(false);
 
-        $sub = $this->checkout($user, $org, $plan)['subscription'];
-        $proofUrl = "/api/v1/organizations/{$org->id}/subscriptions/{$sub['id']}/proof";
+        $sub = $this->checkout($user, $org, $plan)["plan_order"];
+        $proofUrl = "/api/v1/organizations/{$org->id}/plan-orders/{$sub['id']}/proof";
 
         $this->actingAs($user, 'api')
             ->postJson($proofUrl, ['payment_proof_url' => 'https://cdn.test/wrong.jpg'])
@@ -267,7 +266,7 @@ class ManualSubscriptionTest extends TestCase
         $admin = $this->superAdmin();
 
         $rejected = $this->actingAs($admin, 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/reject", [
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/reject", [
                 'reason' => 'Nominal tidak cocok.',
             ])
             ->assertOk()
@@ -280,7 +279,7 @@ class ManualSubscriptionTest extends TestCase
         $this->assertNull($rejected['verified_at']);
 
         $this->actingAs($admin, 'api')
-            ->getJson('/api/v1/admin/subscriptions')
+            ->getJson('/api/v1/admin/plan-orders')
             ->assertOk()
             ->assertJsonCount(0, 'data');
 
@@ -289,10 +288,17 @@ class ManualSubscriptionTest extends TestCase
             ->assertOk();
 
         $this->actingAs($admin, 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/approve")
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/approve")
             ->assertOk();
 
-        $this->assertSame($plan->id, $org->fresh()->plan_id);
+        // Approving pays the bill; it does not hand out an entitlement. What the
+        // organizer gets is a credit sitting unspent until an event claims it.
+        $this->assertDatabaseHas('event_plan_orders', [
+            'id' => $sub['id'],
+            'plan_id' => $plan->id,
+            'status' => 'paid',
+            'event_id' => null,
+        ]);
     }
 
     /**
@@ -307,8 +313,8 @@ class ManualSubscriptionTest extends TestCase
         $this->platformAccount();
         $this->gateway(false);
 
-        $sub = $this->checkout($owner, $org, $plan)['subscription'];
-        $proofUrl = "/api/v1/organizations/{$org->id}/subscriptions/{$sub['id']}/proof";
+        $sub = $this->checkout($owner, $org, $plan)["plan_order"];
+        $proofUrl = "/api/v1/organizations/{$org->id}/plan-orders/{$sub['id']}/proof";
 
         $operator = User::factory()->create();
         $org->members()->create(['user_id' => $operator->id, 'role' => 'operator']);
@@ -324,11 +330,11 @@ class ManualSubscriptionTest extends TestCase
 
         // …but approving is ours, not theirs.
         $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/approve")
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/approve")
             ->assertStatus(403);
 
         $this->actingAs($this->superAdmin(), 'api')
-            ->postJson("/api/v1/admin/subscriptions/{$sub['id']}/approve")
+            ->postJson("/api/v1/admin/plan-orders/{$sub['id']}/approve")
             ->assertOk();
     }
 
@@ -345,27 +351,27 @@ class ManualSubscriptionTest extends TestCase
         $this->gateway(false);
 
         $abandonedOrg = $this->org($user);
-        $abandoned = $this->checkout($user, $abandonedOrg, $plan)['subscription'];
+        $abandoned = $this->checkout($user, $abandonedOrg, $plan)["plan_order"];
 
         $paidOrg = $this->org($user);
-        $paid = $this->checkout($user, $paidOrg, $plan)['subscription'];
+        $paid = $this->checkout($user, $paidOrg, $plan)["plan_order"];
 
         $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$paidOrg->id}/subscriptions/{$paid['id']}/proof", [
+            ->postJson("/api/v1/organizations/{$paidOrg->id}/plan-orders/{$paid['id']}/proof", [
                 'payment_proof_url' => 'https://cdn.test/proof.jpg',
             ])
             ->assertOk();
 
         // Both are past their deadline; only one has anything to show for it.
-        Subscription::query()->update(['payment_deadline_at' => Carbon::now()->subHour()]);
+        EventPlanOrder::query()->update(['payment_deadline_at' => Carbon::now()->subHour()]);
 
-        $this->artisan('subscriptions:expire-manual')->assertSuccessful();
+        $this->artisan('plan-orders:expire-manual')->assertSuccessful();
 
-        $this->assertSame('cancelled', Subscription::find($abandoned['id'])->status);
-        $this->assertSame('past_due', Subscription::find($paid['id'])->status);
+        $this->assertSame('cancelled', EventPlanOrder::find($abandoned['id'])->status);
+        $this->assertSame('past_due', EventPlanOrder::find($paid['id'])->status);
 
         $this->actingAs($this->superAdmin(), 'api')
-            ->getJson('/api/v1/admin/subscriptions')
+            ->getJson('/api/v1/admin/plan-orders')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $paid['id']);
@@ -379,13 +385,13 @@ class ManualSubscriptionTest extends TestCase
         $this->platformAccount();
         $this->gateway(false);
 
-        $first = $this->checkout($user, $this->org($user), $plan)['subscription'];
+        $first = $this->checkout($user, $this->org($user), $plan)["plan_order"];
         $this->assertStringEndsWith('/0001', $first['invoice_number']);
 
-        Subscription::query()->update(['payment_deadline_at' => Carbon::now()->subHour()]);
-        $this->artisan('subscriptions:expire-manual')->assertSuccessful();
+        EventPlanOrder::query()->update(['payment_deadline_at' => Carbon::now()->subHour()]);
+        $this->artisan('plan-orders:expire-manual')->assertSuccessful();
 
-        $second = $this->checkout($user, $this->org($user), $plan)['subscription'];
+        $second = $this->checkout($user, $this->org($user), $plan)["plan_order"];
         $this->assertStringEndsWith('/0002', $second['invoice_number']);
     }
 }
