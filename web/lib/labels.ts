@@ -1,7 +1,7 @@
 import type {
   EventStatus,
   MatchStatus,
-  SubscriptionStatus,
+  PlanOrderStatus,
   TeamStatus,
   TicketOrderStatus,
   WalletTxCategory,
@@ -36,16 +36,10 @@ export const TEAM_STATUS_LABELS: Record<TeamStatus, string> = {
   withdrawn: "Mengundurkan diri",
 };
 
-export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
-  active: "Aktif",
+export const PLAN_ORDER_STATUS_LABELS: Record<PlanOrderStatus, string> = {
   past_due: "Menunggu Pembayaran",
+  paid: "Lunas",
   cancelled: "Dibatalkan",
-  expired: "Kedaluwarsa",
-};
-
-export const BILLING_CYCLE_LABELS: Record<"monthly" | "yearly", string> = {
-  monthly: "Bulanan",
-  yearly: "Tahunan",
 };
 
 export const TICKET_ORDER_STATUS_LABELS: Record<TicketOrderStatus, string> = {

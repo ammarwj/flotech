@@ -87,7 +87,7 @@ export const ORGANIZER_NAV: NavSection[] = [
       { href: "/organizer/tickets", label: "Tiket", icon: Ticket, mobile: true },
       { href: "/organizer/wallet", label: "Dompet", icon: Wallet, mobile: true },
       { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
-      { href: "/organizer/subscription", label: "Langganan", icon: CreditCard },
+      { href: "/organizer/billing", label: "Pembelian Paket", icon: CreditCard },
       { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
     ],
   },
@@ -149,7 +149,7 @@ export const ADMIN_NAV: NavSection[] = [
   },
   {
     id: "admin-plans",
-    label: "Paket & Langganan",
+    label: "Paket & Pembelian",
     items: [
       {
         href: "/admin/plans",
@@ -159,7 +159,7 @@ export const ADMIN_NAV: NavSection[] = [
         short: "Paket",
       },
       { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
-      { href: "/admin/subscriptions", label: "Verifikasi Langganan", icon: BadgeCheck },
+      { href: "/admin/plan-orders", label: "Verifikasi Pembelian", icon: BadgeCheck },
     ],
   },
   {

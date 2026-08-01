@@ -6,7 +6,7 @@ import type {
   Organization,
   PublicOrganization,
   SocialLinks,
-  Subscription,
+  EventPlanOrder,
 } from "@/types/api";
 
 export async function getOrganizations(): Promise<Organization[]> {
@@ -58,47 +58,48 @@ export async function updateOrganization(
   return data.data;
 }
 
-export async function checkoutSubscription(
-  orgId: string,
-  planId: string,
-  billingCycle: "monthly" | "yearly"
-): Promise<CheckoutResult> {
+/** Buy a plan. There is no cycle — one payment covers one event. */
+export async function checkoutPlan(orgId: string, planId: string): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
-    `/organizations/${orgId}/subscriptions/checkout`,
-    { plan_id: planId, billing_cycle: billingCycle }
+    `/organizations/${orgId}/plan-orders/checkout`,
+    { plan_id: planId }
   );
   return data.data;
 }
 
-export async function getSubscriptions(orgId: string): Promise<Subscription[]> {
-  const { data } = await apiClient.get<ApiEnvelope<Subscription[]>>(
-    `/organizations/${orgId}/subscriptions`
+/**
+ * Every plan order, paid or not. There is deliberately no separate endpoint for
+ * unspent credits — filter with `unconsumedOrders()` from lib/plan.ts.
+ */
+export async function getPlanOrders(orgId: string): Promise<EventPlanOrder[]> {
+  const { data } = await apiClient.get<ApiEnvelope<EventPlanOrder[]>>(
+    `/organizations/${orgId}/plan-orders`
   );
   return data.data;
 }
 
 /** Reopen payment for an unpaid invoice. Returns a fresh Snap transaction. */
-export async function paySubscription(orgId: string, subId: string): Promise<CheckoutResult> {
+export async function payPlanOrder(orgId: string, orderId: string): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
-    `/organizations/${orgId}/subscriptions/${subId}/pay`
+    `/organizations/${orgId}/plan-orders/${orderId}/pay`
   );
   return data.data;
 }
 
 /** The organizer's transfer receipt for a manual plan payment. */
-export async function submitSubscriptionProof(
+export async function submitPlanOrderProof(
   orgId: string,
-  subId: string,
+  orderId: string,
   proofUrl: string
-): Promise<Subscription> {
-  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
-    `/organizations/${orgId}/subscriptions/${subId}/proof`,
+): Promise<EventPlanOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<EventPlanOrder>>(
+    `/organizations/${orgId}/plan-orders/${orderId}/proof`,
     { payment_proof_url: proofUrl }
   );
   return data.data;
 }
 
-export interface SubscriptionDocument {
+export interface PlanOrderDocument {
   blob: Blob;
   fileName: string;
 }
@@ -110,17 +111,17 @@ export interface SubscriptionDocument {
  * the request has to go through apiClient and come back as a blob. The blob is
  * what both the preview (an object URL in an iframe) and the download use.
  */
-export async function getSubscriptionDocument(
+export async function getPlanOrderDocument(
   orgId: string,
-  subId: string,
+  orderId: string,
   kind: "invoice" | "receipt"
-): Promise<SubscriptionDocument> {
+): Promise<PlanOrderDocument> {
   const response = await apiClient.get<Blob>(
-    `/organizations/${orgId}/subscriptions/${subId}/${kind}`,
+    `/organizations/${orgId}/plan-orders/${orderId}/${kind}`,
     { responseType: "blob" }
   );
 
-  const fallback = `${kind === "receipt" ? "Kwitansi" : "Invoice"}-${subId}.pdf`;
+  const fallback = `${kind === "receipt" ? "Kwitansi" : "Invoice"}-${orderId}.pdf`;
 
   return {
     blob: response.data,
@@ -128,11 +129,11 @@ export async function getSubscriptionDocument(
   };
 }
 
-export async function downloadSubscriptionDocument(
+export async function downloadPlanOrderDocument(
   orgId: string,
-  subId: string,
+  orderId: string,
   kind: "invoice" | "receipt"
 ): Promise<void> {
-  const { blob, fileName } = await getSubscriptionDocument(orgId, subId, kind);
+  const { blob, fileName } = await getPlanOrderDocument(orgId, orderId, kind);
   downloadBlob(blob, fileName);
 }

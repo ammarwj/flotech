@@ -29,9 +29,7 @@ type RecipientMode = "team" | "player";
 export default function GenerateCertificatesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { org, orgId, isLoading: orgLoading } = useActiveOrg();
-
-  const canEmail = isCertificateEmailEnabled(org);
+  const { orgId, isLoading: orgLoading } = useActiveOrg();
 
   const [eventId, setEventId] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -51,6 +49,11 @@ export default function GenerateCertificatesPage() {
     queryFn: () => getCertificateTemplates(orgId!),
     enabled: !!orgId,
   });
+
+  // Emailing is an entitlement of the event being generated for, not of the
+  // organization — picking a different event can change the answer.
+  const selectedEvent = eventsQuery.data?.find((e) => e.id === eventId);
+  const canEmail = isCertificateEmailEnabled(selectedEvent);
 
   const recipientsQuery = useQuery({
     queryKey: ["certificate-recipients", orgId, eventId],
@@ -249,7 +252,7 @@ export default function GenerateCertificatesPage() {
               "flex items-center gap-2 text-sm",
               !canEmail && "cursor-not-allowed opacity-60"
             )}
-            title={canEmail ? undefined : "Paketmu belum mencakup pengiriman email"}
+            title={canEmail ? undefined : "Paket event ini belum mencakup pengiriman email"}
           >
             <input
               type="checkbox"

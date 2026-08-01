@@ -1,69 +1,42 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 
 import { usePlanCtaHref } from "@/components/auth/public-auth-actions";
 import { observeReveals } from "@/components/landing/reveal-init";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getPublicSiteSettings } from "@/lib/api/landing";
 import { getPublicPlans } from "@/lib/api/plans";
 import { rupiahCompact } from "@/lib/labels";
-import {
-  formatPlanFeature,
-  getMaxYearlyDiscount,
-  getMonthlyEquivalent,
-  getPlanColor,
-  getPlanFeatureValue,
-} from "@/lib/plan";
+import { formatPlanFeature, getPlanColor, getPlanFeatureValue } from "@/lib/plan";
 import type { Plan } from "@/types/api";
 import { CheckIcon, CrossIcon } from "./icons";
 
-/** Last resort only: the address super_admin has not replaced yet, or the API is down. */
-const SALES_FALLBACK = "sales@flo-event.id";
-
-const SALES_SUBJECT = "?subject=Tertarik%20paket%20Professional%20flo-event";
-
 /**
- * Whom "Hubungi Sales" writes to. Same query key as the footer, so react-query
- * serves both from one request on the landing page.
+ * The one bit of a card the plan catalogue has no opinion about: `pro` is the
+ * one we push. Everything else — price, description, features — is API data.
+ *
+ * Every plan is self-serve now. Professional used to open a mailto to sales,
+ * which made sense against a Rp 999.000/month subscription; at Rp 800.000 for a
+ * single event it is a checkout, and a mailto on a priced card is a dead end.
+ * `sales_email` still exists in site_settings for the footer.
  */
-function useSalesMailto(): string {
-  const { data } = useQuery({ queryKey: ["public-site-settings"], queryFn: getPublicSiteSettings });
-  const address = data?.sales_email || data?.contact_email || SALES_FALLBACK;
-
-  return `mailto:${address}${SALES_SUBJECT}`;
-}
-
-/**
- * The bits of a card the plan catalogue has no opinion about: the top plan is a
- * sales conversation rather than a self-serve checkout, and `pro` is the one we
- * push. Everything else on the card — price, description, features — is API data.
- */
-function ctaFor(plan: Plan, salesMailto: string): { label: string; href: string } {
-  if (plan.slug === "professional") return { label: "Hubungi Sales", href: salesMailto };
+function ctaFor(plan: Plan): { label: string; href: string } {
   return { label: `Pilih ${plan.name}`, href: "/register" };
 }
 
-/** Shown only in yearly mode (the monthly note is hidden by CSS). */
-function yearlyNote(plan: Plan): string {
-  if (plan.price_monthly === 0) return "Gratis selamanya";
-  return `≈ Rp ${rupiahCompact(plan.price_yearly)}/tahun`;
-}
-
-/** Ticket platform fee per plan, e.g. "3% (Starter) · 2% (Pro)". */
+/** Platform fee per plan, e.g. "3% (Starter) · 2% (Pro)". */
 function feeFootnote(plans: Plan[]): string | null {
   const fees = plans.flatMap((plan) => {
-    const fee = getPlanFeatureValue(plan, "ticket_fee_percent");
+    const fee = getPlanFeatureValue(plan, "platform_fee_percent");
     return fee ? [`${fee}% (${plan.name})`] : [];
   });
 
-  return fees.length > 0 ? `Platform fee tiket: ${fees.join(" · ")}.` : null;
+  return fees.length > 0 ? `Platform fee tiket & pendaftaran: ${fees.join(" · ")}.` : null;
 }
 
 export function Pricing() {
-  const [yearly, setYearly] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
@@ -76,16 +49,6 @@ export function Pricing() {
     return observeReveals(gridRef.current);
   }, [plans]);
 
-  // The CSS reads the cycle off the body, but the body outlives this section:
-  // without the cleanup, leaving the page and coming back would leave a stale
-  // "yearly" attribute contradicting the freshly-reset switch.
-  useEffect(() => {
-    document.body.setAttribute("data-billing", yearly ? "yearly" : "monthly");
-    return () => document.body.setAttribute("data-billing", "monthly");
-  }, [yearly]);
-
-  const discount = getMaxYearlyDiscount(plans);
-
   return (
     <section
       className="section"
@@ -95,34 +58,23 @@ export function Pricing() {
       <div className="container">
         <div className="section-head center reveal">
           <span className="eyebrow">Harga</span>
-          <h2 className="section-title">Mulai kecil, upgrade saat turnamenmu membesar</h2>
+          <h2 className="section-title">Bayar sekali per event, bukan langganan</h2>
           <p className="section-sub">
-            Semua paket termasuk landing page event, registrasi tim, jadwal, klasemen, dan bracket. Tanpa biaya
-            tersembunyi.
+            Pilih paket saat kamu menggelar event, dan itu berlaku sampai eventnya selesai — mau
+            seminggu atau lintas bulan. Semua paket termasuk landing page event, registrasi tim,
+            jadwal, klasemen, dan bracket. Tanpa biaya tersembunyi.
           </p>
-          <div className="bill-switch">
-            <span className="lbl lbl-m">Bulanan</span>
-            <button
-              className="switch"
-              onClick={() => setYearly((v) => !v)}
-              role="switch"
-              aria-checked={yearly}
-              aria-label="Tagihan bulanan atau tahunan"
-            />
-            <span className="lbl lbl-y">Tahunan</span>
-            {discount > 0 && <span className="save">Hemat {discount}%</span>}
-          </div>
         </div>
 
-        {/* Drives the row's column count and max width — see .price-grid. Four
+        {/* Drives the row's column count and max width — see .price-grid. Three
             while loading, since the real count isn't known yet. */}
         <div
           className="price-grid"
           ref={gridRef}
-          style={{ "--plan-count": plans?.length ?? 4 } as CSSProperties}
+          style={{ "--plan-count": plans?.length ?? 3 } as CSSProperties}
         >
           {plansQuery.isPending
-            ? [0, 1, 2, 3].map((i) => (
+            ? [0, 1, 2].map((i) => (
                 <article key={i} className="plan" aria-hidden>
                   <Skeleton className="h-full min-h-[420px] w-full" />
                 </article>
@@ -139,7 +91,6 @@ export function Pricing() {
         {plans && (
           <p className="price-foot">
             {feeFootnote(plans)}
-            {discount > 0 && ` Diskon ${discount}% untuk pembayaran tahunan.`}
             {" Kalau payment gateway sedang bermasalah, pembayaran otomatis dialihkan ke transfer manual ke rekeningmu — tanpa potongan fee."}
           </p>
         )}
@@ -149,9 +100,8 @@ export function Pricing() {
 }
 
 function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
-  const salesMailto = useSalesMailto();
   const featured = plan.slug === "pro";
-  const cta = ctaFor(plan, salesMailto);
+  const cta = ctaFor(plan);
 
   return (
     <article className={`plan${featured ? " featured" : ""} reveal`} data-delay={delay}>
@@ -162,12 +112,10 @@ function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
       <p className="plan-desc">{plan.description}</p>
       <div className="plan-price">
         <span className="cur">Rp</span>
-        {/* Yearly is billed as one sum, but the card compares plans per month. */}
-        <span className="amt amt-m">{rupiahCompact(plan.price_monthly)}</span>
-        <span className="amt amt-y">{rupiahCompact(getMonthlyEquivalent(plan))}</span>
-        {plan.price_monthly > 0 && <span className="per">/bln</span>}
+        <span className="amt">{rupiahCompact(plan.price)}</span>
+        {plan.price > 0 && <span className="per">/event</span>}
       </div>
-      <p className="plan-note">{yearlyNote(plan)}</p>
+      <p className="plan-note">Sekali bayar · 1 event</p>
       <PlanCta cta={cta} featured={featured} />
       <ul className="plan-feats">
         {plan.feature_details?.map((feature) => (
@@ -182,7 +130,7 @@ function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
 
 /**
  * A signed-in organizer picking a plan wants the checkout page, not the sign-up
- * form. The Professional card points at a mailto and is left alone.
+ * form.
  */
 function PlanCta({ cta, featured }: { cta: { label: string; href: string }; featured: boolean }) {
   const href = usePlanCtaHref(cta.href);

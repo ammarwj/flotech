@@ -20,6 +20,7 @@ import {
 import { getTicketOrders } from "@/lib/api/tickets";
 import { downloadCsv, slugifyFileName, toCsv } from "@/lib/csv";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
+import { getEvent } from "@/lib/api/events";
 import { isTicketingEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { cn } from "@/lib/utils";
@@ -49,8 +50,15 @@ const fmtDateTime = (iso: string | null | undefined) =>
 export default function TicketBuyersPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
-  const { org, orgId } = useActiveOrg();
-  const ticketing = isTicketingEnabled(org);
+  const { orgId } = useActiveOrg();
+
+  // Ticketing is an entitlement of this event, so the event has to be loaded.
+  const eventQuery = useQuery({
+    queryKey: ["event", orgId, eventId],
+    queryFn: () => getEvent(orgId!, eventId),
+    enabled: !!orgId,
+  });
+  const ticketing = isTicketingEnabled(eventQuery.data);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -114,10 +122,10 @@ export default function TicketBuyersPage() {
       ])
     );
 
-    downloadCsv(`pembeli-tiket-${slugifyFileName(org?.name ?? "event")}`, csv);
+    downloadCsv(`pembeli-tiket-${slugifyFileName(eventQuery.data?.name ?? "event")}`, csv);
   };
 
-  if (org && !ticketing) {
+  if (eventQuery.data && !ticketing) {
     return (
       <div>
         <PageHeader
@@ -132,7 +140,7 @@ export default function TicketBuyersPage() {
           description="Upgrade paket untuk menjual tiket QR Code dan melihat daftar pembelinya."
           action={
             <Button asChild>
-              <Link href="/organizer/upgrade">
+              <Link href="/organizer/plans">
                 <ArrowUpRight className="h-4 w-4" />
                 Upgrade paket
               </Link>

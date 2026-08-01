@@ -29,10 +29,8 @@ export interface Plan {
   name: string;
   slug: string;
   description: string | null;
-  price_monthly: number;
-  /** Derived server-side from `yearly_discount_percent`; this is what gets billed. */
-  price_yearly: number;
-  yearly_discount_percent: number;
+  /** One-time, per event. There is no billing cycle. */
+  price: number;
   is_active: boolean;
   is_public: boolean;
   sort_order: number;
@@ -130,9 +128,6 @@ export interface Organization {
    * but cannot sign them off, so the dashboard hides ratifying controls.
    */
   my_role: "owner" | "admin" | "operator" | null;
-  plan_id: string | null;
-  plan_expires_at: string | null;
-  plan?: Plan;
   /**
    * Platform-wide, not a property of this org: false means a super admin has
    * switched Midtrans off and all sales run on manual bank transfer.
@@ -145,30 +140,51 @@ export interface Organization {
    * rides here rather than on its own endpoint because the banner reading it
    * renders for `operator` members too, who can't call /subscriptions.
    */
-  subscription_awaiting_verification: boolean;
+  plan_payment_awaiting_verification: boolean;
+  /** Paid plans not yet spent on an event — drives the "you're holding one" banner. */
+  unconsumed_plan_orders_count: number;
 }
 
-export type SubscriptionStatus = "active" | "past_due" | "cancelled" | "expired";
+export type PlanOrderStatus = "past_due" | "paid" | "cancelled";
 
 /**
+ * The slim plan an event carries — enough to gate on, without the thirteen
+ * `feature_details` entries the events list would repeat per row. Mirrors
+ * PlanSummaryResource.
+ */
+export interface PlanSummary {
+  id: string;
+  name: string;
+  slug: string;
+  features?: Record<string, string>;
+}
+
+/**
+ * One purchase of one plan, for one event.
+ *
  * Extends ManualPaymentFields (declared further down) for the same reason ticket
  * orders and teams do: while the payment gateway is off, an organizer pays for a
  * plan by bank transfer and uploads a receipt. The difference is who verifies it
  * — a super admin, because the money lands in the platform's own account.
+ *
+ * A paid order with `event_id: null` is a *credit*: it entitles nothing until an
+ * event spends it. `unconsumedOrders()` in lib/plan.ts is the only place that
+ * pair should be read.
  */
-export interface Subscription extends ManualPaymentFields {
+export interface EventPlanOrder extends ManualPaymentFields {
   id: string;
   organization_id: string;
   plan_id: string | null;
-  /** Issued at checkout — every subscription has one, paid or not. */
+  /** Issued at checkout — every order has one, paid or not. */
   invoice_number: string | null;
-  /** Issued on payment — only paid subscriptions have one. */
+  /** Issued on payment — only paid orders have one. */
   receipt_number: string | null;
-  billing_cycle: "monthly" | "yearly";
   amount: number;
-  status: SubscriptionStatus;
-  starts_at: string | null;
-  expires_at: string | null;
+  status: PlanOrderStatus;
+  /** The event this credit was spent on; null while it is still unspent. */
+  event_id: string | null;
+  consumed_at: string | null;
+  event?: { id: string; name: string };
   midtrans_order_id: string | null;
   payment_type: string | null;
   paid_at: string | null;
@@ -186,7 +202,7 @@ export interface Subscription extends ManualPaymentFields {
  * call failed", and only the subscription's own status tells them apart.
  */
 export interface CheckoutResult extends PaymentStart {
-  subscription: Subscription;
+  plan_order: EventPlanOrder;
 }
 
 // The vocabulary below is admin-managed data (see /catalog), so these are open
@@ -587,6 +603,13 @@ export interface EventCategory {
 export interface SportEvent {
   id: string;
   organization_id: string;
+  /**
+   * The plan this event runs on. `plan_id` is always present so the client can
+   * tell "no plan" from "not loaded"; `plan` only when eager-loaded. Every
+   * entitlement the dashboard gates on is read from here — see lib/plan.ts.
+   */
+  plan_id: string | null;
+  plan?: PlanSummary;
   name: string;
   slug: string;
   sport_type: SportType;

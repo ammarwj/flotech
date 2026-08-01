@@ -140,5 +140,5 @@ export function usePublicCta(): { href: string; label: string } {
 export function usePlanCtaHref(fallback: string): string {
   const { isAuthenticated } = useOptionalSession();
 
-  return isAuthenticated && fallback === "/register" ? "/organizer/upgrade" : fallback;
+  return isAuthenticated && fallback === "/register" ? "/organizer/plans" : fallback;
 }

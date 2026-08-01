@@ -18,7 +18,6 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 export default function TicketsOverviewPage() {
   const { sportLabel, sportColor } = useCatalog();
   const { org, orgId, isLoading: orgLoading } = useActiveOrg();
-  const ticketing = isTicketingEnabled(org);
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -35,27 +34,6 @@ export default function TicketsOverviewPage() {
             <Skeleton key={i} className="h-[80px] w-full rounded-xl" />
           ))}
         </div>
-      </div>
-    );
-  }
-
-  if (org && !ticketing) {
-    return (
-      <div>
-        <PageHeader title="Tiket" description="Jual tiket digital dengan QR Code." />
-        <EmptyState
-          icon={Ticket}
-          title="Fitur tiket belum aktif di paketmu"
-          description="Upgrade ke paket Starter atau lebih tinggi untuk menjual tiket QR Code dan mengelola check-in penonton."
-          action={
-            <Button asChild>
-              <Link href="/organizer/upgrade">
-                <ArrowUpRight className="h-4 w-4" />
-                Upgrade paket
-              </Link>
-            </Button>
-          }
-        />
       </div>
     );
   }
@@ -96,8 +74,12 @@ export default function TicketsOverviewPage() {
           merambat naik jadi lebar track — kartunya melebar melewati viewport
           walau isinya sudah min-w-0. Tailwind grid-cols-1 = minmax(0, 1fr). */}
       <div className="grid grid-cols-1 gap-3">
+        {/* Ticketing is an entitlement of the *event*, not of the organization:
+            one event can be on Starter and the next on Professional. A
+            whole-page empty state would have to lie about one of them. */}
         {events?.map((ev) => {
           const color = sportColor(ev.sport_type);
+          const ticketing = isTicketingEnabled(ev);
           return (
             <Card key={ev.id} className="flex min-w-0 flex-wrap items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-4">
@@ -122,24 +104,35 @@ export default function TicketsOverviewPage() {
                     </span>
                     <EventStatusBadge status={ev.status} />
                   </div>
-                  <div className="mt-1 truncate text-sm text-muted-foreground">{sportLabel(ev.sport_type)}</div>
+                  <div className="mt-1 truncate text-sm text-muted-foreground">
+                    {sportLabel(ev.sport_type)}
+                    {!ticketing && " · paket event ini tanpa tiket"}
+                  </div>
                 </div>
               </div>
               {/* Full width dulu supaya kedua tombol turun ke barisnya sendiri
                   di HP, bukan melebarkan kartu melewati viewport. */}
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none">
-                  <Link href={`/organizer/events/${ev.id}/scan`}>
-                    <ScanLine className="h-4 w-4" />
-                    Scan
-                  </Link>
-                </Button>
-                <Button asChild size="sm" className="flex-1 sm:flex-none">
-                  <Link href={`/organizer/events/${ev.id}/tickets`}>
-                    Kelola tiket
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
+                {ticketing ? (
+                  <>
+                    <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none">
+                      <Link href={`/organizer/events/${ev.id}/scan`}>
+                        <ScanLine className="h-4 w-4" />
+                        Scan
+                      </Link>
+                    </Button>
+                    <Button asChild size="sm" className="flex-1 sm:flex-none">
+                      <Link href={`/organizer/events/${ev.id}/tickets`}>
+                        Kelola tiket
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" disabled className="flex-1 sm:flex-none">
+                    Tiket tidak tersedia
+                  </Button>
+                )}
               </div>
             </Card>
           );

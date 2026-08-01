@@ -2,100 +2,45 @@
 
 import { Check, X } from "lucide-react";
 
-import { formatPlanFeature, getMonthlyEquivalent, getPlanColor, getYearlyDiscount } from "@/lib/plan";
+import { formatPlanFeature, getPlanColor } from "@/lib/plan";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Plan } from "@/types/api";
 
-export type BillingCycle = "monthly" | "yearly";
-
-/** `discount` is the best saving across plans (see getMaxYearlyDiscount); 0 hides the badge. */
-export function BillingCycleToggle({
-  cycle,
-  onChange,
-  discount = 0,
-}: {
-  cycle: BillingCycle;
-  onChange: (cycle: BillingCycle) => void;
-  discount?: number;
-}) {
-  return (
-    <div className="mb-5 inline-flex items-center gap-1 rounded-full border border-border bg-[var(--surface)] p-1 text-sm font-semibold">
-      {(["monthly", "yearly"] as const).map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors",
-            cycle === c
-              ? "bg-[var(--brand-600)] text-white"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {c === "monthly" ? "Bulanan" : "Tahunan"}
-          {c === "yearly" && discount > 0 && (
-            <span
-              className={cn(
-                "rounded-full px-1.5 py-0.5 text-[11px] font-bold",
-                cycle === "yearly"
-                  ? "bg-white/20 text-white"
-                  : "bg-[var(--tint)] text-[var(--brand-600)]"
-              )}
-            >
-              Hemat {discount}%
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /**
  * One plan in the pricing grid. The feature list is data-driven from
  * `plan.feature_details` (see CLAUDE.md) — never hardcode labels here.
- * `isCurrent` marks the org's active plan; onboarding leaves it false since
- * the org has no plan yet.
+ *
+ * There is no "current plan" any more: a plan belongs to an event, and an
+ * organizer can be running a Starter event and a Professional one at once. What
+ * a card offers is a purchase, every time.
  */
 export function PlanCard({
   plan,
-  cycle,
-  isCurrent = false,
   isPending = false,
   disabled = false,
   onSelect,
 }: {
   plan: Plan;
-  cycle: BillingCycle;
-  isCurrent?: boolean;
   isPending?: boolean;
   disabled?: boolean;
   onSelect: (plan: Plan) => void;
 }) {
-  // Always quoted per month so the cycles stay comparable; the yearly sum that
-  // actually gets charged is spelled out under the price.
-  const perMonth = cycle === "yearly" ? getMonthlyEquivalent(plan) : plan.price_monthly;
   const color = getPlanColor(plan.slug);
   const featured = plan.slug === "pro";
-
-  const discount = getYearlyDiscount(plan);
-  const showSaving = cycle === "yearly" && discount > 0;
 
   return (
     <Card
       className={cn(
         "relative flex flex-col p-5",
-        isCurrent
-          ? "ring-1 ring-[var(--brand-600)]"
-          : featured && "ring-1 ring-[color-mix(in_srgb,var(--brand-600)_50%,transparent)]"
+        featured && "ring-1 ring-[color-mix(in_srgb,var(--brand-600)_50%,transparent)]"
       )}
     >
-      {(isCurrent || featured) && (
+      {featured && (
         <span className="absolute -top-2.5 left-5 rounded-full bg-[var(--brand-600)] px-2.5 py-0.5 text-[11px] font-bold text-white">
-          {isCurrent ? "Paket aktif" : "Populer"}
+          Populer
         </span>
       )}
 
@@ -106,32 +51,14 @@ export function PlanCard({
         </span>
       </div>
 
-      <div className="mt-3 min-h-[18px] text-xs">
-        {showSaving && (
-          <span className="text-muted-foreground line-through">{rupiah(plan.price_monthly)}</span>
+      <div className="mt-3 text-2xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
+        {plan.price === 0 ? "Gratis" : rupiah(plan.price)}
+        {plan.price > 0 && (
+          <span className="text-sm font-medium text-muted-foreground">/event</span>
         )}
       </div>
 
-      <div className="text-2xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-        {perMonth === 0 ? "Gratis" : rupiah(Math.round(perMonth))}
-        {perMonth > 0 && <span className="text-sm font-medium text-muted-foreground">/bln</span>}
-      </div>
-
-      <div className="min-h-[18px] text-xs text-muted-foreground">
-        {cycle === "yearly" && plan.price_yearly > 0 && `Ditagih ${rupiah(plan.price_yearly)}/tahun`}
-      </div>
-
-      {showSaving && (
-        <span
-          className="mt-1.5 w-fit rounded-full px-2 py-0.5 text-[11px] font-bold"
-          style={{
-            background: `color-mix(in srgb, ${color} 14%, transparent)`,
-            color,
-          }}
-        >
-          Hemat {discount}%
-        </span>
-      )}
+      <div className="min-h-[18px] text-xs text-muted-foreground">Sekali bayar · 1 event</div>
 
       <p className="mt-1 min-h-[36px] text-xs text-muted-foreground">{plan.description}</p>
 
@@ -159,20 +86,11 @@ export function PlanCard({
 
       <Button
         className="mt-4"
-        variant={isCurrent ? "outline" : featured ? "default" : "outline"}
-        disabled={isCurrent || disabled}
+        variant={featured ? "default" : "outline"}
+        disabled={disabled}
         onClick={() => onSelect(plan)}
       >
-        {isCurrent ? (
-          <>
-            <Check className="h-4 w-4" />
-            Paket aktif
-          </>
-        ) : isPending ? (
-          "Memproses…"
-        ) : (
-          "Pilih paket"
-        )}
+        {isPending ? "Memproses…" : "Beli paket"}
       </Button>
     </Card>
   );

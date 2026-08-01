@@ -54,6 +54,11 @@ export type EventInput = Partial<
   >
 > & {
   slug?: string;
+  /**
+   * Which paid credit to spend on this event. Optional — the backend falls back
+   * to the oldest unspent one, which is right when the organizer holds only one.
+   */
+  plan_order_id?: string;
   /** The competitions inside the event; the backend full-replaces this list. */
   categories?: EventCategoryInput[];
 };

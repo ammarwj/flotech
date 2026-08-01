@@ -25,8 +25,9 @@ import {
   updateTicketCategory,
   type TicketCategoryInput,
 } from "@/lib/api/tickets";
+import { getEvent } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
-import { isTicketingEnabled, getTicketLimit } from "@/lib/plan";
+import { isTicketingEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
@@ -50,8 +51,14 @@ export default function EventTicketsPage() {
   const [creating, setCreating] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  const ticketing = isTicketingEnabled(org);
-  const limit = getTicketLimit(org);
+  // The entitlement belongs to this event, not to the organization — so the
+  // event has to be loaded before we can say whether tickets are available.
+  const eventQuery = useQuery({
+    queryKey: ["event", orgId, eventId],
+    queryFn: () => getEvent(orgId!, eventId),
+    enabled: !!orgId,
+  });
+  const ticketing = isTicketingEnabled(eventQuery.data);
 
   const catsQuery = useQuery({
     queryKey: ["ticket-categories", orgId, eventId],
@@ -124,7 +131,7 @@ export default function EventTicketsPage() {
           description="Upgrade ke paket Starter atau lebih tinggi untuk menjual tiket QR Code dan mengelola check-in penonton."
           action={
             <Button asChild>
-              <Link href="/organizer/upgrade">
+              <Link href="/organizer/plans">
                 <ArrowUpRight className="h-4 w-4" />
                 Upgrade paket
               </Link>
@@ -137,17 +144,12 @@ export default function EventTicketsPage() {
 
   const categories = catsQuery.data;
   const report = reportQuery.data;
-  const totalQuota = categories?.reduce((s, c) => s + (c.quota ?? 0), 0) ?? 0;
 
   return (
     <div>
       <PageHeader
         title="Tiket"
-        description={
-          limit !== null
-            ? `Kelola kategori tiket & pantau penjualan. Batas paket: ${limit.toLocaleString("id-ID")} tiket/event.`
-            : "Kelola kategori tiket & pantau penjualan event ini."
-        }
+        description="Kelola kategori tiket & pantau penjualan event ini."
         backHref="/organizer/events"
         backLabel="Daftar event"
         actions={
@@ -330,12 +332,6 @@ export default function EventTicketsPage() {
           )
         )}
       </div>
-
-      {limit !== null && categories && categories.length > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Total kuota terpasang: {totalQuota.toLocaleString("id-ID")} / {limit.toLocaleString("id-ID")} tiket.
-        </p>
-      )}
 
       {/* ===== Recent check-ins ===== */}
       {report && report.recent_checkins.length > 0 && (

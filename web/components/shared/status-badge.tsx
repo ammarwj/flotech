@@ -1,7 +1,7 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import {
   EVENT_STATUS_LABELS,
-  SUBSCRIPTION_STATUS_LABELS,
+  PLAN_ORDER_STATUS_LABELS,
   TEAM_STATUS_LABELS,
   TICKET_ORDER_STATUS_LABELS,
   WALLET_TX_STATUS_LABELS,
@@ -10,7 +10,7 @@ import {
 import type {
   EventStatus,
   Match,
-  SubscriptionStatus,
+  PlanOrderStatus,
   TeamStatus,
   TicketOrderStatus,
   WalletTxStatus,
@@ -125,24 +125,23 @@ export function TicketOrderStatusBadge({ status }: { status: TicketOrderStatus }
   );
 }
 
-const SUBSCRIPTION_VARIANT: Record<SubscriptionStatus, Variant> = {
-  active: "success",
+const PLAN_ORDER_VARIANT: Record<PlanOrderStatus, Variant> = {
   past_due: "warning",
+  paid: "success",
   cancelled: "danger",
-  expired: "neutral",
 };
 
 /**
  * `awaitingVerification` is a derived flag, not a status value — a manual bill
  * under review is still `past_due`. It stays a separate prop for that reason:
- * widening SubscriptionStatus would leave both label maps below silently
+ * widening PlanOrderStatus would leave both label maps below silently
  * undefined for the new member.
  */
-export function SubscriptionStatusBadge({
+export function PlanOrderStatusBadge({
   status,
   awaitingVerification = false,
 }: {
-  status: SubscriptionStatus;
+  status: PlanOrderStatus;
   awaitingVerification?: boolean;
 }) {
   if (awaitingVerification) {
@@ -150,6 +149,6 @@ export function SubscriptionStatusBadge({
   }
 
   return (
-    <Badge variant={SUBSCRIPTION_VARIANT[status]}>{SUBSCRIPTION_STATUS_LABELS[status]}</Badge>
+    <Badge variant={PLAN_ORDER_VARIANT[status]}>{PLAN_ORDER_STATUS_LABELS[status]}</Badge>
   );
 }

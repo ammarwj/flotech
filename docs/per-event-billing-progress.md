@@ -37,7 +37,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 3 | `PlanGate` + call site backend | `[x]` |
 | 4 | Siklus order + rute + resource | `[x]` (digabung ke Tahap 3) |
 | 5 | Drop kolom paket di `organizations` | `[x]` |
-| 6 | Exporter Excel/PDF + katup super_admin | `[ ]` |
+| 6 | Exporter Excel/PDF + katup super_admin | `[ ]` **ditunda ke setelah Tahap 8** |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[ ]` |
 | 8 | Halaman frontend | `[ ]` |
 | 9 | Test backend + e2e | `[ ]` |
@@ -215,7 +215,7 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] Hapus `plan_id` dari `StoreOrganizationRequest`
 - [x] Hapus 4× `->with('plan.features')` di `OrganizationController`
 
-## Tahap 6 — Exporter + katup super_admin
+## Tahap 6 — Exporter + katup super_admin  ⏸ *(ditunda: frontend didahulukan supaya aplikasi bisa dijalankan)*
 
 > `maatwebsite/excel ^3.1` **sudah ada di `composer.json` tapi belum dipakai satu baris pun**; `barryvdh/laravel-dompdf` sudah dipakai sertifikat & invoice. **Tidak ada dependency baru.**
 

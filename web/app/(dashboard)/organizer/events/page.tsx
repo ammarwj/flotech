@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3 } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
-import { getActiveEventLimit, countActiveEvents } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,37 +38,21 @@ export default function EventsPage() {
   }
 
   const events = eventsQuery.data;
-  const limit = getActiveEventLimit(org);
-  const activeCount = countActiveEvents(events);
-  const limitReached = limit !== null && activeCount >= limit;
 
   return (
     <div>
       <PageHeader
         title="Event"
-        description={
-          org && !org.plan
-            ? "Kelola semua turnamen organisasimu. Pilih paket dulu untuk mulai membuat event."
-            : limit !== null
-              ? `Kelola semua turnamen organisasimu. ${activeCount}/${limit} slot event aktif terpakai.`
-              : "Kelola semua turnamen organisasimu."
-        }
+        // No active-event cap any more: each event is bought separately, so the
+        // only thing standing between an organizer and another one is buying it.
+        description="Kelola semua turnamen organisasimu. Setiap event punya paketnya sendiri."
         actions={
-          limitReached ? (
-            <Button asChild variant="outline">
-              <Link href="/organizer/upgrade">
-                <ArrowUpRight className="h-4 w-4" />
-                {org && !org.plan ? "Pilih paket" : "Upgrade paket"}
-              </Link>
-            </Button>
-          ) : (
-            <Button asChild>
-              <Link href="/organizer/events/new">
-                <Plus className="h-4 w-4" />
-                Buat Event
-              </Link>
-            </Button>
-          )
+          <Button asChild>
+            <Link href="/organizer/events/new">
+              <Plus className="h-4 w-4" />
+              Buat Event
+            </Link>
+          </Button>
         }
       />
 

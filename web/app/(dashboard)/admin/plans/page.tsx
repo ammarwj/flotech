@@ -12,14 +12,13 @@ import {
   syncPlanFeatures,
 } from "@/lib/api/plans";
 import { parseApiError } from "@/lib/api/errors";
-import { computeYearlyPrice } from "@/lib/plan";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Plan } from "@/types/api";
 
-const EMPTY_FORM = { name: "", slug: "", price_monthly: 0, yearly_discount_percent: 0 };
+const EMPTY_FORM = { name: "", slug: "", price: 0 };
 
 export default function AdminPlansPage() {
   const qc = useQueryClient();
@@ -80,32 +79,14 @@ export default function AdminPlansPage() {
           <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="pm">Harga/bln</Label>
+          <Label htmlFor="pm">Harga per event</Label>
           <Input
             id="pm"
             type="number"
-            value={form.price_monthly}
-            onChange={(e) => setForm({ ...form, price_monthly: Number(e.target.value) })}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="yd">Diskon tahunan (%)</Label>
-          <Input
-            id="yd"
-            type="number"
             min={0}
-            max={100}
-            value={form.yearly_discount_percent}
-            onChange={(e) =>
-              setForm({ ...form, yearly_discount_percent: Number(e.target.value) })
-            }
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
           />
-        </div>
-        <div className="grid gap-1.5">
-          <Label>Harga/thn</Label>
-          <p className="text-sm font-semibold">
-            {rupiah(computeYearlyPrice(form.price_monthly, form.yearly_discount_percent))}
-          </p>
         </div>
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? "…" : "Tambah paket"}
@@ -123,12 +104,7 @@ export default function AdminPlansPage() {
                 </span>
                 <span className="ml-2 text-xs text-muted-foreground">/{plan.slug}</span>
                 <span className="ml-3 text-sm text-muted-foreground">
-                  {rupiah(plan.price_monthly)}/bln · {rupiah(plan.price_yearly)}/thn
-                  {plan.yearly_discount_percent > 0 && (
-                    <span className="ml-2 font-semibold text-[var(--brand-600)]">
-                      hemat {Math.round(plan.yearly_discount_percent)}%
-                    </span>
-                  )}
+                  {rupiah(plan.price)}/event
                 </span>
               </div>
               <div className="flex gap-2">
@@ -175,16 +151,14 @@ export default function AdminPlansPage() {
 }
 
 /**
- * The yearly price is not editable: the backend derives it from the discount, so
- * showing an input for it would invite a number that disagrees with what Midtrans
- * actually charges. We preview the derived value instead.
+ * One price, charged once, for one event. Nothing is derived from it — what is
+ * typed here is exactly what a checkout charges.
  */
 function PriceEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
   const [values, setValues] = useState({
     name: plan.name,
     slug: plan.slug,
-    price_monthly: plan.price_monthly,
-    yearly_discount_percent: plan.yearly_discount_percent,
+    price: plan.price,
   });
 
   const save = useMutation({
@@ -196,10 +170,8 @@ function PriceEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan harga.").message),
   });
 
-  const yearly = computeYearlyPrice(values.price_monthly, values.yearly_discount_percent);
-
   return (
-    <div className="mt-4 grid items-end gap-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="mt-4 grid items-end gap-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="grid gap-1.5">
         <Label htmlFor={`n-${plan.id}`}>Nama</Label>
         <Input
@@ -217,31 +189,16 @@ function PriceEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
         />
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor={`pm-${plan.id}`}>Harga/bln</Label>
+        <Label htmlFor={`pm-${plan.id}`}>Harga per event</Label>
         <Input
           id={`pm-${plan.id}`}
           type="number"
           min={0}
-          value={values.price_monthly}
-          onChange={(e) => setValues({ ...values, price_monthly: Number(e.target.value) })}
+          value={values.price}
+          onChange={(e) => setValues({ ...values, price: Number(e.target.value) })}
         />
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor={`yd-${plan.id}`}>Diskon tahunan (%)</Label>
-        <Input
-          id={`yd-${plan.id}`}
-          type="number"
-          min={0}
-          max={100}
-          value={values.yearly_discount_percent}
-          onChange={(e) =>
-            setValues({ ...values, yearly_discount_percent: Number(e.target.value) })
-          }
-        />
-      </div>
-      <div className="grid gap-1.5">
-        <span className="text-xs text-muted-foreground">Harga/thn (otomatis)</span>
-        <p className="text-sm font-semibold">{rupiah(yearly)}</p>
         <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
           {save.isPending ? "Menyimpan…" : "Simpan harga"}
         </Button>

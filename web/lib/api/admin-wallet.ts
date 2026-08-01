@@ -4,7 +4,7 @@ import type {
   AdminWallet,
   ApiEnvelope,
   PlatformSettingsPayload,
-  Subscription,
+  EventPlanOrder,
   Withdrawal,
   WithdrawalStatus,
 } from "@/types/api";
@@ -96,23 +96,23 @@ export async function updatePlatformSettings(
 /**
  * Plan payments transferred straight into the platform's own account while the
  * gateway is off. Unlike an event's queue, ruling on these is super_admin work:
- * approving activates a paid plan on nothing but a receipt.
+ * approving hands out a paid credit on nothing but a receipt.
  */
-export async function getPendingSubscriptions(): Promise<Subscription[]> {
-  const { data } = await apiClient.get<ApiEnvelope<Subscription[]>>("/admin/subscriptions");
+export async function getPendingPlanOrders(): Promise<EventPlanOrder[]> {
+  const { data } = await apiClient.get<ApiEnvelope<EventPlanOrder[]>>("/admin/plan-orders");
   return data.data;
 }
 
-export async function approveSubscription(id: string): Promise<Subscription> {
-  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
-    `/admin/subscriptions/${id}/approve`
+export async function approvePlanOrder(id: string): Promise<EventPlanOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<EventPlanOrder>>(
+    `/admin/plan-orders/${id}/approve`
   );
   return data.data;
 }
 
-export async function rejectSubscription(id: string, reason: string): Promise<Subscription> {
-  const { data } = await apiClient.post<ApiEnvelope<Subscription>>(
-    `/admin/subscriptions/${id}/reject`,
+export async function rejectPlanOrder(id: string, reason: string): Promise<EventPlanOrder> {
+  const { data } = await apiClient.post<ApiEnvelope<EventPlanOrder>>(
+    `/admin/plan-orders/${id}/reject`,
     { reason }
   );
   return data.data;

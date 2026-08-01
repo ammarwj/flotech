@@ -6,18 +6,18 @@ import { toast } from "sonner";
 import { Inbox, ReceiptText } from "lucide-react";
 
 import {
-  approveSubscription,
-  getPendingSubscriptions,
-  rejectSubscription,
+  approvePlanOrder,
+  getPendingPlanOrders,
+  rejectPlanOrder,
 } from "@/lib/api/admin-wallet";
 import { parseApiError } from "@/lib/api/errors";
-import { BILLING_CYCLE_LABELS, rupiah } from "@/lib/labels";
+import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { PaymentProofDialog } from "@/components/payment/payment-proof-dialog";
-import type { Subscription } from "@/types/api";
+import type { EventPlanOrder } from "@/types/api";
 
 /** Same shape as /admin/withdrawals and /admin/payments print. */
 const fmtDateTime = (iso: string) =>
@@ -32,31 +32,31 @@ const fmtDateTime = (iso: string) =>
  * has a receipt attached never expires on its own, so hiding this page the
  * moment Midtrans recovers would strand an organizer who has already paid.
  */
-export default function AdminSubscriptionsPage() {
+export default function AdminEventPlanOrdersPage() {
   const qc = useQueryClient();
   // The row under review, not just its id: the dialog needs the whole bill, and
   // holding the object keeps it rendered while the queue refetches around it.
-  const [reviewing, setReviewing] = useState<Subscription | null>(null);
+  const [reviewing, setReviewing] = useState<EventPlanOrder | null>(null);
 
   const query = useQuery({
-    queryKey: ["admin-subscriptions"],
-    queryFn: getPendingSubscriptions,
+    queryKey: ["admin-plan-orders"],
+    queryFn: getPendingPlanOrders,
   });
 
   const done = (message: string) => {
-    qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
+    qc.invalidateQueries({ queryKey: ["admin-plan-orders"] });
     setReviewing(null);
     toast.success(message);
   };
 
   const approve = useMutation({
-    mutationFn: (id: string) => approveSubscription(id),
+    mutationFn: (id: string) => approvePlanOrder(id),
     onSuccess: () => done("Pembayaran diterima. Paket sudah aktif."),
     onError: (err) => toast.error(parseApiError(err, "Gagal menerima pembayaran.").message),
   });
 
   const reject = useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) => rejectSubscription(id, text),
+    mutationFn: ({ id, text }: { id: string; text: string }) => rejectPlanOrder(id, text),
     onSuccess: () => done("Bukti ditolak. Organizer dapat mengunggah ulang."),
     onError: (err) => toast.error(parseApiError(err, "Gagal menolak bukti.").message),
   });
@@ -67,7 +67,7 @@ export default function AdminSubscriptionsPage() {
   return (
     <div>
       <PageHeader
-        title="Verifikasi Langganan"
+        title="Verifikasi Pembelian Paket"
         description="Pembayaran paket lewat transfer manual. Uangnya masuk ke rekening flo-event — cocokkan dengan mutasi bank sebelum menerima, karena menerima berarti mengaktifkan paket tanpa uang masuk."
       />
 
@@ -103,7 +103,7 @@ export default function AdminSubscriptionsPage() {
                 <p className="font-semibold">{sub.organization?.name ?? "Organisasi dihapus"}</p>
                 <p className="text-sm text-muted-foreground">
                   {sub.plan?.name ?? "Paket dihapus"} &middot;{" "}
-                  {BILLING_CYCLE_LABELS[sub.billing_cycle]} &middot; {sub.invoice_number ?? "—"}
+                  {sub.event?.name ?? "Belum dipakai"} &middot; {sub.invoice_number ?? "—"}
                 </p>
                 <p className="mt-1 text-sm font-bold">{rupiah(sub.amount)}</p>
                 {sub.payment_proof_uploaded_at && (
@@ -138,7 +138,7 @@ export default function AdminSubscriptionsPage() {
             {
               label: "Paket",
               value: `${reviewing.plan?.name ?? "Paket dihapus"} · ${
-                BILLING_CYCLE_LABELS[reviewing.billing_cycle]
+                reviewing.event?.name ?? "Belum dipakai"
               }`,
             },
             { label: "Invoice", value: reviewing.invoice_number ?? "—" },

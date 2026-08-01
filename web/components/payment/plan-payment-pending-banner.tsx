@@ -17,12 +17,14 @@ import { Card } from "@/components/ui/card";
  *
  * The flag rides on the organization payload rather than its own query because
  * this renders on every organizer page, `operator` members included — and they
- * get a 403 from the org.admin-guarded /subscriptions endpoint.
+ * get a 403 from the org.admin-guarded /plan-orders endpoint.
  */
-export function SubscriptionPendingBanner() {
+export function PlanPaymentPendingBanner() {
   const { org } = useActiveOrg();
 
-  if (!org || org.plan || !org.subscription_awaiting_verification) return null;
+  // No `!org.plan` guard any more: an organization has no plan of its own, and
+  // an organizer with three running events can still be waiting on a fourth.
+  if (!org || !org.plan_payment_awaiting_verification) return null;
 
   return (
     <Card
@@ -39,13 +41,13 @@ export function SubscriptionPendingBanner() {
             Pembayaran paketmu sedang diverifikasi
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Admin flo-event sedang memeriksa bukti transfermu. Selama menunggu, fitur organisasi
-            masih terkunci — paket aktif otomatis begitu pembayaran diterima.
+            Admin flo-event sedang memeriksa bukti transfermu. Paketnya siap dipakai untuk
+            membuat event begitu pembayaran diterima.
           </p>
         </div>
       </div>
       <Button asChild size="sm" variant="outline" className="w-full shrink-0 sm:w-auto">
-        <Link href="/organizer/subscription">Lihat status</Link>
+        <Link href="/organizer/billing">Lihat status</Link>
       </Button>
     </Card>
   );

@@ -39,7 +39,7 @@ import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api
 import type { FieldErrors } from "@/lib/api/errors";
 import { participantLabel, participantModes, standingsContextOf } from "@/lib/scoring";
 import { RubberFormatEditor } from "@/components/event/rubber-format-editor";
-import type { ParticipantType, SportDef, SportEvent } from "@/types/api";
+import type { ParticipantType, PlanSummary, SportDef, SportEvent } from "@/types/api";
 
 /** A category being edited; `_key` is a stable local id for React lists only. */
 type CategoryDraft = EventCategoryInput & {
@@ -190,6 +190,7 @@ function CategoryEditor({
   isHybrid,
   isSingleElim,
   sport,
+  teamsCap,
   locked,
   nameError,
   onChange,
@@ -201,6 +202,8 @@ function CategoryEditor({
   isHybrid: boolean;
   /** The event's sport — decides the entrant shapes and the standings shape. */
   sport: SportDef | undefined;
+  /** The plan's per-category entrant cap; null when it sets none. */
+  teamsCap: number | null;
   /** Entrants already registered — the shape can no longer change. */
   locked: boolean;
   /** Single elimination has no config card, but it can still play for third. */
@@ -338,11 +341,16 @@ function CategoryEditor({
           <Input
             type="number"
             min={2}
+            max={teamsCap ?? undefined}
             value={cat.max_teams ?? ""}
             onChange={(e) => onChange({ max_teams: e.target.value ? Number(e.target.value) : undefined })}
-            placeholder="Tidak dibatasi"
+            placeholder={teamsCap !== null ? `Maks ${teamsCap}` : "Tidak dibatasi"}
           />
-          <FieldHint>Kosongkan untuk peserta tak terbatas.</FieldHint>
+          <FieldHint>
+            {teamsCap !== null
+              ? `Paket event ini membatasi ${teamsCap} peserta per kategori.`
+              : "Kosongkan untuk peserta tak terbatas."}
+          </FieldHint>
         </div>
         <div className="grid gap-2">
           <div className="flex items-center justify-between gap-2">
@@ -385,6 +393,7 @@ export function EventForm({
   pending,
   fieldErrors,
   cancelHref,
+  plan,
 }: {
   initial?: Partial<SportEvent>;
   submitLabel: string;
@@ -394,8 +403,25 @@ export function EventForm({
   fieldErrors?: FieldErrors;
   /** When set, renders a "Batal" link in the sticky footer. */
   cancelHref?: string;
+  /**
+   * The plan this event runs on — from the credit being spent when creating, or
+   * from the event itself when editing. Its caps are applied proactively: the
+   * backend refuses the same things, but meeting a limit only after filling in
+   * the whole form is a bad way to learn about it.
+   */
+  plan?: PlanSummary;
 }) {
   const { sports, tournament_formats } = useCatalog();
+
+  // -1 (and an absent key) means unlimited, matching PlanGate.
+  const capOf = (key: string): number | null => {
+    const raw = plan?.features?.[key];
+    if (raw === undefined) return null;
+    const n = Number(raw);
+    return Number.isNaN(n) || n < 0 ? null : n;
+  };
+  const categoryCap = capOf("max_categories");
+  const teamsCap = capOf("max_teams_per_category");
 
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
@@ -734,16 +760,33 @@ export function EventForm({
               isHybrid={engineOf(c.tournament_format) === "hybrid"}
               isSingleElim={engineOf(c.tournament_format) === "knockout_single"}
               sport={sports.find((s) => s.slug === sportValue)}
+              teamsCap={teamsCap}
               locked={(c._teamsCount ?? 0) > 0}
               nameError={catErrors[c._key]}
               onChange={(patch) => updateCat(c._key, patch)}
               onRemove={() => removeCat(c._key)}
             />
           ))}
-          <Button type="button" variant="outline" className="gap-2" onClick={addCat}>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={categoryCap !== null && categories.length >= categoryCap}
+            onClick={addCat}
+          >
             <Plus className="h-4 w-4" />
             Tambah kategori
           </Button>
+          {plan && (categoryCap !== null || teamsCap !== null) && (
+            <p className="text-xs text-muted-foreground">
+              Paket {plan.name}:{" "}
+              {categoryCap !== null ? `maks ${categoryCap} kategori` : "kategori tanpa batas"},{" "}
+              {teamsCap !== null
+                ? `${teamsCap} peserta per kategori`
+                : "peserta tanpa batas"}
+              .
+            </p>
+          )}
         </CardContent>
       </Card>
 

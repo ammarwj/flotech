@@ -380,19 +380,22 @@ function SettingsForm({ org }: { org: Organization }) {
 
           <div className="grid gap-4">
             <Card className="p-5">
+              {/* No "current plan": an organization has none — each of its
+                  events runs on the plan it was bought with. */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <CreditCard className="h-4 w-4" />
-                Paket saat ini
+                Paket
               </div>
-              <p className="mt-2 text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                {org.plan?.name ?? "Tanpa paket"}
+              <p className="mt-2 text-sm text-muted-foreground">
+                Paket dibeli per event, sekali bayar. Batasannya berlaku untuk event yang
+                membelinya, bukan untuk organisasi.
               </p>
               <div className="mt-4 grid gap-2">
                 <Button variant="outline" size="sm" asChild>
-                  <Link href="/organizer/subscription">Kelola langganan</Link>
+                  <Link href="/organizer/billing">Pembelian paket</Link>
                 </Button>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/organizer/upgrade">Ubah paket</Link>
+                  <Link href="/organizer/plans">Beli paket</Link>
                 </Button>
               </div>
             </Card>

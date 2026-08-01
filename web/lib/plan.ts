@@ -1,15 +1,48 @@
-import type { Organization, Plan, PlanFeatureDetail, SportEvent } from "@/types/api";
+import type { EventPlanOrder, Plan, PlanFeatureDetail, SportEvent } from "@/types/api";
 
 /**
- * Active-event cap for an org's plan, mirroring the backend `max_active_events`
- * limit. Returns `null` when unlimited (`-1`), when the plan sets no cap, or
- * when the org isn't loaded yet; `0` when the org has no plan at all.
+ * Entitlements belong to an event, not to an organization: a plan is bought once
+ * for one event and stays with it. Two events of the same organizer can
+ * legitimately answer differently about tickets, certificates or the fee.
+ *
+ * Everything here mirrors PlanGate on the backend. The reactive net
+ * (`isPlanLimitError`) still catches anything these miss, but a gate the user
+ * only meets after filling in a whole form is a bad gate.
  */
-export function getActiveEventLimit(org?: Organization | null): number | null {
-  if (!org) return null; // not loaded yet — say nothing rather than block
-  if (!org.plan) return 0; // no plan = no entitlements (mirrors PlanGate)
 
-  const raw = org.plan.features?.max_active_events;
+/**
+ * Raw feature value for an event's plan.
+ *
+ * Three states, and they must stay distinguishable:
+ *  - `undefined` — the event isn't loaded yet, so say nothing rather than block;
+ *  - `null` — the event has no plan, or the plan lacks the key;
+ *  - a string — the value.
+ */
+function eventValue(
+  event: SportEvent | null | undefined,
+  key: string
+): string | null | undefined {
+  if (!event) return undefined;
+  return event.plan?.features?.[key] ?? null;
+}
+
+export function planAllows(event: SportEvent | null | undefined, key: string): boolean {
+  return eventValue(event, key) === "true";
+}
+
+/**
+ * Numeric cap for an event's plan.
+ *
+ * `null` = unlimited (`-1`), no cap set, or the event isn't loaded; `0` when the
+ * event has no plan at all. That last distinction is the whole point and mirrors
+ * PlanGate: an absent value is indistinguishable from "this plan sets no cap",
+ * which passes freely — so "no plan" has to be answered before the lookup.
+ */
+export function planLimit(event: SportEvent | null | undefined, key: string): number | null {
+  if (!event) return null;
+  if (!event.plan) return 0;
+
+  const raw = event.plan.features?.[key];
   if (raw === undefined || raw === null) return null;
 
   const limit = Number(raw);
@@ -17,8 +50,46 @@ export function getActiveEventLimit(org?: Organization | null): number | null {
   return limit;
 }
 
+export const isTicketingEnabled = (e?: SportEvent | null) => planAllows(e, "qr_tickets");
+export const isCertificateEnabled = (e?: SportEvent | null) =>
+  planAllows(e, "certificate_generator");
+export const isCertificateEmailEnabled = (e?: SportEvent | null) =>
+  planAllows(e, "certificate_email");
+export const isExportEnabled = (e?: SportEvent | null) => planAllows(e, "export_data");
+export const isGalleryEnabled = (e?: SportEvent | null) => planAllows(e, "event_gallery");
+export const isSponsorLogosEnabled = (e?: SportEvent | null) => planAllows(e, "sponsor_logos");
+export const isOnlineRegistrationEnabled = (e?: SportEvent | null) =>
+  planAllows(e, "online_registration");
+
+export const getCategoryLimit = (e?: SportEvent | null) => planLimit(e, "max_categories");
+export const getTeamsPerCategoryLimit = (e?: SportEvent | null) =>
+  planLimit(e, "max_teams_per_category");
+export const getGalleryLimit = (e?: SportEvent | null) => planLimit(e, "max_gallery_photos");
+
+/**
+ * The frontend mirror of PlanGate::orgAllows(), for the two org-level surfaces:
+ * certificate templates and the public-profile hint. Monotone by design — see
+ * the backend docblock for why revoking would be worse than being generous.
+ */
+export function anyEventAllows(
+  events: SportEvent[] | null | undefined,
+  key: string
+): boolean {
+  return events?.some((e) => planAllows(e, key)) ?? false;
+}
+
+/**
+ * Plans the organizer has paid for but not yet spent on an event.
+ *
+ * This is what stops an abandoned checkout from being money nobody ever sees
+ * again — the credit is surfaced on /organizer/billing and on the create-event
+ * page rather than sitting invisible in an orders list.
+ */
+export function unconsumedOrders(orders?: EventPlanOrder[] | null): EventPlanOrder[] {
+  return orders?.filter((o) => o.status === "paid" && !o.event_id) ?? [];
+}
+
 const PLAN_COLORS: Record<string, string> = {
-  basic: "var(--plan-basic)",
   starter: "var(--plan-starter)",
   pro: "var(--plan-pro)",
   professional: "var(--plan-professional)",
@@ -34,95 +105,11 @@ export function getPlanFeatureValue(plan: Plan, key: string): string | null {
   return plan.features?.[key] ?? null;
 }
 
-/** Human-readable line for a plan feature, e.g. "Event aktif: 3" or "Tiket QR". */
+/** Human-readable line for a plan feature, e.g. "Kategori: 4" or "Tiket penonton online". */
 export function formatPlanFeature(feature: PlanFeatureDetail): string {
   if (feature.value === null || feature.type === "boolean") return feature.label;
   if (feature.type === "numeric" && Number(feature.value) < 0) {
     return `${feature.label}: Unlimited`; // -1 = unlimited
   }
   return `${feature.label}: ${feature.value}`;
-}
-
-/**
- * Whole-percent yearly discount, or 0 when the plan is undiscounted. A zero-priced
- * plan never reports a discount, so it can't render a "save 20%" badge on Rp 0 —
- * no catalogue plan is free today, but super_admin can still price one at 0.
- */
-export function getYearlyDiscount(plan: Plan): number {
-  if (plan.price_monthly <= 0) return 0;
-  return Math.round(plan.yearly_discount_percent ?? 0);
-}
-
-/**
- * Mirrors Plan::computeYearlyPrice() on the backend, for previewing the result in
- * the admin editor before saving. The server recomputes it on write and stays the
- * source of truth — never send the result of this back as a price.
- */
-export function computeYearlyPrice(monthly: number, discountPercent: number): number {
-  return Math.round((monthly * 12 * (1 - discountPercent / 100)) / 1000) * 1000;
-}
-
-/**
- * Per-month figure for a yearly subscription. Both pricing tables advertise the
- * monthly rate and disclose the yearly sum separately, so plans stay comparable
- * across billing cycles — `price_yearly` is still what actually gets billed.
- */
-export function getMonthlyEquivalent(plan: Plan): number {
-  return plan.price_yearly / 12;
-}
-
-/** Best discount across plans, for the billing-cycle toggle badge. */
-export function getMaxYearlyDiscount(plans?: Plan[] | null): number {
-  return plans?.reduce((best, plan) => Math.max(best, getYearlyDiscount(plan)), 0) ?? 0;
-}
-
-/** An event counts against the limit unless it's finished or cancelled. */
-export function isActiveEvent(event: Pick<SportEvent, "status">): boolean {
-  return event.status !== "finished" && event.status !== "cancelled";
-}
-
-export function countActiveEvents(events?: SportEvent[] | null): number {
-  return events?.filter(isActiveEvent).length ?? 0;
-}
-
-/** Whether creating another event would exceed the plan's active-event cap. */
-export function isActiveEventLimitReached(
-  org?: Organization | null,
-  events?: SportEvent[] | null
-): boolean {
-  const limit = getActiveEventLimit(org);
-  if (limit === null) return false;
-  return countActiveEvents(events) >= limit;
-}
-
-/** Whether the org's plan includes the QR ticketing feature (`qr_tickets`). */
-export function isTicketingEnabled(org?: Organization | null): boolean {
-  return org?.plan?.features?.qr_tickets === "true";
-}
-
-/** Whether the org's plan includes the certificate generator. */
-export function isCertificateEnabled(org?: Organization | null): boolean {
-  return org?.plan?.features?.certificate_generator === "true";
-}
-
-/** Whether the org's plan can email issued certificates to their recipients. */
-export function isCertificateEmailEnabled(org?: Organization | null): boolean {
-  return org?.plan?.features?.certificate_email === "true";
-}
-
-/**
- * Total-tickets-per-event cap for an org's plan (`max_tickets_per_event`).
- * Returns `null` when unlimited (`-1`), when the plan sets no cap, or when the
- * org isn't loaded yet; `0` when the org has no plan at all.
- */
-export function getTicketLimit(org?: Organization | null): number | null {
-  if (!org) return null;
-  if (!org.plan) return 0;
-
-  const raw = org.plan.features?.max_tickets_per_event;
-  if (raw === undefined || raw === null) return null;
-
-  const limit = Number(raw);
-  if (Number.isNaN(limit) || limit < 0) return null; // -1 = unlimited
-  return limit;
 }

@@ -122,8 +122,8 @@ export default function AdminSettingsPage() {
             <p className="mt-2 text-muted-foreground">
               Pembelian paket juga beralih ke transfer manual — organizer transfer ke rekening
               flo-event lalu kamu verifikasi di{" "}
-              <Link href="/admin/subscriptions" className="font-medium text-foreground underline">
-                Verifikasi Langganan
+              <Link href="/admin/plan-orders" className="font-medium text-foreground underline">
+                Verifikasi Pembelian Paket
               </Link>
               .
             </p>

@@ -963,27 +963,6 @@ img { max-width: 100%; display: block; }
 .ticket-status svg { width: 16px; height: 16px; }
 
 /* ===================== PRICING ===================== */
-.bill-switch {
-  margin: 28px auto 0; display: inline-flex; align-items: center; gap: 14px;
-  font-size: 14px; font-weight: 600;
-}
-.bill-switch .save {
-  font-size: 11.5px; font-weight: 700; color: var(--success);
-  background: color-mix(in srgb, var(--success) 14%, transparent); padding: 3px 9px; border-radius: var(--r-full);
-}
-.switch {
-  position: relative; width: 52px; height: 30px; border-radius: var(--r-full);
-  background: var(--border-strong); border: none; cursor: pointer; transition: background 0.2s; flex-shrink: 0;
-}
-.switch[aria-checked="true"] { background: var(--brand-600); }
-.switch::after {
-  content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
-  background: #fff; transition: transform 0.2s var(--ease); box-shadow: var(--shadow-sm);
-}
-.switch[aria-checked="true"]::after { transform: translateX(22px); }
-.bill-switch .lbl { color: var(--text-muted); transition: color 0.2s; }
-body[data-billing="monthly"] .bill-switch .lbl-m { color: var(--text); }
-body[data-billing="yearly"] .bill-switch .lbl-y { color: var(--text); }
 
 /* The catalog is data-driven, so this row is 2, 3 or 4 wide. repeat(4, 1fr) left
    a dead track when a plan was unpublished, pushing the cards off-centre under a
@@ -1032,11 +1011,7 @@ body[data-billing="yearly"] .bill-switch .lbl-y { color: var(--text); }
 .plan-price .cur { font-size: 16px; font-weight: 700; color: var(--text-2); }
 .plan-price .amt { font-family: var(--font-display); font-weight: 800; font-size: 38px; letter-spacing: -0.03em; }
 .plan-price .per { font-size: 13px; color: var(--text-muted); }
-.plan-price .amt-y { display: none; }
-body[data-billing="yearly"] .plan-price .amt-m { display: none; }
-body[data-billing="yearly"] .plan-price .amt-y { display: inline; }
 .plan-note { font-size: 12px; color: var(--success); margin-top: 6px; min-height: 18px; font-weight: 600; }
-body[data-billing="monthly"] .plan-note { visibility: hidden; }
 .plan .btn { margin-top: 20px; }
 .plan-feats { margin-top: 22px; display: grid; gap: 11px; list-style: none; padding: 0; margin-block: 0; }
 .plan-feats li { display: flex; gap: 10px; font-size: 13.5px; color: var(--text-2); align-items: flex-start; }

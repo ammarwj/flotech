@@ -26,7 +26,7 @@ import {
   sendCertificate,
 } from "@/lib/api/certificates";
 import { getEvents } from "@/lib/api/events";
-import { isCertificateEnabled, isCertificateEmailEnabled } from "@/lib/plan";
+import { anyEventAllows } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,14 +49,17 @@ function CertificatesPage() {
   const tab = params.get("tab") === "templates" ? "templates" : "issued";
   const eventFilter = params.get("event_id") ?? "";
 
-  const enabled = isCertificateEnabled(org);
-  const canEmail = isCertificateEmailEnabled(org);
-
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
     queryFn: () => getEvents(orgId!),
-    enabled: !!orgId && enabled,
+    enabled: !!orgId,
   });
+
+  // Templates are org-scoped rows reused across events, so the page is open as
+  // soon as *any* event carries the entitlement — the frontend mirror of
+  // PlanGate::orgAllows(). Issuing is still gated per event, below.
+  const enabled = anyEventAllows(eventsQuery.data, "certificate_generator");
+  const canEmail = anyEventAllows(eventsQuery.data, "certificate_email");
 
   const certificatesQuery = useQuery({
     queryKey: ["certificates", orgId, eventFilter],
@@ -146,7 +149,7 @@ function CertificatesPage() {
           description="Upgrade paketmu untuk mengunggah desain sertifikat, mengatur posisi setiap field, dan menerbitkan ratusan sertifikat sekaligus."
           action={
             <Button asChild>
-              <Link href="/organizer/upgrade">
+              <Link href="/organizer/plans">
                 <ArrowUpRight className="h-4 w-4" />
                 Upgrade paket
               </Link>
