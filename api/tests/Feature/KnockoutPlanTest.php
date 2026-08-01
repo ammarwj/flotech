@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\EventCategory;
 use App\Models\Organization;
-use App\Models\Plan;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,14 +42,12 @@ class KnockoutPlanTest extends TestCase
 
         $this->user = User::factory()->create();
 
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
-        foreach (['max_active_events' => '5', 'max_teams_per_category' => '32'] as $key => $value) {
-            $plan->features()->create(['feature_key' => $key, 'value' => $value]);
-        }
-
-        $this->org = Organization::create([
-            'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $this->user->id, 'plan_id' => $plan->id,
-        ]);
+        // No plan is attached here: entitlements hang off the event now, and
+        // createEvent() buys the credit that carries them. The plan this used to
+        // build — on `organizations.plan_id`, keyed `max_active_events` — was
+        // reaching a column that no longer exists and a feature key that was
+        // retired, so it had stopped granting anything at all.
+        $this->org = $this->orgFor($this->user);
     }
 
     private function orgUrl(string $path = ''): string
@@ -140,17 +137,45 @@ class KnockoutPlanTest extends TestCase
             ->json('data');
     }
 
-    /** Play out every group fixture, home winning each time, and sign it off. */
-    private function playGroupStage(): void
+    /**
+     * Play out every group fixture and sign it off.
+     *
+     * A team named in `$losers` loses to any team that is not; every other
+     * fixture goes to the alphabetically later name. Both halves are read off
+     * the fixture itself, so the draw stays random — nothing here knows which
+     * club landed in which group — while the final table becomes something the
+     * caller can state in advance. In a group of four that means the teams
+     * outside `$losers` take the qualifying places: each beats both doomed
+     * teams, and their own meeting only decides which of them finishes top.
+     *
+     * The rule used to be "home wins every game", which left the played table
+     * to how the random draw dealt out home games. That alone was survivable;
+     * what made the test flaky is that the table it was compared *against* —
+     * the nil-results one — is itself a fresh permutation on every run (see
+     * where `$before` is read). Two moving quantities, and an assertion that
+     * they differ. Pinning this side is what lets the caller pin both.
+     *
+     * @param  array<int, string>  $losers  team ids that must finish bottom
+     */
+    private function playGroupStage(array $losers = []): void
     {
         foreach ($this->fixtures() as $m) {
             if ($m['stage'] !== 'group') {
                 continue;
             }
 
+            $homeDoomed = in_array($m['home_team']['id'], $losers, true);
+            $awayDoomed = in_array($m['away_team']['id'], $losers, true);
+
+            $homeWins = $homeDoomed === $awayDoomed
+                ? strcmp($m['home_team']['name'], $m['away_team']['name']) > 0
+                : $awayDoomed;
+
             $this->actingAs($this->user, 'api')
                 ->patchJson($this->orgUrl("/matches/{$m['id']}"), [
-                    'status' => 'finished', 'home_score' => 3, 'away_score' => 1,
+                    'status' => 'finished',
+                    'home_score' => $homeWins ? 3 : 1,
+                    'away_score' => $homeWins ? 1 : 3,
                 ])
                 ->assertOk();
 
@@ -239,11 +264,19 @@ class KnockoutPlanTest extends TestCase
         );
 
         // Nothing about the teams is stored, so the occupants can only be the
-        // live table — which at nil results is every group in name order.
+        // live table. At nil results every rule that answers to a result has
+        // nothing to answer with, so the order comes down to the drawing lot —
+        // `crc32(category id . team id)`, which is a fresh permutation on every
+        // run. Whoever these four are is therefore not predictable here, and
+        // must never be assumed.
         $before = $this->occupants();
         $this->assertSame($before['A1'], $plan['ties'][0]['home']['team']['id']);
 
-        $this->playGroupStage();
+        // Which is why the group stage is played *against* them: the four the
+        // empty table happened to show are made to lose, so the four that
+        // qualify are guaranteed to be four different teams no matter how the
+        // lot fell. Nothing here needs to know the draw.
+        $this->playGroupStage(array_values($before));
 
         $played = $this->plan();
         $after = $this->occupants();
@@ -252,12 +285,12 @@ class KnockoutPlanTest extends TestCase
         $this->assertSame($after['B1'], $played['ties'][0]['away']['team']['id']);
         $this->assertSame('manual', $played['source'], 'the plan survives the group stage');
 
-        // The pairing is fixed; who fills it is not. Home wins every group game,
-        // so the winner is whoever was drawn at home most — not the alphabetical
-        // stand-in the empty table showed.
-        $this->assertNotSame(
-            [$before['A1'], $before['B1'], $before['A2'], $before['B2']],
-            [$after['A1'], $after['B1'], $after['A2'], $after['B2']],
+        // The pairing is fixed; who fills it is not. Disjoint, not merely
+        // different: occupants frozen at save time would still be naming the
+        // lot's four, and so would occupants tracking anything other than the
+        // live table.
+        $this->assertEmpty(
+            array_intersect(array_values($before), array_values($after)),
             'the slots must track the standings, not freeze at save time',
         );
     }
