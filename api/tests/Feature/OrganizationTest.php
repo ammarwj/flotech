@@ -14,7 +14,7 @@ class OrganizationTest extends TestCase
 
     public function test_user_can_onboard_organization_with_free_plan(): void
     {
-        Plan::create(['name' => 'Free', 'slug' => 'free', "price" => 0, ]);
+        Plan::create(['name' => 'Free', 'slug' => 'free-'.uniqid(), 'price' => 0]);
         $user = User::factory()->create();
 
         $response = $this->actingAs($user, 'api')
@@ -98,7 +98,7 @@ class OrganizationTest extends TestCase
      */
     public function test_checkout_settles_into_an_unspent_credit_when_midtrans_not_configured(): void
     {
-        $pro = Plan::create(['name' => 'Pro', 'slug' => 'pro', 'price' => 399000]);
+        $pro = Plan::create(['name' => 'Pro', 'slug' => 'pro-'.uniqid(), 'price' => 399000]);
         $user = User::factory()->create();
         $org = Organization::create([
             'name' => 'Org Pay',

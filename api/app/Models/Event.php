@@ -34,6 +34,7 @@ class Event extends Model
 
     protected $fillable = [
         'organization_id',
+        'plan_id',
         'name',
         'slug',
         'sport_type',
@@ -66,6 +67,18 @@ class Event extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * The plan this event runs on — bought once, for this event alone.
+     *
+     * A snapshot, not a lookup: it survives the plan order being refunded or
+     * deleted, and buying a bigger plan later does not upgrade an event that
+     * already exists. PlanGate reads entitlements from here and nowhere else.
+     */
+    public function plan(): BelongsTo
+    {
+        return $this->belongsTo(Plan::class);
     }
 
     /**

@@ -12,19 +12,25 @@ use App\Services\BillingDocumentService;
 use App\Services\PlatformSettings;
 use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PlanOrderBillingTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function plan(string $slug = 'pro'): Plan
+    /**
+     * A throwaway plan. The slug is randomised because the catalogue migration
+     * seeds starter/pro/professional into every test database, and a fixed slug
+     * would collide with the real row.
+     */
+    protected function plan(string $name = 'Pro'): Plan
     {
         return Plan::create([
-            'name' => ucfirst($slug),
-            'slug' => $slug,
-            "price" => 399000,
-                    ]);
+            'name' => $name,
+            'slug' => Str::slug($name).'-'.uniqid(),
+            'price' => 399000,
+        ]);
     }
 
     protected function org(User $owner, string $slug = 'org-bill'): Organization

@@ -33,7 +33,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 |---|---|---|
 | 0 | Setup tracker + branch | `[x]` |
 | 1 | Skema + rename model | `[x]` |
-| 2 | Katalog paket + backfill | `[ ]` |
+| 2 | Katalog paket + backfill | `[x]` |
 | 3 | `PlanGate` + call site backend | `[ ]` |
 | 4 | Siklus order + rute + resource | `[ ]` |
 | 5 | Drop kolom paket di `organizations` | `[ ]` |
@@ -147,16 +147,16 @@ Test yang dipecahkan tahap ini (perbaiki **sekarang**, bukan ditunda) — hanya 
 
 > **Prefix Midtrans `SUB-` untuk order lama TIDAK disentuh.** `MidtransWebhookController::handle()` merutekan order paket lewat arm `default`, jadi id `SUB-` yang masih beredar tetap settle. Id baru boleh `PLN-`; **jangan** menambah arm `PLN-` di match — itu justru menelantarkan yang lama.
 
-## Tahap 2 — Katalog + backfill
+## Tahap 2 — Katalog + backfill  ✅ *(selesai: 412 lulus, 2 flaky baseline)*
 
-- [ ] `2026_08_01_100003_seed_per_event_plan_catalogue.php` — **4 langkah urut**: upsert 3 paket (match `slug`, id lama dipertahankan) → pensiunkan `basic` (`is_active`/`is_public` false + hapus `plan_features`-nya, **jangan delete barisnya**) → **prune** 7 key pensiun dari `plan_features` **dan** `feature_definitions` → tulis 13 definisi + nilai per paket
+- [x] `2026_08_01_100003_seed_per_event_plan_catalogue.php` — **4 langkah urut**: upsert 3 paket (match `slug`, id lama dipertahankan) → pensiunkan `basic` (`is_active`/`is_public` false + hapus `plan_features`-nya, **jangan delete barisnya**) → **prune** 7 key pensiun dari `plan_features` **dan** `feature_definitions` → tulis 13 definisi + nilai per paket
 - [x] `database/seeders/PlanSeeder.php` — **dikerjakan di Tahap 1**: 3 paket, harga tunggal, fitur "tidak dapat" tidak ditulis
 - [x] `database/seeders/FeatureDefinitionSeeder.php` — **dikerjakan di Tahap 1**: 13 definisi
-- [ ] `app/Console/Commands/BackfillEventPlans.php` — `events:backfill-plan {--dry-run}`, idempoten (`whereNull('plan_id')` + `whereNotExists` order), `invoice_number`/`receipt_number` **null**
-- [ ] `2026_08_01_100004_backfill_event_plans.php` memanggil command itu
-- [ ] **Verifikasi silang**: `migrate` terhadap `flo_event` (salinan prod) vs `migrate:fresh --seed` di DB **sekali-pakai** `flo_event_scratch` → diff isi `plan_features` **harus identik**. ⚠️ jangan `migrate:fresh` di `flo_event`
-- [ ] `events:backfill-plan --dry-run` terhadap `flo_event` melaporkan angka masuk akal
-- [ ] Test yang dipecahkan tahap ini: yang meng-assert key fitur spesifik (`max_active_events`, `max_teams_per_event`, `*_fee_percent`) → ✅ `php artisan test` hijau
+- [x] `app/Console/Commands/BackfillEventPlans.php` — `events:backfill-plan {--dry-run}`, idempoten (`whereNull('plan_id')` + `whereNotExists` order), `invoice_number`/`receipt_number` **null**
+- [x] `2026_08_01_100004_backfill_event_plans.php` memanggil command itu
+- [x] **Verifikasi silang**: `migrate` terhadap `flo_event` (salinan prod) vs `migrate:fresh --seed` di DB **sekali-pakai** `flo_event_scratch` → diff isi `plan_features` **harus identik**. ⚠️ jangan `migrate:fresh` di `flo_event`
+- [x] `events:backfill-plan --dry-run` terhadap `flo_event` melaporkan angka masuk akal
+- [x] Test yang dipecahkan tahap ini: yang meng-assert key fitur spesifik (`max_active_events`, `max_teams_per_event`, `*_fee_percent`) → ✅ `php artisan test` hijau
 
 > Prune di **migrasi, bukan seeder**: seeder yang menghapus akan ikut menyapu key custom yang ditambahkan super_admin di `/admin/plans`.
 
@@ -319,6 +319,8 @@ Checklist verifikasi manual (19 poin, §10 rencana):
 - [ ] Putuskan apakah butuh paket ke-4 `is_public: false` untuk deal enterprise, karena CTA "Hubungi Sales" dilepas (§11.4)
 
 ## Jebakan yang sudah diketahui (baca sebelum menyentuh area terkait)
+
+0. **`$model->update()` menelan kolom yang tidak ada di `$fillable`, tanpa error.** Backfill pertama melaporkan "100 event diberi paket" padahal `events.plan_id` masih null semuanya — `plan_id` belum ditambahkan ke `Event::$fillable`. Sekarang `BackfillEventPlans` menghitung ulang di akhir dan **gagal** kalau masih ada sisa. Setiap kali menambah kolom baru: cek `$fillable` **sebelum** menulis kode yang mengisinya. Terkait: jangan mencentang checkbox tracker secara borongan — item ini tercentang tanpa pernah dikerjakan.
 
 1. **`withinLimit()` memperlakukan nilai absen sebagai unlimited.** Karena itu galeri butuh **dua** key: `event_gallery` (boolean, yang menolak) + `max_gallery_photos` (angka, yang membatasi). Boolean **wajib** dicek duluan.
 2. **`platformDestination()` harus tetap planless.** Membeli paket pertama terjadi sebelum ada event sama sekali.
