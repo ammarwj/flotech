@@ -3,8 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Event;
-use App\Models\Organization;
-use App\Models\Plan;
 use App\Models\Sport;
 use App\Models\User;
 use App\Services\Catalog;
@@ -20,22 +18,16 @@ class CatalogTest extends TestCase
 {
     use CreatesPlannedEvents, RefreshDatabase;
 
-    private function org(User $owner): Organization
-    {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
-
-        return Organization::create([
-            'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
-        ]);
-    }
-
     public function test_public_catalog_lists_sports_and_options(): void
     {
         $data = $this->getJson('/api/v1/catalog')
             ->assertOk()
             ->json('data');
 
-        $this->assertCount(8, $data['sports']);
+        // A literal, not Sport::count(): the number is here so that adding a
+        // sport to SportSeeder makes someone read this test rather than let the
+        // catalog drift away from what it claims to ship.
+        $this->assertCount(9, $data['sports']);
         $this->assertSame('football', $data['sports'][0]['slug']);
         $this->assertSame('goal', $data['sports'][0]['stats'][0]['role']);
         $this->assertSame('set', collect($data['sports'])->firstWhere('slug', 'volleyball')['scoring']);
@@ -49,7 +41,7 @@ class CatalogTest extends TestCase
         );
 
         $this->assertCount(4, $data['tournament_formats']);
-        $this->assertCount(10, $data['tiebreakers']);
+        $this->assertCount(12, $data['tiebreakers']);
         $this->assertCount(4, $data['sponsor_tiers']);
         $this->assertSame('hybrid', collect($data['tournament_formats'])->firstWhere('key', 'hybrid')['meta']['engine']);
     }
@@ -58,18 +50,22 @@ class CatalogTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'super_admin']);
 
-        // Basketball didn't exist in any constant — it's created here, at runtime.
+        // Handball is in no constant and in no seeder — it's created here, at
+        // runtime, which is the whole point. Pick a sport SportSeeder does not
+        // ship: one that is already seeded turns this into a uniqueness failure
+        // and stops proving anything. (It used to be basketball, until
+        // basketball was seeded.)
         $this->actingAs($admin, 'api')
             ->postJson('/api/v1/admin/sports', [
-                'slug' => 'basketball',
-                'name' => 'Basket',
+                'slug' => 'handball',
+                'name' => 'Bola Tangan',
                 'color' => '#F97316',
                 'scoring' => 'goal',
                 'default_match_minutes' => 40,
             ])
             ->assertCreated();
 
-        $sport = Sport::where('slug', 'basketball')->firstOrFail();
+        $sport = Sport::where('slug', 'handball')->firstOrFail();
 
         $this->actingAs($admin, 'api')
             ->putJson("/api/v1/admin/sports/{$sport->id}/stats", [
@@ -82,14 +78,16 @@ class CatalogTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.stats.0.stat_key', 'points');
 
-        // An organizer can now run a basketball event without a deploy.
+        // An organizer can now run a handball event without a deploy.
         $owner = User::factory()->create();
-        $org = $this->org($owner);
+        $org = $this->orgFor($owner);
+        // Creating an event spends a paid credit.
+        $this->creditFor($org);
 
         $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", [
-                'name' => 'Jogja Basket Open',
-                'sport_type' => 'basketball',
+                'name' => 'Jogja Handball Open',
+                'sport_type' => 'handball',
                 'start_date' => '2026-09-01',
                 'end_date' => '2026-09-10',
                 'categories' => [
@@ -97,7 +95,7 @@ class CatalogTest extends TestCase
                 ],
             ])
             ->assertCreated()
-            ->assertJsonPath('data.sport.name', 'Basket')
+            ->assertJsonPath('data.sport.name', 'Bola Tangan')
             ->assertJsonPath('data.sport.default_match_minutes', 40);
     }
 
@@ -116,7 +114,7 @@ class CatalogTest extends TestCase
             ->assertCreated();
 
         $owner = User::factory()->create();
-        $org = $this->org($owner);
+        $org = $this->orgFor($owner);
         // Creating an event spends a paid credit.
         $this->creditFor($org);
 
@@ -175,7 +173,7 @@ class CatalogTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'super_admin']);
         $owner = User::factory()->create();
-        $org = $this->org($owner);
+        $org = $this->orgFor($owner);
 
         $org->events()->create([
             'plan_id' => $this->planId(),
@@ -199,7 +197,7 @@ class CatalogTest extends TestCase
     public function test_a_roster_only_accepts_positions_the_sport_defines(): void
     {
         $owner = User::factory()->create();
-        $org = $this->org($owner);
+        $org = $this->orgFor($owner);
 
         $event = $org->events()->create([
             'plan_id' => $this->planId(),
@@ -235,7 +233,7 @@ class CatalogTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'super_admin']);
         $owner = User::factory()->create();
-        $org = $this->org($owner);
+        $org = $this->orgFor($owner);
 
         $event = $org->events()->create([
             'plan_id' => $this->planId(),

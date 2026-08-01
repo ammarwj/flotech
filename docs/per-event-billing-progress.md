@@ -4,7 +4,9 @@ Tracker pengerjaan migrasi dari langganan bulanan org-level ke **pembelian paket
 
 - **Rencana lengkap**: `~/.claude/plans/no-item-glistening-leaf.md` (referensi §-nya disebut di tiap item)
 - **Branch**: `feat/per-event-billing`
-- **Baseline test sebelum perubahan** (2026-08-01): `412 passed`, 2–3 gagal yang **sudah gagal sejak awal & flaky** — `CatalogTest > public catalog lists sports and options`, `CatalogTest > a sport added to the catalog can immediately host an event`, `KnockoutPlanTest > plan is saved in slots and read back with live occupants`. Ketiganya **tidak** disebabkan perubahan ini; jangan dikejar.
+- **Baseline test sebelum perubahan** (2026-08-01): `412 passed`, 2–3 gagal yang **sudah gagal sejak awal** dan **tidak** disebabkan perubahan ini.
+  - Dua `CatalogTest` (`public catalog lists sports and options`, `a sport added to the catalog can immediately host an event`) ternyata **bukan flaky, melainkan drift yang deterministik** — `SportSeeder` kedatangan `basketball` di commit `3b429a7` (2026-07-23) dan `ConfigOptionSeeder` kedatangan dua tiebreaker partai, tanpa testnya ikut diperbarui. **Sudah diperbaiki 2026-08-02**, lihat Tahap 10.
+  - `KnockoutPlanTest > plan is saved in slots and read back with live occupants` **memang flaky** — ia `assertNotSame` hasil undian acak terhadap stand-in alfabetis, jadi gagal saat undiannya kebetulan alfabetis. Ini yang masih boleh diabaikan.
 
 **Cara pakai.** Centang sambil jalan, commit tiap tahap. Kalau sesi terputus: buka file ini, cari checkbox tercentang terakhir, lanjut dari sana. Tiap item menyebut file konkret supaya posisi bisa diverifikasi dengan `git status` tanpa mengingat konteks apa pun.
 
@@ -286,7 +288,9 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `php artisan test` hijau (kecuali 2–3 flaky baseline)
 - [~] E2E: spec di-rename ke `plan-order-manual*.spec.ts`, rute & `billing_cycle` dibersihkan, typecheck lulus. **Tapi `fixtures/api.ts::grantCredit` belum bisa diimplementasikan** — lihat blokir di bawah. Spec baru "beli → buat → terpakai" menunggu itu.
 
-## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: 435 lulus, 2 flaky baseline)*
+## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: 436 lulus, 1 flaky baseline)*
+
+- [x] **Dua `CatalogTest` baseline diperbaiki** — ternyata bukan flaky. `SportSeeder` mendapat `basketball` (commit `3b429a7`, 2026-07-23) dan `ConfigOptionSeeder` mendapat `rubber_difference`/`rubber_games`/`rubber_points`, tanpa testnya ikut diperbarui. Tiga hal: hitungan `sports` 8→9 & `tiebreakers` 10→12; sport yang dibuat runtime diganti `basketball`→`handball` (memakai slug yang **sudah** diseed mengubah test jadi uji keunikan dan berhenti membuktikan apa pun); helper lokal `org()` — yang masih menulis `plan_id` ke `organizations` — diganti `orgFor()` + `creditFor()` dari trait. Sisa satu gagal: `KnockoutPlanTest`, yang memang flaky karena undian acak.
 
 - [x] `CLAUDE.md` — "Pola: plan limit / feature gating" ditulis ulang (invarian paket-per-event, dua lapis `PlanGate`, `orgAllows` monoton, tiga bentuk penolakan 403 / 422-field / 422-feature, boolean-sebelum-angka); "Pola: langganan & dokumen tagihan" → **"Pola: pembelian paket per event & dokumen tagihan"** (kredit ≠ entitlement, klaim atomik, prefix `SUB-`/`PLN-`, `org.admin` di `POST events`, backfill). Referensi `destinationFor($org, …)` di pola transfer manual ikut dikoreksi jadi event-keyed.
 - [x] Catatan rilis: `docs/per-event-billing-release-notes.md` — 8 perubahan perilaku (**operator tidak bisa lagi membuat event** di urutan pertama), fitur baru, urutan deploy
@@ -411,7 +415,7 @@ Sengaja **bukan** opsi "jalankan API tanpa server key": itu membuat `openSnap()`
 
 ## Jebakan yang sudah diketahui (baca sebelum menyentuh area terkait)
 
-00. **`KnockoutPlanTest > plan is saved in slots...` flaky karena undian acak, bukan karena perubahan ini.** Ia meng-`assertNotSame` hasil undian acak terhadap stand-in alfabetis; saat undiannya kebetulan alfabetis, ia gagal. Terverifikasi gagal juga di Tahap 2 (5x run: 2 gagal di Tahap 2, 4 gagal di Tahap 3 — n kecil). Sama dengan dua `CatalogTest`. **Jangan dikejar sebagai regresi.**
+00. **`KnockoutPlanTest > plan is saved in slots...` flaky karena undian acak, bukan karena perubahan ini.** Ia meng-`assertNotSame` hasil undian acak terhadap stand-in alfabetis; saat undiannya kebetulan alfabetis, ia gagal. Terverifikasi gagal juga di Tahap 2 (5x run: 2 gagal di Tahap 2, 4 gagal di Tahap 3 — n kecil). **Jangan dikejar sebagai regresi.** Dua `CatalogTest` yang selama ini disebut sebaris dengannya ternyata **bukan** kasus yang sama — itu drift seeder yang deterministik, dan sudah diperbaiki di Tahap 10.
 
 0. **`$model->update()` menelan kolom yang tidak ada di `$fillable`, tanpa error.** Backfill pertama melaporkan "100 event diberi paket" padahal `events.plan_id` masih null semuanya — `plan_id` belum ditambahkan ke `Event::$fillable`. Sekarang `BackfillEventPlans` menghitung ulang di akhir dan **gagal** kalau masih ada sisa. Setiap kali menambah kolom baru: cek `$fillable` **sebelum** menulis kode yang mengisinya. Terkait: jangan mencentang checkbox tracker secara borongan — item ini tercentang tanpa pernah dikerjakan.
 
