@@ -12,6 +12,8 @@ Legenda: `[ ]` belum · `[~]` sedang dikerjakan · `[x]` selesai · `[-]` sengaj
 
 Perintah: test backend `docker compose exec -T api php artisan test` · build web `cd web && bun run build`
 
+**Konvensi commit.** Pesan commit berhenti di badan teksnya — **jangan** tambahkan trailer `Co-Authored-By:` atau `Claude-Session:`.
+
 ---
 
 ## Status ringkas
