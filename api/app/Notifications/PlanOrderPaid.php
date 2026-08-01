@@ -43,7 +43,7 @@ class PlanOrderPaid extends Notification implements ShouldQueue
         $sub = $this->order->loadMissing('plan', 'organization');
 
         return (new MailMessage)
-            ->subject('Langganan '.$sub->plan->name.' aktif — '.config('brand.name'))
+            ->subject('Paket '.$sub->plan->name.' siap dipakai — '.config('brand.name'))
             ->markdown('mail.plan-order-paid', [
                 'order' => $sub,
                 'url' => MailLinks::billing(),

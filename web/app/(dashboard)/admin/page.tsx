@@ -59,7 +59,7 @@ export default function AdminOverviewPage() {
             Admin Platform
           </span>
         }
-        description={`Halo ${user?.full_name ?? "Super Admin"} — kelola paket langganan dan konfigurasi platform flo-event.`}
+        description={`Halo ${user?.full_name ?? "Super Admin"} — kelola paket event dan konfigurasi platform flo-event.`}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -129,7 +129,7 @@ export default function AdminOverviewPage() {
           </span>
           <div>
             <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-              Paket & fitur langganan
+              Paket & fitur event
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Buat dan atur paket, harga, serta batas fitur (event aktif, tim, tiket, sertifikat).

@@ -41,7 +41,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[x]` |
 | 8 | Halaman frontend | `[x]` |
 | 9 | Test backend + e2e | `[x]` *(e2e: fixture kredit terblokir, lihat catatan)* |
-| 10 | Docs (`CLAUDE.md`) + verifikasi manual | `[ ]` |
+| 10 | Docs (`CLAUDE.md`) + verifikasi manual | `[x]` |
 
 ---
 
@@ -286,31 +286,45 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `php artisan test` hijau (kecuali 2–3 flaky baseline)
 - [~] E2E: spec di-rename ke `plan-order-manual*.spec.ts`, rute & `billing_cycle` dibersihkan, typecheck lulus. **Tapi `fixtures/api.ts::grantCredit` belum bisa diimplementasikan** — lihat blokir di bawah. Spec baru "beli → buat → terpakai" menunggu itu.
 
-## Tahap 10 — Docs + verifikasi manual
+## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: 435 lulus, 2 flaky baseline)*
 
-- [ ] `CLAUDE.md` — tulis ulang "Pola: plan limit / feature gating" dan "Pola: langganan & dokumen tagihan": invarian paket-per-event, model kredit, klaim atomik, `orgAllows` monoton, divergensi 403-vs-422 di dua pintu pendaftaran
-- [ ] Catatan rilis: **operator tidak bisa lagi membuat event**
+- [x] `CLAUDE.md` — "Pola: plan limit / feature gating" ditulis ulang (invarian paket-per-event, dua lapis `PlanGate`, `orgAllows` monoton, tiga bentuk penolakan 403 / 422-field / 422-feature, boolean-sebelum-angka); "Pola: langganan & dokumen tagihan" → **"Pola: pembelian paket per event & dokumen tagihan"** (kredit ≠ entitlement, klaim atomik, prefix `SUB-`/`PLN-`, `org.admin` di `POST events`, backfill). Referensi `destinationFor($org, …)` di pola transfer manual ikut dikoreksi jadi event-keyed.
+- [x] Catatan rilis: `docs/per-event-billing-release-notes.md` — 8 perubahan perilaku (**operator tidak bisa lagi membuat event** di urutan pertama), fitur baru, urutan deploy
 
-Checklist verifikasi manual (19 poin, §10 rencana):
-- [ ] 1. `/pricing` 3 kartu, `/event`, tanpa toggle, "Paling Populer" di Pro, footnote fee 3/2/1%
-- [ ] 2. `<body>` tanpa `data-billing`; tidak ada node `.bill-switch`
-- [ ] 3. User baru → onboarding cuma nama organisasi → `/organizer`
-- [ ] 4. `/organizer/events/new` tanpa kredit → pemilih paket, bukan form
-- [ ] 5. Beli Starter gateway **nyala** → `paid`, muncul di "Paket siap dipakai", banner tampil
-- [ ] 6. Beli Starter gateway **mati** → panel manual → acc di `/admin/plan-orders` → kredit muncul; PDF invoice **dan** kwitansi render benar
-- [ ] 7. Buat event dari kredit → hilang dari "siap dipakai", riwayat menyebut nama event
-- [ ] 8. Event kedua ditolak, **tanpa draft tertinggal**
-- [ ] 9. Kategori ke-2 ditolak (proaktif + 403 kalau dipaksa API); `max_teams` > 32 ditolak inline
-- [ ] 10. Tim ke-33 ditolak; pencacah kategori event kedua **independen**
-- [ ] 11. Di Starter: sponsor/galeri/sertifikat/export absen. Di Professional: keempatnya ada **hanya di event itu**
-- [ ] 12. Galeri: 10 lolos, 10 berikutnya ditolak di 15
-- [ ] 13. Tiket harga sama → `platform_fee` 3% vs 1%
-- [ ] 14. Export xlsx & pdf dari Pro terunduh dan terbuka; dari Starter → 403
-- [ ] 15. `/{orgSlug}` kaya hanya setelah ada event Pro/Professional; sebelumnya tetap 200 + grid event
-- [ ] 16. `/organizer/upgrade` & `/organizer/subscription` redirect
-- [ ] 17. Operator: 403 di `/organizer/billing`, tidak bisa buat event
-- [ ] 18. Event hasil backfill masih punya sertifikat/galeri/sponsor/export + invoice historis render
-- [ ] 19. `plan-orders:expire-manual` membatalkan yang tanpa bukti, **membiarkan** yang ada buktinya
+Checklist verifikasi manual (19 poin, §10 rencana). Yang sudah terbukti di sesi sebelumnya
+ditandai sumbernya; sisanya dijalankan 2026-08-02 lewat API + `php artisan` + SSR:
+- [x] 1. `/pricing` 3 kartu, `/event`, tanpa toggle, "Paling Populer" di Pro, footnote fee 3/2/1% *(browser, tabel di bawah)*
+- [x] 2. `<body>` tanpa `data-billing`; tidak ada node `.bill-switch` — diulang 2026-08-02: `grep -c` di HTML `/` = **0**
+- [x] 3. User baru → onboarding cuma nama organisasi. Org lahir tanpa satu pun field paket (payload cuma punya `unconsumed_plan_orders_count` & `plan_payment_awaiting_verification`); halamannya satu langkah, lalu `router.replace("/organizer/events/new")`
+- [x] 4. `/organizer/events/new` tanpa kredit → pemilih paket, bukan form *(browser)*
+- [x] 5. Beli Starter gateway **nyala** → `paid`, muncul di "Paket siap dipakai", banner tampil *(browser + webhook)*
+- [x] 6. Beli Starter gateway **mati** → `payment_method: manual`, `snap_token: null`, **`mock: false`** (tidak tersedot ke cabang mock), rekening platform penuh terkirim → unggah bukti (`plan_payment_awaiting_verification: true`) → acc di `/admin/plan-orders` → `paid` + `KW/2026/08/0007`, `event_id` **tetap null**, kredit 0→1. PDF invoice **dan** kwitansi render benar (status **Lunas**, "Berlaku untuk 1 event", kolom Event "Belum dipakai")
+- [x] 7. Buat event dari kredit → hilang dari "siap dipakai", riwayat menyebut nama event
+- [x] 8. Event kedua ditolak, **tanpa draft tertinggal** *(jumlah event tetap 1)*
+- [x] 9. Kategori ke-2 ditolak (proaktif + 403 kalau dipaksa API); `max_teams` > 32 ditolak inline
+- [x] 10. Tim ke-33 ditolak — 32 lolos, ke-33 **403 `max_teams_per_category`**, `teams_count` berhenti di 32. Pencacah event kedua **independen**: tim pertama di event Professional tetap 201 walau event pertama sudah mentok
+- [x] 11. Satu org, dua event, request identik: **Starter 403** (`export_data`, `sponsor_logos`, `certificate_generator`) vs **Professional lolos** (xlsx `Microsoft Excel 2007+`, sponsor cuma kena validasi field, `1 sertifikat diterbitkan`)
+- [x] 12. Galeri: cap = total event, bukan per request *(sesi sebelumnya: 1+20 ditolak, 1+14 lolos, +1 ditolak)*
+- [x] 13. Tiket harga sama → `platform_fee` 3% vs 1% *(sesi sebelumnya + test #2)*
+- [x] 14. Export xlsx & pdf dari Pro terunduh dan terbuka; dari Starter → 403 *(Tahap 6 + diulang di poin 11)*
+- [x] 15. `/{orgSlug}` tetap **200** dengan `has_profile: false` sebelum ada event Pro/Professional, lalu `has_profile: true` setelah event Professional dibuat — org yang sama, dua request
+- [x] 16. `/organizer/upgrade` → **308** `/organizer/plans`; `/organizer/subscription` → **308** `/organizer/billing`
+- [x] 17. Operator: **403** di `GET plan-orders`, `POST plan-orders/checkout`, **dan `POST events`**; `GET events` tetap 200 (yang hilang cuma pintu yang membelanjakan uang)
+- [x] 18. Event hasil backfill (`KABOAX CUP 2026`) punya 13 key Professional, export xlsx 200, sponsor lolos gate; invoice **dan** kwitansi historis pra-migrasi (`INV/2026/07/0002`) tetap render
+- [x] 19. `plan-orders:expire-manual`: order tanpa bukti → `cancelled`, order **dengan** bukti tetap `past_due`. Setelah run: **0** order cancelled yang punya bukti, **10** order berbukti lewat deadline dibiarkan, **0** order tanpa bukti tersisa
+
+**Dua sisa teks era langganan ditemukan lewat verifikasi ini** (tidak akan tertangkap test —
+keduanya string yang tidak di-assert):
+
+1. `receipt.blade.php` mencetak "pembayaran untuk **langganan** tersebut di atas" di tiap
+   kwitansi → "paket event".
+2. Subjek email `PlanOrderPaid` masih "**Langganan** {paket} aktif" → "Paket {paket} siap
+   dipakai". Ikut dibersihkan: tiga label di `/admin` ("Kelola paket langganan", "Paket &
+   fitur langganan", "Bukti transfer langganan").
+
+**Data uji tertinggal di DB dev**: org `eo-verifikasi-tahap-10` (2 event, 4 order — 1 dipakai,
+1 kredit Professional menganggur, 1 cancelled, 1 past_due berbukti), 33 tim, 1 template
+sertifikat, 1 sertifikat, plus user operator `op-t10-*@example.com`. Hapus kalau mengganggu.
 
 ---
 

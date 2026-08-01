@@ -54,7 +54,7 @@ export default function AdminPlansPage() {
       <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
         SaaS Admin · Paket & Fitur
       </h1>
-      <p className="mt-2 text-muted-foreground">Kelola paket langganan dan nilai fitur per paket.</p>
+      <p className="mt-2 text-muted-foreground">Kelola paket event dan nilai fitur per paket.</p>
 
       {plansQuery.isError && (
         <p className="mt-4 text-sm text-destructive">

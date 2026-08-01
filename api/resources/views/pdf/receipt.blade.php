@@ -36,7 +36,7 @@
 
 @section('body')
     <p class="muted" style="margin-top: 24px;">
-        Telah diterima pembayaran untuk langganan tersebut di atas.
+        Telah diterima pembayaran untuk paket event tersebut di atas.
     </p>
     <div class="stamp">LUNAS</div>
 @endsection

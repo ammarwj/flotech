@@ -127,7 +127,7 @@ export default function AdminEventPlanOrdersPage() {
         <PaymentProofDialog
           open
           onOpenChange={(next) => !next && setReviewing(null)}
-          title="Bukti transfer langganan"
+          title="Bukti transfer paket"
           description={`${reviewing.organization?.name ?? "Organisasi dihapus"} · ${
             reviewing.invoice_number ?? "tanpa nomor invoice"
           }`}
