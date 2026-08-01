@@ -447,10 +447,24 @@ ditulis di `e2e/README.md` sebagai catatan lingkungan pertama.
 
 **Hasil setelah dibereskan: `39 passed` (suite default) + `2 passed` (`@gateway-off`).**
 
-> Satu spec **lain** kadang merah di bawah 4 worker: `public-header.spec.ts > keluar dari
-> halaman publik tetap di halaman itu` (mencari link "Daftar" setelah logout). Lulus 3/3
-> saat filenya dijalankan sendiri, dan tidak ada hubungannya dengan billing — kandidat
-> flaky berikutnya kalau mau dikejar, jangan diperlakukan sebagai regresi.
+### 5. Flaky terakhir: `public-header > keluar dari halaman publik`  ✅
+
+Tidak ada hubungannya dengan billing, tapi sekalian dikejar. Test-nya meng-assert link
+"Daftar" **terlihat** tepat setelah logout, di viewport 390px. Padahal di bawah 940px
+`.nav-actions .btn { display: none }` — salinan aksi milik bar disembunyikan CSS — dan
+logout **menutup sheet-nya sendiri** lewat `onNavigate`. Jadi saat diam, "Daftar" tidak
+terlihat di mana pun: assertion itu cuma lolos selagi sheet masih dalam animasi keluar.
+Bukan fakta, melainkan lomba — dan setiap beberapa run, assertion-nya kalah.
+
+Diperbaiki dengan **membuka menunya lagi** setelah logout, dan menyempitkan locator ke
+`getByRole("dialog", { name: "Menu" })` alih-alih `.first()` — `.first()` bisa mendarat di
+node yang ada di DOM tapi tidak akan pernah terlihat, yang persis jebakan yang sama sekali
+lagi. Sekalian assert "Masuk" juga kembali, dan "Dashboard" hilang **di dalam sheet**.
+
+**Diverifikasi bisa merah**: `clearAuth()` di `public-auth-actions.tsx` dimatikan sementara
+→ test gagal di assertion "Daftar"; dikembalikan → hijau. Versi lamanya juga lulus 5×
+berturut-turut saat filenya dijalankan sendirian, jadi "lulus berkali-kali" **bukan** bukti
+— yang membedakan cuma kontrol negatif ini. Setelah itu 3× suite penuh: `39 passed`.
 
 ### 4. Bug aplikasi yang ditemukan e2e: onboarding mendarat di tempat yang salah  ✅
 

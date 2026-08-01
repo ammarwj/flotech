@@ -56,14 +56,27 @@ test.describe("Header publik sadar-login", () => {
     await signIn(page, organizer.account.email);
     await page.goto("/event");
 
-    await page.getByRole("button", { name: "Menu" }).click();
-    await expect(page.getByRole("link", { name: "Dashboard", exact: true }).first()).toBeVisible();
-    await page.getByRole("button", { name: "Keluar" }).click();
+    // Scoped to the sheet rather than `.first()`: under 940px the bar renders
+    // the same actions and hides them with `display: none`, so an unscoped
+    // locator can resolve to a link that is in the DOM but can never be seen.
+    const sheet = page.getByRole("dialog", { name: "Menu" });
 
-    // A guest is a legitimate visitor here — no bounce to /login. Logging out
-    // swaps the dashboard shortcut back for the guest CTA, in place.
-    await expect(page.getByRole("link", { name: "Daftar", exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(sheet.getByRole("link", { name: "Dashboard", exact: true })).toBeVisible();
+    await sheet.getByRole("button", { name: "Keluar" }).click();
+
+    // A guest is a legitimate visitor here — no bounce to /login.
     await expect(page).toHaveURL(/\/event$/);
     await expect(page.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0);
+
+    // Logging out dismisses the sheet along with it, and the bar's own copy of
+    // these actions is hidden at this width — so the guest CTA can only be
+    // observed by opening the menu again. Asserting it without reopening (as
+    // this test used to) passed only while the sheet was still animating out:
+    // a race, and one the assertion lost every few runs.
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(sheet.getByRole("link", { name: "Daftar", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("link", { name: "Masuk", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("link", { name: "Dashboard", exact: true })).toHaveCount(0);
   });
 });
