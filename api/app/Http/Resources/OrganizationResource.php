@@ -36,9 +36,6 @@ class OrganizationResource extends JsonResource
             // The dashboard branches on it — an operator records results but
             // cannot sign them off, so their confirm button must not render.
             'my_role' => $this->roleOf($request->user()),
-            'plan_id' => $this->plan_id,
-            'plan_expires_at' => $this->plan_expires_at,
-            'plan' => new PlanResource($this->whenLoaded('plan')),
             // Platform-wide, not a property of this organization — but the
             // dashboard is fetching this payload anyway and needs to know when
             // sales have been switched to manual transfer (warn the organizer,

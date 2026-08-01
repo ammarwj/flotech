@@ -36,7 +36,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 2 | Katalog paket + backfill | `[x]` |
 | 3 | `PlanGate` + call site backend | `[x]` |
 | 4 | Siklus order + rute + resource | `[x]` (digabung ke Tahap 3) |
-| 5 | Drop kolom paket di `organizations` | `[ ]` |
+| 5 | Drop kolom paket di `organizations` | `[x]` |
 | 6 | Exporter Excel/PDF + katup super_admin | `[ ]` |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[ ]` |
 | 8 | Halaman frontend | `[ ]` |
@@ -207,13 +207,13 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `BillingDocumentService` — tipe + `loadMissing('plan','organization','event')`
 - [x] `MidtransWebhookController` — tipe baru; **arm `SUB-` tidak disentuh**
 
-## Tahap 5 — Lepas kolom paket org
+## Tahap 5 — Lepas kolom paket org  ✅ *(selesai: 411 lulus, 2 flaky baseline)*
 
-- [ ] `2026_08_01_100005_drop_plan_from_organizations_table.php` (**dijalankan terakhir** — backfill & semua tahap sebelumnya harus bisa jalan di DB yang masih punya kolomnya)
-- [ ] Hapus `Organization::plan()`, fillable, casts
-- [ ] Hapus `OrganizationController::assignPlan()` + rute `PATCH organizations/{org}/plan`
-- [ ] Hapus `plan_id` dari `StoreOrganizationRequest`
-- [ ] Hapus 4× `->with('plan.features')` di `OrganizationController`
+- [x] `2026_08_01_100005_drop_plan_from_organizations_table.php` (**dijalankan terakhir** — backfill & semua tahap sebelumnya harus bisa jalan di DB yang masih punya kolomnya)
+- [x] Hapus `Organization::plan()`, fillable, casts
+- [x] Hapus `OrganizationController::assignPlan()` + rute `PATCH organizations/{org}/plan`
+- [x] Hapus `plan_id` dari `StoreOrganizationRequest`
+- [x] Hapus 4× `->with('plan.features')` di `OrganizationController`
 
 ## Tahap 6 — Exporter + katup super_admin
 

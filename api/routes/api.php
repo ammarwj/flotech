@@ -202,7 +202,6 @@ Route::prefix('v1')->group(function () {
                 // Org profile & branding — the slug is the public URL, so this
                 // is owner/admin only too.
                 Route::patch('/', [OrganizationController::class, 'update']);
-                Route::patch('plan', [OrganizationController::class, 'assignPlan']);
                 Route::get('plan-orders', [PlanOrderController::class, 'index']);
                 Route::post('plan-orders/checkout', [PlanOrderController::class, 'checkout']);
                 Route::post('plan-orders/{planOrder}/pay', [PlanOrderController::class, 'pay']);

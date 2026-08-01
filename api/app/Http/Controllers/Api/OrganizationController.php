@@ -21,7 +21,7 @@ class OrganizationController extends Controller
     {
         $user = auth('api')->user();
 
-        $orgs = Organization::with('plan.features')
+        $orgs = Organization::query()
             ->where('owner_id', $user->id)
             ->orWhereHas('members', fn ($q) => $q->where('user_id', $user->id))
             ->get();
@@ -58,7 +58,7 @@ class OrganizationController extends Controller
             'invited_by' => $user->id,
         ]);
 
-        return ApiResponse::success(new OrganizationResource($org->load('plan.features')), 'Organisasi dibuat', 201);
+        return ApiResponse::success(new OrganizationResource($org), 'Organisasi dibuat', 201);
     }
 
     public function show(Request $request): JsonResponse
@@ -66,7 +66,7 @@ class OrganizationController extends Controller
         /** @var Organization $org */
         $org = $request->attributes->get('organization');
 
-        return ApiResponse::success(new OrganizationResource($org->load('plan.features')));
+        return ApiResponse::success(new OrganizationResource($org));
     }
 
     /**
@@ -92,25 +92,9 @@ class OrganizationController extends Controller
         ]));
 
         return ApiResponse::success(
-            new OrganizationResource($org->load('plan.features')),
+            new OrganizationResource($org),
             'Pengaturan organisasi disimpan'
         );
-    }
-
-    /**
-     * Assign / switch the plan for an organization (free switch or post-payment).
-     */
-    public function assignPlan(Request $request): JsonResponse
-    {
-        $request->validate([
-            'plan_id' => ['required', 'uuid', 'exists:plans,id'],
-        ]);
-
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-        $org->update(['plan_id' => $request->input('plan_id')]);
-
-        return ApiResponse::success(new OrganizationResource($org->load('plan.features')), 'Paket organisasi diperbarui');
     }
 
     protected function uniqueSlug(string $source): string

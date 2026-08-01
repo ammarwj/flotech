@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Organization;
-use App\Models\Plan;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Wallet;
@@ -36,11 +35,16 @@ class MailNotificationTest extends TestCase
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), "price" => 50000, ]);
-        $plan->features()->create(['feature_key' => 'max_teams_per_category', 'value' => '10']);
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $this->planWith([
+            'max_teams_per_category' => '10',
+            'online_registration' => 'true',
+            'payment_gateway' => 'true',
+        ]);
+        $this->testPlan->update(['price' => 50000]);
 
         return Organization::create([
-            'name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
+            'name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id,
         ]);
     }
 
@@ -152,10 +156,9 @@ class MailNotificationTest extends TestCase
 
         $owner = User::factory()->create();
         $org = $this->org($owner);
-        $plan = $org->plan;
 
         $service = app(EventPlanOrderService::class);
-        $subscription = $service->checkout($org, $plan)['order'];
+        $subscription = $service->checkout($org, $this->testPlan)['order'];
 
         // Midtrans re-delivers; activate() runs twice for one payment.
         $service->activate($subscription->fresh());

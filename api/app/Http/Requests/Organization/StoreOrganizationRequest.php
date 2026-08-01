@@ -22,7 +22,6 @@ class StoreOrganizationRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'contact_email' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:20'],
-            'plan_id' => ['nullable', 'uuid', 'exists:plans,id'],
         ];
     }
 }

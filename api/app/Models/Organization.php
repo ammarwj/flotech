@@ -34,15 +34,12 @@ class Organization extends Model
         'social_links',
         'custom_domain',
         'owner_id',
-        'plan_id',
-        'plan_expires_at',
         'storage_used_bytes',
     ];
 
     protected function casts(): array
     {
         return [
-            'plan_expires_at' => 'datetime',
             'storage_used_bytes' => 'integer',
             'social_links' => 'array',
         ];
@@ -101,11 +98,6 @@ class Organization extends Model
         }
 
         return $this->members()->where('user_id', $user->id)->value('role');
-    }
-
-    public function plan(): BelongsTo
-    {
-        return $this->belongsTo(Plan::class);
     }
 
     public function members(): HasMany
