@@ -108,7 +108,7 @@ export default function AdminFeatureDefinitionsPage() {
           <Label htmlFor="feature_key">Kunci (feature_key)</Label>
           <Input
             id="feature_key"
-            placeholder="mis. max_active_events"
+            placeholder="mis. max_categories"
             value={form.feature_key}
             onChange={(e) => setForm({ ...form, feature_key: e.target.value })}
             required

@@ -286,7 +286,8 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] 18. export butuh paket (403 vs file non-kosong, satu test)
 - [x] 19. operator tidak bisa membuat event
 - [x] `php artisan test` hijau (kecuali 2–3 flaky baseline)
-- [~] E2E: spec di-rename ke `plan-order-manual*.spec.ts`, rute & `billing_cycle` dibersihkan, typecheck lulus. **Tapi `fixtures/api.ts::grantCredit` belum bisa diimplementasikan** — lihat blokir di bawah. Spec baru "beli → buat → terpakai" menunggu itu.
+- [x] `fixtures/api.ts::grantCredit` **sudah diimplementasikan** (commit `97be71e`) lewat webhook Midtrans yang dihitung sendiri; `createEvent()` memanggilnya, jadi seluruh spec yang butuh event ikut terlayani. Blokir yang dulu ditulis di bawah sudah tidak berlaku.
+- [ ] **Dua spec e2e masih menulis alur lama** — ketahuan 2026-08-02, lihat "Sisa yang ditemukan" di bawah.
 
 ## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: 436 lulus, 1 flaky baseline)*
 
@@ -406,6 +407,35 @@ Diuji langsung (2026-08-01):
 Sengaja **bukan** opsi "jalankan API tanpa server key": itu membuat `openSnap()` melunasi di tempat dan **melewati webhook sepenuhnya**, jadi baik pemeriksaan signature maupun routing order id tidak akan pernah teruji. Jalur ini justru menutup keduanya.
 
 > **MCP Midtrans tidak relevan untuk ini.** Kendalanya bukan cara bicara ke Midtrans, melainkan notifikasi sandbox harus **sampai** ke API — `localhost:8000` tidak terjangkau dari server mereka, jadi itu butuh tunnel + webhook URL di dashboard. Berguna untuk eksplorasi manual, bukan untuk test otomatis.
+
+## Sisa yang ditemukan saat sapuan akhir (2026-08-02) — BELUM diperbaiki
+
+Bukan utang yang disengaja; ini yang **terlewat** dan masih salah.
+
+### 1. Konten landing masih menjual langganan bulanan (paling mendesak — dilihat pengunjung)
+
+`components/landing/pricing.tsx` sudah benar, tapi FAQ dan testimoni di halaman yang **sama**
+belum. Isinya ada di tabel `faqs`/`testimonials` (dan di `FaqSeeder`/`TestimonialSeeder`),
+jadi perbaikannya menyentuh **keduanya** — dan seeder-nya keyed `question`/`name`, jadi
+mengganti pertanyaannya melahirkan baris baru, bukan memperbarui yang lama.
+
+- [ ] FAQ *"Paket paling murah mulai dari berapa?"* → masih "Basic **Rp 49.000/bulan**, 1 event aktif, maks 8 tim, **bayar tahunan hemat 20%**". Semuanya sudah tidak ada: Basic dipensiunkan, termurah **Starter Rp150.000 per event**, tidak ada siklus tahunan.
+- [ ] FAQ *"Apakah saya bisa upgrade atau downgrade paket?"* → menjelaskan downgrade mengunci fitur premium. Tidak ada lagi upgrade/downgrade; paket menempel di event selamanya. Pertanyaannya sendiri yang perlu diganti.
+- [ ] FAQ *"Metode pembayaran apa yang tersedia?"* → "Berlaku untuk **langganan**, biaya…".
+- [ ] Testimoni **Hendra Wijaya** → "Naik dari **Basic** ke Pro… **Upgrade**-nya mulus."
+
+### 2. Dua spec e2e menulis alur yang sudah tidak ada
+
+- [ ] `specs/plan-order-manual-flow.spec.ts` masih menjalani **onboarding 3 langkah**: klik `Lanjutkan` (sekarang **"Selesai"**), lalu heading `Pilih paket`, lalu `Selesaikan pembayaran` + `Lihat dashboard`. Sejak Tahap 8 onboarding cuma satu langkah dan panel transfer pindah ke `/organizer/billing`. Empat string yang di-assert-nya (`Lanjutkan` di onboarding, `Lihat dashboard`, `Organisasimu belum punya paket`, `Tanpa paket`) **tidak ada lagi di mana pun**.
+- [ ] `specs/plan-order-manual.spec.ts:35,54` meng-assert heading/link **"Verifikasi Langganan"**; sekarang "Verifikasi Pembelian Paket" (halaman) dan "Verifikasi Pembelian" (sidebar).
+
+> **Suite e2e belum dijalankan bersih.** Percobaan 2026-08-02 dipenuhi timeout karena
+> lingkungannya, bukan fiturnya: web dev ada di **:3001** (bukan :3000 yang diasumsikan
+> `playwright.config.ts`), 4 worker menghantam Turbopack yang compile on-demand, dan
+> `bun run build` sempat jalan berbarengan. Kegagalan seperti `manual-payment.spec.ts`
+> ("Verifikasi pembayaran" tidak ketemu) **palsu** — heading-nya ada di
+> `payments/page.tsx:102`. Dua temuan di atas berdiri sendiri: diverifikasi **statis**
+> dengan membandingkan string yang di-assert terhadap seluruh `web/app` + `web/components`.
 
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 

@@ -12,7 +12,7 @@ class SyncPlanFeaturesRequest extends FormRequest
     }
 
     /**
-     * Body shape: { "features": { "max_active_events": "10", "qr_tickets": "true" } }
+     * Body shape: { "features": { "max_categories": "4", "qr_tickets": "true" } }
      *
      * @return array<string, mixed>
      */
