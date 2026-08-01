@@ -14,6 +14,17 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 
 **Konvensi commit.** Pesan commit berhenti di badan teksnya — **jangan** tambahkan trailer `Co-Authored-By:` atau `Claude-Session:`.
 
+> ## ⚠️ DB dev `flo_event` adalah SALINAN DATA PRODUKSI
+>
+> **Jangan pernah menjalankan `migrate:fresh`, `migrate:refresh`, atau `db:wipe` terhadap `flo_event`.** Itu menghapus salinan prod dan tidak ada undo di sini.
+>
+> - `php artisan test` **aman** — `phpunit.xml` memaksa `DB_CONNECTION=sqlite` + `DB_DATABASE=:memory:`, terisolasi total dari Postgres.
+> - `php artisan migrate` (maju) terhadap `flo_event` **aman dan memang perlu** — itulah uji sesungguhnya jalur upgrade prod.
+> - Jalur `migrate:fresh --seed` untuk verifikasi silang **wajib** dijalankan di database sekali-pakai (mis. `flo_event_scratch`), bukan `flo_event`.
+> - Ambil dump `flo_event` sebelum menjalankan migrasi baru untuk pertama kali, supaya bisa dikembalikan.
+
+**Penahapan direvisi: tiap tahap wajib berakhir dengan test hijau.** Perbaikan test dikerjakan **di dalam** tahap yang memecahkannya, bukan ditumpuk ke Tahap 9. Alasannya: regresi jadi ketahuan di tahap penyebabnya. Konsekuensinya `tests/Concerns/CreatesPlannedEvents.php` lahir di **Tahap 3** (saat `PlanGate` benar-benar jadi event-keyed), bukan Tahap 1 — di Tahap 1–2 `organizations.plan_id` masih ada sehingga sebagian besar test lama masih sah. Tahap 9 menyusut jadi **test baru saja** (19 test komparatif + e2e).
+
 ---
 
 ## Status ringkas
@@ -88,6 +99,12 @@ Rename simbol PHP (mekanis, satu commit):
 - [ ] `grep -rn "Subscription\|billing_cycle\|price_monthly\|price_yearly" api/app api/routes api/resources` → nol hasil
 - [ ] `grep -rn "'active'" api/app` → tak ada sisa status order lama
 
+Test yang dipecahkan tahap ini (perbaiki **sekarang**, bukan ditunda) — hanya yang kena rename, karena `organizations.plan_id` masih ada sehingga gate lama tetap sah:
+- [ ] `SubscriptionBillingTest`, `ManualSubscriptionTest` — nama tabel/model/rute/status, `billing_cycle` dilepas dari payload
+- [ ] `PlanAdminTest` — `price_monthly`/`price_yearly`/`yearly_discount_percent` → `price`
+- [ ] `MailNotificationTest` — nama kelas notifikasi + blade
+- [ ] ✅ `php artisan test` hijau (kecuali 2–3 flaky baseline)
+
 > **Prefix Midtrans `SUB-` untuk order lama TIDAK disentuh.** `MidtransWebhookController::handle()` merutekan order paket lewat arm `default`, jadi id `SUB-` yang masih beredar tetap settle. Id baru boleh `PLN-`; **jangan** menambah arm `PLN-` di match — itu justru menelantarkan yang lama.
 
 ## Tahap 2 — Katalog + backfill
@@ -97,8 +114,9 @@ Rename simbol PHP (mekanis, satu commit):
 - [ ] `database/seeders/FeatureDefinitionSeeder.php` — 13 definisi §4
 - [ ] `app/Console/Commands/BackfillEventPlans.php` — `events:backfill-plan {--dry-run}`, idempoten (`whereNull('plan_id')` + `whereNotExists` order), `invoice_number`/`receipt_number` **null**
 - [ ] `2026_08_01_100004_backfill_event_plans.php` memanggil command itu
-- [ ] **Verifikasi silang**: `migrate:fresh --seed` vs `migrate` di salinan prod → diff isi `plan_features` **harus identik**
-- [ ] `events:backfill-plan --dry-run` di salinan prod melaporkan angka masuk akal
+- [ ] **Verifikasi silang**: `migrate` terhadap `flo_event` (salinan prod) vs `migrate:fresh --seed` di DB **sekali-pakai** `flo_event_scratch` → diff isi `plan_features` **harus identik**. ⚠️ jangan `migrate:fresh` di `flo_event`
+- [ ] `events:backfill-plan --dry-run` terhadap `flo_event` melaporkan angka masuk akal
+- [ ] Test yang dipecahkan tahap ini: yang meng-assert key fitur spesifik (`max_active_events`, `max_teams_per_event`, `*_fee_percent`) → ✅ `php artisan test` hijau
 
 > Prune di **migrasi, bukan seeder**: seeder yang menghapus akan ikut menyapu key custom yang ditambahkan super_admin di `/admin/plans`.
 
@@ -124,6 +142,12 @@ Call site (§5), satu checkbox per titik:
 - [ ] `CertificateTemplateController` — `orgAllows($org, 'certificate_generator')` (template org-scoped, tanpa `event_id`)
 - [ ] `Public/PublicOrganizationController::show()` + `PublicOrganizationResource($org, bool $rich)` — degradasi jadi daftar event, **bukan 404**
 - [ ] `Admin\PlanController::destroy()` — tolak 422 kalau `$plan->events()->exists()`
+
+Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhenti org-keyed:
+- [ ] `tests/Concerns/CreatesPlannedEvents.php` — `planWith`/`orgFor`/`creditFor`/`eventOn`
+- [ ] Migrasi **45 file test** dari `orgWithPlan()` ke trait (mekanis)
+- [ ] `EventTest::test_plan_limit_blocks_extra_events` **dihapus**; `EventMediaTest` butuh paket yang mengizinkan foto & sponsor
+- [ ] ✅ `php artisan test` hijau
 
 ## Tahap 4 — Siklus order + rute + resource
 
@@ -193,11 +217,9 @@ Call site (§5), satu checkbox per titik:
 - [ ] `admin/subscriptions/page.tsx` → `admin/plan-orders/page.tsx` — tambah kolom event
 - [ ] `grep -rn "data-billing\|bill-switch\|billing_cycle\|price_monthly\|BillingCycle" web` → nol hasil
 
-## Tahap 9 — Test
+## Tahap 9 — Test baru
 
-- [ ] `tests/Concerns/CreatesPlannedEvents.php` — `planWith`/`orgFor`/`creditFor`/`eventOn` **(kerjakan pertama)**
-- [ ] Migrasi **45 file test** dari `orgWithPlan()` ke trait (mekanis; yang lewat `POST /events` juga butuh `creditFor()` + aktor admin)
-- [ ] Test lama dihapus/ditulis ulang: `EventTest::test_plan_limit_blocks_extra_events` (**hapus**), `PlanAdminTest`, `SubscriptionBillingTest`, `ManualSubscriptionTest`, `ManualPaymentTest`, `OrganizationTest` (`assignPlan` hapus), `EventMediaTest`, `MailNotificationTest`
+> Fixture (`CreatesPlannedEvents`) dan migrasi 45 file test sudah selesai di **Tahap 3**; perbaikan test lain sudah dikerjakan di tahap penyebabnya. Tahap ini tinggal **menambah** test yang membuktikan perilaku baru.
 
 19 test baru §9.2 — **semuanya komparatif** (assert satu nilai akan lolos walau fiturnya tidak pernah jalan):
 - [ ] 1. dua event satu org → entitlement berbeda *(kunci utama)*
