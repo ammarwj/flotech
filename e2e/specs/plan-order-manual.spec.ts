@@ -51,6 +51,11 @@ test.describe("Pembelian paket lewat transfer manual — permukaan saat gateway 
   test("menu admin memuat antrean pembelian paket", async ({ adminPage: page }) => {
     await page.goto("/admin");
 
+    // The sidebar groups are collapsed unless they hold the active route, so at
+    // /admin this one is shut. Expanding it is part of what's being tested: the
+    // queue has to be *reachable* by someone navigating, not merely routable.
+    await page.getByRole("button", { name: "Paket & Pembelian" }).click();
+
     const link = page.getByRole("link", { name: "Verifikasi Pembelian" });
     await expect(link).toBeVisible();
 

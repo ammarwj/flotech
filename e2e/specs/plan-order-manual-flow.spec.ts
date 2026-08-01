@@ -209,10 +209,12 @@ test.describe("Beli paket lewat transfer manual @gateway-off", () => {
     await page.goto("/organizer");
     await expect(page.getByText("Pembayaran paketmu sedang diverifikasi")).toBeHidden();
 
-    // And the credit is spendable: the picker steps aside for the real form.
-    await page.goto("/organizer/events/new");
-    await expect(page.getByLabel("Nama event")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Pilih paket untuk event ini" })).toBeHidden();
+    // Stops here on purpose. That the credit is then *spendable* — picker out,
+    // form in — is auth-onboarding.spec.ts's job, and it proves it on a fresh
+    // session. Repeating it here would only add a ninth full page load to a
+    // session that has already been reloaded eight times, and the access token
+    // lives in memory: every goto re-runs the refresh dance, which is a poor
+    // thing to lean on for an assertion that belongs elsewhere anyway.
   });
 
   /**

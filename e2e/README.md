@@ -155,6 +155,16 @@ curl -o /dev/null -w '%{http_code}\n' -X PUT --data-binary @fixtures/transfer-pr
 
 ## Catatan lingkungan
 
+- **Web dev wajib di `:3000`, bukan sekadar di `WEB_URL`.** `api/config/cors.php`
+  cuma mengizinkan origin `http://localhost:3000` (plus `FRONTEND_URL`). Kalau
+  dev server tergeser — Next.js pindah sendiri ke `:3001` saat `:3000` terpakai —
+  menyetel `WEB_URL=http://localhost:3001` **tidak cukup**: halamannya memuat,
+  tapi tiap panggilan API dari browser diblokir CORS. Gejalanya menyesatkan
+  karena axios tidak menerima respons sama sekali, jadi `parseApiError` jatuh ke
+  pesan default dan layarnya cuma bertuliskan **"Registrasi gagal"** — persis
+  seperti bug aplikasi. Seluruh suite runtuh dari situ, sebab hampir semuanya
+  mendaftar akun dulu. Kalau banyak spec gagal sekaligus di langkah pertamanya,
+  **cek portnya sebelum mencurigai apa pun yang lain**: `lsof -ti:3000`.
 - Dev server API (`artisan serve`) melayani satu request pada satu waktu kecuali
   di-fork; `PHP_CLI_SERVER_WORKERS=8` di `docker-compose.dev.yml` yang membuat
   suite paralel ini mungkin. Worker Playwright dibatasi 4 agar sepadan.

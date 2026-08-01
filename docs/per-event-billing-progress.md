@@ -42,7 +42,7 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 6 | Exporter Excel/PDF + katup super_admin | `[x]` |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[x]` |
 | 8 | Halaman frontend | `[x]` |
-| 9 | Test backend + e2e | `[x]` *(e2e: fixture kredit terblokir, lihat catatan)* |
+| 9 | Test backend + e2e | `[x]` *(e2e lulus penuh sejak 2026-08-02)* |
 | 10 | Docs (`CLAUDE.md`) + verifikasi manual | `[x]` |
 
 ---
@@ -261,7 +261,7 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] `admin/subscriptions/page.tsx` → `admin/plan-orders/page.tsx` — tambah kolom event
 - [x] `grep -rn "data-billing\|bill-switch\|billing_cycle\|price_monthly\|BillingCycle" web` → nol hasil
 
-## Tahap 9 — Test baru  ✅ *(19 test komparatif + 5 test backfill lulus; e2e terblokir)*
+## Tahap 9 — Test baru  ✅ *(19 test komparatif + 5 test backfill lulus; e2e lulus penuh sejak 2026-08-02)*
 
 > Fixture (`CreatesPlannedEvents`) dan migrasi 45 file test sudah selesai di **Tahap 3**; perbaikan test lain sudah dikerjakan di tahap penyebabnya. Tahap ini tinggal **menambah** test yang membuktikan perilaku baru.
 
@@ -287,9 +287,9 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [x] 19. operator tidak bisa membuat event
 - [x] `php artisan test` hijau (kecuali 2–3 flaky baseline)
 - [x] `fixtures/api.ts::grantCredit` **sudah diimplementasikan** (commit `97be71e`) lewat webhook Midtrans yang dihitung sendiri; `createEvent()` memanggilnya, jadi seluruh spec yang butuh event ikut terlayani. Blokir yang dulu ditulis di bawah sudah tidak berlaku.
-- [ ] **Dua spec e2e masih menulis alur lama** — ketahuan 2026-08-02, lihat "Sisa yang ditemukan" di bawah.
+- [x] **Tiga spec e2e yang masih menulis alur lama sudah diperbaiki** (2026-08-02) dan suite-nya dijalankan bersih: `39 passed` + `2 passed` (`@gateway-off`). Lihat "Sapuan akhir" di bawah.
 
-## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: 436 lulus, 1 flaky baseline)*
+## Tahap 10 — Docs + verifikasi manual  ✅ *(selesai: backend 437 lulus / 0 gagal, e2e 39+2 lulus)*
 
 - [x] **`KnockoutPlanTest` baseline diperbaiki** — flaky-nya nyata, tapi sebabnya bukan yang tertulis di jebakan no. 00. Test itu mengira tabel klasemen nil-results terurut **alfabetis**; sebenarnya semua tim seri sehingga urutannya jatuh ke **undian** `StandingService::lot()` = `crc32(category_id . team_id)` — permutasi baru tiap run karena uuid-nya baru. Jadi yang acak adalah **`$before`**, bukan hasil undian babak grup. Perbaikannya: `playGroupStage(array $losers = [])` — tim yang disebut kalah dari tim yang tidak disebut, sisanya diputus nama yang lebih akhir; keduanya dibaca dari fixture-nya sendiri sehingga undian grup tetap acak. Testnya kini **memainkan babak grup melawan `$before`**: empat tim yang kebetulan ditunjukkan tabel kosong dibuat kalah, jadi empat yang lolos dijamin berbeda apa pun hasil undiannya, dan assert-nya naik dari "berbeda" jadi **disjoint**. 20× run berturut-turut hijau. Sekalian: `setUp()` masih membuat paket di `organizations.plan_id` (kolom yang sudah didrop) dengan key `max_active_events` (sudah dipensiunkan) — paket mati yang tidak memberi apa-apa; diganti `orgFor()`, entitlement-nya memang datang dari `creditFor()` di `createEvent()`.
 - [x] **Dua `CatalogTest` baseline diperbaiki** — ternyata bukan flaky. `SportSeeder` mendapat `basketball` (commit `3b429a7`, 2026-07-23) dan `ConfigOptionSeeder` mendapat `rubber_difference`/`rubber_games`/`rubber_points`, tanpa testnya ikut diperbarui. Tiga hal: hitungan `sports` 8→9 & `tiebreakers` 10→12; sport yang dibuat runtime diganti `basketball`→`handball` (memakai slug yang **sudah** diseed mengubah test jadi uji keunikan dan berhenti membuktikan apa pun); helper lokal `org()` — yang masih menulis `plan_id` ke `organizations` — diganti `orgFor()` + `creditFor()` dari trait. Sisa satu gagal: `KnockoutPlanTest`, yang memang flaky karena undian acak.
@@ -408,34 +408,62 @@ Sengaja **bukan** opsi "jalankan API tanpa server key": itu membuat `openSnap()`
 
 > **MCP Midtrans tidak relevan untuk ini.** Kendalanya bukan cara bicara ke Midtrans, melainkan notifikasi sandbox harus **sampai** ke API — `localhost:8000` tidak terjangkau dari server mereka, jadi itu butuh tunnel + webhook URL di dashboard. Berguna untuk eksplorasi manual, bukan untuk test otomatis.
 
-## Sisa yang ditemukan saat sapuan akhir (2026-08-02) — BELUM diperbaiki
+## Sapuan akhir (2026-08-02) — selesai
 
-Bukan utang yang disengaja; ini yang **terlewat** dan masih salah.
+Yang **terlewat**, bukan yang sengaja ditunda. Semuanya sudah diperbaiki.
 
-### 1. Konten landing masih menjual langganan bulanan (paling mendesak — dilihat pengunjung)
+### 1. Konten landing masih menjual langganan bulanan  ✅
 
-`components/landing/pricing.tsx` sudah benar, tapi FAQ dan testimoni di halaman yang **sama**
-belum. Isinya ada di tabel `faqs`/`testimonials` (dan di `FaqSeeder`/`TestimonialSeeder`),
-jadi perbaikannya menyentuh **keduanya** — dan seeder-nya keyed `question`/`name`, jadi
-mengganti pertanyaannya melahirkan baris baru, bukan memperbarui yang lama.
+`components/landing/pricing.tsx` sudah benar sejak Tahap 8, tapi FAQ dan testimoni di
+halaman yang **sama** tidak pernah ikut. Diperbaiki lewat
+`2026_08_02_100000_refresh_landing_copy_for_per_event_billing` **dan** seeder-nya —
+migrasi karena prod mungkin tak pernah dijalankan seeder, dan `FaqSeeder` keyed `question`
+sehingga pertanyaan yang berubah kata akan lahir sebagai baris kedua. Tiap statement
+mencocokkan teks lama, jadi editan super_admin di `/admin/faqs` tetap menang.
 
-- [ ] FAQ *"Paket paling murah mulai dari berapa?"* → masih "Basic **Rp 49.000/bulan**, 1 event aktif, maks 8 tim, **bayar tahunan hemat 20%**". Semuanya sudah tidak ada: Basic dipensiunkan, termurah **Starter Rp150.000 per event**, tidak ada siklus tahunan.
-- [ ] FAQ *"Apakah saya bisa upgrade atau downgrade paket?"* → menjelaskan downgrade mengunci fitur premium. Tidak ada lagi upgrade/downgrade; paket menempel di event selamanya. Pertanyaannya sendiri yang perlu diganti.
-- [ ] FAQ *"Metode pembayaran apa yang tersedia?"* → "Berlaku untuk **langganan**, biaya…".
-- [ ] Testimoni **Hendra Wijaya** → "Naik dari **Basic** ke Pro… **Upgrade**-nya mulus."
+- [x] FAQ *"Paket paling murah…"* — "Basic **Rp 49.000/bulan**, 1 event aktif, maks 8 tim, **hemat 20% bayar tahunan**" → Starter Rp150.000 sekali bayar per event, 1 kategori 32 peserta, tanpa masa berlaku
+- [x] FAQ *"Apakah saya bisa upgrade atau downgrade paket?"* → **pertanyaannya diganti**: "Kalau event berikutnya butuh paket yang lebih besar?"
+- [x] FAQ *"Metode pembayaran…"* — "Berlaku untuk **langganan**" → "pembelian paket"
+- [x] FAQ *sertifikat* — "paket **Pro** ke atas" → Professional saja (Pro tidak punya `certificate_generator`)
+- [x] FAQ *cabang olahraga* — "basket dan tenis **menyusul di roadmap**" padahal `SportSeeder` sudah membawa sembilan cabang termasuk keduanya
+- [x] Testimoni **Hendra Wijaya** — "Naik dari **Basic** ke Pro… **Upgrade**-nya mulus"
+- [x] Diverifikasi: 8 FAQ tetap 8 (tanpa duplikat), dan isi seeder **identik** dengan isi DB untuk kedelapan pertanyaan
 
-### 2. Dua spec e2e menulis alur yang sudah tidak ada
+### 2. Spec e2e menulis alur yang sudah tidak ada  ✅
 
-- [ ] `specs/plan-order-manual-flow.spec.ts` masih menjalani **onboarding 3 langkah**: klik `Lanjutkan` (sekarang **"Selesai"**), lalu heading `Pilih paket`, lalu `Selesaikan pembayaran` + `Lihat dashboard`. Sejak Tahap 8 onboarding cuma satu langkah dan panel transfer pindah ke `/organizer/billing`. Empat string yang di-assert-nya (`Lanjutkan` di onboarding, `Lihat dashboard`, `Organisasimu belum punya paket`, `Tanpa paket`) **tidak ada lagi di mana pun**.
-- [ ] `specs/plan-order-manual.spec.ts:35,54` meng-assert heading/link **"Verifikasi Langganan"**; sekarang "Verifikasi Pembelian Paket" (halaman) dan "Verifikasi Pembelian" (sidebar).
+- [x] `plan-order-manual-flow.spec.ts` — onboarding 3 langkah → 1; pembelian dipindah ke pemilih paket di `/organizer/events/new`, panel transfer di `/organizer/billing`
+- [x] `plan-order-manual.spec.ts` — "Verifikasi Langganan" → "Verifikasi Pembelian Paket"; URL `/admin/subscriptions` → `/admin/plan-orders`; grup sidebar harus dibuka dulu (tertutup kecuali memegang rute aktif)
+- [x] `auth-onboarding.spec.ts` (**tidak ketahuan lewat grep statis** — baru muncul saat suite-nya benar-benar jalan): tombol `/lanjut|simpan|buat/i` tidak pernah cocok dengan "Selesai", dan "buat event" perlu `grantCredit()` karena fixture `organizer` sengaja tidak memberi kredit
 
-> **Suite e2e belum dijalankan bersih.** Percobaan 2026-08-02 dipenuhi timeout karena
-> lingkungannya, bukan fiturnya: web dev ada di **:3001** (bukan :3000 yang diasumsikan
-> `playwright.config.ts`), 4 worker menghantam Turbopack yang compile on-demand, dan
-> `bun run build` sempat jalan berbarengan. Kegagalan seperti `manual-payment.spec.ts`
-> ("Verifikasi pembayaran" tidak ketemu) **palsu** — heading-nya ada di
-> `payments/page.tsx:102`. Dua temuan di atas berdiri sendiri: diverifikasi **statis**
-> dengan membandingkan string yang di-assert terhadap seluruh `web/app` + `web/components`.
+### 3. Akar masalah lingkungan e2e: **CORS, bukan worker**  ✅
+
+Web dev tergeser ke `:3001` (Next.js pindah sendiri saat `:3000` terpakai), sementara
+`api/config/cors.php` cuma mengizinkan origin `http://localhost:3000`. Menyetel `WEB_URL`
+**tidak cukup** — halamannya memuat, tapi tiap panggilan API dari browser diblokir. Karena
+axios tidak menerima respons sama sekali, `parseApiError` jatuh ke pesan default dan
+layarnya cuma bertuliskan "Registrasi gagal", persis seperti bug aplikasi; hampir semua
+spec mendaftar akun di langkah pertama, jadi seluruh suite runtuh dari situ. Sudah
+ditulis di `e2e/README.md` sebagai catatan lingkungan pertama.
+
+**Hasil setelah dibereskan: `39 passed` (suite default) + `2 passed` (`@gateway-off`).**
+
+> Satu spec **lain** kadang merah di bawah 4 worker: `public-header.spec.ts > keluar dari
+> halaman publik tetap di halaman itu` (mencari link "Daftar" setelah logout). Lulus 3/3
+> saat filenya dijalankan sendiri, dan tidak ada hubungannya dengan billing — kandidat
+> flaky berikutnya kalau mau dikejar, jangan diperlakukan sebagai regresi.
+
+### 4. Bug aplikasi yang ditemukan e2e: onboarding mendarat di tempat yang salah  ✅
+
+`/onboarding` `onSuccess` cuma `invalidateQueries(["organizations"])` lalu
+`router.replace("/organizer/events/new")`. Tapi `hasNoOrg` = `isSuccess && length === 0`,
+dan query yang di-invalidate **tetap menyajikan array kosong yang lama** selama refetch —
+cukup lama untuk `OrganizerLayout` menyimpulkan user ini belum punya organisasi dan
+memantulkannya kembali ke `/onboarding`, yang saat itu sudah melihat org-nya dan
+meneruskan ke `/organizer`. Organizer baru mendarat dua halaman dari tujuannya, di
+dashboard, tanpa satu pun petunjuk soal paket yang seharusnya dia pilih. Diperbaiki dengan
+`setQueryData(["organizations"], [created])` (menyemai, bukan sekadar invalidate) plus
+latch `justCreated` untuk guard "sudah punya org". **Tidak terlihat oleh test backend mana
+pun, dan tidak terlihat oleh sapuan statis** — butuh browser yang benar-benar menavigasi.
 
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 

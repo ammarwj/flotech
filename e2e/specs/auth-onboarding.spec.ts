@@ -93,13 +93,25 @@ test.describe("§5.1 Organizer — onboarding & buat event", () => {
 
     await page.goto("/onboarding");
     await page.getByLabel("Nama organisasi").fill(unique("Sports EO"));
-    await page.getByRole("button", { name: /lanjut|simpan|buat/i }).first().click();
+    // One step, and the button says so. It used to be "Lanjutkan" because two
+    // more steps followed — plan, then payment — and an organization could not
+    // exist without one. It buys per event now, so this is the end of it.
+    await page.getByRole("button", { name: "Selesai" }).click();
 
     await expect(toast(page, /organisasi berhasil dibuat/i)).toBeVisible();
+    // And it lands on creating an event, not on the dashboard: that page is
+    // where the plan is chosen, so it is the rest of what onboarding used to be.
+    await expect(page).toHaveURL(/\/organizer\/events\/new$/);
   });
 
   test("buat event lalu publish — landing page publiknya hidup", async ({ page, organizer, api }) => {
     await signIn(page, organizer.account.email);
+
+    // Creating an event spends a paid plan order, and the `organizer` fixture
+    // deliberately hands out an organization with none — the gate would be
+    // invisible to every spec if the fixture papered over it. Without this the
+    // page shows the plan picker instead of the form.
+    await api.grantCredit(organizer.account.token, organizer.org.id);
 
     const name = unique("Liga E2E");
     await page.goto("/organizer/events/new");
