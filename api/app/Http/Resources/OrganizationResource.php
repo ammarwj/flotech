@@ -53,6 +53,11 @@ class OrganizationResource extends JsonResource
             // reads it renders on every organizer page — including for
             // `operator` members, who the org.admin-guarded /plan-orders 403s.
             'plan_payment_awaiting_verification' => $this->planOrders()->awaitingVerification()->exists(),
+            // Paid plans not yet spent on an event. Rides on this payload for
+            // the same reason as the line above: the banner reminding the
+            // organizer they are holding one renders on every organizer page.
+            // Without it an abandoned checkout is money nobody ever sees again.
+            'unconsumed_plan_orders_count' => $this->planOrders()->unconsumed()->count(),
         ];
     }
 }

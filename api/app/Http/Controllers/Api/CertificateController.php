@@ -65,16 +65,19 @@ class CertificateController extends Controller
     {
         $org = $this->org($request);
 
-        if ($denied = $this->ensureEnabled($org)) {
+        // findEvent first: the entitlement belongs to the event, so there is
+        // nothing to ask until we know which event this is.
+        $model = $this->findEvent($request, $event);
+
+        if ($denied = $this->ensureEnabled($model)) {
             return $denied;
         }
 
-        $model = $this->findEvent($request, $event);
         $data = $request->validated();
 
         $sendEmail = (bool) ($data['send_email'] ?? false);
 
-        if ($sendEmail && ! $this->gate->allows($org, 'certificate_email')) {
+        if ($sendEmail && ! $this->gate->allows($model, 'certificate_email')) {
             return ApiResponse::error(
                 'Pengiriman sertifikat via email tidak tersedia di paketmu.',
                 ['feature' => 'certificate_email'],
@@ -113,16 +116,15 @@ class CertificateController extends Controller
     public function send(Request $request, string $organization, string $certificate): JsonResponse
     {
         $org = $this->org($request);
+        $model = $this->find($org, $certificate);
 
-        if (! $this->gate->allows($org, 'certificate_email')) {
+        if (! $this->gate->allows($model->event, 'certificate_email')) {
             return ApiResponse::error(
-                'Pengiriman sertifikat via email tidak tersedia di paketmu.',
+                'Pengiriman sertifikat via email tidak tersedia di paket event ini.',
                 ['feature' => 'certificate_email'],
                 403,
             );
         }
-
-        $model = $this->find($org, $certificate);
 
         if (! $model->recipient_email) {
             return ApiResponse::error('Penerima ini tidak punya alamat email.', null, 422);
@@ -162,11 +164,18 @@ class CertificateController extends Controller
         return ApiResponse::success(null, 'Sertifikat dihapus');
     }
 
-    protected function ensureEnabled(Organization $org): ?JsonResponse
+    /**
+     * Gates issuing only. `download()` and `destroy()` are deliberately left
+     * open: a certificate legitimately issued under a paid event must stay
+     * downloadable and deletable forever, and blocking it later would punish a
+     * purchase that was already honoured. Same reasoning as
+     * EventMediaController::updateSponsor().
+     */
+    protected function ensureEnabled(Event $event): ?JsonResponse
     {
-        if (! $this->gate->allows($org, 'certificate_generator')) {
+        if (! $this->gate->allows($event, 'certificate_generator')) {
             return ApiResponse::error(
-                'Generator sertifikat tidak tersedia di paketmu.',
+                'Generator sertifikat tidak tersedia di paket event ini.',
                 ['feature' => 'certificate_generator'],
                 403,
             );

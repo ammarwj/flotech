@@ -9,6 +9,7 @@ use App\Models\EventPhoto;
 use App\Models\EventSponsor;
 use App\Models\Organization;
 use App\Services\Catalog;
+use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class EventMediaController extends Controller
 {
+    public function __construct(protected PlanGate $gate) {}
+
     // ---- Photos ----
 
     public function photos(Request $request, string $organization, string $event): JsonResponse
@@ -38,12 +41,38 @@ class EventMediaController extends Controller
     {
         $eventModel = $this->event($request, $event);
 
+        // Order matters. The boolean denies first, so withinLimit()'s
+        // "an absent numeric limit means unlimited" can never hand an uncapped
+        // gallery to a plan that has no gallery at all.
+        if (! $this->gate->allows($eventModel, 'event_gallery')) {
+            return ApiResponse::error(
+                'Galeri foto tidak tersedia di paket event ini.',
+                ['feature' => 'event_gallery'],
+                403,
+            );
+        }
+
         $data = $request->validate([
             'album' => ['nullable', 'string', 'max:100'],
+            // A per-REQUEST abuse guard, not the plan cap: ten requests of five
+            // photos each sail straight past it. The plan's cap is on the
+            // event's total, checked below.
             'photos' => ['required', 'array', 'min:1', 'max:50'],
             'photos.*.photo_url' => ['required', 'string'],
             'photos.*.caption' => ['nullable', 'string', 'max:255'],
         ]);
+
+        $existing = $eventModel->photos()->count();
+
+        if (! $this->gate->withinLimit($eventModel, 'max_gallery_photos', $existing, count($data['photos']))) {
+            $limit = $this->gate->limit($eventModel, 'max_gallery_photos');
+
+            return ApiResponse::error(
+                "Paket event ini membatasi {$limit} foto galeri (sudah ada {$existing}).",
+                ['feature' => 'max_gallery_photos'],
+                403,
+            );
+        }
 
         $album = $data['album'] ?? null;
         $next = (int) $eventModel->photos()->where('album', $album)->max('sort_order');
@@ -99,6 +128,18 @@ class EventMediaController extends Controller
     public function storeSponsor(Request $request, string $organization, string $event): JsonResponse
     {
         $eventModel = $this->event($request, $event);
+
+        // Only adding is gated. updateSponsor() and destroySponsor() stay open
+        // on purpose: a logo that already exists — put there under a plan that
+        // allowed it, or before this gate existed — must remain editable and
+        // removable. Same reasoning as CertificateController::download().
+        if (! $this->gate->allows($eventModel, 'sponsor_logos')) {
+            return ApiResponse::error(
+                'Logo sponsor tidak tersedia di paket event ini.',
+                ['feature' => 'sponsor_logos'],
+                403,
+            );
+        }
 
         $data = $request->validate($this->sponsorRules());
 

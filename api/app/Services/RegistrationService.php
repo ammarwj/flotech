@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Models\BankAccount;
+use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Models\User;
@@ -30,12 +31,12 @@ class RegistrationService
     ) {}
 
     /**
-     * Platform fee for a registration amount, based on the organizer plan's
-     * `registration_fee_percent` feature (0 when unset).
+     * Platform fee for a registration amount, from the *event's* plan (0 when
+     * unset). Same key and same reasoning as TicketService::platformFee().
      */
-    public function platformFee(Organization $org, float $amount): float
+    public function platformFee(Event $event, float $amount): float
     {
-        $percent = (float) ($this->gate->value($org, 'registration_fee_percent') ?? 0);
+        $percent = (float) ($this->gate->value($event, 'platform_fee_percent') ?? 0);
 
         return round($amount * $percent / 100, 2);
     }
@@ -50,14 +51,20 @@ class RegistrationService
      *
      * @throws PaymentException when the organizer can't collect
      */
-    public function startPayment(Team $team, Organization $org): array
+    public function startPayment(Team $team): array
     {
+        // Both the rail and the fee are read off the event now, so the caller no
+        // longer passes the organization in. PublicEventController::register()
+        // sets the `event` relation on the fresh team for the same reason it
+        // sets `category` — so this does not re-query it.
+        $event = $team->event;
+        $org = $event->organization;
         $amount = (float) $team->category->registration_fee;
 
-        // Throws when the organizer has no gateway entitlement, or the gateway
-        // is off and they never set up a bank account. A non-null account is
-        // itself the signal that this payment is a manual one.
-        $bank = $this->rails->destinationFor($org, $amount);
+        // Throws when the event has no gateway entitlement, or the gateway is
+        // off and the organizer never set up a bank account. A non-null account
+        // is itself the signal that this payment is a manual one.
+        $bank = $this->rails->destinationFor($event, $amount);
         $manual = $bank !== null;
 
         if ($amount <= 0) {
@@ -72,7 +79,7 @@ class RegistrationService
             'payment_status' => 'unpaid',
             'payment_amount' => $amount,
             // Manual money never reaches us, so there is nothing to take a cut of.
-            'platform_fee' => $manual ? 0 : $this->platformFee($org, $amount),
+            'platform_fee' => $manual ? 0 : $this->platformFee($event, $amount),
             'payment_method' => $manual ? 'manual' : 'gateway',
             'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
             'midtrans_order_id' => $orderId,

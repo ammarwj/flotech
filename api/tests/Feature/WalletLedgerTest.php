@@ -10,6 +10,7 @@ use App\Services\RefundService;
 use App\Services\WalletService;
 use App\Services\WithdrawalService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -20,16 +21,18 @@ use Tests\TestCase;
  */
 class WalletLedgerTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     public function test_balances_match_the_ledger_after_a_mixed_sequence(): void
     {
         $owner = User::factory()->create();
         $admin = User::factory()->create(['role' => 'super_admin']);
 
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $plan;
         $plan->features()->create(['feature_key' => 'qr_tickets', 'value' => 'true']);
-        $plan->features()->create(['feature_key' => 'ticket_fee_percent', 'value' => '5']);
+        $plan->features()->create(['feature_key' => 'platform_fee_percent', 'value' => '5']);
         // PaymentRails refuses an online payment without this; every seeded plan grants it.
         $plan->features()->create(['feature_key' => 'payment_gateway', 'value' => 'true']);
 
@@ -37,6 +40,7 @@ class WalletLedgerTest extends TestCase
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
         ]);
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

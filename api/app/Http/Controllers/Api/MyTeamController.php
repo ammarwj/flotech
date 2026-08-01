@@ -137,7 +137,7 @@ class MyTeamController extends Controller
             return ApiResponse::error('Pendaftaran ini sudah dibayar.', null, 422);
         }
 
-        $payment = $this->registration->startPayment($model, $model->event->organization);
+        $payment = $this->registration->startPayment($model);
 
         return ApiResponse::success([
             'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),

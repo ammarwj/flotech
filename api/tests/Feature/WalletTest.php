@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\TicketService;
 use App\Services\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -18,20 +19,23 @@ use Tests\TestCase;
  */
 class WalletTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         // Every plan in PlanSeeder grants `payment_gateway`, and PaymentRails
         // refuses to take money online without it. A plan built here without it
         // isn't a stricter test — it's an org that can't sell anything.
-        $features = ['payment_gateway' => 'true'] + $features;
+        $features = ['payment_gateway' => 'true', 'online_registration' => 'true'] + $features;
 
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
+
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $plan;
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -41,6 +45,7 @@ class WalletTest extends TestCase
     private function event(Organization $org): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',
         ]);
@@ -66,7 +71,7 @@ class WalletTest extends TestCase
     public function test_paid_ticket_order_credits_net_amount_as_pending(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'ticket_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
@@ -121,7 +126,7 @@ class WalletTest extends TestCase
     public function test_paid_registration_fee_credits_wallet(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['registration_fee_percent' => '10']);
+        $org = $this->orgWithPlan($user, ['platform_fee_percent' => '10']);
         $event = $this->event($org);
         $event->categories->first()->update(['registration_fee' => 150000]);
 
@@ -151,7 +156,7 @@ class WalletTest extends TestCase
     public function test_redelivered_settlement_does_not_credit_twice(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'ticket_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
@@ -175,7 +180,7 @@ class WalletTest extends TestCase
         config()->set('services.midtrans.server_key', 'test-server-key');
 
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'ticket_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 

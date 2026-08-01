@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\PlanFeatureException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
@@ -10,6 +11,7 @@ use App\Jobs\PurgeMediaJob;
 use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
 use App\Models\EventCategory;
+use App\Models\EventPlanOrder;
 use App\Models\Organization;
 use App\Services\Catalog;
 use App\Services\MediaCleanupService;
@@ -17,6 +19,7 @@ use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -30,7 +33,7 @@ class EventController extends Controller
         $events = $this->org($request)->events()
             // Each category's own count, not just the event's: the event form
             // locks a category's participant_type once entrants exist.
-            ->with(['categories' => fn ($q) => $q->withCount('teams')])
+            ->with(['plan.features', 'categories' => fn ($q) => $q->withCount('teams')])
             ->withCount('teams')
             ->latest()
             ->get();
@@ -38,33 +41,102 @@ class EventController extends Controller
         return ApiResponse::success(EventResource::collection($events));
     }
 
+    /**
+     * Create an event by spending a paid plan order.
+     *
+     * The whole thing runs in one transaction. syncCategories() already threw
+     * ValidationException for participant_type, and today that leaves a created
+     * event behind with no categories; the max_categories gate makes that
+     * failure common rather than rare, and a rolled-back create is also what
+     * stops a refused event from burning the organizer's credit.
+     */
     public function store(StoreEventRequest $request): JsonResponse
     {
         $org = $this->org($request);
-
-        $activeCount = $org->events()->whereNotIn('status', ['finished', 'cancelled'])->count();
-        if (! $this->gate->withinLimit($org, 'max_active_events', $activeCount)) {
-            return ApiResponse::error('Batas event aktif untuk paketmu sudah tercapai.', ['feature' => 'max_active_events'], 403);
-        }
 
         $data = $request->validated();
         $categories = $data['categories'] ?? [];
         unset($data['categories']);
 
-        $data['slug'] = $this->uniqueSlug($org, $data['slug'] ?? $data['name']);
-        $data['status'] = 'draft';
+        $event = DB::transaction(function () use ($org, $request, $data, $categories) {
+            $order = $this->claimOrder($org, $request->input('plan_order_id'));
 
-        $event = $org->events()->create($data);
-        $this->syncCategories($event, $categories);
+            $data['slug'] = $this->uniqueSlug($org, $data['slug'] ?? $data['name']);
+            $data['status'] = 'draft';
+            $data['plan_id'] = $order->plan_id;
 
-        return ApiResponse::success(new EventResource($event->load('categories')), 'Event dibuat', 201);
+            $event = $org->events()->create($data);
+            // syncCategories gates on the plan; hand it over rather than let it
+            // re-query a relation we already hold.
+            $event->setRelation('plan', $order->plan);
+
+            // The atomic claim. `whereNull('event_id')` inside the UPDATE is what
+            // makes two concurrent creates unable to spend one credit —
+            // lockForUpdate alone would let the second overwrite the first's
+            // event_id. The unique index on event_id covers the other direction:
+            // two orders claiming one event.
+            $claimed = EventPlanOrder::whereKey($order->id)
+                ->whereNull('event_id')
+                ->update(['event_id' => $event->id, 'consumed_at' => now()]);
+
+            if ($claimed === 0) {
+                throw new PlanFeatureException(
+                    'Paket itu baru saja dipakai untuk event lain. Muat ulang halaman ini.',
+                    ['feature' => 'plan_order_required'],
+                );
+            }
+
+            $this->syncCategories($event, $categories);
+
+            return $event;
+        });
+
+        return ApiResponse::success(
+            new EventResource($event->load(['plan.features', 'categories'])),
+            'Event dibuat',
+            201,
+        );
+    }
+
+    /**
+     * The paid, unspent plan this event will run on.
+     *
+     * `plan_order_id` is optional and exists because an organizer can hold
+     * several credits at once: spending a Starter on a national championship
+     * because it happened to be bought first is a mistake with no undo — the
+     * plan is locked to the event from here on. Without one, oldest first: the
+     * credit that has been idle longest.
+     *
+     * Ownership and state are checked here rather than in StoreEventRequest
+     * because both need the organization, the same reason participant_type
+     * validation lives in this controller.
+     *
+     * @throws PlanFeatureException
+     */
+    protected function claimOrder(Organization $org, ?string $orderId): EventPlanOrder
+    {
+        $order = $org->planOrders()->unconsumed()
+            ->when($orderId, fn ($q) => $q->whereKey($orderId))
+            ->with('plan.features')
+            ->oldest('paid_at')
+            ->lockForUpdate()
+            ->first();
+
+        if (! $order) {
+            throw new PlanFeatureException(
+                'Kamu belum punya paket yang siap dipakai. Beli paket dulu untuk membuat event.',
+                ['feature' => 'plan_order_required'],
+            );
+        }
+
+        return $order;
     }
 
     public function show(Request $request, string $organization, string $event): JsonResponse
     {
         return ApiResponse::success(new EventResource(
             $this->find($request, $event)
-                ->load(['categories' => fn ($q) => $q->withCount('teams')])
+                ->load(['plan.features', 'categories' => fn ($q) => $q->withCount('teams')])
                 ->loadCount('teams'),
         ));
     }
@@ -94,7 +166,7 @@ class EventController extends Controller
             $this->syncCategories($model, $categories);
         }
 
-        return ApiResponse::success(new EventResource($model->load('categories')), 'Event diperbarui');
+        return ApiResponse::success(new EventResource($model->load(['plan.features', 'categories'])), 'Event diperbarui');
     }
 
     /**
@@ -172,7 +244,34 @@ class EventController extends Controller
         $modes = Catalog::participantModes($event->sport_type);
         $keep = [];
 
+        // syncCategories is a full replace, so the submitted list *is* the
+        // total — hence currentCount 0 and the whole count as `adding`.
+        //
+        // The check lives here rather than in EventCategoryRules because a
+        // FormRequest cannot see the event's plan, and because both store() and
+        // update() route through this method: duplicating it into two requests
+        // is how `officials.*.id` validation ended up written twice.
+        if (! $this->gate->withinLimit($event, 'max_categories', 0, count($categories))) {
+            throw new PlanFeatureException(
+                'Jumlah kategori melebihi batas paket event ini.',
+                ['feature' => 'max_categories'],
+            );
+        }
+
+        // The organizer's own per-category cap may not exceed the plan's.
+        $planCap = $this->gate->limit($event, 'max_teams_per_category');
+
         foreach (array_values($categories) as $i => $cat) {
+            // 422 with a field path rather than 403: this is a number typed into
+            // a specific input, and the form binds field errors inline. Refused
+            // rather than silently clamped — a clamp hides the cap from the
+            // person choosing it.
+            if ($planCap !== null && $planCap !== -1 && (int) ($cat['max_teams'] ?? 0) > $planCap) {
+                throw ValidationException::withMessages([
+                    "categories.{$i}.max_teams" => "Paket event ini membatasi {$planCap} peserta per kategori.",
+                ]);
+            }
+
             $defaults = Catalog::formatDefaults($cat['tournament_format'] ?? null);
             $bracket = $cat['bracket_config'] ?? null;
             if ($defaults !== []) {

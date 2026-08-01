@@ -213,7 +213,13 @@ Route::prefix('v1')->group(function () {
             });
 
             // Event CRUD + registrations management.
-            Route::apiResource('events', EventController::class);
+            //
+            // Creating an event now spends a credit the organization paid for,
+            // with no undo — so it joins the wallet and billing endpoints behind
+            // org.admin. `tenant` on its own admits `operator` members (the gate
+            // scanners), who have no business committing the org's money.
+            Route::post('events', [EventController::class, 'store'])->middleware('org.admin');
+            Route::apiResource('events', EventController::class)->except(['store']);
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             // Status moves through its own guarded verb, never the form save.
             Route::patch('events/{event}/status', [EventController::class, 'updateStatus']);

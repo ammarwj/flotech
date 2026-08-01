@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\User;
 use App\Services\StandingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -28,11 +29,11 @@ use Tests\TestCase;
  */
 class HeadToHeadMiniLeagueTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => User::factory()->create()->id, 'plan_id' => $plan->id,
@@ -50,6 +51,7 @@ class HeadToHeadMiniLeagueTest extends TestCase
     private function league(Organization $org, array $names, array $results): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Piala Nusantara',
             'slug' => 'piala-'.uniqid(),
             'sport_type' => 'football',

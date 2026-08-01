@@ -10,19 +10,23 @@ use App\Models\TicketOrder;
 use App\Models\User;
 use App\Services\TicketService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class TicketTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
+
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $plan;
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -32,6 +36,7 @@ class TicketTest extends TestCase
     private function event(Organization $org): Event
     {
         return $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',
@@ -65,20 +70,6 @@ class TicketTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.name', 'VIP')
             ->assertJsonPath('data.remaining', 100);
-    }
-
-    public function test_ticket_limit_blocks_excess_quota(): void
-    {
-        $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'max_tickets_per_event' => '100']);
-        $event = $this->event($org);
-
-        $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/ticket-categories", [
-                'name' => 'Reguler', 'price' => 50000, 'quota' => 150,
-            ])
-            ->assertStatus(403)
-            ->assertJsonPath('errors.feature', 'max_tickets_per_event');
     }
 
     public function test_public_can_buy_free_ticket_and_it_is_auto_paid(): void

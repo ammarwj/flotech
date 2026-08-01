@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -21,7 +22,7 @@ use Tests\TestCase;
  */
 class AdminUserAccountTypeTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function superAdmin(): User
     {
@@ -31,13 +32,14 @@ class AdminUserAccountTypeTest extends TestCase
     private function openEvent(): Event
     {
         $owner = User::factory()->create();
-        $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
-        $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => '10']);
+        $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), 'price' => 0]);
+        $plan->features()->create(['feature_key' => 'max_teams_per_category', 'value' => '10']);
         $org = Organization::create([
             'name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
         ]);
 
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'football',
             'status' => 'open', 'start_date' => '2026-08-01', 'end_date' => '2026-08-10',
             'registration_open' => Carbon::now()->subDay(), 'registration_close' => Carbon::now()->addDays(10),

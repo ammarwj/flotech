@@ -7,13 +7,14 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\EventViewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PruneViewVisitorsTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     public function test_pruning_drops_old_visitor_rows_but_never_the_daily_totals(): void
     {
@@ -23,6 +24,7 @@ class PruneViewVisitorsTest extends TestCase
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => User::factory()->create()->id,
         ]);
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

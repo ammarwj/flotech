@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Models\BankAccount;
-use App\Models\Organization;
+use App\Models\Event;
 use App\Models\SiteSetting;
 use Illuminate\Support\Carbon;
 
@@ -44,9 +44,15 @@ class PaymentRails
      * a manual one. Returns null when it goes through the gateway or costs
      * nothing, so callers can read `$bank !== null` as "this one is manual".
      *
+     * Event-scoped, not org-scoped: the gateway entitlement is bought per event,
+     * so two events of one organizer can legitimately answer differently. The
+     * manual destination is still the organizer's own account — money on that
+     * rail never reaches the platform, which is why platformDestination() is a
+     * separate method and stays planless.
+     *
      * @throws PaymentException when the organizer can't collect this money at all
      */
-    public function destinationFor(Organization $org, float $amount): ?BankAccount
+    public function destinationFor(Event $event, float $amount): ?BankAccount
     {
         // Free events collect nothing, so they need no rail and no entitlement.
         if ($amount <= 0) {
@@ -54,7 +60,7 @@ class PaymentRails
         }
 
         if ($this->isManual()) {
-            $bank = $org->bankAccounts()->where('is_primary', true)->first();
+            $bank = $event->organization->bankAccounts()->where('is_primary', true)->first();
 
             if (! $bank) {
                 throw new PaymentException(
@@ -65,9 +71,9 @@ class PaymentRails
             return $bank;
         }
 
-        if (! $this->gate->allows($org, 'payment_gateway')) {
+        if (! $this->gate->allows($event, 'payment_gateway')) {
             throw new PaymentException(
-                'Penyelenggara tidak dapat menerima pembayaran online untuk saat ini.',
+                'Penyelenggara tidak dapat menerima pembayaran online untuk event ini.',
                 ['feature' => 'payment_gateway'],
                 403,
             );
@@ -82,10 +88,10 @@ class PaymentRails
      *
      * Deliberately not destinationFor(). That one answers "where does a buyer
      * send money to this organizer", and it also demands the `payment_gateway`
-     * entitlement. EventPlanOrder money flows the other way, and asking for an
-     * entitlement here would refuse every brand-new organization: an org is
-     * born with plan_id null, so PlanGate grants it nothing at all. Buying the
-     * first plan is the one flow that has to work without a plan.
+     * entitlement of a specific event. Plan money flows the other way, and there
+     * is no event to read an entitlement from: the organizer pays first and
+     * creates the event afterwards. Buying a plan is the one flow that must work
+     * with no entitlement anywhere.
      *
      * @throws PaymentException when the gateway is off and no platform account is on file
      */

@@ -32,15 +32,11 @@ class TicketCategoryController extends Controller
         $org = $this->org($request);
         $event = $this->findEvent($request, $event);
 
-        if ($denied = $this->ensureTicketsEnabled($org)) {
+        if ($denied = $this->ensureTicketsEnabled($event)) {
             return $denied;
         }
 
         $data = $request->validated();
-
-        if ($denied = $this->ensureWithinTicketLimit($org, $event, (int) ($data['quota'] ?? 0))) {
-            return $denied;
-        }
 
         $category = $event->ticketCategories()->create($data);
 
@@ -52,20 +48,11 @@ class TicketCategoryController extends Controller
         $org = $this->org($request);
         $category = $this->findCategory($org, $ticketCategory);
 
-        if ($denied = $this->ensureTicketsEnabled($org)) {
+        if ($denied = $this->ensureTicketsEnabled($category->event)) {
             return $denied;
         }
 
-        $data = $request->validated();
-
-        if (array_key_exists('quota', $data)) {
-            $limitCheck = $this->ensureWithinTicketLimit($org, $category->event, (int) ($data['quota'] ?? 0), $category->id);
-            if ($limitCheck) {
-                return $limitCheck;
-            }
-        }
-
-        $category->update($data);
+        $category->update($request->validated());
 
         return ApiResponse::success(new TicketCategoryResource($category->fresh()), 'Kategori tiket diperbarui');
     }
@@ -83,40 +70,12 @@ class TicketCategoryController extends Controller
         return ApiResponse::success(null, 'Kategori tiket dihapus');
     }
 
-    protected function ensureTicketsEnabled(Organization $org): ?JsonResponse
+    protected function ensureTicketsEnabled(Event $event): ?JsonResponse
     {
-        if (! $this->gate->allows($org, 'qr_tickets')) {
-            return ApiResponse::error('Fitur tiket QR tidak tersedia di paketmu.', ['feature' => 'qr_tickets'], 403);
-        }
-
-        return null;
-    }
-
-    /**
-     * Enforce the plan's total-tickets-per-event cap across all categories.
-     * `newQuota` of 0 means unlimited for this category, which is rejected when
-     * the plan itself imposes a finite cap.
-     */
-    protected function ensureWithinTicketLimit(Organization $org, Event $event, int $newQuota, ?string $excludeId = null): ?JsonResponse
-    {
-        $limit = $this->gate->limit($org, 'max_tickets_per_event');
-
-        if ($limit === null || $limit === -1) {
-            return null; // unlimited
-        }
-
-        if ($newQuota <= 0) {
-            return ApiResponse::error('Paketmu membatasi jumlah tiket, jadi kuota kategori wajib diisi.', ['feature' => 'max_tickets_per_event'], 422);
-        }
-
-        $otherQuota = $event->ticketCategories()
-            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
-            ->sum('quota');
-
-        if ($otherQuota + $newQuota > $limit) {
+        if (! $this->gate->allows($event, 'qr_tickets')) {
             return ApiResponse::error(
-                "Total kuota tiket melebihi batas paketmu ({$limit}).",
-                ['feature' => 'max_tickets_per_event'],
+                'Fitur tiket tidak tersedia di paket event ini.',
+                ['feature' => 'qr_tickets'],
                 403,
             );
         }

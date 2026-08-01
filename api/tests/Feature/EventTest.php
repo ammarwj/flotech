@@ -3,25 +3,31 @@
 namespace Tests\Feature;
 
 use App\Models\Organization;
-use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 class EventTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
-    private function orgWithPlan(User $owner, array $features = []): Organization
+    /**
+     * An organization holding `$credits` unspent plan orders, since creating an
+     * event now spends one.
+     *
+     * @param  array<string, string>  $features
+     */
+    private function orgWithPlan(User $owner, array $features = [], int $credits = 1): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
-        foreach ($features as $key => $value) {
-            $plan->features()->create(['feature_key' => $key, 'value' => $value]);
+        $org = $this->orgFor($owner);
+        $plan = $features === [] ? $this->fullPlan() : $this->planWith($features);
+
+        for ($i = 0; $i < $credits; $i++) {
+            $this->creditFor($org, $plan);
         }
 
-        return Organization::create([
-            'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
-        ]);
+        return $org;
     }
 
     private function payload(array $overrides = []): array
@@ -40,7 +46,7 @@ class EventTest extends TestCase
     public function test_member_can_create_event(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
 
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload())
@@ -51,10 +57,17 @@ class EventTest extends TestCase
         $this->assertDatabaseHas('events', ['organization_id' => $org->id, 'name' => 'Jakarta Cup 2026']);
     }
 
-    public function test_plan_limit_blocks_extra_events(): void
+    /**
+     * One credit buys one event.
+     *
+     * Compares the two calls rather than asserting the refusal alone: a 403 on
+     * its own would pass just as happily if the second event had been created
+     * anyway, which is the failure this guards.
+     */
+    public function test_one_credit_creates_exactly_one_event(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '1']);
+        $org = $this->orgWithPlan($user);
 
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload())
@@ -63,13 +76,16 @@ class EventTest extends TestCase
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload(['name' => 'Second']))
             ->assertStatus(403)
-            ->assertJsonPath('errors.feature', 'max_active_events');
+            ->assertJsonPath('errors.feature', 'plan_order_required');
+
+        $this->assertSame(1, $org->events()->count());
+        $this->assertSame(0, $org->planOrders()->unconsumed()->count());
     }
 
     public function test_non_member_cannot_create_event(): void
     {
         $owner = User::factory()->create();
-        $org = $this->orgWithPlan($owner, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($owner);
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger, 'api')
@@ -80,7 +96,7 @@ class EventTest extends TestCase
     public function test_member_can_update_and_publish_event(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
 
         $eventId = $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload())
@@ -119,7 +135,7 @@ class EventTest extends TestCase
     public function test_event_walks_through_its_statuses(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         foreach (['registration_closed', 'ongoing', 'finished'] as $status) {
@@ -135,7 +151,7 @@ class EventTest extends TestCase
     public function test_next_statuses_are_published_with_the_event(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         // The dashboard renders its buttons from this, so it must match the table.
@@ -148,7 +164,7 @@ class EventTest extends TestCase
     public function test_a_finished_event_is_terminal(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         $this->actingAs($user, 'api')
@@ -168,7 +184,7 @@ class EventTest extends TestCase
     public function test_a_draft_cannot_skip_straight_to_finished(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
 
         $eventId = $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload())
@@ -185,7 +201,7 @@ class EventTest extends TestCase
     public function test_registration_can_be_reopened(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         $this->actingAs($user, 'api')
@@ -203,7 +219,7 @@ class EventTest extends TestCase
     public function test_saving_the_form_cannot_change_the_status(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         // The transition table would be pointless if the form save walked past
@@ -223,7 +239,7 @@ class EventTest extends TestCase
     public function test_publishing_an_already_published_event_is_rejected(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($user);
         $eventId = $this->openEvent($user, $org);
 
         $this->actingAs($user, 'api')
@@ -234,7 +250,7 @@ class EventTest extends TestCase
     public function test_status_cannot_be_changed_from_another_org(): void
     {
         $owner = User::factory()->create();
-        $org = $this->orgWithPlan($owner, ['max_active_events' => '5']);
+        $org = $this->orgWithPlan($owner);
         $eventId = $this->openEvent($owner, $org);
 
         $intruder = User::factory()->create();

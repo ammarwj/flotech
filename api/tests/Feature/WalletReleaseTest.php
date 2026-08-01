@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -16,11 +17,11 @@ use Tests\TestCase;
  */
 class WalletReleaseTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         // See WalletTest: PaymentRails gates online payment on this entitlement,
         // and every seeded plan grants it.
@@ -30,6 +31,9 @@ class WalletReleaseTest extends TestCase
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
 
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $plan;
+
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
         ]);
@@ -38,8 +42,9 @@ class WalletReleaseTest extends TestCase
     /** An org with 95.000 pending from one paid order on an event ending 2026-08-02. */
     private function seedPendingIncome(User $user): array
     {
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'ticket_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

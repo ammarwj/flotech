@@ -8,11 +8,12 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\EventViewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 class AdminViewStatsTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function superAdmin(): User
     {
@@ -29,6 +30,7 @@ class AdminViewStatsTest extends TestCase
     private function event(Organization $org, string $name = 'Cup'): Event
     {
         return $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => $name, 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

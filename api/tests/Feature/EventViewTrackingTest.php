@@ -7,13 +7,14 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\EventViewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class EventViewTrackingTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private const BROWSER = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0 Safari/537.36';
 
@@ -27,6 +28,7 @@ class EventViewTrackingTest extends TestCase
     private function event(Organization $org, string $status = 'open'): Event
     {
         return $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => $status,
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

@@ -9,6 +9,7 @@ use App\Models\Plan;
 use App\Models\User;
 use App\Services\ScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -22,19 +23,20 @@ use Tests\TestCase;
  */
 class ScheduleCourtsTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     /** @param  list<string>|null  $courts */
     private function categoryWithCourts(?array $courts): EventCategory
     {
         $owner = User::factory()->create();
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
         $org = Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
         ]);
 
         /** @var Event $event */
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup',
             'slug' => 'cup-'.uniqid(),
             'sport_type' => 'badminton',

@@ -9,6 +9,7 @@ use App\Models\Plan;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -18,7 +19,7 @@ use Tests\TestCase;
  */
 class RubberScoreTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private const FORMAT = [
         ['label' => 'Ganda Putra', 'type' => 'double'],
@@ -28,7 +29,7 @@ class RubberScoreTest extends TestCase
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -39,6 +40,7 @@ class RubberScoreTest extends TestCase
     private function beregu(Organization $org, string $format = 'league'): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Piala Beregu',
             'slug' => 'beregu-'.uniqid(),
             'sport_type' => 'badminton',

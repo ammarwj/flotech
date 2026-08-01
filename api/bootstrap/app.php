@@ -1,9 +1,8 @@
 <?php
 
 use App\Exceptions\PaymentException;
+use App\Exceptions\PlanFeatureException;
 use App\Exceptions\WalletException;
-use App\Http\Middleware\CheckPlanFeature;
-use App\Http\Middleware\CheckPlanLimit;
 use App\Http\Middleware\EnsureOrgAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\TenantScope;
@@ -50,8 +49,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'track.seen' => TrackLastSeen::class,
             'tenant' => TenantScope::class,
             'org.admin' => EnsureOrgAdmin::class,
-            'plan.feature' => CheckPlanFeature::class,
-            'plan.limit' => CheckPlanLimit::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -73,6 +70,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (PaymentException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (PlanFeatureException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }

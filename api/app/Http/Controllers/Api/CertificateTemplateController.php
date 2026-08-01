@@ -76,11 +76,18 @@ class CertificateTemplateController extends Controller
         return ApiResponse::success(null, 'Template sertifikat dihapus');
     }
 
+    /**
+     * Templates are org-scoped rows — they have no `event_id` and are reused
+     * across events — so this is one of the two places that asks the org-level
+     * question instead. orgAllows() is monotone: once the organization has run
+     * one event on a plan carrying certificates, its templates stay editable.
+     * Issuing is still gated per event, in CertificateController.
+     */
     protected function ensureEnabled(Organization $org): ?JsonResponse
     {
-        if (! $this->gate->allows($org, 'certificate_generator')) {
+        if (! $this->gate->orgAllows($org, 'certificate_generator')) {
             return ApiResponse::error(
-                'Generator sertifikat tidak tersedia di paketmu.',
+                'Generator sertifikat tidak tersedia di paket event mana pun milikmu.',
                 ['feature' => 'certificate_generator'],
                 403,
             );

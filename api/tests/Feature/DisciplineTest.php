@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,7 @@ use Tests\TestCase;
  */
 class DisciplineTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private User $user;
 
@@ -33,7 +34,7 @@ class DisciplineTest extends TestCase
 
         $this->user = User::factory()->create();
 
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
         $this->organization = Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $this->user->id, 'plan_id' => $plan->id,
         ]);
@@ -47,6 +48,7 @@ class DisciplineTest extends TestCase
     private function event(string $sport = 'mini_soccer', string $format = 'league', array $attributes = []): Event
     {
         $event = $this->organization->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Discipline Cup',
             'slug' => 'discipline-cup-'.uniqid(),
             'sport_type' => $sport,

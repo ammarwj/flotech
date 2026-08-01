@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -17,18 +18,19 @@ use Tests\TestCase;
  */
 class BackfillGroupStageTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     /** A hybrid category with two groups of two, all drawn. */
     private function hybridEvent(): Event
     {
         $user = User::factory()->create();
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
         $org = Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $user->id, 'plan_id' => $plan->id,
         ]);
 
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Hybrid Cup',
             'slug' => 'hybrid-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',

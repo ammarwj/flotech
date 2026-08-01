@@ -55,8 +55,15 @@ class PublicTicketController extends Controller
         $event = $this->resolve($orgSlug, $eventSlug);
         $org = $event->organization;
 
-        if (! $this->gate->allows($org, 'qr_tickets')) {
-            return ApiResponse::error('Penjualan tiket tidak tersedia untuk event ini.', null, 422);
+        // 422 rather than 403, matching the other public refusals: to a buyer
+        // this is "not on sale", not "you are forbidden". The `feature` key is
+        // carried anyway so both enforcement points stay greppable.
+        if (! $this->gate->allows($event, 'qr_tickets')) {
+            return ApiResponse::error(
+                'Penjualan tiket tidak tersedia untuk event ini.',
+                ['feature' => 'qr_tickets'],
+                422,
+            );
         }
 
         $data = $request->validated();
@@ -80,7 +87,7 @@ class PublicTicketController extends Controller
         // Throws (422/403) when this organizer can't collect at all. A bank
         // account back means the gateway is off and the buyer transfers to the
         // organizer directly; null means Midtrans, or a free ticket.
-        $bank = $this->rails->destinationFor($org, $total);
+        $bank = $this->rails->destinationFor($event, $total);
         $manual = $bank !== null;
 
         $orderId = 'TIX-'.Str::upper(Str::random(10));
@@ -95,7 +102,7 @@ class PublicTicketController extends Controller
             ],
             $data['holder_names'] ?? [],
             // Manual money never reaches us, so there is nothing to take a cut of.
-            $manual ? 0.0 : $this->tickets->platformFee($org, $total),
+            $manual ? 0.0 : $this->tickets->platformFee($event, $total),
             $orderId,
             auth('api')->id(),
             $manual ? 'manual' : 'gateway',

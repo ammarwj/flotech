@@ -34,8 +34,8 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 0 | Setup tracker + branch | `[x]` |
 | 1 | Skema + rename model | `[x]` |
 | 2 | Katalog paket + backfill | `[x]` |
-| 3 | `PlanGate` + call site backend | `[ ]` |
-| 4 | Siklus order + rute + resource | `[ ]` |
+| 3 | `PlanGate` + call site backend | `[x]` |
+| 4 | Siklus order + rute + resource | `[x]` (digabung ke Tahap 3) |
 | 5 | Drop kolom paket di `organizations` | `[ ]` |
 | 6 | Exporter Excel/PDF + katup super_admin | `[ ]` |
 | 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[ ]` |
@@ -160,50 +160,52 @@ Test yang dipecahkan tahap ini (perbaiki **sekarang**, bukan ditunda) — hanya 
 
 > Prune di **migrasi, bukan seeder**: seeder yang menghapus akan ikut menyapu key custom yang ditambahkan super_admin di `/admin/plans`.
 
-## Tahap 3 — `PlanGate` + penegakan backend
+## Tahap 3+4 — `PlanGate` event-keyed + siklus order  ✅ *(selesai: 411 lulus, 2 flaky baseline)*
 
-- [ ] `app/Exceptions/PlanFeatureException.php` (pola `WalletException`) + render di `bootstrap/app.php`
-- [ ] `app/Services/PlanGate.php` ditulis ulang (§2): `planValue`/`planAllows`/`planLimit`/`planWithinLimit` + pembungkus Event + `orgAllows` + `flush()` + memo per plan id
-- [ ] `tests/TestCase.php` `setUp()` tambah `PlanGate::flush()` (di sebelah `Catalog::flush()`)
-- [ ] **Hapus** `app/Http/Middleware/CheckPlanFeature.php`, `CheckPlanLimit.php`, dan kedua alias di `bootstrap/app.php:53-54`
+> **Tahap 3 dan 4 digabung.** Begitu `syncCategories` menolak event tanpa paket, `POST /events` harus sudah mengklaim kredit — keduanya satu perubahan atomik, tidak bisa hijau secara terpisah.
+
+- [x] `app/Exceptions/PlanFeatureException.php` (pola `WalletException`) + render di `bootstrap/app.php`
+- [x] `app/Services/PlanGate.php` ditulis ulang (§2): `planValue`/`planAllows`/`planLimit`/`planWithinLimit` + pembungkus Event + `orgAllows` + `flush()` + memo per plan id
+- [x] `tests/TestCase.php` `setUp()` tambah `PlanGate::flush()` (di sebelah `Catalog::flush()`)
+- [x] **Hapus** `app/Http/Middleware/CheckPlanFeature.php`, `CheckPlanLimit.php`, dan kedua alias di `bootstrap/app.php:53-54`
 
 Call site (§5), satu checkbox per titik:
-- [ ] `EventController::syncCategories()` — gate `max_categories` (sebelum loop, `current: 0, adding: count($categories)`) + cap `max_teams` per kategori (**422 field path**, bukan 403)
-- [ ] `EventController::store()` — **hapus** blok `max_active_events`
-- [ ] `RegistrationController::store()` — `max_teams_per_event` → `max_teams_per_category` (403 + feature)
-- [ ] `Public/PublicEventController::register()` — `max_teams_per_category` (**422** + feature key) **dan** gate `online_registration` (422) di atas `isRegistrationOpen()`
-- [ ] `EventMediaController` — tambah `__construct(protected PlanGate $gate)` (belum punya constructor); gate `sponsor_logos` di `storeSponsor`; gate `event_gallery` **lalu** `max_gallery_photos` (total event, bukan per-request) di `storePhotos`; `updateSponsor`/`destroySponsor` **tetap** tanpa gate
-- [ ] `PaymentRails::destinationFor()` → `(Event $event, float $amount)`; `platformDestination()` **tidak disentuh & tetap planless**
-- [ ] `RegistrationService::startPayment(Team $team)` — buang argumen `$org`; `PublicEventController::register()` tambah `$team->setRelation('event', $event)`; perbaiki pemanggil `MyTeamController`/`RegistrationController`
-- [ ] `TicketService::platformFee(Event, float)` + `RegistrationService::platformFee(Event, float)` → key `platform_fee_percent`
-- [ ] `TicketCategoryController::ensureTicketsEnabled(Event)`; **hapus** `ensureWithinTicketLimit()` + 2 call site-nya
-- [ ] `Public/PublicTicketController::purchase()` — `destinationFor($event,…)`, `platformFee($event,…)`, `qr_tickets` (422 + feature key)
-- [ ] `CertificateController` — `ensureEnabled` pindah **setelah** `findEvent`; `generate`/`send` gate di event; `download`/`destroy` **tetap terbuka + tulis alasannya di kode**
-- [ ] `CertificateTemplateController` — `orgAllows($org, 'certificate_generator')` (template org-scoped, tanpa `event_id`)
-- [ ] `Public/PublicOrganizationController::show()` + `PublicOrganizationResource($org, bool $rich)` — degradasi jadi daftar event, **bukan 404**
-- [ ] `Admin\PlanController::destroy()` — tolak 422 kalau `$plan->events()->exists()`
+- [x] `EventController::syncCategories()` — gate `max_categories` (sebelum loop, `current: 0, adding: count($categories)`) + cap `max_teams` per kategori (**422 field path**, bukan 403)
+- [x] `EventController::store()` — **hapus** blok `max_active_events`
+- [x] `RegistrationController::store()` — `max_teams_per_event` → `max_teams_per_category` (403 + feature)
+- [x] `Public/PublicEventController::register()` — `max_teams_per_category` (**422** + feature key) **dan** gate `online_registration` (422) di atas `isRegistrationOpen()`
+- [x] `EventMediaController` — tambah `__construct(protected PlanGate $gate)` (belum punya constructor); gate `sponsor_logos` di `storeSponsor`; gate `event_gallery` **lalu** `max_gallery_photos` (total event, bukan per-request) di `storePhotos`; `updateSponsor`/`destroySponsor` **tetap** tanpa gate
+- [x] `PaymentRails::destinationFor()` → `(Event $event, float $amount)`; `platformDestination()` **tidak disentuh & tetap planless**
+- [x] `RegistrationService::startPayment(Team $team)` — buang argumen `$org`; `PublicEventController::register()` tambah `$team->setRelation('event', $event)`; perbaiki pemanggil `MyTeamController`/`RegistrationController`
+- [x] `TicketService::platformFee(Event, float)` + `RegistrationService::platformFee(Event, float)` → key `platform_fee_percent`
+- [x] `TicketCategoryController::ensureTicketsEnabled(Event)`; **hapus** `ensureWithinTicketLimit()` + 2 call site-nya
+- [x] `Public/PublicTicketController::purchase()` — `destinationFor($event,…)`, `platformFee($event,…)`, `qr_tickets` (422 + feature key)
+- [x] `CertificateController` — `ensureEnabled` pindah **setelah** `findEvent`; `generate`/`send` gate di event; `download`/`destroy` **tetap terbuka + tulis alasannya di kode**
+- [x] `CertificateTemplateController` — `orgAllows($org, 'certificate_generator')` (template org-scoped, tanpa `event_id`)
+- [x] `Public/PublicOrganizationController::show()` + `PublicOrganizationResource($org, bool $rich)` — degradasi jadi daftar event, **bukan 404**
+- [x] `Admin\PlanController::destroy()` — tolak 422 kalau `$plan->events()->exists()`
 
 Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhenti org-keyed:
-- [ ] `tests/Concerns/CreatesPlannedEvents.php` — `planWith`/`orgFor`/`creditFor`/`eventOn`
-- [ ] Migrasi **45 file test** dari `orgWithPlan()` ke trait (mekanis)
-- [ ] `EventTest::test_plan_limit_blocks_extra_events` **dihapus**; `EventMediaTest` butuh paket yang mengizinkan foto & sponsor
-- [ ] ✅ `php artisan test` hijau
+- [x] `tests/Concerns/CreatesPlannedEvents.php` — `planWith`/`orgFor`/`creditFor`/`eventOn`
+- [x] Migrasi **45 file test** dari `orgWithPlan()` ke trait (mekanis)
+- [x] `EventTest::test_plan_limit_blocks_extra_events` **dihapus**; `EventMediaTest` butuh paket yang mengizinkan foto & sponsor
+- [x] ✅ `php artisan test` hijau
 
 ## Tahap 4 — Siklus order + rute + resource
 
-- [ ] `EventPlanOrderService::checkout(Organization, Plan)` — buang aritmetika siklus; `platformDestination()` tetap ditanya **sebelum** baris dibuat (checkout ditolak tidak boleh membakar nomor invoice)
-- [ ] `EventPlanOrderService::activate()` — **tidak menulis apa pun ke `organizations`**; idempotensi receipt + email dipertahankan
-- [ ] `pay()` tambah guard menolak order yang sudah dipakai
-- [ ] `EventController::store()` — `DB::transaction` + `claimOrder()` + **klaim atomik** `whereNull('event_id')` di dalam UPDATE
-- [ ] `StoreEventRequest` tambah `plan_order_id` nullable uuid (kepemilikan dicek di `claimOrder`, bukan FormRequest)
-- [ ] `routes/api.php` — rute `plan-orders` (organizer + admin); **`POST events` pindah ke belakang `org.admin`**
-- [ ] `PlanOrder/CheckoutRequest` — buang `billing_cycle`; `exists` dibatasi `is_active = true`
-- [ ] `EventPlanOrderResource` — `event_id`, `consumed_at`, `event`
-- [ ] `PlanSummaryResource` baru; `EventResource` memakainya; `EventController::index/show` `->with('plan.features')`
-- [ ] `OrganizationResource` — buang `plan_id`/`plan_expires_at`/`plan`, tambah `unconsumed_plan_orders_count`, rename `subscription_awaiting_verification` → `plan_payment_awaiting_verification`
-- [ ] `resources/views/pdf/_document.blade.php` — "Siklus" → "Event"; blade mail ikut
-- [ ] `BillingDocumentService` — tipe + `loadMissing('plan','organization','event')`
-- [ ] `MidtransWebhookController` — tipe baru; **arm `SUB-` tidak disentuh**
+- [x] `EventPlanOrderService::checkout(Organization, Plan)` — buang aritmetika siklus; `platformDestination()` tetap ditanya **sebelum** baris dibuat (checkout ditolak tidak boleh membakar nomor invoice)
+- [x] `EventPlanOrderService::activate()` — **tidak menulis apa pun ke `organizations`**; idempotensi receipt + email dipertahankan
+- [x] `pay()` tambah guard menolak order yang sudah dipakai
+- [x] `EventController::store()` — `DB::transaction` + `claimOrder()` + **klaim atomik** `whereNull('event_id')` di dalam UPDATE
+- [x] `StoreEventRequest` tambah `plan_order_id` nullable uuid (kepemilikan dicek di `claimOrder`, bukan FormRequest)
+- [x] `routes/api.php` — rute `plan-orders` (organizer + admin); **`POST events` pindah ke belakang `org.admin`**
+- [x] `PlanOrder/CheckoutRequest` — buang `billing_cycle`; `exists` dibatasi `is_active = true`
+- [x] `EventPlanOrderResource` — `event_id`, `consumed_at`, `event`
+- [x] `PlanSummaryResource` baru; `EventResource` memakainya; `EventController::index/show` `->with('plan.features')`
+- [x] `OrganizationResource` — buang `plan_id`/`plan_expires_at`/`plan`, tambah `unconsumed_plan_orders_count`, rename `subscription_awaiting_verification` → `plan_payment_awaiting_verification`
+- [x] `resources/views/pdf/_document.blade.php` — "Siklus" → "Event"; blade mail ikut
+- [x] `BillingDocumentService` — tipe + `loadMissing('plan','organization','event')`
+- [x] `MidtransWebhookController` — tipe baru; **arm `SUB-` tidak disentuh**
 
 ## Tahap 5 — Lepas kolom paket org
 
@@ -319,6 +321,8 @@ Checklist verifikasi manual (19 poin, §10 rencana):
 - [ ] Putuskan apakah butuh paket ke-4 `is_public: false` untuk deal enterprise, karena CTA "Hubungi Sales" dilepas (§11.4)
 
 ## Jebakan yang sudah diketahui (baca sebelum menyentuh area terkait)
+
+00. **`KnockoutPlanTest > plan is saved in slots...` flaky karena undian acak, bukan karena perubahan ini.** Ia meng-`assertNotSame` hasil undian acak terhadap stand-in alfabetis; saat undiannya kebetulan alfabetis, ia gagal. Terverifikasi gagal juga di Tahap 2 (5x run: 2 gagal di Tahap 2, 4 gagal di Tahap 3 — n kecil). Sama dengan dua `CatalogTest`. **Jangan dikejar sebagai regresi.**
 
 0. **`$model->update()` menelan kolom yang tidak ada di `$fillable`, tanpa error.** Backfill pertama melaporkan "100 event diberi paket" padahal `events.plan_id` masih null semuanya — `plan_id` belum ditambahkan ke `Event::$fillable`. Sekarang `BackfillEventPlans` menghitung ulang di akhir dan **gagal** kalau masih ada sisa. Setiap kali menambah kolom baru: cek `$fillable` **sebelum** menulis kode yang mengisinya. Terkait: jangan mencentang checkbox tracker secara borongan — item ini tercentang tanpa pernah dikerjakan.
 

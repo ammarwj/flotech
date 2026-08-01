@@ -9,6 +9,7 @@ use App\Models\Plan;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -18,11 +19,11 @@ use Tests\TestCase;
  */
 class PublicMatchStatsTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org',
@@ -35,6 +36,7 @@ class PublicMatchStatsTest extends TestCase
     private function event(Organization $org, string $status = 'open'): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Liga Publik',
             'slug' => 'liga-'.uniqid(),
             'sport_type' => 'mini_soccer',

@@ -9,6 +9,7 @@ use App\Models\Sport;
 use App\Models\User;
 use App\Services\Catalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -17,11 +18,11 @@ use Tests\TestCase;
  */
 class CatalogTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -116,6 +117,8 @@ class CatalogTest extends TestCase
 
         $owner = User::factory()->create();
         $org = $this->org($owner);
+        // Creating an event spends a paid credit.
+        $this->creditFor($org);
 
         $event = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", [
@@ -175,6 +178,7 @@ class CatalogTest extends TestCase
         $org = $this->org($owner);
 
         $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup', 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
         ]);
@@ -198,6 +202,7 @@ class CatalogTest extends TestCase
         $org = $this->org($owner);
 
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
         ]);
@@ -233,6 +238,7 @@ class CatalogTest extends TestCase
         $org = $this->org($owner);
 
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-05',
         ]);

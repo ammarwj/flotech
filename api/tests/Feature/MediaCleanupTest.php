@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -26,7 +27,7 @@ use Tests\TestCase;
  */
 class MediaCleanupTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -62,7 +63,7 @@ class MediaCleanupTest extends TestCase
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -72,6 +73,7 @@ class MediaCleanupTest extends TestCase
     private function event(Organization $org, string $slug = 'media-cup'): Event
     {
         return $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Media Cup',
             'slug' => $slug,
             'sport_type' => 'mini_soccer',

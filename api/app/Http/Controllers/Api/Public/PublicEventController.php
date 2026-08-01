@@ -230,6 +230,17 @@ class PublicEventController extends Controller
     {
         $event = $this->resolve($orgSlug, $eventSlug);
 
+        // Asked before the schedule: a plan without online registration never
+        // opens at all, so "sedang ditutup" would be a misleading answer.
+        // 422 rather than 403 for the same reason as the quota check below.
+        if (! $this->gate->allows($event, 'online_registration')) {
+            return ApiResponse::error(
+                'Pendaftaran online tidak tersedia untuk event ini.',
+                ['feature' => 'online_registration'],
+                422,
+            );
+        }
+
         if (! $event->isRegistrationOpen()) {
             return ApiResponse::error('Pendaftaran untuk event ini sedang ditutup.', null, 422);
         }
@@ -243,15 +254,25 @@ class PublicEventController extends Controller
         }
         $category->setRelation('event', $event);
 
-        // Each category runs its own team cap; the plan limit is event-wide.
+        // Two caps, both per category: the one the organizer typed, and the one
+        // their plan allows.
         $categoryTeams = $category->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
         if ($category->max_teams !== null && $categoryTeams >= $category->max_teams) {
             return ApiResponse::error('Kuota tim untuk kategori ini sudah penuh.', null, 422);
         }
 
-        $eventTeams = $event->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
-        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $eventTeams)) {
-            return ApiResponse::error('Kuota tim paket penyelenggara sudah tercapai.', null, 422);
+        // Deliberately 422, matching the organizer's own cap three lines above:
+        // to a participant the two situations are indistinguishable ("it's
+        // full"), and a 403 on a public form reads as "you are not allowed"
+        // rather than "there is no room". The `feature` key is carried anyway so
+        // both enforcement points stay greppable — this is the one place where
+        // isPlanLimitError() would not fire, and that is on purpose.
+        if (! $this->gate->withinLimit($event, 'max_teams_per_category', $categoryTeams)) {
+            return ApiResponse::error(
+                'Kuota peserta untuk kategori ini sudah penuh.',
+                ['feature' => 'max_teams_per_category'],
+                422,
+            );
         }
 
         $team = $event->teams()->create([
@@ -264,8 +285,10 @@ class PublicEventController extends Controller
             'registered_at' => Carbon::now(),
             'manager_user_id' => auth('api')->user()?->id,
         ]);
-        // startPayment charges this category's fee — attach it so it doesn't re-query.
+        // startPayment charges this category's fee and reads the rail and the
+        // platform fee off the event's plan — attach both so it doesn't re-query.
         $team->setRelation('category', $category);
+        $team->setRelation('event', $event);
 
         // Through the roster service, not straight into the tables: it is what
         // validates a player's position against the sport's master list, and a
@@ -276,7 +299,7 @@ class PublicEventController extends Controller
 
         // Charge the registration fee when the event has one; free events are
         // settled immediately inside startPayment().
-        $payment = $this->registration->startPayment($team, $org);
+        $payment = $this->registration->startPayment($team);
 
         $this->announce($team, $org);
 

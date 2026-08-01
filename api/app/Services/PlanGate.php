@@ -2,65 +2,137 @@
 
 namespace App\Services;
 
+use App\Models\Event;
 use App\Models\Organization;
+use App\Models\Plan;
 
 /**
- * Resolves plan feature flags and numeric limits for an organization.
- * Backs the CheckPlanFeature / CheckPlanLimit middleware.
+ * Resolves plan feature flags and numeric limits for an *event*.
+ *
+ * The plan belongs to the event, not to the organization: it is bought once,
+ * for one event, and stays with it. Two events of the same organizer can
+ * legitimately answer differently about tickets, certificates or the platform
+ * fee, and every gate in the application has to be able to say so.
  */
 class PlanGate
 {
     /**
-     * Raw feature value for an org's plan, or null when unset / no plan.
+     * planId => [feature_key => value].
+     *
+     * `$plan->features` is a lazy relation and gating runs inside loops — once
+     * per category, once per photo batch, once per fee. Memoized by plan id
+     * rather than by event because many events share one plan and the answer is
+     * identical. Same shape as Catalog and PlanResource::definitions().
+     *
+     * @var array<string, array<string, string>>
      */
-    public function value(Organization $org, string $featureKey): ?string
+    private static array $memo = [];
+
+    /** @var array<string, array<string, bool>> */
+    private static array $orgMemo = [];
+
+    public function value(Event $event, string $featureKey): ?string
     {
-        $plan = $org->plan;
+        return $this->planValue($event->plan, $featureKey);
+    }
+
+    public function allows(Event $event, string $featureKey): bool
+    {
+        return $this->planAllows($event->plan, $featureKey);
+    }
+
+    public function limit(Event $event, string $featureKey): ?int
+    {
+        return $this->planLimit($event->plan, $featureKey);
+    }
+
+    /**
+     * Whether adding `$adding` more would stay inside the cap.
+     *
+     * `$adding` exists because two callers ask about a whole list at once
+     * (syncCategories, storePhotos) rather than about one more row. It defaults
+     * to 1, so every call site that asks "may I add one?" reads unchanged.
+     */
+    public function withinLimit(Event $event, string $featureKey, int $currentCount, int $adding = 1): bool
+    {
+        return $this->planWithinLimit($event->plan, $featureKey, $currentCount, $adding);
+    }
+
+    /**
+     * The plan-keyed core.
+     *
+     * Exposed separately because EventController::store() has to gate before
+     * the event row exists — it is spending a credit whose plan it already
+     * knows, and the categories in the same request are checked against it.
+     */
+    public function planValue(?Plan $plan, string $featureKey): ?string
+    {
         if (! $plan) {
             return null;
         }
 
-        return $plan->features->firstWhere('feature_key', $featureKey)?->value;
+        self::$memo[$plan->id] ??= $plan->features()->pluck('value', 'feature_key')->all();
+
+        return self::$memo[$plan->id][$featureKey] ?? null;
     }
 
-    /**
-     * Whether a boolean feature is enabled for the org.
-     */
-    public function allows(Organization $org, string $featureKey): bool
+    public function planAllows(?Plan $plan, string $featureKey): bool
     {
-        return $this->value($org, $featureKey) === 'true';
+        return $this->planValue($plan, $featureKey) === 'true';
     }
 
-    /**
-     * Numeric limit for a feature. -1 means unlimited; null means undefined.
-     */
-    public function limit(Organization $org, string $featureKey): ?int
+    /** -1 means unlimited; null means the plan defines no such limit. */
+    public function planLimit(?Plan $plan, string $featureKey): ?int
     {
-        $value = $this->value($org, $featureKey);
+        $value = $this->planValue($plan, $featureKey);
 
         return is_numeric($value) ? (int) $value : null;
     }
 
-    /**
-     * Whether adding more would stay within the plan limit.
-     * Unlimited (-1) and limits a plan leaves undefined always pass.
-     */
-    public function withinLimit(Organization $org, string $featureKey, int $currentCount): bool
+    public function planWithinLimit(?Plan $plan, string $featureKey, int $currentCount, int $adding = 1): bool
     {
-        // No plan means no entitlements at all — an org has to check out before
-        // it can do anything. This case must be caught before consulting the
-        // limit: a planless org has no feature values, and an absent value is
-        // indistinguishable from "this plan sets no cap", which passes freely.
-        if (! $org->plan) {
+        // No plan means no entitlements at all — an event has to be paid for
+        // before it can do anything. This must be caught *before* consulting the
+        // limit: an event without a plan has no feature values, and an absent
+        // value is indistinguishable from "this plan sets no cap", which passes
+        // freely. Without this an unpaid event would get unlimited everything.
+        if (! $plan) {
             return false;
         }
 
-        $limit = $this->limit($org, $featureKey);
+        $limit = $this->planLimit($plan, $featureKey);
 
         if ($limit === null || $limit === -1) {
             return true;
         }
 
-        return $currentCount < $limit;
+        return $currentCount + $adding <= $limit;
+    }
+
+    /**
+     * The one org-level question left, for the two things an organization owns
+     * rather than an event: its public profile, and its certificate templates
+     * (org-scoped rows reused across events).
+     *
+     * Deliberately monotone — once an organization has run one event on a plan
+     * carrying the feature, it keeps it. Revoking it when that tournament ends
+     * would 404 a profile that is already indexed and linked from every past
+     * event page, which is worse than a slightly generous grant.
+     *
+     * Everything else must go through the event-keyed methods above. A third
+     * caller appearing here is a sign that feature is really per-event.
+     */
+    public function orgAllows(Organization $org, string $featureKey): bool
+    {
+        return self::$orgMemo[$org->id][$featureKey] ??= $org->events()
+            ->whereHas('plan.features', fn ($q) => $q->where('feature_key', $featureKey)->where('value', 'true'))
+            ->exists();
+    }
+
+    /** Drop the per-request memo. A fresh database per test needs it. */
+    public static function flush(): void
+    {
+        self::$memo = [];
+        self::$orgMemo = [];
     }
 }

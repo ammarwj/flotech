@@ -9,6 +9,7 @@ use App\Models\TicketOrder;
 use App\Models\User;
 use App\Services\PlatformSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ use Tests\TestCase;
  */
 class ManualPaymentTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -43,12 +44,15 @@ class ManualPaymentTest extends TestCase
 
     private function orgWithPlan(User $owner, array $features = []): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
-        $features = ['qr_tickets' => 'true', 'payment_gateway' => 'true', 'ticket_fee_percent' => '5'] + $features;
+        $features = ['qr_tickets' => 'true', 'payment_gateway' => 'true', 'platform_fee_percent' => '5'] + $features;
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
+
+        // Events in this test run on this plan — planId() is what puts it there.
+        $this->testPlan = $plan;
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -69,6 +73,7 @@ class ManualPaymentTest extends TestCase
     private function event(Organization $org): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',

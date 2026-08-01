@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -16,11 +17,11 @@ use Tests\TestCase;
  */
 class ManualMatchTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -34,6 +35,7 @@ class ManualMatchTest extends TestCase
     private function leagueEvent(Organization $org, int $approved = 2, bool $withPending = false): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'League Cup',
             'slug' => 'league-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',
@@ -235,6 +237,7 @@ class ManualMatchTest extends TestCase
     private function hybridEvent(Organization $org): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Hybrid Cup',
             'slug' => 'hybrid-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',

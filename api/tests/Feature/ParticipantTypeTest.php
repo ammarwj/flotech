@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -17,11 +18,11 @@ use Tests\TestCase;
  */
 class ParticipantTypeTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -31,6 +32,7 @@ class ParticipantTypeTest extends TestCase
     private function event(Organization $org, string $participantType, string $sport = 'badminton'): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Kejurnas',
             'slug' => 'kejurnas-'.uniqid(),
             'sport_type' => $sport,
@@ -137,6 +139,9 @@ class ParticipantTypeTest extends TestCase
     {
         $user = User::factory()->create();
         $org = $this->org($user);
+        // Creating an event spends a paid credit; without one the request is
+        // refused before it ever reaches participant_type validation.
+        $this->creditFor($org);
 
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/events", [

@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -21,11 +22,11 @@ use Tests\TestCase;
  */
 class BracketSlotEditTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -36,6 +37,7 @@ class BracketSlotEditTest extends TestCase
     private function knockoutEvent(Organization $org, int $teams = 8): Event
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Knockout Cup',
             'slug' => 'knockout-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',
@@ -411,6 +413,7 @@ class BracketSlotEditTest extends TestCase
         $org = $this->org($user);
 
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Hybrid Cup',
             'slug' => 'hybrid-cup-'.uniqid(),
             'sport_type' => 'mini_soccer',

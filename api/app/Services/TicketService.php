@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Mail\TicketPurchasedMail;
+use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketCategory;
 use App\Models\TicketOrder;
@@ -27,12 +28,18 @@ class TicketService
     public function __construct(protected PlanGate $gate, protected WalletService $wallet) {}
 
     /**
-     * Platform fee for an order amount, based on the organizer plan's
-     * `ticket_fee_percent` feature (0 when unset).
+     * Platform fee for an order amount, from the *event's* plan (0 when unset).
+     *
+     * The same `platform_fee_percent` key backs registration fees — one rate per
+     * plan, one row on the pricing card. Two keys that must always hold the same
+     * number are exactly the drift this codebase keeps single-sourcing to avoid.
+     *
+     * Read from the event, not the organization: an organizer running a Starter
+     * event and a Professional event is charged 3% on one and 1% on the other.
      */
-    public function platformFee(Organization $org, float $amount): float
+    public function platformFee(Event $event, float $amount): float
     {
-        $percent = (float) ($this->gate->value($org, 'ticket_fee_percent') ?? 0);
+        $percent = (float) ($this->gate->value($event, 'platform_fee_percent') ?? 0);
 
         return round($amount * $percent / 100, 2);
     }

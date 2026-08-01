@@ -74,6 +74,13 @@ class PlanOrderController extends Controller
             return ApiResponse::error('Tagihan ini tidak menunggu pembayaran.', null, 422);
         }
 
+        // Belt and braces: a consumed order cannot also be past_due, but paying
+        // for a credit that has already been spent on an event would be taking
+        // money for nothing, so the invariant is stated rather than assumed.
+        if ($planOrder->event_id !== null) {
+            return ApiResponse::error('Paket ini sudah dipakai untuk sebuah event.', null, 422);
+        }
+
         // pay() re-derives the rail, which would flip a manual bill to gateway
         // and strand the receipt already sitting in the super admin's queue.
         if ($planOrder->isAwaitingVerification()) {

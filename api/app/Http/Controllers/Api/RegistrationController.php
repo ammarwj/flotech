@@ -86,17 +86,18 @@ class RegistrationController extends Controller
         $category = $eventModel->categories()->findOrFail($data['category_id']);
 
         // The same two ceilings the public form respects — an offline entry may
-        // not be a way around the category's quota or the plan's team limit.
+        // not be a way around the category's quota or the plan's. Both are now
+        // counted per category: the plan caps entries inside each category, so
+        // a four-category event gets four separate allowances.
         $categoryTeams = $category->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
         if ($category->max_teams !== null && $categoryTeams >= $category->max_teams) {
             return ApiResponse::error('Kuota tim untuk kategori ini sudah penuh.', null, 422);
         }
 
-        $eventTeams = $eventModel->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
-        if (! $this->gate->withinLimit($org, 'max_teams_per_event', $eventTeams)) {
+        if (! $this->gate->withinLimit($eventModel, 'max_teams_per_category', $categoryTeams)) {
             return ApiResponse::error(
-                'Batas jumlah tim per event untuk paketmu sudah tercapai.',
-                ['feature' => 'max_teams_per_event'],
+                'Batas jumlah peserta per kategori untuk paket event ini sudah tercapai.',
+                ['feature' => 'max_teams_per_category'],
                 403,
             );
         }

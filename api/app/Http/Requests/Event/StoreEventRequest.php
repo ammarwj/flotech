@@ -22,6 +22,10 @@ class StoreEventRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            // Which paid credit to spend. Optional — the controller falls back to
+            // the oldest unspent one. Ownership and state are checked there,
+            // since both need the organization.
+            'plan_order_id' => ['nullable', 'uuid'],
             'slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],
             'sport_type' => ['required', Rule::in(Catalog::sportSlugs())],
             'start_date' => ['required', 'date'],

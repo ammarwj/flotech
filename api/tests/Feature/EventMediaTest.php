@@ -7,16 +7,17 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /** Photo albums and sponsor logos on an event. */
 class EventMediaTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
         return Organization::create([
             'name' => 'Org', 'slug' => 'org-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -26,6 +27,7 @@ class EventMediaTest extends TestCase
     private function event(Organization $org): Event
     {
         return $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Media Cup',
             'slug' => 'media-cup',
             'sport_type' => 'mini_soccer',

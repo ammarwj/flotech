@@ -16,6 +16,7 @@ use App\Notifications\WithdrawalCompleted;
 use App\Notifications\WithdrawalRejected;
 use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
@@ -31,12 +32,12 @@ use Tests\TestCase;
  */
 class MailNotificationTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private function org(User $owner): Organization
     {
         $plan = Plan::create(['name' => 'P', 'slug' => 'p-'.uniqid(), "price" => 50000, ]);
-        $plan->features()->create(['feature_key' => 'max_teams_per_event', 'value' => '10']);
+        $plan->features()->create(['feature_key' => 'max_teams_per_category', 'value' => '10']);
 
         return Organization::create([
             'name' => 'EO', 'slug' => 'eo-'.uniqid(), 'owner_id' => $owner->id, 'plan_id' => $plan->id,
@@ -46,6 +47,7 @@ class MailNotificationTest extends TestCase
     private function openEvent(Organization $org)
     {
         $event = $org->events()->create([
+            'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'status' => 'open', 'start_date' => '2026-08-01', 'end_date' => '2026-08-10',
             'registration_open' => Carbon::now()->subDay(), 'registration_close' => Carbon::now()->addDays(10),

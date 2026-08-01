@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -26,7 +27,7 @@ use Tests\TestCase;
  */
 class KnockoutPlanTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesPlannedEvents, RefreshDatabase;
 
     private User $user;
 
@@ -42,8 +43,8 @@ class KnockoutPlanTest extends TestCase
 
         $this->user = User::factory()->create();
 
-        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price_monthly' => 0, 'price_yearly' => 0]);
-        foreach (['max_active_events' => '5', 'max_teams_per_event' => '32'] as $key => $value) {
+        $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
+        foreach (['max_active_events' => '5', 'max_teams_per_category' => '32'] as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
 
@@ -76,6 +77,9 @@ class KnockoutPlanTest extends TestCase
                 'draw_method' => 'random',
             ];
         }
+
+        // Creating an event spends a paid credit.
+        $this->creditFor($this->org);
 
         $response = $this->actingAs($this->user, 'api')
             ->postJson($this->orgUrl('/events'), [

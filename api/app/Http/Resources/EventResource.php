@@ -19,6 +19,12 @@ class EventResource extends JsonResource
         return [
             'id' => $this->id,
             'organization_id' => $this->organization_id,
+            // The plan this event runs on — every entitlement the dashboard
+            // gates on is read from here. Only present when eager-loaded;
+            // `plan_id` is always there so the client can tell "no plan" from
+            // "not loaded".
+            'plan_id' => $this->plan_id,
+            'plan' => new PlanSummaryResource($this->whenLoaded('plan')),
             'name' => $this->name,
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,
