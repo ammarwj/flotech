@@ -28,10 +28,16 @@ function initials(name: string) {
 export function LeaderboardTable({
   leaderboard,
   eventName,
+  canExport = false,
 }: {
   leaderboard: Leaderboard;
   /** Names the exported file. Without it, the export button is hidden. */
   eventName?: string;
+  /**
+   * Whether this event's plan includes `export_data`. Default false so the
+   * public view — which has no plan to ask — never renders the button.
+   */
+  canExport?: boolean;
 }) {
   const { columns, primary, rows } = leaderboard;
   const [sortKey, setSortKey] = useState(primary);
@@ -98,10 +104,10 @@ export function LeaderboardTable({
           ))}
         </Select>
 
-        {eventName && (
+        {eventName && canExport && (
           <Button variant="outline" size="sm" className="ml-auto" onClick={exportCsv}>
             <Download className="h-4 w-4" />
-            Export Excel
+            Export CSV
           </Button>
         )}
       </div>

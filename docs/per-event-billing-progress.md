@@ -38,8 +38,8 @@ Perintah: test backend `docker compose exec -T api php artisan test` · build we
 | 4 | Siklus order + rute + resource | `[x]` (digabung ke Tahap 3) |
 | 5 | Drop kolom paket di `organizations` | `[x]` |
 | 6 | Exporter Excel/PDF + katup super_admin | `[ ]` **ditunda ke setelah Tahap 8** |
-| 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[ ]` |
-| 8 | Halaman frontend | `[ ]` |
+| 7 | Tipe frontend + `lib/plan.ts` + `lib/api` | `[x]` |
+| 8 | Halaman frontend | `[x]` |
 | 9 | Test backend + e2e | `[ ]` |
 | 10 | Docs (`CLAUDE.md`) + verifikasi manual | `[ ]` |
 
@@ -225,39 +225,39 @@ Fixture + migrasi test **dikerjakan di tahap ini**, karena di sinilah gate berhe
 - [ ] Rute `GET organizations/{org}/events/{event}/exports/{kind}?format=xlsx|pdf` di bawah `tenant` + `org.admin`
 - [ ] `POST admin/events/{event}/reassign-plan` (§7) — unique index **tetap**; null-kan `event_id` lama lalu klaim baru dalam satu transaksi
 
-## Tahap 7 — Tipe frontend + lib
+## Tahap 7 — Tipe frontend + lib  ✅ *(selesai: `bun run build` hijau)*
 
-- [ ] `web/types/api.ts` — `Plan.price`, `PlanSummary` baru, `SportEvent.plan`, `EventPlanOrder`, `PlanOrderStatus`, `CheckoutResult.plan_order`, `Organization` (§8.2)
-- [ ] `web/lib/plan.ts` ditulis ulang event-keyed (§8.1) — hapus 9 fungsi siklus/org, tambah `planAllows`/`planLimit`/6 helper boolean/3 helper limit/`anyEventAllows`/`unconsumedOrders`
-- [ ] `web/lib/api/organizations.ts` — rename 5 fungsi ke `/plan-orders`
-- [ ] `web/lib/api/exports.ts` baru — `apiClient` + `responseType: "blob"` (**bukan `<a href>`** — token in-memory, akan 401)
-- [ ] `web/lib/checkout.ts` — `res.plan_order.status === "paid"`
-- [ ] `web/lib/labels.ts` — hapus `BILLING_CYCLE_LABELS`, tambah `PLAN_ORDER_STATUS_LABELS`
-- [ ] `cd web && bun run build` → kerjakan error TypeScript ke luar (itulah daftar konsumen yang tersisa)
+- [x] `web/types/api.ts` — `Plan.price`, `PlanSummary` baru, `SportEvent.plan`, `EventPlanOrder`, `PlanOrderStatus`, `CheckoutResult.plan_order`, `Organization` (§8.2)
+- [x] `web/lib/plan.ts` ditulis ulang event-keyed (§8.1) — hapus 9 fungsi siklus/org, tambah `planAllows`/`planLimit`/6 helper boolean/3 helper limit/`anyEventAllows`/`unconsumedOrders`
+- [x] `web/lib/api/organizations.ts` — rename 5 fungsi ke `/plan-orders`
+- [x] `web/lib/api/exports.ts` baru — `apiClient` + `responseType: "blob"` (**bukan `<a href>`** — token in-memory, akan 401)
+- [x] `web/lib/checkout.ts` — `res.plan_order.status === "paid"`
+- [x] `web/lib/labels.ts` — hapus `BILLING_CYCLE_LABELS`, tambah `PLAN_ORDER_STATUS_LABELS`
+- [x] `cd web && bun run build` → kerjakan error TypeScript ke luar (itulah daftar konsumen yang tersisa)
 
-## Tahap 8 — Halaman frontend
+## Tahap 8 — Halaman frontend  ✅ *(selesai: `bun run build` hijau)*
 
-- [ ] `components/event/event-limit-notice.tsx` → `plan-purchase-notice.tsx` (grid paket inline; cabang "batas event aktif" dihapus)
-- [ ] `organizer/events/new/page.tsx` — cabang 0 / 1 / >1 kredit; kirim `plan_order_id`; tangani `plan_order_required`
-- [ ] `EventForm` — cap **proaktif** (tombol tambah kategori mati, `max` di input `max_teams`, baris ringkasan paket)
-- [ ] `organizer/subscription/page.tsx` → `organizer/billing/page.tsx` — 3 blok (§8.3); hapus kartu "Paket saat ini", `daysUntil`, `currentCycle`
-- [ ] `organizer/upgrade/page.tsx` → `organizer/plans/page.tsx` — tanpa toggle
-- [ ] `next.config` redirect `/organizer/upgrade` + `/organizer/subscription`
-- [ ] 7× CTA "Upgrade paket" → "Beli paket"; `components/auth/public-auth-actions.tsx:143`
-- [ ] `onboarding/page.tsx` — **3 langkah → 1**; hapus `Steps`/`STEP_COPY`/`subsQuery`/`pendingManual`/`BillingCycleToggle`
-- [ ] `subscription-pending-banner.tsx` → `plan-payment-pending-banner.tsx`; **baru** `unconsumed-plan-banner.tsx`
-- [ ] `organizer/tickets/page.tsx` — empty state satu-halaman → **per-baris event**
-- [ ] `organizer/certificates/page.tsx` + `generate/page.tsx` + template `new`/`[id]` (**yang terakhir belum punya gate sama sekali**)
-- [ ] `organizer/events/[id]/media/page.tsx` — gate sponsor & galeri, tampilkan `n/15`
-- [ ] Tombol export → dropdown Excel/PDF di `events/[id]/tickets/buyers/page.tsx` + `components/event/leaderboard-table.tsx`; **hapus `web/lib/csv.ts`** dan kedua pemanggilnya
-- [ ] `components/subscription/plan-card.tsx` — hapus `BillingCycle`/`BillingCycleToggle`/prop `cycle`/baris coret/`Ditagih …/tahun`/badge hemat
-- [ ] `components/landing/pricing.tsx` — tanpa toggle, `/event`, `platform_fee_percent`, **3 CTA self-serve** (mailto sales dilepas)
-- [ ] `app/layout.tsx:52` — buang `data-billing`
-- [ ] `app/globals.css` blok PRICING (~965-1050) — hapus 11 rule siklus; **pertahankan** `.price-grid`/`--plan-count`/`.plan`/`.plan.featured`/`.plan-tag`/`.plan-feats`/`.price-foot`
-- [ ] `components/shared/status-badge.tsx` + `components/dashboard/sidebar-nav.tsx`
-- [ ] `admin/plans/page.tsx` — satu input harga ("Harga per event")
-- [ ] `admin/subscriptions/page.tsx` → `admin/plan-orders/page.tsx` — tambah kolom event
-- [ ] `grep -rn "data-billing\|bill-switch\|billing_cycle\|price_monthly\|BillingCycle" web` → nol hasil
+- [x] `components/event/event-limit-notice.tsx` → `plan-purchase-notice.tsx` (grid paket inline; cabang "batas event aktif" dihapus)
+- [x] `organizer/events/new/page.tsx` — cabang 0 / 1 / >1 kredit; kirim `plan_order_id`; tangani `plan_order_required`
+- [x] `EventForm` — cap **proaktif** (tombol tambah kategori mati, `max` di input `max_teams`, baris ringkasan paket)
+- [x] `organizer/subscription/page.tsx` → `organizer/billing/page.tsx` — 3 blok (§8.3); hapus kartu "Paket saat ini", `daysUntil`, `currentCycle`
+- [x] `organizer/upgrade/page.tsx` → `organizer/plans/page.tsx` — tanpa toggle
+- [x] `next.config` redirect `/organizer/upgrade` + `/organizer/subscription`
+- [x] 7× CTA "Upgrade paket" → "Beli paket"; `components/auth/public-auth-actions.tsx:143`
+- [x] `onboarding/page.tsx` — **3 langkah → 1**; hapus `Steps`/`STEP_COPY`/`subsQuery`/`pendingManual`/`BillingCycleToggle`
+- [x] `subscription-pending-banner.tsx` → `plan-payment-pending-banner.tsx`; **baru** `unconsumed-plan-banner.tsx`
+- [x] `organizer/tickets/page.tsx` — empty state satu-halaman → **per-baris event**
+- [x] `organizer/certificates/page.tsx` + `generate/page.tsx` + template `new`/`[id]` (**yang terakhir belum punya gate sama sekali**)
+- [x] `organizer/events/[id]/media/page.tsx` — gate sponsor & galeri, tampilkan `n/15`
+- [~] Tombol export **di-gate** dengan `isExportEnabled(event)`, tapi masih CSV. Dropdown Excel/PDF + hapus `lib/csv.ts` menyusul di **Tahap 6** bersama exporter server. Label tombol leaderboard diperbaiki dari "Export Excel" (bohong — isinya CSV) jadi "Export CSV".
+- [x] `components/subscription/plan-card.tsx` — hapus `BillingCycle`/`BillingCycleToggle`/prop `cycle`/baris coret/`Ditagih …/tahun`/badge hemat
+- [x] `components/landing/pricing.tsx` — tanpa toggle, `/event`, `platform_fee_percent`, **3 CTA self-serve** (mailto sales dilepas)
+- [x] `app/layout.tsx:52` — buang `data-billing`
+- [x] `app/globals.css` blok PRICING (~965-1050) — hapus 11 rule siklus; **pertahankan** `.price-grid`/`--plan-count`/`.plan`/`.plan.featured`/`.plan-tag`/`.plan-feats`/`.price-foot`
+- [x] `components/shared/status-badge.tsx` + `components/dashboard/sidebar-nav.tsx`
+- [x] `admin/plans/page.tsx` — satu input harga ("Harga per event")
+- [x] `admin/subscriptions/page.tsx` → `admin/plan-orders/page.tsx` — tambah kolom event
+- [x] `grep -rn "data-billing\|bill-switch\|billing_cycle\|price_monthly\|BillingCycle" web` → nol hasil
 
 ## Tahap 9 — Test baru
 

@@ -21,7 +21,7 @@ import { getTicketOrders } from "@/lib/api/tickets";
 import { downloadCsv, slugifyFileName, toCsv } from "@/lib/csv";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
-import { isTicketingEnabled } from "@/lib/plan";
+import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ export default function TicketBuyersPage() {
     enabled: !!orgId,
   });
   const ticketing = isTicketingEnabled(eventQuery.data);
+  const canExport = isExportEnabled(eventQuery.data);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -159,7 +160,12 @@ export default function TicketBuyersPage() {
         backHref={`/organizer/events/${eventId}/tickets`}
         backLabel="Tiket"
         actions={
-          <Button variant="outline" onClick={exportCsv} disabled={visible.length === 0}>
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            disabled={visible.length === 0 || !canExport}
+            title={canExport ? undefined : "Export tidak termasuk dalam paket event ini"}
+          >
             <Download className="h-4 w-4" />
             Export CSV
           </Button>

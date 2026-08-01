@@ -69,6 +69,7 @@ import {
   standingsLegend,
   tracksDiscipline,
 } from "@/lib/scoring";
+import { isExportEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -859,6 +860,7 @@ function ScheduleView() {
               <LeaderboardTable
                 leaderboard={leaderboardQuery.data}
                 eventName={eventQuery.data?.name}
+                canExport={isExportEnabled(eventQuery.data)}
               />
             )}
             {/* Same tab as the leaderboard on purpose: both are per-player

@@ -28,6 +28,8 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
+import { PlanFeatureNotice } from "@/components/event/plan-feature-notice";
+import { getGalleryLimit, isGalleryEnabled, isSponsorLogosEnabled } from "@/lib/plan";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { EventPhoto, SponsorTier } from "@/types/api";
 
@@ -57,6 +59,11 @@ export default function EventMediaPage() {
     queryFn: () => getPhotos(orgId!, eventId),
     enabled: !!orgId,
   });
+  // Both are entitlements of this event's plan.
+  const galleryEnabled = isGalleryEnabled(eventQuery.data);
+  const sponsorsEnabled = isSponsorLogosEnabled(eventQuery.data);
+  const galleryLimit = getGalleryLimit(eventQuery.data);
+
   const sponsorsQuery = useQuery({
     queryKey: ["sponsors", orgId, eventId],
     queryFn: () => getSponsors(orgId!, eventId),
@@ -159,6 +166,7 @@ export default function EventMediaPage() {
   };
 
   const photos = photosQuery.data ?? [];
+  const photoCount = photos.length;
   const sponsors = sponsorsQuery.data ?? [];
   const canSaveSponsor = sponsor.name.trim() !== "" && sponsor.logo_url !== "";
 
@@ -177,8 +185,17 @@ export default function EventMediaPage() {
           <SectionHeader
             icon={Images}
             title="Album Foto"
-            description="Unggah beberapa foto sekaligus. Beri nama album untuk mengelompokkannya."
+            description={
+              galleryLimit !== null
+                ? `Unggah beberapa foto sekaligus. Paket event ini: ${photoCount}/${galleryLimit} foto.`
+                : "Unggah beberapa foto sekaligus. Beri nama album untuk mengelompokkannya."
+            }
           />
+          {!galleryEnabled ? (
+            <CardContent>
+              <PlanFeatureNotice feature="Galeri foto" />
+            </CardContent>
+          ) : (
           <CardContent className="grid gap-5">
             <div className="flex flex-wrap items-end gap-3">
               <div className="grid gap-1.5">
@@ -256,6 +273,7 @@ export default function EventMediaPage() {
               ))
             )}
           </CardContent>
+          )}
         </Card>
 
         {/* ---- Sponsors ---- */}
@@ -265,6 +283,11 @@ export default function EventMediaPage() {
             title="Sponsor & Partner"
             description="Logo tampil di halaman publik event, dikelompokkan per tier: penyelenggara, sponsor, media partner, pendukung."
           />
+          {!sponsorsEnabled ? (
+            <CardContent>
+              <PlanFeatureNotice feature="Logo sponsor" />
+            </CardContent>
+          ) : (
           <CardContent className="grid gap-5">
             <div className="grid gap-4 md:grid-cols-[auto_1fr_1fr_auto_auto] md:items-end">
               <div className="grid gap-1.5">
@@ -378,6 +401,7 @@ export default function EventMediaPage() {
               </div>
             )}
           </CardContent>
+          )}
         </Card>
       </div>
     </div>
