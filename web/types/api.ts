@@ -97,7 +97,11 @@ export type SocialLinks = Partial<Record<SocialPlatform, string | null>>;
 export interface SiteSettings {
   contact_email: string | null;
   contact_phone: string | null;
-  /** CTA of the Professional plan card. Empty = fall back to `contact_email`. */
+  /**
+   * Admin-only now. It was the Professional card's "Hubungi Sales" CTA; the
+   * catalogue went self-serve, no enterprise tier replaced it, and
+   * PublicSiteSettingResource stopped shipping it — so nothing public reads it.
+   */
   sales_email: string | null;
   social_links: SocialLinks;
   /**

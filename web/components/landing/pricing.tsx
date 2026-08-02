@@ -24,7 +24,10 @@ import { CheckIcon, CrossIcon } from "./icons";
  * Every plan is self-serve now. Professional used to open a mailto to sales,
  * which made sense against a Rp 999.000/month subscription; at Rp 800.000 for a
  * single event it is a checkout, and a mailto on a priced card is a dead end.
- * `sales_email` still exists in site_settings for the footer.
+ * No enterprise tier was added to take its place — that was decided, not
+ * forgotten — so `sales_email` now renders nowhere on any public page and the
+ * public settings payload stops sending it. It is still editable at
+ * /admin/site-settings, waiting for a sales motion that may never come back.
  */
 function ctaFor(plan: Plan): { label: string; href: string } {
   return { label: `Pilih ${plan.name}`, href: "/register" };
