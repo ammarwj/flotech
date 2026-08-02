@@ -131,8 +131,8 @@ bukan saat lunas.
 
 | | Hasil |
 |---|---|
-| Backend | **451 lulus / 0 gagal** |
-| E2E | **39 lulus / 0 gagal** |
+| Backend | **459 lulus / 0 gagal** |
+| E2E | **42 lulus / 0 gagal** |
 | Halaman `/`, `/pricing`, `/organizer/billing`, `/organizer/plans` | 200 |
 | FAQ landing | jawaban baru tampil, jawaban lama nol jejak |
 
