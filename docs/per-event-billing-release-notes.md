@@ -48,11 +48,28 @@ diketahui saat deploy dan yang perlu dikomunikasikan ke user.
 
 ## Fitur baru
 
+- **Upgrade paket, self-serve.** Paket bisa dinaikkan kapan saja — baik kredit yang belum
+  dipakai maupun event yang sudah berjalan — dan organizer **hanya membayar selisihnya**.
+  Starter yang naik ke Pro menambah Rp 200.000, jadi totalnya sama persis dengan langsung
+  membeli Pro; naik dua kali pun tetap berhenti di harga katalog paket tertinggi yang
+  dicapai. Tombolnya di `/organizer/billing`, dan hint kapasitas di form event menautkan
+  ke sana.
+  - **Downgrade sengaja tidak ada.** Paket target wajib memberi ≥ setiap fitur paket
+    sekarang, jadi fitur tidak pernah bisa dicabut dari event yang sedang memakainya.
+    Aturan yang sama itu pula yang menolak "upgrade" ke paket lebih mahal yang kebetulan
+    kehilangan satu fitur.
+  - Tagihan upgrade punya invoice & kwitansinya sendiri berisi **selisihnya**; invoice
+    lama tidak berubah isinya. Jalur transfer manual tetap berlaku saat gateway mati.
+  - Endpoint `POST admin/events/{event}/reassign-plan` **tetap ada** dan tidak berubah —
+    itu untuk menukar dua kredit yang sama-sama sudah dibayar penuh, bukan untuk naik
+    paket.
+
 - **Export Excel & PDF sungguhan** (`export_data`, Pro ke atas): pendaftaran, pembeli
   tiket, klasemen, leaderboard. Menggantikan unduhan CSV yang lama.
 - **Katup super_admin `POST admin/events/{event}/reassign-plan`** untuk memindahkan event
   ke paket lain (kasus salah beli). Endpoint + guard sudah ada dan teruji; **tombolnya di
-  `/admin/plan-orders` belum dibuat** — sementara ini lewat API.
+  `/admin/plan-orders` belum dibuat** — sementara ini lewat API. Untuk *naik* paket,
+  organizer sekarang tidak perlu ini lagi.
 - Key baru: `online_registration`, `max_categories`, `sponsor_logos`, `organizer_profile`,
   `event_gallery`, `max_gallery_photos`.
 
@@ -66,6 +83,9 @@ diketahui saat deploy dan yang perlu dikomunikasikan ke user.
 3. Verifikasi: tidak ada event tanpa `plan_id` (command ini gagal sendiri kalau ada), dan
    `/organizer/billing` menampilkan riwayat order lama.
 4. Scheduler: `plan-orders:expire-manual` menggantikan `subscriptions:expire-manual`.
+5. Migrasi upgrade paket ikut di sini: `add_upgrade_of_to_event_plan_orders_table` (satu
+   kolom) dan `answer_the_upgrade_faq_now_that_upgrades_exist` (FAQ landing yang tadinya
+   menjawab "tidak bisa").
 
 Event hasil backfill diberi paket **Professional** beserta order historisnya
 (`invoice_number`/`receipt_number` **null** — tidak ada uang yang berpindah, jadi tidak

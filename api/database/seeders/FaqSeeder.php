@@ -30,8 +30,8 @@ class FaqSeeder extends Seeder
                 'sort_order' => 30,
             ],
             [
-                'question' => 'Kalau event berikutnya butuh paket yang lebih besar?',
-                'answer' => 'Tinggal beli paket itu saat membuat event berikutnya. Paket dibeli per event dan menempel di event tersebut, jadi tidak ada upgrade atau downgrade yang tiba-tiba mengunci fitur di tengah turnamen yang sedang berjalan. Kamu bahkan boleh menjalankan dua event dengan paket berbeda di waktu yang sama. Kalau terlanjur salah pilih, hubungi kami selama paketnya belum dipakai untuk event.',
+                'question' => 'Kalau event saya butuh paket yang lebih besar?',
+                'answer' => 'Bisa dinaikkan kapan saja, dan kamu hanya membayar selisihnya — Starter yang naik ke Pro cukup menambah Rp 200.000, sama saja dengan langsung membeli Pro. Berlaku untuk paket yang belum dipakai maupun event yang sudah berjalan; batasan barunya langsung aktif. Yang tidak bisa adalah menurunkan paket, supaya fitur tidak pernah dicabut dari event yang sedang memakainya.',
                 'is_active' => true,
                 'sort_order' => 40,
             ],

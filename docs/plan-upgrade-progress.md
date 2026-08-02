@@ -120,6 +120,7 @@ bukan saat lunas.
 >    paket seharga 800rb. Sekarang `paidTowardsPlan()` menjumlahkan seluruh
 >    rantai. Diverifikasi di stack: 150 + 200 + 450 = **800**.
 
-### Tahap 5 — Docs  `[ ]`
-- [ ] `CLAUDE.md` — invarian di atas
-- [ ] Catatan rilis + FAQ ("Kalau event berikutnya butuh paket lebih besar" sekarang bisa dijawab self-serve)
+### Tahap 5 — Docs  ✅
+- [x] `CLAUDE.md` — sub-bagian "Upgrade paket (tidak ada downgrade)" di bawah pola pembelian paket: lima invarian, termasuk dua jebakan yang benar-benar menggigit (`platform_fee_percent` terbalik, `latestOfMany` vs `whereDoesntHave`)
+- [x] Catatan rilis: fitur baru + penegasan `reassign-plan` tidak berubah perannya
+- [x] FAQ landing diperbarui lewat migrasi (jawaban lamanya menyuruh orang menunggu event berikutnya dan menghubungi admin — sekarang justru menjauhkan orang dari fitur yang baru dibuat). Seeder + DB diverifikasi identik untuk kedelapan pertanyaan.
