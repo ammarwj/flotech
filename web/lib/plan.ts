@@ -85,23 +85,28 @@ export function anyEventAllows(
  * again — the credit is surfaced on /organizer/billing and on the create-event
  * page rather than sitting invisible in an orders list.
  *
- * Two paid orders are deliberately *not* credits, and both would otherwise show
- * one purchase twice: a top-up bill (`upgrade_of_id`), which buys a move rather
- * than an event, and an order a paid upgrade has replaced (`superseded`), whose
- * entitlement now lives on its successor. Mirrors scopeUnconsumed() on the
- * server, which refuses the same two.
+ * An order a paid upgrade has replaced (`superseded`) is *not* one: its
+ * entitlement moved to the successor, and counting both would show one purchase
+ * twice. Mirrors scopeUnconsumed() on the server, which refuses the same row.
+ *
+ * A top-up bill (`upgrade_of_id` set) is deliberately **not** excluded here.
+ * Once paid it *is* the credit — it is what the old order handed the
+ * entitlement to. Filtering on that field looked right and quietly emptied the
+ * "Paket siap dipakai" section for anyone who had just upgraded, while the
+ * banner beside it — reading the server's own count — still said they held one.
  */
 export function unconsumedOrders(orders?: EventPlanOrder[] | null): EventPlanOrder[] {
-  return (
-    orders?.filter(
-      (o) => o.status === "paid" && !o.event_id && !o.upgrade_of_id && !o.superseded
-    ) ?? []
-  );
+  return orders?.filter((o) => o.status === "paid" && !o.event_id && !o.superseded) ?? [];
 }
 
-/** A paid order whose plan can still be moved up. */
+/**
+ * A paid order whose plan can still be moved up.
+ *
+ * Being a top-up itself is no bar: climbing twice is allowed, and priced off the
+ * whole chain (see paidTowardsPlan on the server).
+ */
 export function canUpgrade(order?: EventPlanOrder | null): boolean {
-  return !!order && order.status === "paid" && !order.upgrade_of_id && !order.superseded;
+  return !!order && order.status === "paid" && !order.superseded;
 }
 
 const PLAN_COLORS: Record<string, string> = {

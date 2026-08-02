@@ -7,6 +7,7 @@ import { Inbox, ReceiptText } from "lucide-react";
 
 import {
   approvePlanOrder,
+  getIdlePlanCredits,
   getPendingPlanOrders,
   rejectPlanOrder,
 } from "@/lib/api/admin-wallet";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { ReassignPlanDialog } from "@/components/subscription/reassign-plan-dialog";
 import { PaymentProofDialog } from "@/components/payment/payment-proof-dialog";
 import type { EventPlanOrder } from "@/types/api";
 
@@ -61,7 +63,22 @@ export default function AdminEventPlanOrdersPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal menolak bukti.").message),
   });
 
+  /**
+   * Paid plans nobody has spent. Deliberately below the verification queue and
+   * not mixed into it: that queue is work waiting on a decision, this is a
+   * standing balance of entitlements already paid for. Nothing here is overdue —
+   * a credit has no expiry — so there is no action button, only visibility and
+   * whether `plan-orders:remind-idle` has nudged them yet.
+   */
+  const [reassigning, setReassigning] = useState<EventPlanOrder | null>(null);
+
+  const idleQuery = useQuery({
+    queryKey: ["admin-idle-plan-credits"],
+    queryFn: getIdlePlanCredits,
+  });
+
   const rows = query.data ?? [];
+  const idle = idleQuery.data ?? [];
   const busy = approve.isPending || reject.isPending;
 
   return (
@@ -122,6 +139,69 @@ export default function AdminEventPlanOrdersPage() {
           </Card>
         ))}
       </div>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>
+          Kredit menganggur
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Paket lunas yang belum dipakai untuk event apa pun. Tidak ada yang kedaluwarsa —
+          ini daftar entitlement yang sudah dibayar tapi belum ditagih pemiliknya.
+          <code className="mx-1 rounded bg-[var(--bg-soft)] px-1 py-0.5 text-[12px]">
+            plan-orders:remind-idle
+          </code>
+          mengingatkan mereka lewat email setiap hari.
+        </p>
+
+        {idleQuery.isPending && <Skeleton className="mt-3 h-24 rounded-xl" />}
+
+        {idleQuery.data && idle.length === 0 && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Tidak ada kredit yang menganggur. Semua paket lunas sudah dipakai.
+          </p>
+        )}
+
+        <div className="mt-3 grid gap-2">
+          {idle.map((credit) => (
+            <Card key={credit.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold">
+                  {credit.organization?.name ?? "Organisasi dihapus"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {credit.plan?.name ?? "Paket dihapus"} &middot; {rupiah(credit.amount)} &middot;{" "}
+                  {credit.invoice_number ?? "—"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="text-right text-sm">
+                  <p className="text-muted-foreground">
+                    Dibayar {credit.paid_at ? fmtDateTime(credit.paid_at) : "—"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {credit.idle_reminded_at
+                      ? `Diingatkan ${fmtDateTime(credit.idle_reminded_at)}`
+                      : "Belum pernah diingatkan"}
+                  </p>
+                </div>
+                {/* The escape hatch for a plan bought against the wrong event.
+                    It lived only as an API call until now. */}
+                <Button variant="outline" size="sm" onClick={() => setReassigning(credit)}>
+                  Pakai untuk event lain
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {reassigning && (
+        <ReassignPlanDialog
+          credit={reassigning}
+          open
+          onOpenChange={(next) => !next && setReassigning(null)}
+        />
+      )}
 
       {reviewing && (
         <PaymentProofDialog

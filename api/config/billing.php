@@ -30,4 +30,23 @@ return [
     // Days a past_due invoice stays payable before it reads as overdue.
     'due_days' => (int) env('BILLING_DUE_DAYS', 7),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Idle credits
+    |--------------------------------------------------------------------------
+    |
+    | A paid plan nobody has spent on an event is money taken for nothing yet.
+    | It never expires — taking it back would be taking money — so the only
+    | thing to do is remind its owner it is there.
+    |
+    | `idle_credit_days` is how long a credit sits before the first nudge;
+    | `idle_credit_repeat_days` is the gap before another one, so a credit left
+    | for a year does not send 365 emails. Zero disables the reminder entirely.
+    |
+    */
+
+    'idle_credit_days' => (int) env('BILLING_IDLE_CREDIT_DAYS', 14),
+
+    'idle_credit_repeat_days' => (int) env('BILLING_IDLE_CREDIT_REPEAT_DAYS', 30),
+
 ];

@@ -110,6 +110,44 @@ export async function approvePlanOrder(id: string): Promise<EventPlanOrder> {
   return data.data;
 }
 
+/**
+ * Paid plans nobody has spent yet.
+ *
+ * Not a queue to clear — the credit never expires, so nothing here is overdue.
+ * It is the ledger of entitlements the platform has been paid for and not yet
+ * delivered, and the same set `plan-orders:remind-idle` mails on a schedule.
+ */
+export async function getIdlePlanCredits(): Promise<EventPlanOrder[]> {
+  const { data } = await apiClient.get<ApiEnvelope<EventPlanOrder[]>>("/admin/plan-orders/idle");
+  return data.data;
+}
+
+/** Events of one organization, thin, for the reassign picker. */
+export interface AdminOrgEvent {
+  id: string;
+  name: string;
+  start_date: string | null;
+  plan: { id: string; name: string } | null;
+}
+
+export async function getAdminOrganizationEvents(orgId: string): Promise<AdminOrgEvent[]> {
+  const { data } = await apiClient.get<ApiEnvelope<AdminOrgEvent[]>>(
+    `/admin/organizations/${orgId}/events`
+  );
+  return data.data;
+}
+
+/**
+ * Apply a spare paid credit to an event that already exists.
+ *
+ * The escape hatch for a plan bought against the wrong event. Not an upgrade —
+ * both credits were paid in full, so the one being replaced goes back into the
+ * organizer's pool rather than retiring.
+ */
+export async function reassignEventPlan(eventId: string, planOrderId: string): Promise<void> {
+  await apiClient.post(`/admin/events/${eventId}/reassign-plan`, { plan_order_id: planOrderId });
+}
+
 export async function rejectPlanOrder(id: string, reason: string): Promise<EventPlanOrder> {
   const { data } = await apiClient.post<ApiEnvelope<EventPlanOrder>>(
     `/admin/plan-orders/${id}/reject`,

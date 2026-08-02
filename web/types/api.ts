@@ -189,6 +189,8 @@ export interface EventPlanOrder extends ManualPaymentFields {
   upgrade_of_id: string | null;
   /** True once a paid upgrade has taken this order's place — also not a credit. */
   superseded: boolean;
+  /** When the owner was last nudged that this credit is unspent; null = never. */
+  idle_reminded_at: string | null;
   midtrans_order_id: string | null;
   payment_type: string | null;
   paid_at: string | null;

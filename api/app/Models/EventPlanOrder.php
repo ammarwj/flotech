@@ -28,6 +28,7 @@ class EventPlanOrder extends Model
         'plan_id',
         'event_id',
         'consumed_at',
+        'idle_reminded_at',
         'upgrade_of_id',
         'invoice_number',
         'receipt_number',
@@ -51,6 +52,7 @@ class EventPlanOrder extends Model
         return [
             'amount' => 'decimal:2',
             'consumed_at' => 'datetime',
+            'idle_reminded_at' => 'datetime',
             'paid_at' => 'datetime',
             'payment_proof_uploaded_at' => 'datetime',
             'payment_deadline_at' => 'datetime',

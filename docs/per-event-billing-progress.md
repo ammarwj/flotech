@@ -481,10 +481,10 @@ pun, dan tidak terlihat oleh sapuan statis** — butuh browser yang benar-benar 
 
 ## Utang yang sengaja ditinggalkan (jangan hilang)
 
-- [ ] Daftar admin untuk kredit lunas menganggur > N hari + email pengingat (§11.1)
-- [ ] UI untuk `POST admin/events/{event}/reassign-plan` — endpoint & guard-nya sudah ada dan teruji, tapi belum ada tombolnya di `/admin/plan-orders`
-- [ ] Pertimbangkan mengganti label `max_teams_per_category` jadi "Entri per kategori" — "peserta" terbaca sebagai *orang*, padahal yang dihitung entri (§11.2)
-- [ ] Putuskan apakah butuh paket ke-4 `is_public: false` untuk deal enterprise, karena CTA "Hubungi Sales" dilepas (§11.4)
+- [x] **Daftar admin untuk kredit lunas menganggur + email pengingat** (§11.1) — `plan-orders:remind-idle` (harian 09:00, `--dry-run`), notifikasi `PlanOrderIdle`, ambang `billing.idle_credit_days` (14) & `idle_credit_repeat_days` (30), kolom `idle_reminded_at` supaya sapuan harian tidak mengirim tiap hari, dan section "Kredit menganggur" di `/admin/plan-orders`. 8 test.
+- [x] **UI untuk `reassign-plan`** — tombol "Pakai untuk event lain" pada tiap kredit menganggur, membuka pemilih event organisasi itu (`GET admin/organizations/{org}/events`, tipis: id/nama/paket).
+- [x] **Label `max_teams_per_category` → "Entri per kategori"** (§11.2) — lewat migrasi + seeder, plus pesan error `EventController`/`RegistrationController` dan hint di `EventForm`. Deskripsinya dulu ada semata untuk membantah kata di atasnya; sekarang ia bisa menjelaskan apa itu satu entri.
+- [ ] **Putuskan apakah butuh paket ke-4 `is_public: false` untuk deal enterprise** (§11.4). **Ini keputusan produk, bukan pekerjaan teknis** — mekanismenya sudah ada seluruhnya (`is_public` sudah memisahkan katalog publik dari admin, dan `planCovers()` akan menerima paket kustom apa pun asal supersetnya benar). Yang belum ada jawabannya: apakah memang ada permintaan enterprise yang tidak muat di Professional. Jangan dibuat sampai ada yang memintanya.
 
 ## Jebakan yang sudah diketahui (baca sebelum menyentuh area terkait)
 

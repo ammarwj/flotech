@@ -219,6 +219,55 @@ export class Api {
   }
 
   /**
+   * Settle a bill that already exists — the top-up an upgrade raises.
+   *
+   * Same self-signed Midtrans notification as grantCredit(), split out because
+   * an upgrade's bill is created by the UI under test rather than by the
+   * fixture, so only the settling half can be arranged here.
+   */
+  async settleOrder(orderId: string, orgId: string, token: string): Promise<void> {
+    const serverKey = process.env.MIDTRANS_SERVER_KEY;
+    if (!serverKey) throw new Error("MIDTRANS_SERVER_KEY tidak ada di environment e2e.");
+
+    const list = await this.request.get(`${API_URL}/organizations/${orgId}/plan-orders`, {
+      headers: this.auth(token),
+    });
+    const orders = await this.unwrap<Array<{ id: string; amount: number; midtrans_order_id: string | null }>>(
+      list,
+      "Ambil daftar order paket",
+    );
+    const order = orders.find((o) => o.id === orderId);
+    if (!order?.midtrans_order_id) throw new Error(`Order ${orderId} tidak punya order id Midtrans.`);
+
+    const gross = order.amount.toFixed(2);
+    const signature = createHash("sha512")
+      .update(order.midtrans_order_id + "200" + gross + serverKey)
+      .digest("hex");
+
+    const webhook = await this.request.post(`${API_URL}/webhooks/midtrans`, {
+      data: {
+        order_id: order.midtrans_order_id,
+        status_code: "200",
+        gross_amount: gross,
+        signature_key: signature,
+        transaction_status: "settlement",
+        payment_type: "bank_transfer",
+      },
+    });
+    await this.unwrap(webhook, "Settle tagihan upgrade");
+  }
+
+  /** Paid plan orders of an organization, newest first. */
+  async planOrders(token: string, orgId: string): Promise<
+    Array<{ id: string; status: string; amount: number; event_id: string | null; upgrade_of_id: string | null; superseded: boolean; plan?: { slug: string } }>
+  > {
+    const res = await this.request.get(`${API_URL}/organizations/${orgId}/plan-orders`, {
+      headers: this.auth(token),
+    });
+    return this.unwrap(res, "Ambil daftar order paket");
+  }
+
+  /**
    * Registration is open by default: every flow downstream of §5.2 needs a team
    * to be able to sign up, and an event whose window is shut fails in a way that
    * looks like a UI bug rather than a fixture bug.

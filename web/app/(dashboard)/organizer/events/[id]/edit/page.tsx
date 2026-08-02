@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { EventStatusPanel } from "@/components/event/event-status-panel";
+import { EventPlanPanel } from "@/components/event/event-plan-panel";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import type { EventStatus } from "@/types/api";
 
@@ -183,6 +184,8 @@ export default function EditEventPage() {
         pending={changeStatus.isPending}
         onChange={(status) => changeStatus.mutate(status)}
       />
+
+      {orgId && <EventPlanPanel orgId={orgId} event={ev} />}
 
       <EventForm
         initial={ev}

@@ -142,11 +142,20 @@ bukan saat lunas.
 > suite penuh lulus 39/39 begitu server hangat. Pola yang sama sudah tercatat di
 > `e2e/README.md` — **cek durasinya sebelum mencurigai kodenya**.
 
-## Utang yang sengaja ditinggalkan
+## Utang — selesai (2026-08-02)
 
-- [ ] Upgrade belum punya permukaan di halaman event itu sendiri; hint kapasitas di form
-  menautkan ke `/organizer/billing`. Cukup untuk sekarang — form punya paketnya tapi tidak
-  punya ordernya, dan menambah query order ke `EventForm` demi satu tombol belum sepadan.
-- [ ] Tidak ada e2e khusus upgrade. Jalurnya sudah ditutup 13 test backend termasuk yang
-  memakai katalog sungguhan, dan verifikasi manual di stack; yang belum teruji otomatis
-  cuma dialognya.
+- [x] **Permukaan di halaman event.** `EventPlanPanel` di `/organizer/events/{id}/edit`:
+  menyebut paket yang dipakai beserta capnya, dan menggantung tombol "Naikkan paket".
+  Ordernya diambil dari key `["plan-orders", orgId]` yang sama dengan halaman billing, jadi
+  datang dari sana tidak memicu fetch ulang.
+- [x] **E2E khusus upgrade** — 3 spec: kredit menganggur dinaikkan dari `/organizer/billing`,
+  event yang sudah jalan dinaikkan dari halaman edit, dan paket teratas yang mengatakan
+  tidak ada yang lebih tinggi.
+
+> **E2E-nya langsung menemukan ketidakcocokan klien-server yang nyata.**
+> `unconsumedOrders()` saya buat mengecualikan **semua** order ber-`upgrade_of_id`,
+> padahal `scopeUnconsumed()` di server tidak. Begitu lunas, tagihan top-up **adalah**
+> kreditnya — ia yang menerima entitlement dari order lama. Akibatnya section "Paket siap
+> dipakai" kosong untuk siapa pun yang baru upgrade, sementara banner di atasnya — yang
+> membaca hitungan server — tetap bilang mereka punya satu. `canUpgrade()` kena kesalahan
+> yang sama dan akan memblokir upgrade berantai, yang justru sudah ada testnya di backend.

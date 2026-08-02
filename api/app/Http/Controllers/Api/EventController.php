@@ -268,7 +268,7 @@ class EventController extends Controller
             // person choosing it.
             if ($planCap !== null && $planCap !== -1 && (int) ($cat['max_teams'] ?? 0) > $planCap) {
                 throw ValidationException::withMessages([
-                    "categories.{$i}.max_teams" => "Paket event ini membatasi {$planCap} peserta per kategori.",
+                    "categories.{$i}.max_teams" => "Paket event ini membatasi {$planCap} entri per kategori.",
                 ]);
             }
 

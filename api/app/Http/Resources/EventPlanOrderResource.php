@@ -47,6 +47,9 @@ class EventPlanOrderResource extends JsonResource
             // purchase twice.
             'upgrade_of_id' => $this->upgrade_of_id,
             'superseded' => $this->isSuperseded(),
+            // Only meaningful on an unspent credit: when the owner was last told
+            // it is still sitting there. Null means never.
+            'idle_reminded_at' => $this->idle_reminded_at,
             'event' => $this->whenLoaded('event', fn () => [
                 'id' => $this->event->id,
                 'name' => $this->event->name,

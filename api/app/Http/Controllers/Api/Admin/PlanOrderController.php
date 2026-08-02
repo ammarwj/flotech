@@ -43,6 +43,53 @@ class PlanOrderController extends Controller
         return ApiResponse::success(EventPlanOrderResource::collection($pending));
     }
 
+    /**
+     * Paid plans nobody has spent yet, oldest first.
+     *
+     * Money already taken for an event that never happened. The credit never
+     * expires, so this list is not a queue to clear — it is the one place the
+     * platform can see how much it owes in unspent entitlements, and who to
+     * chase. `plan-orders:remind-idle` mails the same set on a schedule;
+     * `reminded_at` here is what that command already sent, so a super admin can
+     * tell "never contacted" from "nudged last week".
+     */
+    public function idle(Request $request): JsonResponse
+    {
+        $after = max(0, (int) $request->integer('days', (int) config('billing.idle_credit_days')));
+
+        $orders = EventPlanOrder::query()
+            ->unconsumed()
+            ->where('paid_at', '<=', now()->subDays($after))
+            ->with(['plan', 'organization'])
+            ->oldest('paid_at')
+            ->get();
+
+        return ApiResponse::success(EventPlanOrderResource::collection($orders));
+    }
+
+    /**
+     * Events belonging to one organization, for the reassign picker.
+     *
+     * Deliberately thin — id, name and current plan is everything the picker
+     * needs, and a super admin browsing another tenant's events should be handed
+     * the minimum that answers the question in front of them.
+     */
+    public function organizationEvents(string $organization): JsonResponse
+    {
+        $events = Event::where('organization_id', $organization)
+            ->with('plan')
+            ->orderByDesc('start_date')
+            ->get()
+            ->map(fn (Event $event) => [
+                'id' => $event->id,
+                'name' => $event->name,
+                'start_date' => $event->start_date,
+                'plan' => $event->plan ? ['id' => $event->plan->id, 'name' => $event->plan->name] : null,
+            ]);
+
+        return ApiResponse::success($events);
+    }
+
     public function approve(Request $request, EventPlanOrder $planOrder): JsonResponse
     {
         /** @var User $admin */

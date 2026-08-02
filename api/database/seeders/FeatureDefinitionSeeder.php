@@ -40,13 +40,14 @@ class FeatureDefinitionSeeder extends Seeder
             ],
             [
                 'feature_key' => 'max_teams_per_category',
-                'feature_label' => 'Peserta per kategori',
+                'feature_label' => 'Entri per kategori',
                 'feature_group' => 'event',
                 'feature_type' => 'numeric',
-                // Spelled out because "peserta" reads as *people* to an
-                // organizer, while what is counted is entries: a 20-man football
-                // squad and one badminton singles player are both 1.
-                'description' => '1 tim / 1 pemain tunggal / 1 pasangan ganda dihitung 1 peserta.',
+                // "Peserta" read as *people* to an organizer, while what is
+                // counted is entries: a 20-man football squad and one badminton
+                // singles player are both 1. The description had to spell that
+                // out precisely because the label fought it.
+                'description' => '1 tim / 1 pemain tunggal / 1 pasangan ganda dihitung 1 entri.',
                 'sort_order' => 30,
             ],
             [

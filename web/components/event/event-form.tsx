@@ -348,7 +348,7 @@ function CategoryEditor({
           />
           <FieldHint>
             {teamsCap !== null
-              ? `Paket event ini membatasi ${teamsCap} peserta per kategori.`
+              ? `Paket event ini membatasi ${teamsCap} entri per kategori.`
               : "Kosongkan untuk peserta tak terbatas."}
           </FieldHint>
         </div>
@@ -782,8 +782,8 @@ export function EventForm({
               Paket {plan.name}:{" "}
               {categoryCap !== null ? `maks ${categoryCap} kategori` : "kategori tanpa batas"},{" "}
               {teamsCap !== null
-                ? `${teamsCap} peserta per kategori`
-                : "peserta tanpa batas"}
+                ? `${teamsCap} entri per kategori`
+                : "entri tanpa batas"}
               .{" "}
               {/* The cap is only half an answer without a way past it. Links
                   rather than opening the dialog here: the form has the plan but

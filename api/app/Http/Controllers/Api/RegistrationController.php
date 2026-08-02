@@ -96,7 +96,7 @@ class RegistrationController extends Controller
 
         if (! $this->gate->withinLimit($eventModel, 'max_teams_per_category', $categoryTeams)) {
             return ApiResponse::error(
-                'Batas jumlah peserta per kategori untuk paket event ini sudah tercapai.',
+                'Batas jumlah entri per kategori untuk paket event ini sudah tercapai.',
                 ['feature' => 'max_teams_per_category'],
                 403,
             );

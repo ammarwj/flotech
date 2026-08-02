@@ -409,11 +409,17 @@ Route::prefix('v1')->group(function () {
             // verification queue, this money lands in the platform's account —
             // so only a super admin may rule on the receipt.
             Route::get('plan-orders', [AdminPlanOrderController::class, 'index']);
+            // Paid, unspent, and old. Not a queue — a ledger of what the
+            // platform owes in entitlements nobody has claimed.
+            Route::get('plan-orders/idle', [AdminPlanOrderController::class, 'idle']);
             Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
             Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
             // The escape hatch for an event stuck on the wrong plan — see the
             // controller for why it is super_admin and not the organizer's own.
             Route::post('events/{event}/reassign-plan', [AdminPlanOrderController::class, 'reassignPlan']);
+            // The picker behind that button: which event should this spare
+            // credit be applied to?
+            Route::get('organizations/{organization}/events', [AdminPlanOrderController::class, 'organizationEvents']);
 
             Route::get('wallets', [AdminWalletController::class, 'index']);
             Route::post('wallets/{wallet}/adjust', [AdminWalletController::class, 'adjust']);
