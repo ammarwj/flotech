@@ -9,7 +9,11 @@ import { observeReveals } from "@/components/landing/reveal-init";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getPublicPlans } from "@/lib/api/plans";
 import { rupiahCompact } from "@/lib/labels";
-import { formatPlanFeature, getPlanColor, getPlanFeatureValue } from "@/lib/plan";
+import {
+  formatPlanFeature,
+  getPlanColor,
+  getPlanFeatureValue,
+} from "@/lib/plan";
 import type { Plan } from "@/types/api";
 import { CheckIcon, CrossIcon } from "./icons";
 
@@ -33,13 +37,18 @@ function feeFootnote(plans: Plan[]): string | null {
     return fee ? [`${fee}% (${plan.name})`] : [];
   });
 
-  return fees.length > 0 ? `Platform fee tiket & pendaftaran: ${fees.join(" · ")}.` : null;
+  return fees.length > 0
+    ? `Platform fee tiket & pendaftaran: ${fees.join(" · ")}.`
+    : null;
 }
 
 export function Pricing() {
   const gridRef = useRef<HTMLDivElement>(null);
 
-  const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
+  const plansQuery = useQuery({
+    queryKey: ["public-plans"],
+    queryFn: getPublicPlans,
+  });
   const plans = plansQuery.data;
 
   // The cards don't exist when RevealInit sweeps the page, so they'd never be
@@ -53,16 +62,22 @@ export function Pricing() {
     <section
       className="section"
       id="harga"
-      style={{ background: "var(--bg-alt)", borderBlock: "1px solid var(--border)" }}
+      style={{
+        background: "var(--bg-alt)",
+        borderBlock: "1px solid var(--border)",
+      }}
     >
       <div className="container">
         <div className="section-head center reveal">
           <span className="eyebrow">Harga</span>
-          <h2 className="section-title">Bayar sekali per event, bukan langganan</h2>
+          <h2 className="section-title">
+            Bayar sekali per event, bukan langganan
+          </h2>
           <p className="section-sub">
-            Pilih paket saat kamu menggelar event, dan itu berlaku sampai eventnya selesai — mau
-            seminggu atau lintas bulan. Semua paket termasuk landing page event, registrasi tim,
-            jadwal, klasemen, dan bracket. Tanpa biaya tersembunyi.
+            Pilih paket saat kamu menggelar event, dan itu berlaku sampai
+            eventnya selesai — mau seminggu atau lintas bulan. Semua paket
+            termasuk landing page event, registrasi tim, jadwal, klasemen, dan
+            bracket. Tanpa biaya tersembunyi.
           </p>
         </div>
 
@@ -80,18 +95,26 @@ export function Pricing() {
                 </article>
               ))
             : plans?.map((plan, i) => (
-                <PlanCard key={plan.id} plan={plan} delay={i > 0 ? String(i * 60) : undefined} />
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  delay={i > 0 ? String(i * 60) : undefined}
+                />
               ))}
         </div>
 
         {plansQuery.isError && (
-          <p className="price-foot">Gagal memuat paket. Coba muat ulang halaman ini.</p>
+          <p className="price-foot">
+            Gagal memuat paket. Coba muat ulang halaman ini.
+          </p>
         )}
 
         {plans && (
           <p className="price-foot">
             {feeFootnote(plans)}
-            {" Kalau payment gateway sedang bermasalah, pembayaran otomatis dialihkan ke transfer manual ke rekeningmu — tanpa potongan fee."}
+            {
+              " Kalau payment gateway sedang bermasalah, pembayaran otomatis dialihkan ke transfer manual ke rekeningmu — tanpa potongan fee."
+            }
           </p>
         )}
       </div>
@@ -104,10 +127,17 @@ function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
   const cta = ctaFor(plan);
 
   return (
-    <article className={`plan${featured ? " featured" : ""} reveal`} data-delay={delay}>
+    <article
+      className={`plan${featured ? " featured" : ""} reveal`}
+      data-delay={delay}
+    >
       {featured && <span className="plan-tag">Paling Populer</span>}
       <div className="plan-name">
-        <span className="swatch" style={{ background: getPlanColor(plan.slug) }} /> {plan.name}
+        <span
+          className="swatch"
+          style={{ background: getPlanColor(plan.slug) }}
+        />{" "}
+        {plan.name}
       </div>
       <p className="plan-desc">{plan.description}</p>
       <div className="plan-price">
@@ -115,12 +145,15 @@ function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
         <span className="amt">{rupiahCompact(plan.price)}</span>
         {plan.price > 0 && <span className="per">/event</span>}
       </div>
-      <p className="plan-note">Sekali bayar · 1 event</p>
       <PlanCta cta={cta} featured={featured} />
       <ul className="plan-feats">
         {plan.feature_details?.map((feature) => (
-          <li key={feature.key} className={feature.included ? undefined : "off"}>
-            {feature.included ? <CheckIcon /> : <CrossIcon />} {formatPlanFeature(feature)}
+          <li
+            key={feature.key}
+            className={feature.included ? undefined : "off"}
+          >
+            {feature.included ? <CheckIcon /> : <CrossIcon />}{" "}
+            {formatPlanFeature(feature)}
           </li>
         ))}
       </ul>
@@ -132,7 +165,13 @@ function PlanCard({ plan, delay }: { plan: Plan; delay?: string }) {
  * A signed-in organizer picking a plan wants the checkout page, not the sign-up
  * form.
  */
-function PlanCta({ cta, featured }: { cta: { label: string; href: string }; featured: boolean }) {
+function PlanCta({
+  cta,
+  featured,
+}: {
+  cta: { label: string; href: string };
+  featured: boolean;
+}) {
   const href = usePlanCtaHref(cta.href);
   const className = `btn ${featured ? "btn-primary" : "btn-secondary"} btn-block`;
 

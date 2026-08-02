@@ -1013,8 +1013,12 @@ img { max-width: 100%; display: block; }
 .plan-price .per { font-size: 13px; color: var(--text-muted); }
 .plan-note { font-size: 12px; color: var(--success); margin-top: 6px; min-height: 18px; font-weight: 600; }
 .plan .btn { margin-top: 20px; }
-.plan-feats { margin-top: 22px; display: grid; gap: 11px; list-style: none; padding: 0; margin-block: 0; }
-.plan-feats li { display: flex; gap: 10px; font-size: 13.5px; color: var(--text-2); align-items: flex-start; }
+/* `margin: 24px 0 0` as one declaration, not `margin-top` + `margin-block: 0`:
+   the shorthand came second and silently reset the top margin to zero, which is
+   why the list sat flush against the CTA. Keep it a single shorthand so the two
+   can't drift apart again. */
+.plan-feats { margin: 24px 0 0; display: grid; gap: 7px; list-style: none; padding: 0; }
+.plan-feats li { display: flex; gap: 9px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); align-items: flex-start; }
 .plan-feats li svg { width: 17px; height: 17px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
 .plan-feats li.off { color: var(--text-muted); }
 .plan-feats li.off svg { color: var(--border-strong); }

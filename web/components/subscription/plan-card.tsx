@@ -35,7 +35,8 @@ export function PlanCard({
     <Card
       className={cn(
         "relative flex flex-col p-5",
-        featured && "ring-1 ring-[color-mix(in_srgb,var(--brand-600)_50%,transparent)]"
+        featured &&
+          "ring-1 ring-[color-mix(in_srgb,var(--brand-600)_50%,transparent)]",
       )}
     >
       {featured && (
@@ -45,22 +46,33 @@ export function PlanCard({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-        <span className="font-bold" style={{ fontFamily: "var(--font-display)" }}>
+        <span
+          className="h-2.5 w-2.5 rounded-full"
+          style={{ background: color }}
+        />
+        <span
+          className="font-bold"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           {plan.name}
         </span>
       </div>
 
-      <div className="mt-3 text-2xl font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
+      <div
+        className="mt-3 text-2xl font-extrabold"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
         {plan.price === 0 ? "Gratis" : rupiah(plan.price)}
         {plan.price > 0 && (
-          <span className="text-sm font-medium text-muted-foreground">/event</span>
+          <span className="text-sm font-medium text-muted-foreground">
+            /event
+          </span>
         )}
       </div>
 
-      <div className="min-h-[18px] text-xs text-muted-foreground">Sekali bayar · 1 event</div>
-
-      <p className="mt-1 min-h-[36px] text-xs text-muted-foreground">{plan.description}</p>
+      <p className="mt-1 min-h-[36px] text-xs text-muted-foreground">
+        {plan.description}
+      </p>
 
       <ul className="mt-4 flex-1 space-y-1.5 text-xs">
         {plan.feature_details?.map((feature) => (
@@ -69,7 +81,7 @@ export function PlanCard({
             title={feature.description ?? undefined}
             className={cn(
               "flex items-start gap-1.5",
-              !feature.included && "text-muted-foreground/60"
+              !feature.included && "text-muted-foreground/60",
             )}
           >
             {feature.included ? (
