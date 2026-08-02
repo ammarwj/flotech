@@ -131,6 +131,64 @@ class PlanGate
             ->exists();
     }
 
+    /**
+     * Whether `$target` grants everything `$current` does — the test that makes
+     * an upgrade an upgrade.
+     *
+     * Deliberately not a price comparison. The catalogue is editable by a super
+     * admin at /admin/plans, so a dearer plan can perfectly well be missing a
+     * feature, and "upgrading" an event that already holds 15 gallery photos
+     * onto a plan without `event_gallery` would strip something it is actively
+     * using — the same class of harm `participant_type` is locked to prevent.
+     * Comparing the feature maps refuses that case for free, and refusing every
+     * non-superset is also exactly what makes a *downgrade* impossible: there is
+     * no separate rule to remember to keep in step.
+     *
+     * Booleans must not go true → false. Numbers must not shrink, with `-1`
+     * (unlimited) treated as the largest value rather than as less than 1. A key
+     * the current plan does not carry places no obligation on the target.
+     */
+    public function planCovers(?Plan $current, Plan $target): bool
+    {
+        if (! $current) {
+            return true;
+        }
+
+        self::$memo[$current->id] ??= $current->features()->pluck('value', 'feature_key')->all();
+        self::$memo[$target->id] ??= $target->features()->pluck('value', 'feature_key')->all();
+
+        foreach (self::$memo[$current->id] as $key => $value) {
+            $theirs = self::$memo[$target->id][$key] ?? null;
+
+            if (is_numeric($value)) {
+                // Absent means "no cap named", which is not a promise of more —
+                // for a key the current plan does bound, treat it as zero.
+                $mine = (int) $value;
+                $other = is_numeric($theirs) ? (int) $theirs : 0;
+
+                if ($mine === -1) {
+                    if ($other !== -1) {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if ($other !== -1 && $other < $mine) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if ($value === 'true' && $theirs !== 'true') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** Drop the per-request memo. A fresh database per test needs it. */
     public static function flush(): void
     {

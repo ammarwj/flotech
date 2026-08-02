@@ -206,6 +206,10 @@ Route::prefix('v1')->group(function () {
                 Route::get('plan-orders', [PlanOrderController::class, 'index']);
                 Route::post('plan-orders/checkout', [PlanOrderController::class, 'checkout']);
                 Route::post('plan-orders/{planOrder}/pay', [PlanOrderController::class, 'pay']);
+                // Upgrade only — there is no downgrade route, and the absence is
+                // enforced in PlanGate::planCovers() rather than by leaving one out.
+                Route::get('plan-orders/{planOrder}/upgrade-options', [PlanOrderController::class, 'upgradeOptions']);
+                Route::post('plan-orders/{planOrder}/upgrade', [PlanOrderController::class, 'upgrade']);
                 // Transfer receipt for a manual plan payment (gateway is off).
                 Route::post('plan-orders/{planOrder}/proof', [PlanOrderController::class, 'proof']);
                 Route::get('plan-orders/{planOrder}/invoice', [PlanOrderController::class, 'invoice']);

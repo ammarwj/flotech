@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One purchase of one plan, for one event.
@@ -27,6 +28,7 @@ class EventPlanOrder extends Model
         'plan_id',
         'event_id',
         'consumed_at',
+        'upgrade_of_id',
         'invoice_number',
         'receipt_number',
         'amount',
@@ -87,7 +89,24 @@ class EventPlanOrder extends Model
      */
     public function scopeUnconsumed(Builder $query): Builder
     {
-        return $query->where('status', 'paid')->whereNull('event_id');
+        return $query->where('status', 'paid')
+            ->whereNull('event_id')
+            // An order that has been upgraded is not a credit any more. The
+            // organizer only paid the difference, so its money is already spent
+            // on whatever the successor now holds; handing it back to the pool
+            // would be handing out a free event. This is the one place upgrade
+            // parts ways with reassign-plan, where both orders were paid in
+            // full and releasing the old one is correct.
+            //
+            // Read off the successor row rather than a flag here, so there is no
+            // second copy of the fact that can drift out of step.
+            ->whereDoesntHave('upgrades', fn (Builder $q) => $q->where('status', 'paid'));
+    }
+
+    /** True once a paid upgrade has taken this order's place. */
+    public function isSuperseded(): bool
+    {
+        return $this->upgrades()->where('status', 'paid')->exists();
     }
 
     public function organization(): BelongsTo
@@ -104,6 +123,27 @@ class EventPlanOrder extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    /** The order this one upgrades — null on ordinary purchases. */
+    public function upgradeOf(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'upgrade_of_id');
+    }
+
+    /**
+     * Top-up bills raised against this order.
+     *
+     * hasMany, not a `latestOfMany` hasOne: scopeUnconsumed() asks this through
+     * `whereDoesntHave`, and a one-of-many relation carries an aggregate
+     * subquery that existence checks cannot see through — the exclusion silently
+     * matched nothing. At most one row here is ever paid, because
+     * checkoutUpgrade() reopens an outstanding attempt instead of raising a
+     * second one and refuses outright once a paid one exists.
+     */
+    public function upgrades(): HasMany
+    {
+        return $this->hasMany(self::class, 'upgrade_of_id');
     }
 
     /** The super admin who accepted the manual transfer, if any. */

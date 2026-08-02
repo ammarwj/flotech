@@ -248,7 +248,7 @@ export default function BillingPage() {
                     {order.invoice_number ?? "—"} &middot;{" "}
                     {order.event ? (
                       <Link
-                        href={`/organizer/events/${order.event.id}`}
+                        href={`/organizer/events/${order.event.id}/stats`}
                         className="underline underline-offset-2"
                       >
                         {order.event.name}

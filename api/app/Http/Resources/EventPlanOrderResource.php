@@ -39,6 +39,14 @@ class EventPlanOrderResource extends JsonResource
             // this pair rather than calling a second endpoint for them.
             'event_id' => $this->event_id,
             'consumed_at' => $this->consumed_at,
+
+            // Upgrades. `upgrade_of_id` marks a top-up bill — it is never a
+            // credit, however paid it looks. `superseded` marks the order a paid
+            // top-up has replaced, which is likewise no longer spendable; both
+            // have to reach the client or the credit list would count one
+            // purchase twice.
+            'upgrade_of_id' => $this->upgrade_of_id,
+            'superseded' => $this->isSuperseded(),
             'event' => $this->whenLoaded('event', fn () => [
                 'id' => $this->event->id,
                 'name' => $this->event->name,

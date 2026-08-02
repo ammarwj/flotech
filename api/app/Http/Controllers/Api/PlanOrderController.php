@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlanOrder\CheckoutRequest;
 use App\Http\Resources\EventPlanOrderResource;
+use App\Http\Resources\PlanResource;
 use App\Http\Resources\PlatformBankAccountResource;
 use App\Models\EventPlanOrder;
 use App\Models\Organization;
@@ -12,9 +13,11 @@ use App\Models\Plan;
 use App\Models\SiteSetting;
 use App\Services\BillingDocumentService;
 use App\Services\EventPlanOrderService;
+use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -30,6 +33,7 @@ class PlanOrderController extends Controller
     public function __construct(
         protected EventPlanOrderService $orders,
         protected BillingDocumentService $documents,
+        protected PlanGate $gate,
     ) {}
 
     /**
@@ -69,6 +73,58 @@ class PlanOrderController extends Controller
     }
 
     /**
+     * Options for moving this order onto a bigger plan, with what each costs.
+     *
+     * The list is computed rather than "every plan dearer than this one":
+     * PlanGate::planCovers() is the same test checkoutUpgrade() enforces, so a
+     * plan can never be offered here and then refused at the till.
+     */
+    public function upgradeOptions(Request $request, string $organization, EventPlanOrder $planOrder): JsonResponse
+    {
+        $planOrder = $this->authorizeOrder($request, $planOrder);
+
+        if ($planOrder->status !== 'paid' || $planOrder->isSuperseded()) {
+            return ApiResponse::success([]);
+        }
+
+        $planOrder->loadMissing('plan.features');
+
+        $options = Plan::where('is_active', true)
+            ->with('features')
+            ->orderBy('sort_order')
+            ->get()
+            ->filter(fn (Plan $plan) => $plan->id !== $planOrder->plan_id
+                && (float) $plan->price - (float) $planOrder->amount > 0
+                && $this->gate->planCovers($planOrder->plan, $plan))
+            ->map(fn (Plan $plan) => [
+                'plan' => new PlanResource($plan),
+                'price_difference' => round((float) $plan->price - (float) $planOrder->amount, 2),
+            ])
+            ->values();
+
+        return ApiResponse::success($options);
+    }
+
+    /**
+     * Raise the top-up bill. There is no matching downgrade, by design — see
+     * PlanGate::planCovers().
+     */
+    public function upgrade(Request $request, string $organization, EventPlanOrder $planOrder): JsonResponse
+    {
+        $planOrder = $this->authorizeOrder($request, $planOrder);
+
+        $data = $request->validate([
+            'plan_id' => ['required', 'uuid', Rule::exists('plans', 'id')->where('is_active', true)],
+        ], [
+            'plan_id.required' => 'Pilih paket tujuan upgrade.',
+        ]);
+
+        $result = $this->orders->checkoutUpgrade($planOrder, Plan::findOrFail($data['plan_id']));
+
+        return ApiResponse::success($this->checkoutPayload($result), 'Tagihan upgrade dibuat', 201);
+    }
+
+    /**
      * Reopen payment for an unpaid invoice.
      */
     public function pay(Request $request, string $organization, EventPlanOrder $planOrder): JsonResponse
@@ -84,6 +140,12 @@ class PlanOrderController extends Controller
         // money for nothing, so the invariant is stated rather than assumed.
         if ($planOrder->event_id !== null) {
             return ApiResponse::error('Paket ini sudah dipakai untuk sebuah event.', null, 422);
+        }
+
+        // A retired order is not payable either: its successor holds the
+        // entitlement, and reopening it would bill for a move already made.
+        if ($planOrder->isSuperseded()) {
+            return ApiResponse::error('Paket ini sudah di-upgrade ke paket lain.', null, 422);
         }
 
         // pay() re-derives the rail, which would flip a manual bill to gateway

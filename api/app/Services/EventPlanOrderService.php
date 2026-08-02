@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Exceptions\PaymentException;
+use App\Exceptions\PlanFeatureException;
+use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\SiteSetting;
@@ -35,6 +37,7 @@ class EventPlanOrderService
     public function __construct(
         protected MidtransService $midtrans,
         protected PaymentRails $rails,
+        protected PlanGate $gate,
     ) {}
 
     /**
@@ -75,6 +78,82 @@ class EventPlanOrderService
         // about an already-paid plan would be a lie.
         if ($order->refresh()->status === 'past_due') {
             $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderInvoiceIssued($o));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Raise a top-up bill that moves `$order` onto a bigger plan.
+     *
+     * The organizer pays the difference, so buying Starter and upgrading costs
+     * exactly what buying Pro would have — there is no cheaper route in, and no
+     * reason to sit on a plan that has stopped fitting.
+     *
+     * The difference is measured against what was actually paid (`amount`), not
+     * against the target's catalogue price today. An order created by
+     * `events:backfill-plan` carries `amount` 0 and therefore pays full price,
+     * which is right: no money ever changed hands for it.
+     *
+     * @throws PlanFeatureException
+     */
+    public function checkoutUpgrade(EventPlanOrder $order, Plan $target): array
+    {
+        if ($order->status !== 'paid') {
+            throw new PlanFeatureException('Paket ini belum lunas, jadi belum bisa di-upgrade.', ['feature' => 'plan_upgrade_unpaid']);
+        }
+
+        if ($order->isSuperseded()) {
+            throw new PlanFeatureException('Paket ini sudah di-upgrade sebelumnya.', ['feature' => 'plan_already_upgraded']);
+        }
+
+        if ($order->plan_id === $target->id) {
+            throw new PlanFeatureException('Event ini sudah memakai paket tersebut.', ['feature' => 'plan_unchanged']);
+        }
+
+        // Invariant 1: the target has to grant everything the current plan does.
+        // This is what refuses a downgrade — and it also refuses a *dearer* plan
+        // that happens to drop a feature, which a price comparison would wave
+        // through. See PlanGate::planCovers().
+        if (! $this->gate->planCovers($order->plan, $target)) {
+            throw new PlanFeatureException(
+                'Paket itu tidak mencakup semua fitur paket yang sekarang, jadi bukan upgrade.',
+                ['feature' => 'plan_not_superset'],
+            );
+        }
+
+        $difference = round((float) $target->price - (float) $order->amount, 2);
+
+        if ($difference <= 0) {
+            throw new PlanFeatureException('Paket itu tidak lebih mahal, jadi tidak bisa di-upgrade ke sana.', ['feature' => 'plan_not_upgrade']);
+        }
+
+        // An unpaid attempt is reopened rather than duplicated, the same reason
+        // pay() exists: two live bills for one upgrade would let the organizer
+        // settle both and pay twice for a single move.
+        $pending = $order->upgrades()->where('status', 'past_due')->latest()->first();
+
+        if ($pending && $pending->plan_id === $target->id) {
+            return $this->pay($pending);
+        }
+
+        $bank = $this->rails->platformDestination($difference);
+        $manual = $bank !== null;
+
+        $upgrade = $order->organization->planOrders()->create([
+            'plan_id' => $target->id,
+            'upgrade_of_id' => $order->id,
+            'invoice_number' => $this->nextNumber('invoice'),
+            'amount' => $difference,
+            'status' => 'past_due',
+            'payment_method' => $manual ? 'manual' : 'gateway',
+            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
+        ]);
+
+        $result = $this->start($upgrade, $bank);
+
+        if ($upgrade->refresh()->status === 'past_due') {
+            $this->mail($upgrade, fn (EventPlanOrder $o) => new PlanOrderInvoiceIssued($o));
         }
 
         return $result;
@@ -204,9 +283,55 @@ class EventPlanOrderService
             'payment_type' => $paymentType ?? $order->payment_type,
         ]);
 
+        if ($order->upgrade_of_id) {
+            $this->applyUpgrade($order);
+        }
+
         if (! $alreadyPaid) {
             $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderPaid($o));
         }
+    }
+
+    /**
+     * Hand the entitlement over from the order being upgraded to this one.
+     *
+     * The successor becomes the holder — of the event if there was one, of the
+     * credit if there wasn't — and the old order retires. That is what collapses
+     * the two cases ("event already running" and "credit not spent yet") into
+     * one path: the only difference is whether there is an `event_id` to move.
+     *
+     * The old order keeps its own `plan_id`, `amount`, invoice and receipt
+     * untouched. Its invoice still truthfully reads "Starter, Rp 150.000"; this
+     * order's reads "Pro, Rp 200.000". Nothing has to be snapshotted to keep
+     * either document honest, because neither is ever rewritten.
+     *
+     * Runs under activate(), so it must survive a re-delivered webhook: every
+     * write here is the same value the second time round.
+     */
+    private function applyUpgrade(EventPlanOrder $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $previous = EventPlanOrder::whereKey($order->upgrade_of_id)->lockForUpdate()->first();
+
+            if (! $previous) {
+                return;
+            }
+
+            $eventId = $order->event_id ?? $previous->event_id;
+
+            // Released before the claim, because `event_id` is unique: the
+            // successor cannot take the event while the old row still holds it.
+            // Safe to hand back to no one — scopeUnconsumed() reads the successor
+            // to know this order is spent, not its own columns.
+            if ($previous->event_id !== null) {
+                $previous->update(['event_id' => null, 'consumed_at' => null]);
+            }
+
+            if ($eventId !== null) {
+                $order->update(['event_id' => $eventId, 'consumed_at' => $order->consumed_at ?? Carbon::now()]);
+                Event::whereKey($eventId)->update(['plan_id' => $order->plan_id]);
+            }
+        });
     }
 
     /**
