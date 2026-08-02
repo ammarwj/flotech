@@ -124,3 +124,29 @@ bukan saat lunas.
 - [x] `CLAUDE.md` — sub-bagian "Upgrade paket (tidak ada downgrade)" di bawah pola pembelian paket: lima invarian, termasuk dua jebakan yang benar-benar menggigit (`platform_fee_percent` terbalik, `latestOfMany` vs `whereDoesntHave`)
 - [x] Catatan rilis: fitur baru + penegasan `reassign-plan` tidak berubah perannya
 - [x] FAQ landing diperbarui lewat migrasi (jawaban lamanya menyuruh orang menunggu event berikutnya dan menghubungi admin — sekarang justru menjauhkan orang dari fitur yang baru dibuat). Seeder + DB diverifikasi identik untuk kedelapan pertanyaan.
+
+---
+
+## Verifikasi penutup (2026-08-02)
+
+| | Hasil |
+|---|---|
+| Backend | **451 lulus / 0 gagal** |
+| E2E | **39 lulus / 0 gagal** |
+| Halaman `/`, `/pricing`, `/organizer/billing`, `/organizer/plans` | 200 |
+| FAQ landing | jawaban baru tampil, jawaban lama nol jejak |
+
+> **Dua kegagalan e2e pada percobaan pertama itu palsu**, dan tandanya ada di durasinya:
+> 3,8 menit vs 1,2 menit yang biasa. `.next` baru dihapus, jadi Turbopack meng-compile tiap
+> rute sambil 4 worker menghantamnya. Kedua spec-nya lulus 2×2 saat dijalankan sendiri, dan
+> suite penuh lulus 39/39 begitu server hangat. Pola yang sama sudah tercatat di
+> `e2e/README.md` — **cek durasinya sebelum mencurigai kodenya**.
+
+## Utang yang sengaja ditinggalkan
+
+- [ ] Upgrade belum punya permukaan di halaman event itu sendiri; hint kapasitas di form
+  menautkan ke `/organizer/billing`. Cukup untuk sekarang — form punya paketnya tapi tidak
+  punya ordernya, dan menambah query order ke `EventForm` demi satu tombol belum sepadan.
+- [ ] Tidak ada e2e khusus upgrade. Jalurnya sudah ditutup 13 test backend termasuk yang
+  memakai katalog sungguhan, dan verifikasi manual di stack; yang belum teruji otomatis
+  cuma dialognya.
