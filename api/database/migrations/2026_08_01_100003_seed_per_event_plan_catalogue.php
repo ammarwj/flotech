@@ -76,7 +76,7 @@ return new class extends Migration
         return [
             [
                 'name' => 'Starter', 'slug' => 'starter', 'price' => 150000, 'sort_order' => 1,
-                'description' => 'Untuk satu event kecil — 1 kategori, 32 peserta.',
+                'description' => 'Turnamen internal atau komunitas — liga kantor, antar-kelas, fun match.',
                 'features' => [
                     'online_registration' => 'true',
                     'max_categories' => '1',
@@ -88,7 +88,7 @@ return new class extends Migration
             ],
             [
                 'name' => 'Pro', 'slug' => 'pro', 'price' => 350000, 'sort_order' => 2,
-                'description' => 'Untuk satu event menengah — 4 kategori, 128 peserta per kategori.',
+                'description' => 'Kejuaraan antar-klub atau antar-sekolah tingkat kota dan kabupaten.',
                 'features' => [
                     'online_registration' => 'true',
                     'max_categories' => '4',
@@ -103,7 +103,7 @@ return new class extends Migration
             ],
             [
                 'name' => 'Professional', 'slug' => 'professional', 'price' => 800000, 'sort_order' => 3,
-                'description' => 'Untuk satu event besar — kategori & peserta tanpa batas.',
+                'description' => 'Kejuaraan tingkat provinsi & nasional, atau event multi-cabang.',
                 'features' => [
                     'online_registration' => 'true',
                     'max_categories' => '-1',

@@ -34,7 +34,7 @@ class PlanSeeder extends Seeder
             [
                 'name' => 'Starter',
                 'slug' => 'starter',
-                'description' => 'Untuk satu event kecil — 1 kategori, 32 peserta.',
+                'description' => 'Turnamen internal atau komunitas — liga kantor, antar-kelas, fun match.',
                 'price' => 150000,
                 'sort_order' => 1,
                 'features' => [
@@ -49,7 +49,7 @@ class PlanSeeder extends Seeder
             [
                 'name' => 'Pro',
                 'slug' => 'pro',
-                'description' => 'Untuk satu event menengah — 4 kategori, 128 peserta per kategori.',
+                'description' => 'Kejuaraan antar-klub atau antar-sekolah tingkat kota dan kabupaten.',
                 'price' => 350000,
                 'sort_order' => 2,
                 'features' => [
@@ -67,7 +67,7 @@ class PlanSeeder extends Seeder
             [
                 'name' => 'Professional',
                 'slug' => 'professional',
-                'description' => 'Untuk satu event besar — kategori & peserta tanpa batas.',
+                'description' => 'Kejuaraan tingkat provinsi & nasional, atau event multi-cabang.',
                 'price' => 800000,
                 'sort_order' => 3,
                 'features' => [
