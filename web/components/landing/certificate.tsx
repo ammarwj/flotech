@@ -58,9 +58,6 @@ export function Certificate() {
 
           <div className="reveal" data-delay="120">
             <div className="cert">
-              <span className="cert-hint" style={{ top: "30%", left: "50%", transform: "translateX(-50%)" }}>
-                recipient_name
-              </span>
               <span className="cert-seal">
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M12 15a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" stroke="#fff" strokeWidth="2" />
@@ -69,7 +66,15 @@ export function Certificate() {
               </span>
               <small>Sertifikat Penghargaan</small>
               <div className="award">Juara 1 · Top Scorer</div>
-              <div className="name">Garuda FC</div>
+              {/* The chip labels the field it sits on, so it has to be anchored
+                  to it. It used to be positioned at a flat `top: 30%` of the
+                  card, which tracks nothing — the content block is centred, so
+                  where 30% lands depends on the card's height, and it came down
+                  on top of the "Sertifikat Penghargaan" line. */}
+              <div className="cert-field">
+                <span className="cert-hint">recipient_name</span>
+                <div className="name">Garuda FC</div>
+              </div>
               <div className="name-rule" />
               <div className="evt">Jakarta Cup 2026 · 14 Juni 2026</div>
               <span className="cert-no">COT-2026-00001</span>
