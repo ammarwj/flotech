@@ -28,6 +28,22 @@ class PlanGate
      */
     private static array $memo = [];
 
+    /**
+     * Numeric keys where a *smaller* number is the better deal.
+     *
+     * Every other number here is a capacity — categories, entries, photos — and
+     * more of it is better. `platform_fee_percent` is the one that runs the
+     * other way: Starter takes 3%, Professional takes 1%. Read on the capacity
+     * scale it looks like Professional gives less, and planCovers() refuses the
+     * single most obvious upgrade in the catalogue. It did, until this list
+     * existed.
+     *
+     * Adding a numeric feature key where less is more means adding it here too —
+     * alongside the PlanSeeder and FeatureDefinitionSeeder entries CLAUDE.md
+     * already asks for.
+     */
+    private const LOWER_IS_BETTER = ['platform_fee_percent'];
+
     public function value(Event $event, string $featureKey): ?string
     {
         return $this->planValue($event->plan, $featureKey);
@@ -161,10 +177,19 @@ class PlanGate
             $theirs = self::$memo[$target->id][$key] ?? null;
 
             if (is_numeric($value)) {
-                // Absent means "no cap named", which is not a promise of more —
-                // for a key the current plan does bound, treat it as zero.
+                // Absent counts as 0, and that lands correctly on both scales:
+                // no cap named is the worst a capacity can be, and no fee named
+                // is the best a fee can be.
                 $mine = (int) $value;
                 $other = is_numeric($theirs) ? (int) $theirs : 0;
+
+                if (in_array($key, self::LOWER_IS_BETTER, true)) {
+                    if ($other > $mine) {
+                        return false;
+                    }
+
+                    continue;
+                }
 
                 if ($mine === -1) {
                     if ($other !== -1) {

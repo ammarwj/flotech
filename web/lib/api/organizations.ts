@@ -7,6 +7,7 @@ import type {
   PublicOrganization,
   SocialLinks,
   EventPlanOrder,
+  PlanUpgradeOption,
 } from "@/types/api";
 
 export async function getOrganizations(): Promise<Organization[]> {
@@ -82,6 +83,36 @@ export async function getPlanOrders(orgId: string): Promise<EventPlanOrder[]> {
 export async function payPlanOrder(orgId: string, orderId: string): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
     `/organizations/${orgId}/plan-orders/${orderId}/pay`
+  );
+  return data.data;
+}
+
+/**
+ * Plans this order may move up to, with the difference each would cost.
+ *
+ * The server filters the list with the same superset test the checkout enforces,
+ * so nothing offered here can be refused at the till. There is no downgrade
+ * counterpart — see PlanGate::planCovers().
+ */
+export async function getPlanUpgradeOptions(
+  orgId: string,
+  orderId: string
+): Promise<PlanUpgradeOption[]> {
+  const { data } = await apiClient.get<ApiEnvelope<PlanUpgradeOption[]>>(
+    `/organizations/${orgId}/plan-orders/${orderId}/upgrade-options`
+  );
+  return data.data;
+}
+
+/** Raise the top-up bill. Settles like any other plan payment. */
+export async function upgradePlanOrder(
+  orgId: string,
+  orderId: string,
+  planId: string
+): Promise<CheckoutResult> {
+  const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
+    `/organizations/${orgId}/plan-orders/${orderId}/upgrade`,
+    { plan_id: planId }
   );
   return data.data;
 }

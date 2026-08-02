@@ -84,9 +84,24 @@ export function anyEventAllows(
  * This is what stops an abandoned checkout from being money nobody ever sees
  * again — the credit is surfaced on /organizer/billing and on the create-event
  * page rather than sitting invisible in an orders list.
+ *
+ * Two paid orders are deliberately *not* credits, and both would otherwise show
+ * one purchase twice: a top-up bill (`upgrade_of_id`), which buys a move rather
+ * than an event, and an order a paid upgrade has replaced (`superseded`), whose
+ * entitlement now lives on its successor. Mirrors scopeUnconsumed() on the
+ * server, which refuses the same two.
  */
 export function unconsumedOrders(orders?: EventPlanOrder[] | null): EventPlanOrder[] {
-  return orders?.filter((o) => o.status === "paid" && !o.event_id) ?? [];
+  return (
+    orders?.filter(
+      (o) => o.status === "paid" && !o.event_id && !o.upgrade_of_id && !o.superseded
+    ) ?? []
+  );
+}
+
+/** A paid order whose plan can still be moved up. */
+export function canUpgrade(order?: EventPlanOrder | null): boolean {
+  return !!order && order.status === "paid" && !order.upgrade_of_id && !order.superseded;
 }
 
 const PLAN_COLORS: Record<string, string> = {

@@ -103,6 +103,36 @@ class EventPlanOrder extends Model
             ->whereDoesntHave('upgrades', fn (Builder $q) => $q->where('status', 'paid'));
     }
 
+    /**
+     * Everything paid to reach this entitlement, this order and the chain of
+     * orders it upgraded.
+     *
+     * The base an upgrade is priced against. Using this order's own `amount`
+     * looks right until someone upgrades twice: Starter 150 → Pro 200 leaves an
+     * order holding 200, so a jump to Professional (800) would bill 600 and the
+     * organizer ends up paying 950 for a plan on sale at 800. Summing the chain
+     * keeps the promise that buying up costs exactly what buying it outright
+     * would have.
+     *
+     * A backfilled order contributes 0, so an event that was never paid for
+     * still pays the full price — which is the point.
+     */
+    public function paidTowardsPlan(): float
+    {
+        $total = 0.0;
+        $cursor = $this;
+
+        // Bounded rather than trusted: `upgrade_of_id` is a self reference, and
+        // a cycle here would hang a checkout. Nothing legitimate is more than a
+        // few links long.
+        for ($hops = 0; $cursor && $hops < 20; $hops++) {
+            $total += (float) $cursor->amount;
+            $cursor = $cursor->upgrade_of_id ? self::find($cursor->upgrade_of_id) : null;
+        }
+
+        return $total;
+    }
+
     /** True once a paid upgrade has taken this order's place. */
     public function isSuperseded(): bool
     {

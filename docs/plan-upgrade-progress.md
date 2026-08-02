@@ -101,11 +101,24 @@ bukan saat lunas.
 - [x] `activate()` upgrade idempoten (webhook dikirim ulang)
 - [x] operator ditolak
 
-### Tahap 4 — Frontend  `[ ]`
-- [ ] `lib/api` + tipe
-- [ ] Tombol upgrade di `/organizer/billing` (kredit) dan di halaman event
-- [ ] `unconsumedOrders()` ikut mengecualikan order pensiun
-- [ ] Panel manual transfer ikut jalan untuk tagihan upgrade
+### Tahap 4 — Frontend  ✅
+- [x] `lib/api` + tipe
+- [x] Tombol upgrade di `/organizer/billing` (kredit) dan di halaman event
+- [x] `unconsumedOrders()` ikut mengecualikan order pensiun
+- [x] Panel manual transfer ikut jalan untuk tagihan upgrade
+
+> **Dua cacat lagi, keduanya cuma kelihatan di stack yang benar-benar jalan.**
+> 3. **`platform_fee_percent` makin kecil makin bagus**, tapi uji monoton
+>    memperlakukannya seperti kapasitas — jadi Starter (3%) → Pro (2%) terbaca
+>    sebagai kehilangan dan **upgrade paling jelas di katalog ditolak**. Dua
+>    belas test hijau tidak bilang apa-apa karena semuanya memakai paket buatan
+>    sendiri yang tidak punya key fee. Sekarang ada `PlanGate::LOWER_IS_BETTER`,
+>    dan satu test yang memakai **katalog sungguhan**.
+> 4. **Upgrade berantai menagih terlalu mahal.** Selisih dihitung dari `amount`
+>    order itu sendiri; setelah Starter→Pro pemegangnya cuma membawa top-up
+>    200rb, jadi lompat ke Professional ditagih 600rb dan totalnya 950rb untuk
+>    paket seharga 800rb. Sekarang `paidTowardsPlan()` menjumlahkan seluruh
+>    rantai. Diverifikasi di stack: 150 + 200 + 450 = **800**.
 
 ### Tahap 5 — Docs  `[ ]`
 - [ ] `CLAUDE.md` — invarian di atas

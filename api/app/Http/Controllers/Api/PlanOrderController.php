@@ -88,17 +88,18 @@ class PlanOrderController extends Controller
         }
 
         $planOrder->loadMissing('plan.features');
+        $paid = $planOrder->paidTowardsPlan();
 
         $options = Plan::where('is_active', true)
             ->with('features')
             ->orderBy('sort_order')
             ->get()
             ->filter(fn (Plan $plan) => $plan->id !== $planOrder->plan_id
-                && (float) $plan->price - (float) $planOrder->amount > 0
+                && (float) $plan->price - $paid > 0
                 && $this->gate->planCovers($planOrder->plan, $plan))
             ->map(fn (Plan $plan) => [
                 'plan' => new PlanResource($plan),
-                'price_difference' => round((float) $plan->price - (float) $planOrder->amount, 2),
+                'price_difference' => round((float) $plan->price - $paid, 2),
             ])
             ->values();
 

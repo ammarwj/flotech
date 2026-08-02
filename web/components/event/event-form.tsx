@@ -784,7 +784,14 @@ export function EventForm({
               {teamsCap !== null
                 ? `${teamsCap} peserta per kategori`
                 : "peserta tanpa batas"}
-              .
+              .{" "}
+              {/* The cap is only half an answer without a way past it. Links
+                  rather than opening the dialog here: the form has the plan but
+                  not the order behind it, and billing is where that lives. */}
+              <Link href="/organizer/billing" className="underline underline-offset-2">
+                Naikkan paket
+              </Link>{" "}
+              kalau butuh lebih.
             </p>
           )}
         </CardContent>

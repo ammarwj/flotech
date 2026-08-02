@@ -185,6 +185,10 @@ export interface EventPlanOrder extends ManualPaymentFields {
   event_id: string | null;
   consumed_at: string | null;
   event?: { id: string; name: string };
+  /** Set on a top-up bill: the order it upgrades. Never itself a credit. */
+  upgrade_of_id: string | null;
+  /** True once a paid upgrade has taken this order's place — also not a credit. */
+  superseded: boolean;
   midtrans_order_id: string | null;
   payment_type: string | null;
   paid_at: string | null;
@@ -201,6 +205,13 @@ export interface EventPlanOrder extends ManualPaymentFields {
  * `redirect_url` here: a null one means "manual", "activated" or "the gateway
  * call failed", and only the subscription's own status tells them apart.
  */
+/** A plan this order may move up to, and what the move costs. */
+export interface PlanUpgradeOption {
+  plan: Plan;
+  /** Target price minus what was already paid — never the full price. */
+  price_difference: number;
+}
+
 export interface CheckoutResult extends PaymentStart {
   plan_order: EventPlanOrder;
 }

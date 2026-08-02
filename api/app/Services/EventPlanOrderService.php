@@ -90,10 +90,12 @@ class EventPlanOrderService
      * exactly what buying Pro would have — there is no cheaper route in, and no
      * reason to sit on a plan that has stopped fitting.
      *
-     * The difference is measured against what was actually paid (`amount`), not
-     * against the target's catalogue price today. An order created by
-     * `events:backfill-plan` carries `amount` 0 and therefore pays full price,
-     * which is right: no money ever changed hands for it.
+     * The difference is measured against everything paid so far along the
+     * upgrade chain (see paidTowardsPlan()), not against this order's own
+     * `amount`. Two upgrades in a row would otherwise overcharge: the second
+     * would be priced against the first top-up alone. An order created by
+     * `events:backfill-plan` contributes 0 and therefore pays full price, which
+     * is right — no money ever changed hands for it.
      *
      * @throws PlanFeatureException
      */
@@ -122,7 +124,7 @@ class EventPlanOrderService
             );
         }
 
-        $difference = round((float) $target->price - (float) $order->amount, 2);
+        $difference = round((float) $target->price - $order->paidTowardsPlan(), 2);
 
         if ($difference <= 0) {
             throw new PlanFeatureException('Paket itu tidak lebih mahal, jadi tidak bisa di-upgrade ke sana.', ['feature' => 'plan_not_upgrade']);

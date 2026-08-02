@@ -14,7 +14,7 @@ import {
 } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
 import { checkoutOutcome } from "@/lib/checkout";
-import { unconsumedOrders } from "@/lib/plan";
+import { canUpgrade, unconsumedOrders } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PlanOrderStatusBadge } from "@/components/shared/status-badge";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { PlanUpgradeDialog } from "@/components/subscription/plan-upgrade-dialog";
 import {
   DocumentPreviewDialog,
   type PreviewDocument,
@@ -48,6 +49,7 @@ export default function BillingPage() {
   const { org, orgId, isLoading: orgLoading } = useActiveOrg();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewDocument | null>(null);
+  const [upgrading, setUpgrading] = useState<EventPlanOrder | null>(null);
 
   const closePreview = () => {
     setPreview((current) => {
@@ -204,9 +206,17 @@ export default function BillingPage() {
                     </p>
                   </div>
                 </div>
-                <Button asChild size="sm">
-                  <Link href={`/organizer/events/new?plan_order_id=${order.id}`}>Buat event</Link>
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {/* Before it is spent is the cheapest moment to change your
+                      mind — the alternative used to be buying a second plan and
+                      leaving this one to rot. */}
+                  <Button variant="secondary" size="sm" onClick={() => setUpgrading(order)}>
+                    Naikkan paket
+                  </Button>
+                  <Button asChild size="sm">
+                    <Link href={`/organizer/events/new?plan_order_id=${order.id}`}>Buat event</Link>
+                  </Button>
+                </div>
               </Card>
             ))}
           </div>
@@ -261,6 +271,14 @@ export default function BillingPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  {/* The event outgrew its plan — the case the whole upgrade
+                      path exists for. Credits get their own button above; this
+                      is the same dialog against an order already spent. */}
+                  {order.event_id && canUpgrade(order) && (
+                    <Button variant="secondary" size="sm" onClick={() => setUpgrading(order)}>
+                      Naikkan paket
+                    </Button>
+                  )}
                   {/* Manual bills are settled through the panel above, not a
                       Snap redirect — and pay() would re-derive the rail. */}
                   {order.status === "past_due" && order.payment_method === "gateway" && (
@@ -309,6 +327,15 @@ export default function BillingPage() {
       </section>
 
       <DocumentPreviewDialog document={preview} onClose={closePreview} />
+
+      {upgrading && orgId && (
+        <PlanUpgradeDialog
+          orgId={orgId}
+          order={upgrading}
+          open
+          onOpenChange={(next) => !next && setUpgrading(null)}
+        />
+      )}
     </div>
   );
 }
