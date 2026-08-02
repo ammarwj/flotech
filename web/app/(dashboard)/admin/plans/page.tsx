@@ -16,6 +16,7 @@ import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import type { Plan } from "@/types/api";
 
 const EMPTY_FORM = { name: "", slug: "", price: 0 };
@@ -207,16 +208,35 @@ function PriceEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
   );
 }
 
+/**
+ * The catalog is the row set, not the admin's keyboard.
+ *
+ * `feature_key` used to be a free-text input, so a typo (`online_registratio`)
+ * saved happily — and because this endpoint prunes keys missing from the
+ * payload, it *deleted* the real key at the same time, switching the feature
+ * off for every event on the plan with a success toast. Rows now come from
+ * `feature_details`, which carries every definition (`value: null` for the ones
+ * this plan lacks), so a key can only be one the API already knows. New keys
+ * are born in Definisi Fitur, next to their label — same place the seeders put
+ * them.
+ */
 function FeatureEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
-  const [rows, setRows] = useState<Array<{ key: string; value: string }>>(
-    Object.entries(plan.features ?? {}).map(([key, value]) => ({ key, value }))
+  const details = plan.feature_details ?? [];
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(details.map((d) => [d.key, d.value ?? ""]))
   );
+
+  // Values whose definition is gone (typos saved by the old editor, keys the
+  // catalog dropped). They render nowhere else, so they are surfaced here
+  // instead of being pruned behind the admin's back.
+  const orphans = Object.keys(plan.features ?? {}).filter((key) => !details.some((d) => d.key === key));
 
   const save = useMutation({
     mutationFn: () => {
       const features: Record<string, string> = {};
-      rows.forEach((r) => {
-        if (r.key.trim()) features[r.key.trim()] = r.value;
+      Object.entries(values).forEach(([key, value]) => {
+        // Blank = the plan does not get this feature; the API prunes it.
+        if (value.trim()) features[key] = value.trim();
       });
       return syncPlanFeatures(plan.id, features);
     },
@@ -224,34 +244,68 @@ function FeatureEditor({ plan, onSaved }: { plan: Plan; onSaved: () => void }) {
       toast.success("Fitur berhasil disimpan.");
       onSaved();
     },
-    onError: () => toast.error("Gagal menyimpan fitur."),
+    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan fitur.").message),
   });
+
+  const setValue = (key: string, value: string) => setValues((prev) => ({ ...prev, [key]: value }));
 
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="grid gap-2">
-        {rows.map((row, i) => (
-          <div key={i} className="flex gap-2">
-            <Input
-              placeholder="feature_key"
-              value={row.key}
-              onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
-            />
-            <Input
-              placeholder="value (true / 10 / -1)"
-              value={row.value}
-              onChange={(e) => setRows(rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
-            />
-            <Button variant="ghost" size="sm" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
-              ✕
-            </Button>
+      <p className="text-xs text-muted-foreground">
+        Kosongkan nilainya untuk mencabut fitur dari paket ini. Key baru ditambahkan di menu{" "}
+        <span className="font-medium">Definisi Fitur</span>.
+      </p>
+
+      {details.length === 0 && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Belum ada definisi fitur. Tambahkan dulu di menu Definisi Fitur.
+        </p>
+      )}
+
+      <div className="mt-3 grid gap-2">
+        {details.map((detail, i) => (
+          <div key={detail.key}>
+            {detail.group && detail.group !== details[i - 1]?.group && (
+              <p className="mb-1.5 mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {detail.group}
+              </p>
+            )}
+            <div className="grid items-center gap-2 sm:grid-cols-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{detail.label}</p>
+                <p className="truncate font-mono text-xs text-muted-foreground">{detail.key}</p>
+              </div>
+              {detail.type === "boolean" ? (
+                <Select
+                  value={values[detail.key] ?? ""}
+                  onChange={(e) => setValue(detail.key, e.target.value)}
+                >
+                  <option value="">Tidak termasuk</option>
+                  <option value="true">Termasuk (true)</option>
+                  <option value="false">Dimatikan (false)</option>
+                </Select>
+              ) : (
+                <Input
+                  value={values[detail.key] ?? ""}
+                  onChange={(e) => setValue(detail.key, e.target.value)}
+                  placeholder={
+                    detail.type === "numeric" ? "angka (-1 = unlimited, kosong = tidak termasuk)" : "teks"
+                  }
+                />
+              )}
+            </div>
           </div>
         ))}
       </div>
-      <div className="mt-3 flex gap-2">
-        <Button variant="outline" size="sm" onClick={() => setRows([...rows, { key: "", value: "" }])}>
-          + Baris
-        </Button>
+
+      {orphans.length > 0 && (
+        <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+          Nilai tanpa definisi: <span className="font-mono">{orphans.join(", ")}</span>. Key ini tidak dibaca
+          gating mana pun dan akan dihapus saat disimpan.
+        </p>
+      )}
+
+      <div className="mt-3">
         <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
           {save.isPending ? "Menyimpan…" : "Simpan fitur"}
         </Button>

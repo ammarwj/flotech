@@ -111,8 +111,14 @@ export default function AdminFeatureDefinitionsPage() {
             placeholder="mis. max_categories"
             value={form.feature_key}
             onChange={(e) => setForm({ ...form, feature_key: e.target.value })}
+            // Gating reads this literal string; the API rejects anything else.
+            pattern="[a-z][a-z0-9_]*"
+            title="Huruf kecil, angka, dan garis bawah — mis. online_registration"
             required
           />
+          <p className="text-xs text-muted-foreground">
+            Dibaca kode gating, jadi tidak bisa diubah lagi setelah dipakai paket.
+          </p>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="feature_label">Label</Label>
