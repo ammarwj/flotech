@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\PurgeMediaJob;
 use App\Models\Certificate;
 use App\Models\CertificateTemplate;
 use App\Models\Event;
@@ -10,6 +11,7 @@ use App\Models\Plan;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
+use App\Services\MediaCleanupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\Storage;
@@ -169,9 +171,16 @@ class MediaCleanupTest extends TestCase
         $otherBanner = $this->file('events/other-banner.webp');
         $this->event($org, 'other-cup')->update(['banner_url' => $otherBanner]);
 
-        $this->actingAs($user, 'api')
-            ->deleteJson("/api/v1/organizations/{$org->id}/events/{$event->id}")
-            ->assertOk();
+        // Driven through the service rather than DELETE /events/{id}, because
+        // the endpoint now refuses an event carrying teams, ticket orders or
+        // certificates — deleting one of those took its own paid history and
+        // handed the plan credit back. This test is about the *collector*: given
+        // an event that is going away, does it find every file underneath it and
+        // nothing outside it. The two questions are separate now, and
+        // EventDeletionTest owns the other one.
+        $urls = app(MediaCleanupService::class)->eventUrls($event->fresh());
+        $event->delete();
+        PurgeMediaJob::dispatch($urls)->afterCommit();
 
         $this->commitDeferredJobs();
 

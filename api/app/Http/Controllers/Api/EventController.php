@@ -8,6 +8,7 @@ use App\Http\Requests\Event\StoreEventRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Jobs\PurgeMediaJob;
+use App\Models\Certificate;
 use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
 use App\Models\EventCategory;
@@ -380,18 +381,72 @@ class EventController extends Controller
      * Deleting an event cascades all the way down — teams, rosters, matches,
      * orders, certificates. Their file keys only exist on those rows, so they
      * are read here, before the delete, and purged once the row is gone.
+     *
+     * Which is exactly why only an event that never began may be deleted. Two
+     * separate harms sat behind the old unguarded delete:
+     *
+     *  - `event_plan_orders.event_id` is `nullOnDelete`, so removing the event
+     *    handed the credit straight back and one payment bought unlimited
+     *    events. `consumed_at` recorded that it had been spent, but nothing read
+     *    it.
+     *  - `certificates` and `ticket_orders` cascade. A certificate carries a
+     *    public verification URL printed on the document itself, and
+     *    CertificateController::download is deliberately left open so those keep
+     *    resolving forever — a cascade quietly breaks every QR already handed
+     *    out, along with the record of who paid for a ticket.
+     *
+     * A draft with nothing attached has neither problem, and refusing that would
+     * punish a plain mis-click. Everything else is `cancelled`, not deleted:
+     * status the event stops, history it keeps.
      */
     public function destroy(Request $request, string $organization, string $event): JsonResponse
     {
         $model = $this->find($request, $event);
 
+        if ($blocker = $this->deletionBlocker($model)) {
+            return ApiResponse::error(
+                "Event ini tidak bisa dihapus karena {$blocker}. Batalkan saja lewat status Dibatalkan — datanya tetap utuh dan paketnya tidak hangus.",
+                ['status' => [$blocker]],
+                422,
+            );
+        }
+
         $urls = $this->media->eventUrls($model);
+
+        // The credit only returns for an event that never began, so it is
+        // released here rather than left to the foreign key. `consumed_at` is
+        // the part `nullOnDelete` cannot reach, and scopeUnconsumed() reads it.
+        EventPlanOrder::where('event_id', $model->id)
+            ->update(['event_id' => null, 'consumed_at' => null]);
 
         $model->delete();
 
         PurgeMediaJob::dispatch($urls)->afterCommit();
 
-        return ApiResponse::success(null, 'Event dihapus');
+        return ApiResponse::success(null, 'Event dihapus, paketnya kembali jadi kredit');
+    }
+
+    /**
+     * Why this event may not be deleted, or null if it may.
+     *
+     * Phrased as the reason rather than a boolean because the message has to
+     * name it: "tidak bisa dihapus" with no cause reads as a bug to the person
+     * who just tried.
+     */
+    protected function deletionBlocker(Event $event): ?string
+    {
+        if ($event->status !== 'draft') {
+            return 'sudah dipublikasikan';
+        }
+
+        // Belt and braces behind the status check: a draft should not be able to
+        // hold any of these, but each one is something a person cannot get back.
+        return match (true) {
+            $event->teams()->exists() => 'sudah punya peserta terdaftar',
+            $event->ticketOrders()->exists() => 'sudah punya pesanan tiket',
+            Certificate::where('event_id', $event->id)->exists() => 'sudah menerbitkan sertifikat',
+            default => null,
+        };
     }
 
     /**

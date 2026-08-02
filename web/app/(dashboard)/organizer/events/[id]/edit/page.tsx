@@ -115,23 +115,36 @@ export default function EditEventPage() {
 
   const ev = eventQuery.data;
 
-  // Deleting an event cascades all the way down — categories, and through them
-  // every team and match — so the dialog names what actually goes with it
-  // rather than asking "yakin?".
+  /**
+   * Only a draft that nobody has touched may be deleted; the server refuses the
+   * rest with a 422. Mirrored here so the button is absent rather than present
+   * and rejected — the reactive 422 is still the net, but a destructive control
+   * that cannot work should not be offered.
+   *
+   * `teams_count` is the one signal the payload carries. It is deliberately not
+   * the whole test the server runs (that also weighs ticket orders and issued
+   * certificates); a draft holding either is unusual enough that the 422 can
+   * carry it.
+   */
+  const deletable = ev.status === "draft" && (ev.teams_count ?? 0) === 0;
+
+  // The dialog names what actually goes with it rather than asking "yakin?" —
+  // and, for a draft, that the plan comes back, which is the whole reason
+  // deleting one is allowed at all.
   const confirmDelete = async () => {
     const ok = await confirm({
       title: "Hapus event ini?",
-      description: `"${ev.name}" dihapus permanen beserta seluruh isinya.`,
+      description: `"${ev.name}" masih draf dan belum pernah dipublikasikan, jadi bisa dihapus permanen.`,
       tone: "danger",
       icon: Trash2,
       confirmLabel: "Hapus event",
       consequences: (
         <ul className="grid gap-1">
           <li>{ev.categories.length} kategori kompetisi</li>
-          <li>{ev.teams_count ?? 0} tim terdaftar</li>
-          <li>Seluruh jadwal &amp; hasil pertandingan</li>
-          <li>Kategori tiket beserta data penjualannya</li>
           <li>Foto galeri &amp; sponsor</li>
+          <li className="text-[var(--success)]">
+            Paketnya kembali jadi kredit dan bisa dipakai untuk event lain
+          </li>
         </ul>
       ),
     });
@@ -167,6 +180,7 @@ export default function EditEventPage() {
                 Galeri & Sponsor
               </Link>
             </Button>
+            {deletable && (
             <Button
               variant="destructive"
               onClick={() => void confirmDelete()}
@@ -175,6 +189,7 @@ export default function EditEventPage() {
               <Trash2 className="h-4 w-4" />
               Hapus
             </Button>
+            )}
           </>
         }
       />
