@@ -232,6 +232,15 @@ img { max-width: 100%; display: block; }
   color: var(--brand-600);
   white-space: nowrap;
 }
+/* The hero badge is by far the longest pill on the site, and `nowrap` made its
+   min-content 339px — wider than the 312px a 360px phone leaves inside
+   .container. As a grid item that floor propagated to the whole hero column, so
+   the section sat 3px past the viewport edge on every 360px device. Let it wrap
+   down here; every other `.pill` is a short label ("Grup A", "12 foto") that
+   never reaches a second line, so nothing else changes shape. */
+@media (max-width: 430px) {
+  .pill { white-space: normal; height: auto; padding-block: 6px; line-height: 1.4; }
+}
 [data-theme="dark"] .pill { color: var(--brand-500); }
 
 .badge {

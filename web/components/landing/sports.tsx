@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { observeReveals } from "@/components/landing/reveal-init";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { participantLabel, participantModes } from "@/lib/scoring";
 
 /**
  * The sports the platform supports — straight from the catalog, so a sport the
@@ -53,7 +54,8 @@ export function Sports() {
             {sports.length} cabang, banyak format turnamen
           </h2>
           <p className="section-sub">
-            Setiap cabang punya aturan skor, statistik, dan klasemen yang tepat sesuai karakter olahraganya.
+            Setiap cabang punya aturan skor, statistik, dan klasemen yang tepat sesuai karakter
+            olahraganya. Semua bisa dijalankan sebagai {formats}.
           </p>
         </div>
         <div className="sports-grid">
@@ -66,7 +68,11 @@ export function Sports() {
             >
               <div className="sport-ic">{s.icon ?? "🏆"}</div>
               <h4>{s.name}</h4>
-              <p>{formats}</p>
+              {/* The entrant shapes this sport supports — the one line that
+                  actually differs between cards. It used to print the format
+                  list, which is identical for every sport, so nine cards
+                  repeated the same sentence and said nothing. */}
+              <p>{participantModes(s).map(participantLabel).join(" · ")}</p>
             </article>
           ))}
         </div>
