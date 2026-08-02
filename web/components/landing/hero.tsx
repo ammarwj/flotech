@@ -3,10 +3,16 @@
 import Link from "next/link";
 
 import { usePublicCta } from "@/components/auth/public-auth-actions";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { ArrowRight, CheckIcon, StarIcon } from "./icons";
 
 export function Hero() {
   const cta = usePublicCta();
+  // Was hardcoded "5 cabang olahraga" while the catalog had grown to nine — the
+  // same drift the Sports section below already avoids by counting. Rendered
+  // only once the catalog lands, so the line is never briefly wrong; the two
+  // claims beside it don't depend on data and stay put.
+  const { sports } = useCatalog();
 
   return (
     <section className="hero">
@@ -41,9 +47,11 @@ export function Hero() {
             <span>
               <CheckIcon /> Setup 10 menit
             </span>
-            <span>
-              <CheckIcon /> 5 cabang olahraga
-            </span>
+            {sports.length > 0 && (
+              <span>
+                <CheckIcon /> {sports.length} cabang olahraga
+              </span>
+            )}
           </div>
         </div>
 
