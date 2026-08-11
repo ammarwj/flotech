@@ -20,16 +20,16 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         // Platform/SaaS administrator.
-        $this->makeUser('admin@flo-event.id', 'Super Admin', 'super_admin');
+        $this->makeUser('admin@floevent.id', 'Super Admin', 'super_admin');
 
         // Organizer who owns the demo organization (org-level role: admin).
-        $owner = $this->makeUser('owner@flo-event.id', 'Demo Owner', 'user');
+        $owner = $this->makeUser('owner@floevent.id', 'Demo Owner', 'user');
 
         // Staff member of the demo organization (org-level role: operator).
-        $operator = $this->makeUser('operator@flo-event.id', 'Demo Operator', 'user');
+        $operator = $this->makeUser('operator@floevent.id', 'Demo Operator', 'user');
 
         // Participant (registers/manages teams; no organization membership).
-        $this->makeUser('participant@flo-event.id', 'Demo Participant', 'user');
+        $this->makeUser('participant@floevent.id', 'Demo Participant', 'user');
 
         // ---- Demo organization to give the org-level roles something real ----
         $planId = Plan::where('slug', 'basic')->value('id') ?? Plan::value('id');
@@ -58,10 +58,10 @@ class UserSeeder extends Seeder
         $this->command?->table(
             ['Email', 'User role', 'Org role'],
             [
-                ['admin@flo-event.id', 'super_admin', '—'],
-                ['owner@flo-event.id', 'user', 'admin (Demo Organizer)'],
-                ['operator@flo-event.id', 'user', 'operator (Demo Organizer)'],
-                ['participant@flo-event.id', 'user', '—'],
+                ['admin@floevent.id', 'super_admin', '—'],
+                ['owner@floevent.id', 'user', 'admin (Demo Organizer)'],
+                ['operator@floevent.id', 'user', 'operator (Demo Organizer)'],
+                ['participant@floevent.id', 'user', '—'],
             ],
         );
     }

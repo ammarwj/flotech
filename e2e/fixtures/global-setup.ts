@@ -26,11 +26,11 @@ export default async function globalSetup() {
   // The super-admin flows (§5.8) sign in as the seeded platform admin; without
   // the seeder the wallet suite would fail with a confusing 401.
   const login = await ctx.post(`${API_URL}/auth/login`, {
-    data: { email: "admin@flo-event.id", password: "password" },
+    data: { email: "admin@floevent.id", password: "password" },
   });
   if (!login.ok()) {
     throw new Error(
-      "Akun seeder admin@flo-event.id tidak bisa login.\n" +
+      "Akun seeder admin@floevent.id tidak bisa login.\n" +
         "Jalankan: docker compose exec api php artisan db:seed",
     );
   }

@@ -22,7 +22,7 @@ return [
     'tagline' => env('BRAND_TAGLINE', 'Manajemen event olahraga'),
 
     // Where a recipient replies when something looks wrong.
-    'support_email' => env('BRAND_SUPPORT_EMAIL', 'halo@flo-event.id'),
+    'support_email' => env('BRAND_SUPPORT_EMAIL', 'halo@floevent.id'),
 
     // The dashboard, not the API. Header wordmark links here.
     'url' => env('BRAND_URL', env('FRONTEND_URL', 'http://localhost:3000')),

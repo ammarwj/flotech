@@ -44,8 +44,12 @@ class BadmintonDemoSeeder extends Seeder
 
     /** @var list<string> */
     private array $singles = [
-        'Dimas Prayoga', 'Ammar Wijaya', 'Ucang Nugroho', 'Devan Saputra',
-        'Bagas Hidayat', 'Rizki Ramadhan',
+        'Dimas Prayoga',
+        'Ammar Wijaya',
+        'Ucang Nugroho',
+        'Devan Saputra',
+        'Bagas Hidayat',
+        'Rizki Ramadhan',
     ];
 
     /** @var list<array{0: string, 1: string}> */
@@ -103,7 +107,7 @@ class BadmintonDemoSeeder extends Seeder
                 [$squads->name, 'Tim (3 partai)', $squads->tournament_format, $squads->teams()->count()],
             ],
         );
-        $this->command?->info('Login: owner@flo-event.id / password');
+        $this->command?->info('Login: owner@floevent.id / password');
     }
 
     private function makeEvent(Organization $org): Event
@@ -121,7 +125,7 @@ class BadmintonDemoSeeder extends Seeder
                 'location_name' => 'GOR Bulungan',
                 'location_address' => 'Jl. Bulungan, Jakarta Selatan',
                 'description' => 'Turnamen badminton dengan tiga nomor sekaligus: tunggal, ganda, dan beregu. '
-                    .'Nomor beregu dimainkan atas tiga partai — hasil tim dihitung dari partai yang dimenangkan.',
+                    . 'Nomor beregu dimainkan atas tiga partai — hasil tim dihitung dari partai yang dimenangkan.',
             ],
         );
     }
@@ -195,7 +199,7 @@ class BadmintonDemoSeeder extends Seeder
             'category_id' => $category->id,
             'name' => $placeholder,
             'contact_name' => $players[0],
-            'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
+            'contact_phone' => '08' . random_int(11_000_0000, 13_999_9999),
             'status' => 'approved',
             'registered_at' => $registeredAt,
             'approved_at' => $registeredAt->copy()->addDay(),
@@ -211,7 +215,7 @@ class BadmintonDemoSeeder extends Seeder
         $team->setRelation('event', $category->event);
 
         $this->roster->syncPlayers($team, array_map(
-            fn (string $name) => ['full_name' => $name, 'position' => count($players) > 1 ? 'doubles' : 'singles'],
+            fn(string $name) => ['full_name' => $name, 'position' => count($players) > 1 ? 'doubles' : 'singles'],
             $players,
         ));
 
@@ -234,7 +238,7 @@ class BadmintonDemoSeeder extends Seeder
                 'category_id' => $category->id,
                 'name' => $name,
                 'contact_name' => $players[0],
-                'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
+                'contact_phone' => '08' . random_int(11_000_0000, 13_999_9999),
                 'status' => 'approved',
                 'registered_at' => $registeredAt,
                 'approved_at' => $registeredAt->copy()->addDay(),
@@ -249,7 +253,7 @@ class BadmintonDemoSeeder extends Seeder
 
             // A squad keeps its own name, so the roster is a plain list.
             $this->roster->syncPlayers($team, array_map(
-                fn (string $p, int $i) => [
+                fn(string $p, int $i) => [
                     'full_name' => $p,
                     'jersey_number' => (string) ($i + 1),
                     'position' => $i < 2 ? 'singles' : 'doubles',
@@ -344,8 +348,8 @@ class BadmintonDemoSeeder extends Seeder
         }
 
         return array_map(
-            fn (array $sets) => array_map(
-                fn (array $s) => ['home' => $s['away'], 'away' => $s['home']],
+            fn(array $sets) => array_map(
+                fn(array $s) => ['home' => $s['away'], 'away' => $s['home']],
                 $sets,
             ),
             $script,
@@ -456,7 +460,7 @@ class BadmintonDemoSeeder extends Seeder
         // 21 to whoever takes the set. Built from "who wins this one" rather than
         // from the set index: indexing it is how the away-wins branch ended up
         // awarding every set to home.
-        $set = fn (bool $homeTakes) => $homeTakes
+        $set = fn(bool $homeTakes) => $homeTakes
             ? ['home' => 21, 'away' => random_int(12, 19)]
             : ['home' => random_int(12, 19), 'away' => 21];
 

@@ -28,8 +28,9 @@ export function Hero() {
             <span className="accent">Tanpa Batas.</span>
           </h1>
           <p className="hero-lede">
-            Dari registrasi tim, jadwal otomatis, klasemen real-time, tiket QR, sampai sertifikat juara —
-            kelola seluruh siklus turnamen olahraga dalam satu platform. Siap pakai dalam 10 menit.
+            Dari registrasi tim, jadwal otomatis, klasemen real-time, tiket QR,
+            sampai sertifikat juara — kelola seluruh siklus turnamen olahraga
+            dalam satu platform. Siap pakai dalam 10 menit.
           </p>
           <div className="hero-cta">
             <Link href={cta.href} className="btn btn-primary btn-lg">
@@ -62,7 +63,9 @@ export function Hero() {
               <span className="mock-dot" />
               <span className="mock-dot" />
               <span className="mock-dot" />
-              <span className="mock-url">flo-event.id/jakarta-cup/liga-2026</span>
+              <span className="mock-url">
+                floevent.id/jakarta-cup/liga-2026
+              </span>
             </div>
             <div className="mock-body">
               <div className="mock-head">
@@ -96,15 +99,29 @@ export function Hero() {
                 </div>
                 <div className="mock-score">
                   <div className="mock-team">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} /> Garuda FC
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                      }}
+                    />{" "}
+                    Garuda FC
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 4 }}
+                  >
                     <span className="mock-num">2</span>
                     <span className="mock-vs">:</span>
                     <span className="mock-num">1</span>
                   </div>
                   <div className="mock-team away">
-                    Elang United <span className="crest" style={{ background: "linear-gradient(135deg,#DC2626,#991B1B)" }} />
+                    Elang United{" "}
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#DC2626,#991B1B)",
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -124,7 +141,14 @@ export function Hero() {
                     <td className="pos">1</td>
                     <td>
                       <div className="tname">
-                        <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} /> Garuda FC
+                        <span
+                          className="crest"
+                          style={{
+                            background:
+                              "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                          }}
+                        />{" "}
+                        Garuda FC
                       </div>
                     </td>
                     <td className="num">5</td>
@@ -135,7 +159,14 @@ export function Hero() {
                     <td className="pos">2</td>
                     <td>
                       <div className="tname">
-                        <span className="crest" style={{ background: "linear-gradient(135deg,#059669,#047857)" }} /> Rajawali
+                        <span
+                          className="crest"
+                          style={{
+                            background:
+                              "linear-gradient(135deg,#059669,#047857)",
+                          }}
+                        />{" "}
+                        Rajawali
                       </div>
                     </td>
                     <td className="num">5</td>
@@ -146,7 +177,14 @@ export function Hero() {
                     <td className="pos">3</td>
                     <td>
                       <div className="tname">
-                        <span className="crest" style={{ background: "linear-gradient(135deg,#DC2626,#991B1B)" }} /> Elang United
+                        <span
+                          className="crest"
+                          style={{
+                            background:
+                              "linear-gradient(135deg,#DC2626,#991B1B)",
+                          }}
+                        />{" "}
+                        Elang United
                       </div>
                     </td>
                     <td className="num">5</td>
@@ -157,7 +195,14 @@ export function Hero() {
                     <td className="pos">4</td>
                     <td>
                       <div className="tname">
-                        <span className="crest" style={{ background: "linear-gradient(135deg,#D97706,#B45309)" }} /> Macan Kemayoran
+                        <span
+                          className="crest"
+                          style={{
+                            background:
+                              "linear-gradient(135deg,#D97706,#B45309)",
+                          }}
+                        />{" "}
+                        Macan Kemayoran
                       </div>
                     </td>
                     <td className="num">5</td>
@@ -170,10 +215,25 @@ export function Hero() {
           </div>
 
           <div className="mock-float float-cert">
-            <span className="ic" style={{ background: "linear-gradient(135deg,var(--plan-professional),#B45309)" }}>
+            <span
+              className="ic"
+              style={{
+                background:
+                  "linear-gradient(135deg,var(--plan-professional),#B45309)",
+              }}
+            >
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 15a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" stroke="#fff" strokeWidth="2" />
-                <path d="m8.5 13-1.5 7 5-3 5 3-1.5-7" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
+                <path
+                  d="M12 15a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"
+                  stroke="#fff"
+                  strokeWidth="2"
+                />
+                <path
+                  d="m8.5 13-1.5 7 5-3 5 3-1.5-7"
+                  stroke="#fff"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                />
               </svg>
             </span>
             <div>
@@ -182,9 +242,20 @@ export function Hero() {
             </div>
           </div>
           <div className="mock-float float-ticket">
-            <span className="ic" style={{ background: "linear-gradient(135deg,var(--success),#15803D)" }}>
+            <span
+              className="ic"
+              style={{
+                background: "linear-gradient(135deg,var(--success),#15803D)",
+              }}
+            >
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="m5 13 4 4L19 7" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="m5 13 4 4L19 7"
+                  stroke="#fff"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </span>
             <div>
@@ -202,7 +273,9 @@ export function Proof() {
   return (
     <section className="proof">
       <div className="container">
-        <p className="proof-label">Dipercaya penyelenggara dari komunitas lokal hingga federasi nasional</p>
+        <p className="proof-label">
+          Dipercaya penyelenggara dari komunitas lokal hingga federasi nasional
+        </p>
         <div className="stat-row">
           <div className="stat">
             <b>1.200+</b>

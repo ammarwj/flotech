@@ -27,22 +27,70 @@ class DemoEventSeeder extends Seeder
 {
     /** @var list<string> */
     private array $firstNames = [
-        'Budi', 'Andi', 'Rizki', 'Dwi', 'Eko', 'Agus', 'Fajar', 'Hendra', 'Bayu', 'Yoga',
-        'Dimas', 'Arif', 'Galih', 'Reza', 'Wahyu', 'Iqbal', 'Surya', 'Bagus', 'Teguh', 'Aldi',
-        'Ferdi', 'Gilang', 'Krisna', 'Naufal', 'Putra',
+        'Budi',
+        'Andi',
+        'Rizki',
+        'Dwi',
+        'Eko',
+        'Agus',
+        'Fajar',
+        'Hendra',
+        'Bayu',
+        'Yoga',
+        'Dimas',
+        'Arif',
+        'Galih',
+        'Reza',
+        'Wahyu',
+        'Iqbal',
+        'Surya',
+        'Bagus',
+        'Teguh',
+        'Aldi',
+        'Ferdi',
+        'Gilang',
+        'Krisna',
+        'Naufal',
+        'Putra',
     ];
 
     /** @var list<string> */
     private array $lastNames = [
-        'Santoso', 'Saputra', 'Pratama', 'Wijaya', 'Nugroho', 'Setiawan', 'Kurniawan',
-        'Hidayat', 'Ramadhan', 'Permana', 'Maulana', 'Firmansyah', 'Susanto', 'Gunawan', 'Halim',
+        'Santoso',
+        'Saputra',
+        'Pratama',
+        'Wijaya',
+        'Nugroho',
+        'Setiawan',
+        'Kurniawan',
+        'Hidayat',
+        'Ramadhan',
+        'Permana',
+        'Maulana',
+        'Firmansyah',
+        'Susanto',
+        'Gunawan',
+        'Halim',
     ];
 
     /** @var list<string> */
     private array $clubNames = [
-        'Garuda FC', 'Elang Muda', 'Putra Bangsa', 'Bintang Timur', 'Singa Lapangan',
-        'Macan Kemayoran', 'Rajawali United', 'Naga Biru', 'Persatuan Jaya', 'Harimau Sakti',
-        'Banteng Merah', 'Gajah Perkasa', 'Camar Putih', 'Kuda Liar', 'Serigala Hitam', 'Phoenix United',
+        'Garuda FC',
+        'Elang Muda',
+        'Putra Bangsa',
+        'Bintang Timur',
+        'Singa Lapangan',
+        'Macan Kemayoran',
+        'Rajawali United',
+        'Naga Biru',
+        'Persatuan Jaya',
+        'Harimau Sakti',
+        'Banteng Merah',
+        'Gajah Perkasa',
+        'Camar Putih',
+        'Kuda Liar',
+        'Serigala Hitam',
+        'Phoenix United',
     ];
 
     public function run(): void
@@ -55,7 +103,7 @@ class DemoEventSeeder extends Seeder
             return;
         }
 
-        $participant = User::where('email', 'participant@flo-event.id')->first();
+        $participant = User::where('email', 'participant@floevent.id')->first();
 
         // Each event runs one-or-more categories. The football event carries two
         // (Senior + U-17) at different formats and fees to exercise the feature.
@@ -167,7 +215,7 @@ class DemoEventSeeder extends Seeder
                 'location_name' => $cfg['location_name'],
                 'location_address' => $cfg['location_address'],
                 'description' => "Turnamen {$cfg['name']} terbuka untuk klub komunitas. "
-                    .'Pendaftaran tim, jadwal pertandingan, dan klasemen dikelola lewat platform flo-event.',
+                    . 'Pendaftaran tim, jadwal pertandingan, dan klasemen dikelola lewat platform flo-event.',
             ],
         );
     }
@@ -202,7 +250,7 @@ class DemoEventSeeder extends Seeder
             'category_id' => $category->id,
             'name' => $name,
             'contact_name' => $this->randomPerson(),
-            'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
+            'contact_phone' => '08' . random_int(11_000_0000, 13_999_9999),
             'status' => $pending ? 'pending' : 'approved',
             'registered_at' => $registeredAt,
             'approved_at' => $pending ? null : $registeredAt->copy()->addDay(),
@@ -420,6 +468,6 @@ class DemoEventSeeder extends Seeder
 
     private function randomPerson(): string
     {
-        return $this->firstNames[array_rand($this->firstNames)].' '.$this->lastNames[array_rand($this->lastNames)];
+        return $this->firstNames[array_rand($this->firstNames)] . ' ' . $this->lastNames[array_rand($this->lastNames)];
     }
 }

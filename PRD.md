@@ -120,9 +120,9 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 - Organizer dapat membuat event sesuai kuota paket
 - **Setiap event berisi satu atau lebih kategori kompetisi** (mis. U-17, Putri, Open) — masing-masing dengan format, konfigurasi bracket, biaya registrasi, dan batas tim sendiri (FR-22 / §4.22)
 - Mendukung format Liga, Knockout (single/double elimination), Hybrid — **dipilih per kategori**
-- Landing page publik per event dengan URL `flo-event.id/[org-slug]/[event-slug]`
-- **Katalog event publik** di `flo-event.id/event` (pencarian, filter cabang/status, paginasi — semuanya di server) agar event bisa **ditemukan**, bukan hanya diakses lewat tautan langsung
-- **Profil penyelenggara publik** di `flo-event.id/[org-slug]`, berisi profil organizer + seluruh event yang ia publikasikan
+- Landing page publik per event dengan URL `floevent.id/[org-slug]/[event-slug]`
+- **Katalog event publik** di `floevent.id/event` (pencarian, filter cabang/status, paginasi — semuanya di server) agar event bisa **ditemukan**, bukan hanya diakses lewat tautan langsung
+- **Profil penyelenggara publik** di `floevent.id/[org-slug]`, berisi profil organizer + seluruh event yang ia publikasikan
 
 #### FR-04: Registrasi Tim & Peserta
 - Form registrasi yang dapat dikonfigurasi organizer
@@ -372,7 +372,7 @@ Perubahan berlaku untuk penarikan **baru**. Penarikan yang sudah diajukan menyim
 
 ### 4.1 Landing Page Event
 
-Halaman publik per event, URL: `flo-event.id/[org-slug]/[event-slug]`
+Halaman publik per event, URL: `floevent.id/[org-slug]/[event-slug]`
 
 **Komponen:**
 - Hero: nama event, banner, tanggal, lokasi, countdown timer
@@ -572,7 +572,7 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 - Nama event & tanggal pelaksanaan, nama penyelenggara
 - Judul penghargaan
 - Nomor sertifikat unik: `CERT-2026-07-0001` (lihat Lampiran B)
-- QR Code verifikasi → `flo-event.id/verify/CERT-2026-07-0001`
+- QR Code verifikasi → `floevent.id/verify/CERT-2026-07-0001`
 
 **Email penerima:** tim dan pemain **tidak punya kolom email**. Alamat tujuan diambil dari akun **manajer tim** (`teams.manager_user_id`); tim yang didaftarkan tanpa akun tidak punya email dan tombol kirimnya nonaktif.
 
@@ -607,7 +607,7 @@ Leaderboard: Top Scorer, Top Assist, MVP, Fair Play Award
 
 **Pembelian:** pilih kategori tiket → isi data → bayar → terima e-tiket via email (QR Code unik)
 
-**Check-in:** operator buka `flo-event.id/scan/[event-id]` → scan QR → validasi server-side → ✅ Valid / ❌ Sudah digunakan
+**Check-in:** operator buka `floevent.id/scan/[event-id]` → scan QR → validasi server-side → ✅ Valid / ❌ Sudah digunakan
 
 ---
 
@@ -681,7 +681,7 @@ Master **posisi** dan **peran ofisial** menjadi sumber tunggal validasinya masin
 
 ### 4.18 Katalog Event Publik
 
-Halaman publik `flo-event.id/event` — pintu masuk bagi orang yang **belum tahu** event apa saja yang ada. Tanpa ini, landing page event (§4.1) hanya bisa dicapai kalau seseorang sudah memegang tautannya.
+Halaman publik `floevent.id/event` — pintu masuk bagi orang yang **belum tahu** event apa saja yang ada. Tanpa ini, landing page event (§4.1) hanya bisa dicapai kalau seseorang sudah memegang tautannya.
 
 - **Isi:** semua event dengan `status != 'draft'` — aturan visibilitas yang sama persis dengan landing page event, jadi tidak ada dua definisi "publik" yang harus dijaga. Event `finished` dan `cancelled` tetap tampil (dengan badge status) sebagai arsip.
 - **Urutan:** event yang masih bisa ditindaklanjuti (`open`, `registration_closed`, `ongoing`) di atas, lalu yang terbaru.
@@ -694,7 +694,7 @@ Halaman publik `flo-event.id/event` — pintu masuk bagi orang yang **belum tahu
 
 ### 4.19 Profil Penyelenggara Publik
 
-Halaman publik `flo-event.id/{org-slug}` — profil organizer beserta seluruh event yang ia publikasikan.
+Halaman publik `floevent.id/{org-slug}` — profil organizer beserta seluruh event yang ia publikasikan.
 
 - **Isi:** banner, logo, nama, deskripsi, kontak, social links, jumlah event, dan grid event-nya (memakai ulang endpoint katalog dengan filter `?org=`).
 - Nama penyelenggara di landing page event menautkan ke sini.
@@ -1059,7 +1059,7 @@ Tombol "Tarik Dana" **dimatikan dengan alasan eksplisit** kalau: rekening belum 
 │                    VPS — Docker Compose                          │
 │  ┌───────────────────────────────────────────────────────────┐   │
 │  │                   Nginx (Reverse Proxy)                    │   │
-│  │   flo-event.id → Next.js   |   api.flo-event.id → Laravel │   │
+│  │   floevent.id → Next.js   |   api.floevent.id → Laravel │   │
 │  └──────────────────┬─────────────────────┬──────────────────┘   │
 │                     │                     │                       │
 │          ┌──────────▼──────┐   ┌──────────▼────────┐            │
@@ -1116,7 +1116,7 @@ services:
   web:                              # Next.js frontend
     build: ./web
     environment:
-      - NEXT_PUBLIC_API_URL=https://api.flo-event.id
+      - NEXT_PUBLIC_API_URL=https://api.floevent.id
     depends_on: [api]
 
   api:                              # Laravel backend
@@ -2651,7 +2651,7 @@ Operasional & bisnis:
 
 ### 10.2 API Design Convention
 
-**Base URL:** `https://api.flo-event.id/v1`
+**Base URL:** `https://api.floevent.id/v1`
 
 **Response Format:**
 ```json
@@ -2842,7 +2842,7 @@ Merge ke main:
 Format:  {PREFIX}-{YEAR}-{MONTH}-{4DIGIT}     -- prefix dari config/certificate.php
 Contoh:  CERT-2026-07-0001
 
-Verifikasi publik:  flo-event.id/verify/CERT-2026-07-0001
+Verifikasi publik:  floevent.id/verify/CERT-2026-07-0001
 ```
 
 - Urutan **reset tiap bulan**, sama seperti penomoran invoice (`INV/2026/07/0001`).

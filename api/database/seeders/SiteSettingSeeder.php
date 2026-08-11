@@ -18,7 +18,7 @@ class SiteSettingSeeder extends Seeder
         // contact_phone stay null on purpose: inventing an address that bounces
         // is worse than a footer that shows nothing until someone fills it in.
         SiteSetting::firstOrCreate([], [
-            'sales_email' => 'sales@flo-event.id',
+            'sales_email' => 'sales@floevent.id',
         ]);
     }
 }

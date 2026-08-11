@@ -18,7 +18,7 @@ return [
 
     'issuer_address' => env('BILLING_ISSUER_ADDRESS', 'Jakarta, Indonesia'),
 
-    'issuer_email' => env('BILLING_ISSUER_EMAIL', 'billing@flo-event.id'),
+    'issuer_email' => env('BILLING_ISSUER_EMAIL', 'billing@floevent.id'),
 
     'issuer_npwp' => env('BILLING_ISSUER_NPWP'),
 

@@ -9,7 +9,7 @@ live standings, brackets, QR tickets, certificate generation). See [`PRD.md`](./
 flo-event/
 ├── web/                  # Next.js 16 frontend (React 19, TS, Tailwind 4) — bun
 ├── api/                  # Laravel 13 backend (PHP 8.4) — composer
-├── nginx/conf.d/         # reverse-proxy config (flo-event.id, api.flo-event.id)
+├── nginx/conf.d/         # reverse-proxy config (floevent.id, api.floevent.id)
 ├── docker-compose.yml    # production stack
 ├── docker-compose.dev.yml# dev override (hot reload, exposed ports)
 ├── init-letsencrypt.sh   # one-time TLS cert bootstrap (certbot)

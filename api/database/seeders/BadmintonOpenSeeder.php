@@ -12,7 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
- * A badminton event in the demo organization (owner@flo-event.id) with four
+ * A badminton event in the demo organization (owner@floevent.id) with four
  * categories whose entrant lists are already full and approved — the state an
  * organizer is in the morning they sit down to draw the schedule.
  *
@@ -48,14 +48,26 @@ class BadmintonOpenSeeder extends Seeder
 
     /** @var list<string> */
     private array $men = [
-        'Rangga Wicaksono', 'Bimo Aditya', 'Fajar Nurhuda', 'Yoga Pratama',
-        'Reza Alfarizi', 'Satria Mahendra', 'Ilham Kurniawan', 'Panji Ramadhan',
+        'Rangga Wicaksono',
+        'Bimo Aditya',
+        'Fajar Nurhuda',
+        'Yoga Pratama',
+        'Reza Alfarizi',
+        'Satria Mahendra',
+        'Ilham Kurniawan',
+        'Panji Ramadhan',
     ];
 
     /** @var list<string> */
     private array $women = [
-        'Anindya Larasati', 'Kirana Puspita', 'Salma Aulia', 'Mutiara Hapsari',
-        'Nadia Safitri', 'Rania Kusuma', 'Zahra Maulida', 'Intan Permatasari',
+        'Anindya Larasati',
+        'Kirana Puspita',
+        'Salma Aulia',
+        'Mutiara Hapsari',
+        'Nadia Safitri',
+        'Rania Kusuma',
+        'Zahra Maulida',
+        'Intan Permatasari',
     ];
 
     /**
@@ -84,20 +96,28 @@ class BadmintonOpenSeeder extends Seeder
      */
     private array $clubs = [
         'PB Djarum Kudus' => [
-            ['Rangga Wicaksono', 'singles'], ['Bimo Aditya', 'doubles'],
-            ['Anindya Larasati', 'singles'], ['Kirana Puspita', 'doubles'],
+            ['Rangga Wicaksono', 'singles'],
+            ['Bimo Aditya', 'doubles'],
+            ['Anindya Larasati', 'singles'],
+            ['Kirana Puspita', 'doubles'],
         ],
         'PB Jaya Raya Jakarta' => [
-            ['Fajar Nurhuda', 'singles'], ['Yoga Pratama', 'doubles'],
-            ['Salma Aulia', 'singles'], ['Mutiara Hapsari', 'doubles'],
+            ['Fajar Nurhuda', 'singles'],
+            ['Yoga Pratama', 'doubles'],
+            ['Salma Aulia', 'singles'],
+            ['Mutiara Hapsari', 'doubles'],
         ],
         'PB Exist Jakarta' => [
-            ['Reza Alfarizi', 'singles'], ['Satria Mahendra', 'doubles'],
-            ['Nadia Safitri', 'singles'], ['Rania Kusuma', 'doubles'],
+            ['Reza Alfarizi', 'singles'],
+            ['Satria Mahendra', 'doubles'],
+            ['Nadia Safitri', 'singles'],
+            ['Rania Kusuma', 'doubles'],
         ],
         'PB Mutiara Cardinal Bandung' => [
-            ['Ilham Kurniawan', 'singles'], ['Panji Ramadhan', 'doubles'],
-            ['Zahra Maulida', 'singles'], ['Intan Permatasari', 'doubles'],
+            ['Ilham Kurniawan', 'singles'],
+            ['Panji Ramadhan', 'doubles'],
+            ['Zahra Maulida', 'singles'],
+            ['Intan Permatasari', 'doubles'],
         ],
     ];
 
@@ -146,12 +166,12 @@ class BadmintonOpenSeeder extends Seeder
         $this->command?->info("Seeded event badminton \"{$event->name}\" untuk \"{$org->name}\".");
         $this->command?->table(
             ['Kategori', 'Jenis peserta', 'Format', 'Peserta', 'Kuota'],
-            collect([$ms, $ws, $xd, $team])->map(fn (EventCategory $c) => [
+            collect([$ms, $ws, $xd, $team])->map(fn(EventCategory $c) => [
                 $c->name,
                 match ($c->participant_type) {
                     'single' => 'Tunggal',
                     'double' => 'Ganda',
-                    default => 'Beregu ('.count(self::RUBBER_FORMAT).' partai)',
+                    default => 'Beregu (' . count(self::RUBBER_FORMAT) . ' partai)',
                 },
                 $c->tournament_format,
                 $c->teams()->count(),
@@ -159,7 +179,7 @@ class BadmintonOpenSeeder extends Seeder
             ])->all(),
         );
         $this->command?->info('Jadwal sengaja belum dibuat — undian & plan knockout dijalankan dari dashboard.');
-        $this->command?->info('Login: owner@flo-event.id / password');
+        $this->command?->info('Login: owner@floevent.id / password');
     }
 
     private function makeEvent(Organization $org): Event
@@ -179,8 +199,8 @@ class BadmintonOpenSeeder extends Seeder
                 'location_name' => 'GOR Among Rogo',
                 'location_address' => 'Jl. Kenari No. 1, Yogyakarta',
                 'description' => 'Turnamen badminton terbuka dengan empat nomor: tunggal putra, tunggal putri, '
-                    .'ganda campuran, dan beregu campuran. Nomor beregu dimainkan atas tiga partai — '
-                    .'hasil regu dihitung dari partai yang dimenangkan.',
+                    . 'ganda campuran, dan beregu campuran. Nomor beregu dimainkan atas tiga partai — '
+                    . 'hasil regu dihitung dari partai yang dimenangkan.',
             ],
         );
     }
@@ -241,7 +261,7 @@ class BadmintonOpenSeeder extends Seeder
             'category_id' => $category->id,
             'name' => $name,
             'contact_name' => $players[0][0],
-            'contact_phone' => '08'.random_int(11_000_0000, 13_999_9999),
+            'contact_phone' => '08' . random_int(11_000_0000, 13_999_9999),
             'status' => 'approved',
             'registered_at' => $registeredAt,
             'approved_at' => $registeredAt->copy()->addHours(6),
@@ -260,7 +280,7 @@ class BadmintonOpenSeeder extends Seeder
         $team->setRelation('event', $category->event);
 
         $this->roster->syncPlayers($team, array_map(
-            fn (array $p, int $i) => [
+            fn(array $p, int $i) => [
                 'full_name' => $p[0],
                 'position' => $p[1],
                 // A squad wears numbers; a tunggal/ganda entrant does not.

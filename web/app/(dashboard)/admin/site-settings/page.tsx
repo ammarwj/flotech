@@ -30,26 +30,35 @@ function FieldError({ message }: { message?: string }) {
 }
 
 type ContactField = "contact_email" | "contact_phone" | "sales_email";
-type BankField = "bank_name" | "bank_code" | "account_number" | "account_holder";
+type BankField =
+  | "bank_name"
+  | "bank_code"
+  | "account_number"
+  | "account_holder";
 /** Every plain-text field on this page — they all share one `draft` map. */
 type TextField = ContactField | BankField;
 
-const EMPTY_SOCIALS = Object.fromEntries(SOCIAL_PLATFORMS.map((p) => [p.key, ""])) as Record<
-  SocialPlatform,
-  string
->;
+const EMPTY_SOCIALS = Object.fromEntries(
+  SOCIAL_PLATFORMS.map((p) => [p.key, ""]),
+) as Record<SocialPlatform, string>;
 
 export default function AdminSiteSettingsPage() {
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: ["admin-site-settings"], queryFn: getAdminSiteSettings });
+  const query = useQuery({
+    queryKey: ["admin-site-settings"],
+    queryFn: getAdminSiteSettings,
+  });
 
   // Only what the admin has touched; everything else reads straight from the
   // server, so no effect is needed to seed the form (pattern from /admin/settings).
   const [draft, setDraft] = useState<Partial<Record<TextField, string>>>({});
-  const [socialDraft, setSocialDraft] = useState<Partial<Record<SocialPlatform, string>>>({});
+  const [socialDraft, setSocialDraft] = useState<
+    Partial<Record<SocialPlatform, string>>
+  >({});
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
 
-  const contact = (field: TextField) => draft[field] ?? query.data?.[field] ?? "";
+  const contact = (field: TextField) =>
+    draft[field] ?? query.data?.[field] ?? "";
   const social = (key: SocialPlatform) =>
     socialDraft[key] ?? query.data?.social_links?.[key] ?? EMPTY_SOCIALS[key];
 
@@ -60,7 +69,7 @@ export default function AdminSiteSettingsPage() {
         contact_phone: contact("contact_phone").trim() || null,
         sales_email: contact("sales_email").trim() || null,
         social_links: Object.fromEntries(
-          SOCIAL_PLATFORMS.map((p) => [p.key, social(p.key).trim() || null])
+          SOCIAL_PLATFORMS.map((p) => [p.key, social(p.key).trim() || null]),
         ),
         bank_name: contact("bank_name").trim() || null,
         bank_code: contact("bank_code").trim() || null,
@@ -81,23 +90,27 @@ export default function AdminSiteSettingsPage() {
     onError: (err) => {
       const parsed = parseApiError(err, "Gagal menyimpan kontak & sosmed.");
       setServerErrors(parsed.fieldErrors);
-      if (Object.keys(parsed.fieldErrors).length === 0) toast.error(parsed.message);
+      if (Object.keys(parsed.fieldErrors).length === 0)
+        toast.error(parsed.message);
     },
   });
 
   const invalidCls = (key: string) =>
-    serverErrors[key] ? "border-destructive focus-visible:ring-destructive" : "";
+    serverErrors[key]
+      ? "border-destructive focus-visible:ring-destructive"
+      : "";
 
   return (
     <>
       <PageHeader
         title="Kontak & Sosmed"
-        description="Cara pengunjung menghubungi flo-event, plus rekening penerima pembayaran paket. Kontak & sosmed tampil di footer semua halaman publik — yang dikosongkan tidak ditampilkan."
+        description="Cara pengunjung menghubungi floevent, plus rekening penerima pembayaran paket. Kontak & sosmed tampil di footer semua halaman publik — yang dikosongkan tidak ditampilkan."
       />
 
       {query.isError && (
         <p className="mb-6 text-sm text-destructive">
-          Tidak bisa memuat pengaturan (butuh akses Super Admin &amp; API berjalan).
+          Tidak bisa memuat pengaturan (butuh akses Super Admin &amp; API
+          berjalan).
         </p>
       )}
 
@@ -121,10 +134,12 @@ export default function AdminSiteSettingsPage() {
                   id="contact_email"
                   type="email"
                   value={contact("contact_email")}
-                  onChange={(e) => setDraft((d) => ({ ...d, contact_email: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, contact_email: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.contact_email}
                   className={invalidCls("contact_email")}
-                  placeholder="halo@flo-event.id"
+                  placeholder="halo@floevent.id"
                 />
                 <FieldError message={serverErrors.contact_email} />
               </div>
@@ -134,7 +149,9 @@ export default function AdminSiteSettingsPage() {
                 <Input
                   id="contact_phone"
                   value={contact("contact_phone")}
-                  onChange={(e) => setDraft((d) => ({ ...d, contact_phone: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, contact_phone: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.contact_phone}
                   className={invalidCls("contact_phone")}
                   placeholder="+62 812-3456-7890"
@@ -148,15 +165,17 @@ export default function AdminSiteSettingsPage() {
                   id="sales_email"
                   type="email"
                   value={contact("sales_email")}
-                  onChange={(e) => setDraft((d) => ({ ...d, sales_email: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, sales_email: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.sales_email}
                   className={invalidCls("sales_email")}
-                  placeholder="sales@flo-event.id"
+                  placeholder="sales@floevent.id"
                 />
                 <FieldError message={serverErrors.sales_email} />
                 <p className="text-xs text-muted-foreground">
-                  Tujuan tombol &ldquo;Hubungi Sales&rdquo; di kartu paket Professional. Kosongkan
-                  untuk memakai email kontak di atas.
+                  Tujuan tombol &ldquo;Hubungi Sales&rdquo; di kartu paket
+                  Professional. Kosongkan untuk memakai email kontak di atas.
                 </p>
               </div>
             </CardContent>
@@ -173,16 +192,28 @@ export default function AdminSiteSettingsPage() {
                 const error = serverErrors[`social_links.${key}`] || undefined;
                 return (
                   <div key={key} className="grid gap-2">
-                    <Label htmlFor={`social-${key}`} className="flex items-center gap-2">
-                      <SocialIcon platform={key} className="text-muted-foreground" />
+                    <Label
+                      htmlFor={`social-${key}`}
+                      className="flex items-center gap-2"
+                    >
+                      <SocialIcon
+                        platform={key}
+                        className="text-muted-foreground"
+                      />
                       {label}
                     </Label>
                     <Input
                       id={`social-${key}`}
                       value={social(key)}
-                      onChange={(e) => setSocialDraft((s) => ({ ...s, [key]: e.target.value }))}
+                      onChange={(e) =>
+                        setSocialDraft((s) => ({ ...s, [key]: e.target.value }))
+                      }
                       aria-invalid={!!error}
-                      className={error ? "border-destructive focus-visible:ring-destructive" : ""}
+                      className={
+                        error
+                          ? "border-destructive focus-visible:ring-destructive"
+                          : ""
+                      }
                       placeholder={`@floevent atau URL profil ${label}`}
                     />
                     <FieldError message={error} />
@@ -190,8 +221,8 @@ export default function AdminSiteSettingsPage() {
                 );
               })}
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                Isi username saja atau tempel tautan profil lengkap — keduanya akan disimpan sebagai
-                tautan. Kosongkan untuk menghapus.
+                Isi username saja atau tempel tautan profil lengkap — keduanya
+                akan disimpan sebagai tautan. Kosongkan untuk menghapus.
               </p>
             </CardContent>
           </Card>
@@ -200,7 +231,7 @@ export default function AdminSiteSettingsPage() {
             <SectionHeader
               icon={Banknote}
               title="Rekening Penerima Pembayaran Paket"
-              description="Rekening flo-event sendiri. Dipakai hanya saat payment gateway dimatikan di Pengaturan Platform — organizer transfer ke sini lalu mengunggah bukti untuk kamu verifikasi."
+              description="Rekening floevent sendiri. Dipakai hanya saat payment gateway dimatikan di Pengaturan Platform — organizer transfer ke sini lalu mengunggah bukti untuk kamu verifikasi."
             />
             <CardContent className="grid gap-5 sm:grid-cols-2">
               <div className="grid gap-2">
@@ -208,7 +239,9 @@ export default function AdminSiteSettingsPage() {
                 <Input
                   id="bank_name"
                   value={contact("bank_name")}
-                  onChange={(e) => setDraft((d) => ({ ...d, bank_name: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, bank_name: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.bank_name}
                   className={invalidCls("bank_name")}
                   placeholder="BCA"
@@ -221,7 +254,9 @@ export default function AdminSiteSettingsPage() {
                 <Input
                   id="bank_code"
                   value={contact("bank_code")}
-                  onChange={(e) => setDraft((d) => ({ ...d, bank_code: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, bank_code: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.bank_code}
                   className={invalidCls("bank_code")}
                   placeholder="014"
@@ -235,7 +270,9 @@ export default function AdminSiteSettingsPage() {
                 <Input
                   id="account_number"
                   value={contact("account_number")}
-                  onChange={(e) => setDraft((d) => ({ ...d, account_number: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, account_number: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.account_number}
                   className={invalidCls("account_number")}
                   placeholder="1234567890"
@@ -248,7 +285,9 @@ export default function AdminSiteSettingsPage() {
                 <Input
                   id="account_holder"
                   value={contact("account_holder")}
-                  onChange={(e) => setDraft((d) => ({ ...d, account_holder: e.target.value }))}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, account_holder: e.target.value }))
+                  }
                   aria-invalid={!!serverErrors.account_holder}
                   className={invalidCls("account_holder")}
                   placeholder="PT Flo Event Indonesia"
@@ -257,8 +296,9 @@ export default function AdminSiteSettingsPage() {
               </div>
 
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                Nama bank, nomor rekening, dan atas nama wajib terisi ketiganya. Kalau kosong,
-                organizer tidak bisa membeli paket sama sekali selama gateway dimatikan.
+                Nama bank, nomor rekening, dan atas nama wajib terisi ketiganya.
+                Kalau kosong, organizer tidak bisa membeli paket sama sekali
+                selama gateway dimatikan.
               </p>
             </CardContent>
           </Card>

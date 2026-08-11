@@ -39,7 +39,7 @@ export interface Team {
 }
 
 /** Seeded platform admin — the only account the suite reuses (see UserSeeder). */
-export const SUPER_ADMIN = { email: "admin@flo-event.id", password: "password" };
+export const SUPER_ADMIN = { email: "admin@floevent.id", password: "password" };
 
 /**
  * The plan a fixture organization is born on.

@@ -55,7 +55,7 @@ API/web mati atau seeder belum pernah dijalankan.
 (email acak) lewat API dan membangun org/event/tim-nya sendiri, jadi suite ini
 aman dijalankan kapan saja di DB dev tanpa merusak data yang ada dan tanpa
 saling mengotori antar-test. Satu-satunya akun seeder yang dipakai adalah
-`admin@flo-event.id` (super admin) — perannya tidak bisa dibuat lewat API.
+`admin@floevent.id` (super admin) — perannya tidak bisa dibuat lewat API.
 Pengecualiannya konten landing (FAQ/testimoni): itu global dan terlihat siapa
 pun yang membuka landing dev, jadi spec yang membuatnya wajib menyapunya lagi.
 
@@ -142,7 +142,7 @@ dari server:
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@flo-event.id","password":"password"}' | jq -r .data.access_token)
+  -d '{"email":"admin@floevent.id","password":"password"}' | jq -r .data.access_token)
 URL=$(curl -s -X POST http://localhost:8000/api/v1/uploads/sign -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"file_name":"probe.png","content_type":"image/png","folder":"payment-proofs"}' | jq -r .data.upload_url)

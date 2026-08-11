@@ -20,19 +20,19 @@ class SiteSettingTest extends TestCase
     {
         $this->actingAs($this->superAdmin(), 'api')
             ->putJson('/api/v1/admin/site-settings', [
-                'contact_email' => 'halo@flo-event.id',
+                'contact_email' => 'halo@floevent.id',
                 'contact_phone' => '+62 812-3456-7890',
-                'sales_email' => 'sales@flo-event.id',
+                'sales_email' => 'sales@floevent.id',
                 'social_links' => ['instagram' => 'https://instagram.com/floevent'],
             ])
             ->assertOk()
-            ->assertJsonPath('data.contact_email', 'halo@flo-event.id')
+            ->assertJsonPath('data.contact_email', 'halo@floevent.id')
             ->assertJsonPath('data.contact_phone', '+62 812-3456-7890')
             ->assertJsonPath('data.social_links.instagram', 'https://instagram.com/floevent');
 
         $this->getJson('/api/v1/site-settings')
             ->assertOk()
-            ->assertJsonPath('data.contact_email', 'halo@flo-event.id');
+            ->assertJsonPath('data.contact_email', 'halo@floevent.id');
     }
 
     /**
@@ -61,13 +61,13 @@ class SiteSettingTest extends TestCase
         $admin = $this->superAdmin();
 
         $this->actingAs($admin, 'api')
-            ->putJson('/api/v1/admin/site-settings', ['contact_email' => 'satu@flo-event.id'])
+            ->putJson('/api/v1/admin/site-settings', ['contact_email' => 'satu@floevent.id'])
             ->assertOk();
 
         $this->actingAs($admin, 'api')
-            ->putJson('/api/v1/admin/site-settings', ['contact_email' => 'dua@flo-event.id'])
+            ->putJson('/api/v1/admin/site-settings', ['contact_email' => 'dua@floevent.id'])
             ->assertOk()
-            ->assertJsonPath('data.contact_email', 'dua@flo-event.id');
+            ->assertJsonPath('data.contact_email', 'dua@floevent.id');
 
         $this->assertSame(1, SiteSetting::count());
     }
@@ -157,7 +157,7 @@ class SiteSettingTest extends TestCase
     {
         $this->actingAs($this->superAdmin(), 'api')
             ->putJson('/api/v1/admin/site-settings', [
-                'contact_email' => 'halo@flo-event.id',
+                'contact_email' => 'halo@floevent.id',
                 'bank_name' => 'BCA',
                 'bank_code' => '014',
                 'account_number' => '9998887777',
@@ -174,7 +174,7 @@ class SiteSettingTest extends TestCase
 
         $this->getJson('/api/v1/site-settings')
             ->assertOk()
-            ->assertJsonPath('data.contact_email', 'halo@flo-event.id')
+            ->assertJsonPath('data.contact_email', 'halo@floevent.id')
             ->assertJsonMissingPath('data.bank_name')
             ->assertJsonMissingPath('data.account_number')
             ->assertJsonMissingPath('data.account_holder');
