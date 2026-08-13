@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, CheckCircle2, DoorClosed, DoorOpen, PlayCircle, Rocket, XCircle } from "lucide-react";
+import { Check, CheckCircle2, DoorClosed, DoorOpen, PlayCircle, Rocket, RotateCcw, XCircle } from "lucide-react";
 
 import { useConfirm, type ConfirmOptions } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EVENT_STATUS_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { EventStatus, SportEvent } from "@/types/api";
 
@@ -56,15 +57,21 @@ const MOVES: Record<
     icon: XCircle,
     confirm: {
       title: "Batalkan event ini?",
-      description: "Halaman event ditandai dibatalkan dan status tidak bisa dikembalikan.",
-      consequences: "Dana tertahan tidak akan dicairkan.",
+      description: "Halaman event ditandai dibatalkan. Bisa diaktifkan kembali nanti.",
+      consequences: "Dana tertahan tidak akan dicairkan selama event dibatalkan.",
       confirmLabel: "Batalkan event",
       tone: "danger",
     },
   },
 };
 
-/** The one move that carries the event forward, given where it stands. */
+/**
+ * The one move that carries the event forward, given where it stands.
+ *
+ * Deliberately without a `cancelled` entry: reactivating restores an ordinary
+ * status, so it would be worded here as whatever it lands on ("Buka
+ * Pendaftaran") rather than as the move being made. It gets its own button.
+ */
 const NEXT_STEP: Partial<Record<EventStatus, EventStatus>> = {
   draft: "open",
   open: "registration_closed",
@@ -139,6 +146,10 @@ export function EventStatusPanel({
   const confirm = useConfirm();
   const next = event.next_statuses ?? [];
   const cancelled = event.status === "cancelled";
+  // A cancelled event has exactly one move: back to where it stood. The server
+  // decides which status that is (it snapshots it when cancelling), so the
+  // button just carries whatever it sent.
+  const restoreTo = cancelled ? next[0] : undefined;
 
   const primary = NEXT_STEP[event.status];
   // Legal but rarely wanted: skipping a phase. Kept reachable, kept quiet.
@@ -151,6 +162,20 @@ export function EventStatusPanel({
     const move = MOVES[status];
     if (move?.confirm && !(await confirm({ ...move.confirm, icon: move.icon }))) return;
     onChange(status);
+  };
+
+  const reactivate = async (target: EventStatus) => {
+    const ok = await confirm({
+      title: "Aktifkan kembali event ini?",
+      description:
+        target === "draft"
+          ? "Event kembali jadi draf dan tetap belum terlihat publik."
+          : `Event kembali ke status ${EVENT_STATUS_LABELS[target]} dan halamannya tayang lagi.`,
+      consequences: "Dana tertahan kembali dicairkan saat event diselesaikan.",
+      confirmLabel: "Aktifkan kembali",
+      icon: RotateCcw,
+    });
+    if (ok) onChange(target);
   };
 
   const button = (status: EventStatus, variant: "default" | "ghost") => {
@@ -191,29 +216,36 @@ export function EventStatusPanel({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border bg-[var(--surface-2)] px-4 py-2.5 sm:px-6">
         <p className="text-xs text-muted-foreground">{hintFor(event)}</p>
 
-        {next.length > 0 && (
-          <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto">
-            {/* Cancelling ends the event's life, so it is fenced off from the
-                moves that carry it forward rather than sitting in their row. */}
-            {canCancel && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => void act("cancelled")}
-                  className="text-muted-foreground hover:text-[var(--danger)]"
-                >
-                  Batalkan
-                </Button>
-                <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-              </>
-            )}
-            {shortcuts.map((status) => button(status, "ghost"))}
-            {primary && next.includes(primary) && (
-              <span className="ml-1">{button(primary, "default")}</span>
-            )}
-          </div>
+        {restoreTo ? (
+          <Button size="sm" disabled={pending} onClick={() => void reactivate(restoreTo)}>
+            <RotateCcw className="h-4 w-4" />
+            Aktifkan Kembali
+          </Button>
+        ) : (
+          next.length > 0 && (
+            <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto">
+              {/* Cancelling pauses the event's life rather than ending it, but
+                  it is still fenced off from the moves that carry it forward. */}
+              {canCancel && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => void act("cancelled")}
+                    className="text-muted-foreground hover:text-[var(--danger)]"
+                  >
+                    Batalkan
+                  </Button>
+                  <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+                </>
+              )}
+              {shortcuts.map((status) => button(status, "ghost"))}
+              {primary && next.includes(primary) && (
+                <span className="ml-1">{button(primary, "default")}</span>
+              )}
+            </div>
+          )
         )}
       </div>
     </Card>
@@ -238,7 +270,7 @@ function hintFor(event: SportEvent): string {
     case "finished":
       return "Dana tertahan sudah dicairkan ke saldo organizer.";
     case "cancelled":
-      return "Dana tertahan tidak akan dicairkan.";
+      return "Dana tertahan tidak akan dicairkan selama event dibatalkan.";
   }
 }
 

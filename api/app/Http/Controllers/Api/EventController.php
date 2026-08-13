@@ -190,7 +190,7 @@ class EventController extends Controller
         if (! $model->canTransitionTo($validated['status'])) {
             return ApiResponse::error(
                 $model->nextStatuses() === []
-                    ? 'Event yang sudah selesai atau dibatalkan tidak bisa diubah lagi.'
+                    ? 'Event yang sudah selesai tidak bisa diubah lagi.'
                     : 'Status itu tidak bisa dicapai dari status event saat ini.',
                 ['status' => ['Perpindahan status tidak diizinkan.']],
                 422,
@@ -206,7 +206,17 @@ class EventController extends Controller
      */
     protected function transition(Event $model, string $status): JsonResponse
     {
-        $model->update(['status' => $status]);
+        $restoring = $model->status === 'cancelled';
+
+        $model->update([
+            'status' => $status,
+            // A snapshot, not something derived later: where the event stood is
+            // the only thing that can bring it back, and by the time it is
+            // wanted the status it would have been read from is gone. Cleared
+            // on every other move so a second cancellation can never restore an
+            // event to a status it left long ago.
+            'status_before_cancel' => $status === 'cancelled' ? $model->status : null,
+        ]);
 
         // Closing an event releases the ticket & registration money the
         // platform has been holding for this organizer.
@@ -216,7 +226,12 @@ class EventController extends Controller
 
         return ApiResponse::success(
             new EventResource($model->load('categories')),
-            self::STATUS_MESSAGES[$status] ?? 'Status event diperbarui',
+            // Restoring lands on an ordinary status, so the per-status message
+            // would announce it as one: "Event dipublikasikan" for an event that
+            // was only ever brought back from the dead.
+            $restoring
+                ? 'Event diaktifkan kembali'
+                : (self::STATUS_MESSAGES[$status] ?? 'Status event diperbarui'),
         );
     }
 

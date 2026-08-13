@@ -96,7 +96,11 @@ export function PublicAuthActions({
   if (menu) {
     return (
       <>
-        <Link href={dashboardHref(user)} className={cls("primary")} onClick={onNavigate}>
+        <Link
+          href={dashboardHref(user)}
+          className={cls("primary")}
+          onClick={onNavigate}
+        >
           Dashboard
         </Link>
         <button
@@ -130,7 +134,7 @@ export function usePublicCta(): { href: string; label: string } {
   // it lands, isAuthenticated is already true but the destination is unknown.
   return isAuthenticated && user
     ? { href: dashboardHref(user), label: "Ke Dashboard" }
-    : { href: "/register", label: "Mulai Sekarang" };
+    : { href: "/login", label: "Mulai Sekarang" };
 }
 
 /**
@@ -140,5 +144,7 @@ export function usePublicCta(): { href: string; label: string } {
 export function usePlanCtaHref(fallback: string): string {
   const { isAuthenticated } = useOptionalSession();
 
-  return isAuthenticated && fallback === "/register" ? "/organizer/plans" : fallback;
+  return isAuthenticated && fallback === "/register"
+    ? "/organizer/plans"
+    : fallback;
 }

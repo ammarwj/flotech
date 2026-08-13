@@ -16,10 +16,11 @@ class Event extends Model
      * Which status an event may move to next, keyed by where it is now.
      *
      * Skipping forward is allowed on purpose — a one-day tournament is closed
-     * the moment it ends, and nobody wants to march it through every step. Only
-     * one move goes backwards (reopening registration); `finished` and
-     * `cancelled` are terminal, because closing an event releases the funds the
-     * platform was holding and there is no undo for that.
+     * the moment it ends, and nobody wants to march it through every step. Two
+     * moves go backwards: reopening registration, and reactivating a cancelled
+     * event (see nextStatuses(), which is why `cancelled` reads empty here and
+     * is not). `finished` is the only terminal status, because closing an event
+     * releases the funds the platform was holding and there is no undo for that.
      *
      * @var array<string, array<int, string>>
      */
@@ -32,6 +33,17 @@ class Event extends Model
         'cancelled' => [],
     ];
 
+    /**
+     * Where a cancelled event goes when nothing recorded where it came from.
+     *
+     * Not `draft`: a draft with nothing attached can be deleted, and deleting it
+     * hands the plan credit back — a published event reaching `draft` would turn
+     * one payment into unlimited events. Not `open` either: reopening
+     * registration is a decision the organizer makes, not a side effect of
+     * undoing a cancellation. The page goes back up, the door stays shut.
+     */
+    public const RESTORE_FALLBACK = 'registration_closed';
+
     protected $fillable = [
         'organization_id',
         'plan_id',
@@ -39,6 +51,7 @@ class Event extends Model
         'slug',
         'sport_type',
         'status',
+        'status_before_cancel',
         'start_date',
         'end_date',
         'timezone',
@@ -149,7 +162,27 @@ class Event extends Model
      */
     public function nextStatuses(): array
     {
+        // Cancelling spends nothing that cannot be given back — no payout, no
+        // refund, no notification, and the wallet reads the status live — so it
+        // is the one terminal-looking status with a way out: back to exactly
+        // where the event stood, and nowhere else.
+        if ($this->status === 'cancelled') {
+            return [$this->restoreTarget()];
+        }
+
         return self::TRANSITIONS[$this->status] ?? [];
+    }
+
+    /**
+     * The status reactivating this event would restore.
+     *
+     * Read from the snapshot rather than chosen, so the restored status is one
+     * the event genuinely held — that is what keeps a published event out of
+     * `draft` without a second rule saying so.
+     */
+    public function restoreTarget(): string
+    {
+        return $this->status_before_cancel ?: self::RESTORE_FALLBACK;
     }
 
     public function canTransitionTo(string $status): bool

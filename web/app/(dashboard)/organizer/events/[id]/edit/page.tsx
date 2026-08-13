@@ -15,6 +15,7 @@ import {
   type EventInput,
 } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
+import { EVENT_STATUS_LABELS } from "@/lib/labels";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { EventForm } from "@/components/event/event-form";
 import { Button } from "@/components/ui/button";
@@ -70,15 +71,23 @@ export default function EditEventPage() {
 
   const changeStatus = useMutation({
     mutationFn: (status: EventStatus) => updateEventStatus(orgId!, eventId, status),
-    onSuccess: (updated) => {
-      toast.success(STATUS_TOASTS[updated.status] ?? "Status event diperbarui", {
-        description:
-          updated.status === "open"
-            ? "Halaman event tayang dan pendaftaran tim terbuka."
-            : updated.status === "finished"
-              ? "Dana tertahan dicairkan ke saldo organizer."
-              : undefined,
-      });
+    // Reactivating lands on an ordinary status, so it is only recognisable from
+    // where the event stood before the move — which is gone by onSuccess.
+    onMutate: () => ({ reactivating: eventQuery.data?.status === "cancelled" }),
+    onSuccess: (updated, _status, ctx) => {
+      const reactivated = ctx?.reactivating ?? false;
+      toast.success(
+        reactivated ? "Event diaktifkan kembali" : (STATUS_TOASTS[updated.status] ?? "Status event diperbarui"),
+        {
+          description: reactivated
+            ? `Status kembali ke ${EVENT_STATUS_LABELS[updated.status]}.`
+            : updated.status === "open"
+              ? "Halaman event tayang dan pendaftaran tim terbuka."
+              : updated.status === "finished"
+                ? "Dana tertahan dicairkan ke saldo organizer."
+                : undefined,
+        }
+      );
       refresh();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal mengubah status event.").message),

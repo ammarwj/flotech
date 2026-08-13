@@ -139,6 +139,35 @@ class WalletReleaseTest extends TestCase
         ]);
     }
 
+    /**
+     * Cancelling only pauses the payout, because the sweep reads the event's
+     * status live — nothing about the ledger is rewritten either way.
+     *
+     * Paired with the test above on purpose: that one proves the money stops,
+     * this one proves it is still there to move once the event is back.
+     */
+    public function test_reactivating_a_cancelled_event_lets_its_funds_flow_again(): void
+    {
+        $user = User::factory()->create();
+        [$org, $event] = $this->seedPendingIncome($user);
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/status";
+
+        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'cancelled'])->assertOk();
+
+        Carbon::setTestNow('2026-09-01 12:00:00');
+        $this->artisan('wallet:release')->assertSuccessful();
+        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '0.00']);
+
+        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'open'])->assertOk();
+        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'finished'])->assertOk();
+
+        $this->assertDatabaseHas('wallets', [
+            'organization_id' => $org->id,
+            'balance_pending' => '0.00',
+            'balance_available' => '95000.00',
+        ]);
+    }
+
     public function test_marking_an_event_finished_releases_funds_immediately(): void
     {
         $user = User::factory()->create();
