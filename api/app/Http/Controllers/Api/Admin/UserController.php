@@ -9,6 +9,7 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\AuthService;
 use App\Support\ApiResponse;
+use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -51,11 +52,9 @@ class UserController extends Controller
     public function index(Request $request): JsonResponse
     {
         $page = User::query()
-            ->when($request->query('q'), function ($query, $q) {
-                $query->where(fn ($w) => $w
-                    ->where('full_name', 'like', "%{$q}%")
-                    ->orWhere('email', 'like', "%{$q}%"));
-            })
+            // Search::anyColumn, bukan LIKE polos: LIKE case-sensitive di
+            // Postgres, jadi mencari "Kaboax" tidak menemukan kaboax@gmail.com.
+            ->when($request->query('q'), fn ($query, $q) => Search::anyColumn($query, ['full_name', 'email'], (string) $q))
             ->when($request->query('role'), fn ($query, $role) => $query->where('role', $role))
             // Filter jenis akun memakai definisi yang sama persis dengan
             // User::accountTypes() — kalau keduanya menyimpang, badge di kartu

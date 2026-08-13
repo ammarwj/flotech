@@ -24,6 +24,7 @@ use App\Services\RegistrationService;
 use App\Services\StandingService;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
+use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -57,12 +58,12 @@ class PublicEventController extends Controller
             ->when($request->query('sport'), fn ($q, $sport) => $q->where('sport_type', $sport))
             ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
             ->when($request->query('search'), function ($q, $term) {
-                $like = '%'.$term.'%';
-
-                $q->where(fn ($w) => $w
-                    ->where('name', 'ilike', $like)
-                    ->orWhere('location_name', 'ilike', $like)
-                    ->orWhereHas('organization', fn ($o) => $o->where('name', 'ilike', $like)));
+                // Search::anyColumn, bukan `ilike`: yang terakhir cuma ada di
+                // Postgres sehingga baris ini tidak bisa diuji, dan tidak
+                // meng-escape wildcard — satu `%` yang diketik pengunjung
+                // mengembalikan seluruh katalog.
+                $q->where(fn ($w) => Search::anyColumn($w, ['name', 'location_name'], (string) $term)
+                    ->orWhereHas('organization', fn ($o) => Search::anyColumn($o, ['name'], (string) $term)));
             })
             // Events people can still act on float to the top; finished and
             // cancelled ones sink but stay browsable as an archive.

@@ -12,6 +12,7 @@ use App\Notifications\TeamStatusChanged;
 use App\Services\PlanGate;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
+use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -42,11 +43,9 @@ class RegistrationController extends Controller
         // (a tournament can have hundreds of teams). With no params the query is
         // unchanged, so the standings/draw/registrations pages keep the full list.
         if (($search = trim((string) $request->query('search', ''))) !== '') {
-            // LOWER(...) LIKE keeps it case-insensitive on both pgsql (prod) and
-            // sqlite (tests); Postgres LIKE alone is case-sensitive. Escape the
-            // pattern wildcards so a literal % / _ in the query stays literal.
-            $needle = '%'.addcslashes(mb_strtolower($search), '%_\\').'%';
-            $query->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$needle]);
+            // Case-insensitive on both pgsql (prod) and sqlite (tests), with the
+            // wildcards a user typed searched for literally — see App\Support\Search.
+            Search::anyColumn($query, ['name'], $search);
         }
         if (($categoryId = $request->query('category_id')) !== null) {
             $query->where('category_id', $categoryId);
