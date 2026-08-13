@@ -12,9 +12,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 [ -f .env ] && set -a && . ./.env && set +a
 
-DOMAIN="${APP_DOMAIN:-flo-event.flotech.id}"
-API="${API_DOMAIN:-api-flo-event.flotech.id}"
-EMAIL="${LETSENCRYPT_EMAIL:-admin@flotech.id}"
+DOMAIN="${APP_DOMAIN:-floevent.id}"
+API="${API_DOMAIN:-api.floevent.id}"
+EMAIL="${LETSENCRYPT_EMAIL:-admin@floevent.id}"
 STAGING="${STAGING:-0}"
 
 staging_arg=""

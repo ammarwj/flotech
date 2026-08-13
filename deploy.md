@@ -28,36 +28,36 @@ disk. Root/sudo.
 ### 1a. Pointing domain ke VPS
 
 Kedua nama wajib resolve ke IP VPS **sebelum** menerbitkan TLS (certbot verifikasi
-lewat domain). Tidak ada `www.` — ini sudah sub-subdomain di bawah `flotech.id`,
-dan `flotech.id` **tidak pakai Cloudflare**, jadi cukup A record biasa (DNS-only).
+lewat domain). Web ada di **apex** `floevent.id`, API di `api.floevent.id`. Tidak ada
+`www.`, dan `floevent.id` **tidak pakai Cloudflare**, jadi cukup A record biasa
+(DNS-only).
 
 **1. Ambil IP publik VPS:**
 ```bash
 curl -4 ifconfig.me        # atau lihat di panel provider VPS
 ```
 
-**2. Buka pengelola DNS `flotech.id`** — di registrar/hosting tempat domain
+**2. Buka pengelola DNS `floevent.id`** — di registrar/hosting tempat domain
 didaftarkan (mis. Niagahoster, Domainesia, Rumahweb, dst). Cari menu **DNS
 Management / Kelola DNS / DNS Records**.
 
-**3. Tambahkan dua record A.** Karena ini subdomain dari `flotech.id`, kolom
-**Name/Host** diisi bagian subdomain-nya saja:
+**3. Tambahkan dua record A** — satu untuk apex, satu untuk subdomain API:
 
-| Type | Name / Host      | Value / Points to | TTL          |
-|------|------------------|-------------------|--------------|
-| A    | `flo-event`      | `<IP_VPS>`        | 3600 (/Auto) |
-| A    | `api-flo-event`  | `<IP_VPS>`        | 3600 (/Auto) |
+| Type | Name / Host | Value / Points to | TTL          |
+|------|-------------|-------------------|--------------|
+| A    | `@`         | `<IP_VPS>`        | 3600 (/Auto) |
+| A    | `api`       | `<IP_VPS>`        | 3600 (/Auto) |
 
-> Format kolom Name beda-beda per panel: ada yang minta nama penuh
-> (`flo-event.flotech.id`), ada yang cukup `flo-event`. Ikuti contoh record yang
+> Format kolom Name beda-beda per panel: untuk apex ada yang minta `@`, ada yang
+> minta nama penuh (`floevent.id`), ada yang dikosongkan. Ikuti contoh record yang
 > sudah ada di panel itu. **Jangan** aktifkan proxy/CDN — cukup A biasa.
 
 **4. Simpan, lalu tunggu propagasi** (beberapa menit sampai beberapa jam, sesuai
 TTL). Verifikasi — keduanya harus mengembalikan IP VPS:
 ```bash
-dig +short flo-event.flotech.id
-dig +short api-flo-event.flotech.id
-# alternatif: nslookup flo-event.flotech.id
+dig +short floevent.id
+dig +short api.floevent.id
+# alternatif: nslookup floevent.id
 ```
 Jangan lanjut ke penerbitan TLS (§5) sebelum dua perintah ini mengembalikan IP
 yang benar — kalau belum, verifikasi certbot gagal.
@@ -116,9 +116,9 @@ Ada **tiga** file env dengan peran berbeda — jangan tertukar:
 ### 3a. Isi `.env` (root)
 
 ```dotenv
-APP_DOMAIN=flo-event.flotech.id
-API_DOMAIN=api-flo-event.flotech.id
-LETSENCRYPT_EMAIL=admin@flotech.id
+APP_DOMAIN=floevent.id
+API_DOMAIN=api.floevent.id
+LETSENCRYPT_EMAIL=admin@floevent.id
 
 POSTGRES_DB=flo_event
 POSTGRES_USER=flo_user
@@ -133,11 +133,11 @@ Wajib benar, kalau tidak container gagal boot atau uang/token bermasalah:
 APP_ENV=production
 APP_DEBUG=false
 APP_KEY=            # diisi di langkah 4
-APP_URL=https://api-flo-event.flotech.id
-FRONTEND_URL=https://flo-event.flotech.id
+APP_URL=https://api.floevent.id
+FRONTEND_URL=https://floevent.id
 
-# Cookie refresh token harus dibagi web <-> api (dua subdomain berbeda).
-SESSION_DOMAIN=.flotech.id
+# Cookie refresh token harus dibagi web (apex) <-> api (subdomain).
+SESSION_DOMAIN=.floevent.id
 
 # Harus SAMA PERSIS dengan POSTGRES_* di .env root
 DB_HOST=db
@@ -168,12 +168,15 @@ TELESCOPE_ENABLED=false     # jangan pernah true di produksi
 ```
 
 > **Gotcha kritis:**
-> - **`SESSION_DOMAIN` wajib domain induk (`.flotech.id`), bukan `null`.** Cookie
->   refresh token diterbitkan oleh `api-flo-event...` tapi dibaca oleh route
->   `/api/auth/refresh` milik Next di `flo-event...`. Dengan `null` cookie jadi
+> - **`SESSION_DOMAIN` wajib domain induk (`.floevent.id`), bukan `null`.** Cookie
+>   refresh token diterbitkan oleh `api.floevent.id` tapi dibaca oleh route
+>   `/api/auth/refresh` milik Next di `floevent.id`. Dengan `null` cookie jadi
 >   *host-only* — hanya berlaku di subdomain API — sehingga tiap reload halaman
->   berakhir logout. Di lokal ini tak terlihat karena web & API sama-sama
->   `localhost` (cookie mengabaikan port).
+>   berakhir logout **walau refresh token-nya masih berlaku 30 hari**: sesi satu
+>   bulan yang dijanjikan `AuthService::REFRESH_TTL_DAYS` cuma bisa terjadi kalau
+>   baris ini benar. Di lokal ini tak terlihat karena web & API sama-sama
+>   `localhost` (cookie mengabaikan port). Konsekuensinya cookie itu terbaca oleh
+>   **semua** subdomain `floevent.id` — jangan taruh aplikasi asing di sana.
 > - **`DB_USERNAME`/`DB_PASSWORD` (api/.env) wajib sama dengan
 >   `POSTGRES_USER`/`POSTGRES_PASSWORD` (.env root).** Root `.env` yang membuat
 >   database; `api/.env` yang menyambunginya. Beda sedikit → api tak bisa connect.
@@ -187,8 +190,8 @@ TELESCOPE_ENABLED=false     # jangan pernah true di produksi
 ### 3c. Isi `web/.env.production`
 
 ```dotenv
-NEXT_PUBLIC_API_URL=https://api-flo-event.flotech.id/api/v1
-NEXT_PUBLIC_APP_URL=https://flo-event.flotech.id
+NEXT_PUBLIC_API_URL=https://api.floevent.id/api/v1
+NEXT_PUBLIC_APP_URL=https://floevent.id
 NEXT_PUBLIC_SENTRY_DSN=      # opsional
 ```
 
@@ -287,7 +290,7 @@ sudo ln -s /etc/nginx/sites-available/flo-event.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
 # TLS: certbot menulis blok 443 + redirect 80->443 otomatis
-sudo certbot --nginx -d flo-event.flotech.id -d api-flo-event.flotech.id
+sudo certbot --nginx -d floevent.id -d api.floevent.id
 ```
 
 Kalau proxy host = **Caddy**: pakai `deploy/host-caddy/flo-event.Caddyfile`
@@ -340,7 +343,7 @@ docker compose exec api php artisan tinker
 ```php
 \App\Models\User::create([
     'full_name' => 'Admin',
-    'email' => 'admin@flotech.id',
+    'email' => 'admin@floevent.id',
     'password' => 'PASSWORD_KUAT_ANDA',   // di-hash otomatis (cast 'hashed')
     'role' => 'super_admin',
     'is_verified' => true,
@@ -356,7 +359,7 @@ Di dashboard Midtrans → **Settings → Configuration**, set **Payment Notifica
 URL** ke:
 
 ```
-https://api-flo-event.flotech.id/api/v1/webhooks/midtrans
+https://api.floevent.id/api/v1/webhooks/midtrans
 ```
 
 Signature diverifikasi di dalam controller. Tanpa ini, pembayaran gateway tidak
@@ -368,13 +371,13 @@ pernah tercatat lunas (dompet organizer & tiket tidak terbit).
 
 ```bash
 # Health check API
-curl https://api-flo-event.flotech.id/api/v1/health
+curl https://api.floevent.id/api/v1/health
 
 # Frontend
-curl -I https://flo-event.flotech.id
+curl -I https://floevent.id
 ```
 
-Buka `https://flo-event.flotech.id` di browser — landing harus tampil dengan harga,
+Buka `https://floevent.id` di browser — landing harus tampil dengan harga,
 testimoni, dan FAQ dari database. Login sebagai super admin di `/admin`.
 
 ---
@@ -392,6 +395,31 @@ docker compose exec api php artisan migrate --force
 
 > Kalau mengubah `web/.env.production` atau nilai `NEXT_PUBLIC_*`, wajib rebuild
 > image `web` (`docker compose up -d --build web`) — nilainya di-inline saat build.
+
+### Pindah domain
+
+Domain hidup di enam tempat dan **melewatkan satu di antaranya menghasilkan
+kegagalan yang tidak menyebut domain sama sekali** — CORS yang menolak login,
+atau sesi yang logout tiap reload. Urutannya:
+
+1. **DNS** — dua A record ke IP VPS (§1a), tunggu `dig` mengembalikan IP benar.
+2. **`.env` root** — `APP_DOMAIN`, `API_DOMAIN`.
+3. **`api/.env`** — `APP_URL`, `FRONTEND_URL` (ini yang jadi `allowed_origins`
+   CORS), dan **`SESSION_DOMAIN=.<domain-induk>`**.
+4. **nginx** — `server_name` + path sertifikat di `nginx/conf.d/default.conf`
+   (Varian A) atau `deploy/host-nginx/flo-event.conf` (Varian B).
+5. **TLS** — terbitkan sertifikat untuk nama baru (`./init-letsencrypt.sh` atau
+   `sudo certbot --nginx -d <apex> -d api.<apex>`).
+6. **Rebuild web** — `NEXT_PUBLIC_*` di-bake saat build:
+
+```bash
+docker compose up -d --build web
+docker compose up -d api worker scheduler
+docker compose exec api php artisan optimize
+```
+
+Sesudah itu login sekali lagi: cookie refresh yang lama terikat ke domain lama
+dan tidak akan pernah terkirim ke yang baru.
 
 ### Log
 ```bash
@@ -439,7 +467,7 @@ docker compose exec nginx nginx -s reload
 | Landing kosong (harga/FAQ/testimoni tak muncul) | Seeder katalog/landing belum dijalankan (langkah 7). |
 | Email tak terkirim | `MAIL_MAILER` masih `log`; set `resend` + `RESEND_API_KEY`. |
 | Pembayaran tak pernah lunas | Notification URL Midtrans belum diarahkan ke `/api/v1/webhooks/midtrans` (langkah 8). |
-| Reload halaman selalu balik ke `/login` | `SESSION_DOMAIN` masih `null` → cookie refresh host-only di subdomain API. Set `.flotech.id`, `docker compose up -d api worker scheduler`, `php artisan optimize`, lalu login ulang sekali. |
+| Reload halaman selalu balik ke `/login` | `SESSION_DOMAIN` masih `null` → cookie refresh host-only di subdomain API. Set `.floevent.id`, `docker compose up -d api worker scheduler`, `php artisan optimize`, lalu login ulang sekali. |
 
 ---
 

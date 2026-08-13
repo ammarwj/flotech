@@ -5,14 +5,14 @@
 # Caddy provisions & renews TLS automatically — no certbot needed.
 # ============================================================
 
-flo-event.flotech.id {
+floevent.id {
 	reverse_proxy 127.0.0.1:3001
 	request_body {
 		max_size 25MB
 	}
 }
 
-api-flo-event.flotech.id {
+api.floevent.id {
 	reverse_proxy 127.0.0.1:8001
 	request_body {
 		max_size 25MB

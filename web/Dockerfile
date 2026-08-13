@@ -11,9 +11,12 @@ FROM oven/bun:1-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# NEXT_PUBLIC_* must be present at build time (Next inlines them).
+# NEXT_PUBLIC_* must be present at build time (Next inlines them) — passing them
+# at `docker compose up` only is too late, the value is already baked in.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 

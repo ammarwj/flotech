@@ -41,9 +41,13 @@ services:
       context: ./web
       args:
         - NEXT_PUBLIC_API_URL=https://${API_DOMAIN}/api/v1
+        # Prefix of the public organizer profile URL shown in /organizer/settings.
+        # Empty here = the field renders without its domain.
+        - NEXT_PUBLIC_APP_URL=https://${APP_DOMAIN}
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=https://${API_DOMAIN}/api/v1
+      - NEXT_PUBLIC_APP_URL=https://${APP_DOMAIN}
     depends_on:
       - api
     networks:
