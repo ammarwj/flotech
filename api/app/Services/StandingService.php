@@ -42,6 +42,14 @@ class StandingService
     protected array $matchCache = [];
 
     /**
+     * The unfinished fixtures behind the same table — see pendingCounts().
+     * Cleared alongside $matchCache by forget().
+     *
+     * @var array<string, array<string, int>> category id => team id => count
+     */
+    protected array $pendingCache = [];
+
+    /**
      * Drop the memoized fixtures. Called at the top of every public entry
      * point, because the service can outlive the results it read: one instance
      * answers the knockout plan both before a ball is kicked and after the
@@ -55,6 +63,7 @@ class StandingService
     protected function forget(): void
     {
         $this->matchCache = [];
+        $this->pendingCache = [];
     }
 
     /**
@@ -359,6 +368,43 @@ class StandingService
     }
 
     /**
+     * Fixtures each team still has in front of it, in the same scope the table
+     * counts — anything not cancelled that countingMatches() has not picked up
+     * yet, whether it is unplayed, unscored, or played but unconfirmed.
+     *
+     * This is what tells a tie that is finished apart from one that has simply
+     * not happened yet; see markUndecided().
+     *
+     * @return array<string, int> team id => matches left
+     */
+    protected function pendingCounts(EventCategory $category): array
+    {
+        if (isset($this->pendingCache[$category->id])) {
+            return $this->pendingCache[$category->id];
+        }
+
+        $matches = $category->matches()
+            ->where('status', '!=', 'cancelled')
+            ->where(fn ($q) => $q->whereNull('stage')->orWhere('stage', 'group'))
+            ->where(fn ($q) => $q->where('status', '!=', 'finished')
+                ->orWhereNull('confirmed_at')
+                ->orWhereNull('home_score')
+                ->orWhereNull('away_score'))
+            ->get(['id', 'home_team_id', 'away_team_id']);
+
+        $out = [];
+        foreach ($matches as $match) {
+            foreach ([$match->home_team_id, $match->away_team_id] as $teamId) {
+                if ($teamId !== null) {
+                    $out[$teamId] = ($out[$teamId] ?? 0) + 1;
+                }
+            }
+        }
+
+        return $this->pendingCache[$category->id] = $out;
+    }
+
+    /**
      * Disciplinary points per team: 1 per yellow card, 3 per red. Lower is
      * better, which is exactly how the fair-play tiebreaker reads it.
      *
@@ -490,7 +536,7 @@ class StandingService
             // it is because of a draw, and is owed a decider. Said before the
             // lot is applied, since the lot itself always separates them.
             if ($comparator === 'drawing_lots') {
-                $this->markUndecided($rows, $order);
+                $this->markUndecided($rows, $order, $category);
             }
 
             $mini = $comparator === 'head_to_head'
@@ -519,7 +565,7 @@ class StandingService
 
         // The order ran out with these still level — it holds no lot to break
         // the tie with either, so the name is all that is left.
-        $this->markUndecided($rows, $order);
+        $this->markUndecided($rows, $order, $category);
         usort($rows, fn ($a, $b) => strcmp($a['team']['name'], $b['team']['name']));
 
         return $rows;
@@ -560,13 +606,30 @@ class StandingService
      * mark is an invitation to play one: telling an organizer who removed it
      * that a tie is unresolved would point at a fixture that changes nothing.
      *
+     * And only once the tie is *final*. Before a ball is kicked every team in
+     * the group is level on nought, so a mark raised on the standing alone
+     * invites a decider for a group that has not started — which is what this
+     * used to do. A tie is only owed a decider when none of the teams in it has
+     * a fixture left that could still separate them.
+     *
      * @param  array<int, array<string, mixed>>  $rows  by reference
      * @param  array<int, string>  $order
      */
-    protected function markUndecided(array &$rows, array $order): void
+    protected function markUndecided(array &$rows, array $order, EventCategory $category): void
     {
         if (! $this->usesComparator($order, 'playoff')) {
             return;
+        }
+
+        $pending = $this->pendingCounts($category);
+
+        foreach ($rows as $row) {
+            // Nothing to be owed yet: a team that has not finished its fixtures
+            // is level with the others by accident, and one that has played
+            // nothing at all is level with everybody.
+            if ($row['played'] === 0 || ($pending[$row['team']['id']] ?? 0) > 0) {
+                return;
+            }
         }
 
         foreach ($rows as &$row) {

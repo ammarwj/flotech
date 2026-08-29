@@ -329,6 +329,51 @@ class TiebreakPlayoffTest extends TestCase
         $this->assertFalse($this->table($event)['Persija']['needs_decider']);
     }
 
+    public function test_the_flag_stays_down_while_the_group_still_has_fixtures_left(): void
+    {
+        $org = $this->org(User::factory()->create());
+        $event = $this->deadHeat($org);
+        $category = $event->categories->first();
+
+        // Compare the same dead heat with and without a fixture still to come:
+        // asserting only the flagged state would pass just as happily if the
+        // mark were raised on the standing alone, which is what it used to do.
+        $this->assertTrue($this->table($event)['Persija']['needs_decider']);
+
+        $pending = $event->matches()->create([
+            'category_id' => $category->id,
+            'round' => 2,
+            'leg' => 1,
+            'order' => 2,
+            'home_team_id' => $event->teams()->where('name', 'Persib')->value('id'),
+            'away_team_id' => $event->teams()->where('name', 'Persija')->value('id'),
+            'status' => 'scheduled',
+        ]);
+
+        $this->assertFalse($this->table($event)['Persija']['needs_decider']);
+        $this->assertFalse($this->table($event)['Persib']['needs_decider']);
+
+        // Played and confirmed, the tie is final again — and still a dead heat.
+        $pending->update([
+            'home_score' => 2, 'away_score' => 2,
+            'status' => 'finished', 'confirmed_at' => now(),
+        ]);
+
+        $this->assertTrue($this->table($event)['Persija']['needs_decider']);
+    }
+
+    public function test_a_group_that_has_not_kicked_off_owes_nobody_a_decider(): void
+    {
+        $org = $this->org(User::factory()->create());
+        $event = $this->deadHeat($org);
+
+        // Every team level on nought is not a tie, it is an empty table.
+        $event->matches()->delete();
+
+        $this->assertFalse($this->table($event)['Persija']['needs_decider']);
+        $this->assertFalse($this->table($event)['Persib']['needs_decider']);
+    }
+
     /** A yellow card for that team's only player, in the given match. */
     private function book(Event $event, string $team, GameMatch $match): void
     {
