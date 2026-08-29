@@ -903,10 +903,14 @@ function ScheduleView() {
             )}
             {(standingsQuery.data?.length ?? 0) > 0 && (
               <p className="mt-3 text-xs text-muted-foreground">
-                {/* GroupStandings prints its own "lolos ke knockout" legend, so the
-                  green one here belongs to the standalone league only. */}
+                {/* GroupStandings prints its own "lolos ke knockout" legend and
+                  its own tiebreaker order, so both of these belong to the
+                  standalone league only. */}
                 {!isHybrid && "Baris hijau = juara klasemen. "}
                 {standingsLegend(context)}
+                {!isHybrid && config.tiebreakers.length > 0 && (
+                  <> Tie breaker: {config.tiebreakers.map(catalog.tiebreakerLabel).join(" → ")}.</>
+                )}
               </p>
             )}
           </div>

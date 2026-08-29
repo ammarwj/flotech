@@ -30,6 +30,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { InfoHint } from "@/components/ui/info-hint";
 import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
+import { LeagueConfigCard } from "@/components/event/standings-rules";
 import { rupiah } from "@/lib/labels";
 import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -188,6 +189,7 @@ function CategoryEditor({
   index,
   canRemove,
   isHybrid,
+  isLeague,
   isSingleElim,
   sport,
   teamsCap,
@@ -206,6 +208,8 @@ function CategoryEditor({
   teamsCap: number | null;
   /** Entrants already registered — the shape can no longer change. */
   locked: boolean;
+  /** A standalone league: no groups and no bracket, but it does have a table. */
+  isLeague: boolean;
   /** Single elimination has no config card, but it can still play for third. */
   isSingleElim: boolean;
   nameError?: string;
@@ -308,6 +312,17 @@ function CategoryEditor({
 
       {isHybrid && (
         <HybridConfigCard
+          value={cat.bracket_config}
+          context={context}
+          onChange={(config) => onChange({ bracket_config: config })}
+        />
+      )}
+
+      {/* A league has no groups to draw and no bracket to seed, but its table is
+          ranked by the same config a group stage is — so it gets those two
+          sections and nothing else. */}
+      {isLeague && (
+        <LeagueConfigCard
           value={cat.bracket_config}
           context={context}
           onChange={(config) => onChange({ bracket_config: config })}
@@ -757,8 +772,13 @@ export function EventForm({
               cat={c}
               index={i}
               canRemove={categories.length > 1}
-              isHybrid={engineOf(c.tournament_format) === "hybrid"}
-              isSingleElim={engineOf(c.tournament_format) === "knockout_single"}
+              // A new category holds no format yet, and the select shows the
+              // first one — the same one handleSubmit will send. Reading the
+              // empty string literally would leave that category without the
+              // config card of the format it is about to be saved as.
+              isHybrid={engineOf(c.tournament_format || fallbackFormat) === "hybrid"}
+              isLeague={engineOf(c.tournament_format || fallbackFormat) === "league"}
+              isSingleElim={engineOf(c.tournament_format || fallbackFormat) === "knockout_single"}
               sport={sports.find((s) => s.slug === sportValue)}
               teamsCap={teamsCap}
               locked={(c._teamsCount ?? 0) > 0}

@@ -18,3 +18,23 @@ export const AVATAR_PRESETS: Record<AvatarPreset, { label: string; gradient: str
 export function avatarGradient(preset: AvatarPreset): string {
   return (AVATAR_PRESETS[preset] ?? AVATAR_PRESETS.brand).gradient;
 }
+
+/**
+ * Landing-page counters, shortened the way Indonesian copy shortens them:
+ * 940 → "940", 38.400 → "38rb", 1.240.000 → "1,2jt".
+ *
+ * Lives here rather than in the component for the same reason avatarGradient
+ * does — the API ships raw numbers, and there is exactly one way the site
+ * writes them.
+ */
+export function compactCount(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}jt`;
+  }
+
+  if (value >= 1_000) {
+    return `${Math.floor(value / 1_000).toLocaleString("id-ID")}rb`;
+  }
+
+  return value.toLocaleString("id-ID");
+}

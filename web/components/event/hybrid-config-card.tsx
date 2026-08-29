@@ -1,12 +1,17 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Network } from "lucide-react";
+import { Network } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { SectionHeader } from "@/components/event/section-header";
+import {
+  NumField,
+  PointsSection,
+  Sub,
+  TiebreakerSection,
+} from "@/components/event/standings-rules";
 import {
   bracketSize,
   byeCount,
@@ -21,50 +26,7 @@ import type {
   DrawMethod,
   KnockoutRound,
   StandingsContext,
-  Tiebreaker,
 } from "@/types/api";
-
-function Sub({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="grid gap-3 border-t border-border pt-4 first:border-0 first:pt-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function NumField({
-  label,
-  hint,
-  value,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  value: number;
-  min: number;
-  max: number;
-  disabled?: boolean;
-  onChange: (n: number) => void;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label className="font-semibold">{label}</Label>
-      <Input
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || min)))}
-      />
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
 
 /**
  * Everything that defines a Group + Knockout event: the group structure, the
@@ -91,23 +53,12 @@ export function HybridConfigCard({
     catalog.tiebreakersFor(context).map((t) => t.key),
     context,
   );
-  // Nothing to award a draw for when a match is decided on games.
-  const hasDraws = context !== "set";
-
   const set = (patch: Partial<HybridConfig>) => onChange({ ...c, ...patch });
 
   const qualified = qualifierCount(c);
   const size = bracketSize(c, catalog.roundSize);
   const byes = byeCount(c, catalog.roundSize);
   const tooMany = qualified > size;
-
-  const moveTiebreaker = (index: number, dir: -1 | 1) => {
-    const next = [...c.tiebreakers];
-    const to = index + dir;
-    if (to < 0 || to >= next.length) return;
-    [next[index], next[to]] = [next[to], next[index]];
-    set({ tiebreakers: next as Tiebreaker[] });
-  };
 
   return (
     <Card>
@@ -175,33 +126,7 @@ export function HybridConfigCard({
           </div>
         </Sub>
 
-        <Sub title="Poin klasemen">
-          <div className={`grid gap-4 ${hasDraws ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-            <NumField
-              label="Poin menang"
-              value={c.points.win}
-              min={0}
-              max={10}
-              onChange={(win) => set({ points: { ...c.points, win } })}
-            />
-            {hasDraws && (
-              <NumField
-                label="Poin seri"
-                value={c.points.draw}
-                min={0}
-                max={10}
-                onChange={(draw) => set({ points: { ...c.points, draw } })}
-              />
-            )}
-            <NumField
-              label="Poin kalah"
-              value={c.points.lose}
-              min={0}
-              max={10}
-              onChange={(lose) => set({ points: { ...c.points, lose } })}
-            />
-          </div>
-        </Sub>
+        <PointsSection config={c} context={context} onChange={(points) => set({ points })} />
 
         <Sub title="Aturan lolos">
           <div className="grid gap-4 sm:grid-cols-3">
@@ -303,45 +228,7 @@ export function HybridConfigCard({
           </div>
         </Sub>
 
-        <Sub title="Tie breaker">
-          <p className="-mt-1 text-xs text-muted-foreground">
-            Dipakai berurutan saat poin sama. Geser untuk mengubah prioritas.
-          </p>
-          <ol className="grid gap-2">
-            {c.tiebreakers.map((t, i) => (
-              <li
-                key={t}
-                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-[var(--bg-soft)] px-3 py-2 sm:gap-3"
-              >
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-card text-xs font-bold">
-                  {i + 1}
-                </span>
-                {/* min-w-0: a flex item defaults to min-width:auto and refuses to
-                    shrink below its content, which would push the reorder
-                    buttons out of the box on a phone. */}
-                <span className="min-w-0 flex-1 text-sm font-medium">{catalog.tiebreakerLabel(t)}</span>
-                <button
-                  type="button"
-                  onClick={() => moveTiebreaker(i, -1)}
-                  disabled={i === 0}
-                  aria-label={`Naikkan ${catalog.tiebreakerLabel(t)}`}
-                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveTiebreaker(i, 1)}
-                  disabled={i === c.tiebreakers.length - 1}
-                  aria-label={`Turunkan ${catalog.tiebreakerLabel(t)}`}
-                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ol>
-        </Sub>
+        <TiebreakerSection config={c} onChange={(tiebreakers) => set({ tiebreakers })} />
 
         <div
           className="rounded-lg border px-4 py-3 text-sm"

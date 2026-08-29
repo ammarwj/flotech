@@ -115,6 +115,18 @@ export interface SiteSettings {
   account_holder?: string | null;
 }
 
+/**
+ * The four counters in the landing page's proof strip, counted from the
+ * database on every read — see GET /stats. Raw numbers: the compact form
+ * ("38rb") is presentation and lives in lib/landing.ts.
+ */
+export interface PlatformStats {
+  tournaments: number;
+  teams: number;
+  tickets: number;
+  matches: number;
+}
+
 export interface Organization {
   id: string;
   name: string;

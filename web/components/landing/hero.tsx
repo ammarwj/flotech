@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 
 import { usePublicCta } from "@/components/auth/public-auth-actions";
+import { getPublicStats } from "@/lib/api/landing";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { compactCount } from "@/lib/landing";
 import { ArrowRight, CheckIcon, StarIcon } from "./icons";
 
 export function Hero() {
@@ -270,30 +273,42 @@ export function Hero() {
 }
 
 export function Proof() {
+  // These four were hardcoded ("1.200+", "38rb", "540rb", plus a 99,9% uptime
+  // figure nothing measured) — the same drift the sports count above already
+  // avoids, and the last hardcoded content left on the landing page. Uptime is
+  // gone: it isn't in the database, so it was a claim, not a number.
+  const query = useQuery({ queryKey: ["public-stats"], queryFn: getPublicStats });
+  const stats = query.data;
+
   return (
     <section className="proof">
       <div className="container">
         <p className="proof-label">
           Dipercaya penyelenggara dari komunitas lokal hingga federasi nasional
         </p>
-        <div className="stat-row">
-          <div className="stat">
-            <b>1.200+</b>
-            <span>Turnamen terselenggara</span>
+        {/* Rendered only once the counters land: a landing page that briefly
+            says "0 Turnamen terselenggara" is worse than one that says nothing
+            for a moment. */}
+        {stats && (
+          <div className="stat-row">
+            <div className="stat">
+              <b>{compactCount(stats.tournaments)}</b>
+              <span>Turnamen terselenggara</span>
+            </div>
+            <div className="stat">
+              <b>{compactCount(stats.teams)}</b>
+              <span>Tim terdaftar</span>
+            </div>
+            <div className="stat">
+              <b>{compactCount(stats.tickets)}</b>
+              <span>Tiket terjual</span>
+            </div>
+            <div className="stat">
+              <b>{compactCount(stats.matches)}</b>
+              <span>Pertandingan dimainkan</span>
+            </div>
           </div>
-          <div className="stat">
-            <b>38rb</b>
-            <span>Tim terdaftar</span>
-          </div>
-          <div className="stat">
-            <b>540rb</b>
-            <span>Tiket terjual</span>
-          </div>
-          <div className="stat">
-            <b>99,9%</b>
-            <span>Uptime platform</span>
-          </div>
-        </div>
+        )}
       </div>
     </section>
   );

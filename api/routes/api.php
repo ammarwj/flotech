@@ -6,12 +6,12 @@ use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
+use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
-use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\TestimonialController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\Admin\ViewStatController as AdminViewStatController;
@@ -26,21 +26,22 @@ use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
-use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\EventViewStatController;
+use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
+use App\Http\Controllers\Api\PlanOrderController;
 use App\Http\Controllers\Api\Public\EventViewController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
+use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
-use App\Http\Controllers\Api\PlanOrderController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
 use App\Http\Controllers\Api\UploadController;
@@ -104,6 +105,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/site-settings', fn () => ApiResponse::success(
         new PublicSiteSettingResource(SiteSetting::current())
     ));
+
+    // Landing page proof counters (turnamen, tim, tiket, laga).
+    Route::get('/stats', PublicStatController::class);
 
     // Admin-managed vocabulary: sports (+ stat columns), formats, tiebreakers,
     // draw methods, knockout rounds, sponsor tiers. Read by the whole web app.

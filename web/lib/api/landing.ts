@@ -1,5 +1,11 @@
 import { apiClient } from "./client";
-import type { ApiEnvelope, Faq, SiteSettings, Testimonial } from "@/types/api";
+import type {
+  ApiEnvelope,
+  Faq,
+  PlatformStats,
+  SiteSettings,
+  Testimonial,
+} from "@/types/api";
 
 // ---- Public ----
 
@@ -15,6 +21,11 @@ export async function getPublicFaqs(): Promise<Faq[]> {
 
 export async function getPublicSiteSettings(): Promise<SiteSettings> {
   const { data } = await apiClient.get<ApiEnvelope<SiteSettings>>("/site-settings");
+  return data.data;
+}
+
+export async function getPublicStats(): Promise<PlatformStats> {
+  const { data } = await apiClient.get<ApiEnvelope<PlatformStats>>("/stats");
   return data.data;
 }
 

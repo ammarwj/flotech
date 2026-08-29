@@ -387,4 +387,90 @@ class StandingsFormatTest extends TestCase
             HybridConfig::fromCategory($event->categories->first())->tiebreakers,
         );
     }
+
+    /**
+     * A standalone league is ranked by the same `bracket_config.tiebreakers` a
+     * group stage is — which is the whole reason the organizer is allowed to
+     * edit them there too.
+     *
+     * Asserted by *comparing* the same four results ranked two ways: that the
+     * stored order comes back out of the API proves nothing about the table,
+     * which is exactly the gap the league form had while the standings were
+     * already reading this.
+     */
+    public function test_a_league_table_ranks_on_the_tiebreakers_its_category_stores(): void
+    {
+        $org = $this->org(User::factory()->create());
+
+        $event = $org->events()->create([
+            'plan_id' => $this->planId(),
+            'name' => 'Liga Nusantara',
+            'slug' => 'liga-'.uniqid(),
+            'sport_type' => 'football',
+            'status' => 'ongoing',
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-30',
+        ]);
+
+        $category = $event->categories()->create([
+            'name' => 'Umum',
+            'slug' => 'umum',
+            'participant_type' => 'team',
+            'tournament_format' => 'league',
+            'registration_fee' => 0,
+            'sort_order' => 0,
+        ]);
+
+        $teams = [];
+        foreach (['Alfa', 'Bravo', 'Charlie', 'Delta'] as $name) {
+            $teams[$name] = $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => $name,
+                'status' => 'approved',
+            ])->id;
+        }
+
+        $order = 0;
+        $play = function (string $home, string $away, int $hs, int $as) use ($event, $category, $teams, &$order) {
+            $event->matches()->create([
+                'category_id' => $category->id,
+                'round' => 1,
+                'leg' => 1,
+                'order' => ++$order,
+                'home_team_id' => $teams[$home],
+                'away_team_id' => $teams[$away],
+                'home_score' => $hs,
+                'away_score' => $as,
+                'status' => 'finished',
+                'confirmed_at' => now(),
+            ]);
+        };
+
+        // Alfa and Bravo finish level on 4 points and drew with each other, so
+        // head to head cannot separate them either. Alfa has the better goal
+        // difference (+3 to +2); Bravo scored more (7 to 5).
+        $play('Alfa', 'Bravo', 1, 1);
+        $play('Alfa', 'Charlie', 4, 0);
+        $play('Delta', 'Alfa', 1, 0);
+        $play('Bravo', 'Charlie', 6, 3);
+        $play('Delta', 'Bravo', 1, 0);
+
+        $rank = function () use ($category) {
+            $rows = app(StandingService::class)->compute($category->fresh());
+
+            return collect($rows)->pluck('rank', 'team.name')->all();
+        };
+
+        // Default order: goal difference before goals scored.
+        $byDifference = $rank();
+        $this->assertLessThan($byDifference['Bravo'], $byDifference['Alfa']);
+
+        $category->update(['bracket_config' => ['tiebreakers' => [
+            'head_to_head', 'goals_scored', 'goal_difference', 'drawing_lots',
+        ]]]);
+
+        // Same results, the organizer's order: goals scored now outranks it.
+        $byGoals = $rank();
+        $this->assertLessThan($byGoals['Alfa'], $byGoals['Bravo']);
+    }
 }
