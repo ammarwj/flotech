@@ -19,6 +19,7 @@ import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { useEventBase } from "@/lib/event-base";
 import { useUrlState } from "@/lib/hooks/use-url-state";
 import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
 import { showsPlayerStats } from "@/lib/scoring";
@@ -102,7 +103,9 @@ export default function PublicEventPage() {
 function PublicEventView() {
   const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
-  const base = `/${params.orgSlug}/${params.eventSlug}`;
+  // Di custom domain event ini adalah root, jadi `base` kosong dan tautan yang
+  // butuh domain utama (pendaftaran, beranda platform) jadi absolut.
+  const { base, onCustomDomain, mainUrl, homeUrl } = useEventBase();
   // Tab dan kategori hidup di URL supaya refresh — atau back dari halaman
   // pendaftaran/tiket — mendarat di tempat yang sama, dan tautannya bisa
   // di-share. Kategori dikunci lewat slug, kosakata publik yang sama dengan
@@ -145,7 +148,7 @@ function PublicEventView() {
       <div className="container" style={{ paddingBlock: 96, textAlign: "center" }}>
         <h1 className="section-title">Event tidak ditemukan</h1>
         <p className="section-sub">Periksa kembali tautannya atau event belum dipublikasikan.</p>
-        <Link href="/" className="btn btn-primary btn-lg" style={{ marginTop: 24 }}>
+        <Link href={homeUrl} className="btn btn-primary btn-lg" style={{ marginTop: 24 }}>
           Ke beranda
         </Link>
       </div>
@@ -202,9 +205,11 @@ function PublicEventView() {
   const selectedCategory =
     tabCategories.find((c) => c.slug === wantedSlug) ?? tabCategories[0] ?? null;
   // Preselect the viewed category on the registration form.
+  // Selalu ke domain utama: pendaftaran butuh sesi, dan refresh cookie terikat
+  // `.floevent.id` sehingga tidak akan pernah terkirim ke domain organizer.
   const registerHref = selectedCategory
-    ? `${base}/register?category=${selectedCategory.slug}`
-    : `${base}/register`;
+    ? mainUrl(`/register?category=${selectedCategory.slug}`)
+    : mainUrl("/register");
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll =
@@ -227,12 +232,14 @@ function PublicEventView() {
       <header className="ehero">
         <div className="container ehero-inner">
           <div className="ehero-top">
-            <Link href="/" className="ehero-back">
+            <Link href={homeUrl} className="ehero-back">
               <ArrowLeft />
               <span className="min-w-0 truncate">Didukung flo-event</span>
             </Link>
             <div className="flex shrink-0 items-center gap-2">
-              <PublicAuthActions />
+              {/* Widget akun disembunyikan di custom domain: sesinya memang tidak
+                  ikut ke sini, jadi ia hanya akan menawarkan login yang gagal. */}
+              {!onCustomDomain && <PublicAuthActions />}
               <ThemeToggleButton />
             </div>
           </div>
@@ -596,7 +603,7 @@ function PublicEventView() {
       <footer className="footer">
         <div className="container">
           <div className="footer-bottom" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-            <Link href="/" className="logo">
+            <Link href={homeUrl} className="logo">
               flo<span>-event</span>
             </Link>
             <span>Halaman event ini dibuat dengan flo-event · © 2026</span>

@@ -49,6 +49,11 @@ class Event extends Model
         'plan_id',
         'name',
         'slug',
+        'custom_domain',
+        'domain_verified_at',
+        'domain_certified_at',
+        'domain_error',
+        'domain_attempted_at',
         'sport_type',
         'status',
         'status_before_cancel',
@@ -72,6 +77,9 @@ class Event extends Model
             'end_date' => 'date',
             'registration_open' => 'datetime',
             'registration_close' => 'datetime',
+            'domain_verified_at' => 'datetime',
+            'domain_certified_at' => 'datetime',
+            'domain_attempted_at' => 'datetime',
             'courts' => 'array',
             'rules_config' => 'array',
         ];
@@ -183,6 +191,36 @@ class Event extends Model
     public function restoreTarget(): string
     {
         return $this->status_before_cancel ?: self::RESTORE_FALLBACK;
+    }
+
+    /**
+     * How far this event's custom domain has got: none | pending | active | failed.
+     *
+     * Derived, never stored. "Active" means a certificate exists and nginx is
+     * serving it — a fact about files on disk that a status column starts lying
+     * about the moment a cert is deleted or a renewal fails.
+     *
+     * `failed` is checked before `pending` so a domain that errored does not
+     * read as merely waiting; clearing `domain_error` is what puts it back in
+     * the queue (see DomainService::assign()).
+     */
+    public function domainStatus(): string
+    {
+        if (! $this->custom_domain) {
+            return 'none';
+        }
+
+        if ($this->domain_certified_at) {
+            return 'active';
+        }
+
+        return $this->domain_error ? 'failed' : 'pending';
+    }
+
+    /** Whether this event is reachable on its own hostname right now. */
+    public function hasLiveDomain(): bool
+    {
+        return $this->domainStatus() === 'active';
     }
 
     public function canTransitionTo(string $status): bool

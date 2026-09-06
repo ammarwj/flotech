@@ -48,6 +48,11 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=https://${API_DOMAIN}/api/v1
       - NEXT_PUBLIC_APP_URL=https://${APP_DOMAIN}
+      # Custom-domain lookup for web/proxy.ts, read at RUNTIME on purpose: it
+      # never reaches the browser, and as a build arg every change to it would
+      # mean rebuilding the image (NEXT_PUBLIC_* are baked — see web/Dockerfile).
+      # Container-to-container inside flonet, so it skips the public internet.
+      - INTERNAL_API_URL=http://api:8000/api/v1
     depends_on:
       - api
     networks:
@@ -99,6 +104,19 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
       - APP_ENV=production
+    # Custom domains. Only this service gets them: it is the one that runs
+    # certbot (domains:sync / domains:renew), and host nginx reads what it
+    # writes. `api` and `worker` share no filesystem with it by design — that is
+    # why domain state travels through the DB, never through a spool file.
+    # Created by deploy/setup-custom-domains.sh.
+    volumes:
+      - /opt/flo-event/letsencrypt:/opt/flo-event/letsencrypt
+      - /opt/flo-event/certbot-www:/opt/flo-event/certbot-www
+      - /opt/flo-event/nginx:/opt/flo-event/nginx
+      # The reload flag is a file, so its directory is what gets mounted;
+      # bind-mounting the file itself breaks when it is replaced rather than
+      # rewritten.
+      - /opt/flo-event/flags:/opt/flo-event/flags
     depends_on:
       - api
       - redis

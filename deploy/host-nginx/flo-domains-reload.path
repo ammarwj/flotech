@@ -1,0 +1,11 @@
+[Unit]
+Description=Awasi flag reload custom domain flo-event
+
+[Path]
+# Container tidak bisa (dan tidak boleh) mereload nginx host. Ia menyentuh flag
+# ini; systemd yang menjalankan reload-nya.
+PathModified=/opt/flo-event/flags/reload.flag
+Unit=flo-domains-reload.service
+
+[Install]
+WantedBy=multi-user.target

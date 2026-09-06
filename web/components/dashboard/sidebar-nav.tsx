@@ -24,6 +24,7 @@ import {
   Share2,
   Activity,
   BarChart3,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { create } from "zustand";
@@ -189,6 +190,7 @@ export const ADMIN_NAV: NavSection[] = [
     id: "admin-system",
     label: "Sistem",
     items: [
+      { href: "/admin/events", label: "Event & Domain", icon: Globe },
       { href: "/admin/settings", label: "Pengaturan Platform", icon: Settings },
       { href: "/admin/visitors", label: "Statistik Pengunjung", icon: BarChart3 },
     ],

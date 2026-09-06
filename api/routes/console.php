@@ -26,3 +26,11 @@ Schedule::command('plan-orders:remind-idle')->dailyAt('09:00')->withoutOverlappi
 // The visitor dedup ledger is only useful on its own day; the daily roll-up it
 // feeds (event_view_daily) is kept forever.
 Schedule::command('views:prune')->dailyAt('02:00')->withoutOverlapping();
+
+// Custom domains: retry activations whose DNS was not ready yet, and repair the
+// generated nginx config. Every minute because an admin who just pointed an A
+// record is waiting on it; a single query when there is nothing to do.
+Schedule::command('domains:sync')->everyMinute()->withoutOverlapping();
+// Certificates last 90 days and certbot only acts within 30 of expiry, so this
+// is a no-op most days — which is why it cannot be a manual step.
+Schedule::command('domains:renew')->dailyAt('03:30')->withoutOverlapping();

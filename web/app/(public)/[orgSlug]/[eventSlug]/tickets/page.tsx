@@ -15,12 +15,14 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { rupiah } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { useEventBase } from "@/lib/event-base";
 import "../../../event-shell.css";
 
 export default function BuyTicketsPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   const router = useRouter();
-  const base = `/${params.orgSlug}/${params.eventSlug}`;
+  // Di custom domain halaman ini adalah `/tickets` dan eventnya adalah root.
+  const { base, onCustomDomain, platformUrl, homeUrl } = useEventBase();
 
   const [selected, setSelected] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -65,7 +67,15 @@ export default function BuyTicketsPage() {
         window.location.href = res.redirect_url;
         return;
       }
-      router.push(`/tickets/${res.order.id}`);
+      // Halaman pesanan hidup di domain utama. Di custom domain middleware
+      // memang akan me-301 path ini, tapi itu terjadi setelah navigasi klien
+      // sempat mencoba merender rute yang tidak ada di sini.
+      const orderPath = `/tickets/${res.order.id}`;
+      if (onCustomDomain) {
+        window.location.href = platformUrl(orderPath);
+        return;
+      }
+      router.push(orderPath);
     },
     onError: (err) => setError(parseApiError(err, "Gagal memproses pembelian.").message),
   });
@@ -76,7 +86,7 @@ export default function BuyTicketsPage() {
     return (
       <div className="container" style={{ paddingBlock: 96, textAlign: "center" }}>
         <h1 className="section-title">Event tidak ditemukan</h1>
-        <Link href="/" className="btn btn-primary btn-lg" style={{ marginTop: 24 }}>
+        <Link href={homeUrl} className="btn btn-primary btn-lg" style={{ marginTop: 24 }}>
           Ke beranda
         </Link>
       </div>
@@ -86,7 +96,7 @@ export default function BuyTicketsPage() {
   return (
     <div className="container" style={{ paddingBlock: 48, maxWidth: 760 }}>
       <Link
-        href={base}
+        href={base || "/"}
         className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" />

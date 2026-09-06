@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\ActiveSessionController;
 use App\Http\Controllers\Api\Admin\ConfigOptionController;
+use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\PlanController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\PlanOrderController;
+use App\Http\Controllers\Api\Public\DomainController;
 use App\Http\Controllers\Api\Public\EventViewController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
@@ -136,6 +138,11 @@ Route::prefix('v1')->group(function () {
 
     // ---- Public event catalog, landing & registration ----
     Route::get('public/events', [PublicEventController::class, 'index']);
+
+    // Hostname -> event routing table, read by the Next middleware before any
+    // user exists. Every domain in it is already public by definition.
+    Route::get('public/domains', [DomainController::class, 'index']);
+
     Route::get('public/organizations/{orgSlug}', [PublicOrganizationController::class, 'show']);
 
     // Certificate verification — what the QR printed on every certificate opens.
@@ -369,6 +376,14 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('feature-definitions', FeatureDefinitionController::class)
                 ->parameters(['feature-definitions' => 'feature_definition'])
                 ->except(['show']);
+
+            // Cross-org event list, and the custom domain controls on it.
+            // Domains are super-admin only: activating one spends Let's Encrypt
+            // quota shared by the whole platform.
+            Route::get('events', [AdminEventController::class, 'index']);
+            Route::put('events/{event}/domain', [AdminEventController::class, 'updateDomain']);
+            Route::post('events/{event}/domain/activate', [AdminEventController::class, 'activateDomain']);
+            Route::delete('events/{event}/domain', [AdminEventController::class, 'destroyDomain']);
 
             // How much of the platform is in use: tournaments by status.
             Route::get('stats', [AdminStatController::class, 'index']);

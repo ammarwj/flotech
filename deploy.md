@@ -367,7 +367,87 @@ pernah tercatat lunas (dompet organizer & tiket tidak terbit).
 
 ---
 
-## 9. Verifikasi
+## 9. Custom domain per event (opsional, Varian B)
+
+Event yang sudah publish bisa disajikan di hostname-nya sendiri — `eventa.id`,
+`eventb.jktevent.com`, atau subdomain `floevent.id`. Pemilik domain mengarahkan
+A record ke IP VPS ini, super admin menekan satu tombol di `/admin/events`, dan
+sertifikatnya terbit sendiri.
+
+Lewati bab ini kalau fiturnya belum dipakai — tanpa `CUSTOM_DOMAIN_SERVER_IP`
+semuanya diam, dan itu memang arah yang aman: tidak ada permintaan sertifikat
+yang pernah dikirim.
+
+> **Hanya Varian B.** Certbot dijalankan dari container `scheduler` ke direktori
+> bersama yang dibaca nginx **host**. `init-letsencrypt.sh` dan service `certbot`
+> di compose adalah Varian A (volume Docker yang tidak terlihat host) dan tidak
+> berperan sama sekali di sini.
+
+**1. Bootstrap host** (sekali saja, sebagai root):
+
+```bash
+sudo bash deploy/setup-custom-domains.sh
+```
+
+Skrip itu membuat `/opt/flo-event/{letsencrypt,certbot-www,nginx,flags}`,
+memasang `flo-event-domains.conf` (satu baris `include`), dan mengaktifkan
+systemd path unit `flo-domains-reload.path`. Unit itulah yang mereload nginx:
+container menyentuh file flag, systemd menjalankan `nginx -t && systemctl reload
+nginx`. `nginx -t` di depan yang memastikan config rusak tidak pernah
+menjatuhkan vhost `runup` di host yang sama.
+
+**2. Isi `api/.env`:**
+
+```dotenv
+CUSTOM_DOMAIN_SERVER_IP=<IP publik VPS ini>
+LETSENCRYPT_EMAIL=admin@floevent.id
+# CUSTOM_DOMAIN_STAGING=true   # uji coba dulu; lihat catatan kuota di bawah
+```
+
+**3. Rebuild** — image `api` sekarang memuat certbot, dan `web` butuh
+`INTERNAL_API_URL` yang baru:
+
+```bash
+docker compose up -d --build api worker scheduler web
+docker compose exec scheduler certbot --version
+```
+
+**4. Pakai.** Di `/admin/events`: cari eventnya, isi domainnya, Simpan. Minta
+pemiliknya membuat A record ke IP di atas. Setelah propagasi, tekan **Aktifkan &
+terbitkan SSL**.
+
+Aktivasi yang gagal karena DNS belum sampai bukan kesalahan — alasannya tampil
+apa adanya di kartu event, dan `domains:sync` (tiap menit) mencobanya lagi
+sesudah backoff. `domains:renew` jalan harian 03:30.
+
+> **Kuota Let's Encrypt: 5 kegagalan/jam/hostname, dihitung per akun.** Satu
+> domain yang salah DNS bisa mengunci penerbitan domain lain. Karena itu certbot
+> tidak pernah dipanggil sebelum A record-nya terbukti benar, dan domain yang
+> baru gagal dilewati sampai backoff-nya habis. Saat mencoba-coba, pakai
+> `CUSTOM_DOMAIN_STAGING=true` dulu — sertifikatnya tidak dipercaya browser,
+> tapi kuotanya jauh lebih longgar.
+
+Memeriksa:
+
+```bash
+docker compose exec scheduler php artisan domains:sync --dry-run
+cat /opt/flo-event/nginx/custom-domains.conf   # ditulis dari DB, jangan diedit tangan
+systemctl status flo-domains-reload
+sudo nginx -t
+curl -I https://<domain-uji>/
+```
+
+Yang **tidak** ikut pindah ke custom domain, dan memang disengaja: pendaftaran
+tim (`/register`) tetap di `floevent.id` karena butuh sesi, dan refresh cookie
+terikat `.floevent.id` sehingga browser tidak akan pernah mengirimkannya ke
+domain milik organizer. Beli tiket tidak butuh login, jadi ia ikut penuh.
+
+Mencabut domain lewat tombol **Cabut** di kartu yang sama: domainnya berhenti
+dilayani dan sertifikatnya dihapus.
+
+---
+
+## 10. Verifikasi
 
 ```bash
 # Health check API

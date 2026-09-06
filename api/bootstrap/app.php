@@ -1,8 +1,10 @@
 <?php
 
+use App\Exceptions\DomainException;
 use App\Exceptions\PaymentException;
 use App\Exceptions\PlanFeatureException;
 use App\Exceptions\WalletException;
+use App\Http\Middleware\DynamicCors;
 use App\Http\Middleware\EnsureOrgAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\TenantScope;
@@ -13,6 +15,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -43,6 +46,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(
             fn (Request $request) => $request->is('api/*') ? null : route('login'),
         );
+
+        // config/cors.php is static, but custom domains are registered by an
+        // admin while the app is running. Without this every fetch from a
+        // custom-domain page is blocked by the browser. See DynamicCors.
+        $middleware->replace(HandleCors::class, DynamicCors::class);
 
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
@@ -76,6 +84,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (PlanFeatureException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (DomainException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }

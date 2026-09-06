@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM php:8.4-cli-alpine AS base
 
-# System libs needed to build PHP extensions.
+# System libs needed to build PHP extensions, plus certbot: the scheduler
+# container issues custom-domain certificates itself (see DomainService), so the
+# exit code is known in the same process that holds the DB connection.
 RUN apk add --no-cache \
-    libpng libjpeg-turbo freetype libwebp libzip icu-libs postgresql-libs \
+    libpng libjpeg-turbo freetype libwebp libzip icu-libs postgresql-libs certbot \
   && apk add --no-cache --virtual .build-deps \
     $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev libzip-dev icu-dev postgresql-dev \
   && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \

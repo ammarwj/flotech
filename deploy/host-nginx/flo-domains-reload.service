@@ -1,0 +1,12 @@
+[Unit]
+Description=Reload nginx setelah config custom domain flo-event berubah
+
+[Service]
+Type=oneshot
+# `nginx -t` di depan adalah jaring pengamannya: config yang rusak — sertifikat
+# yang hilang, blok yang setengah tertulis — tidak pernah sampai ke reload,
+# jadi vhost `runup` di host yang sama tidak ikut jatuh. Kalau tes gagal,
+# nginx tetap berjalan dengan config lama dan unit ini yang berstatus failed
+# (`systemctl status flo-domains-reload`).
+ExecStart=/usr/sbin/nginx -t
+ExecStart=/bin/systemctl reload nginx

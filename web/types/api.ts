@@ -1316,6 +1316,40 @@ export interface AdminUser {
 
 export type AccountType = "organizer" | "participant";
 
+/**
+ * Status domain sebuah event. **Diturunkan server**, tidak disimpan sebagai
+ * kolom (lihat `Event::domainStatus()`): sebuah kolom status akan menyimpang
+ * dari sertifikat yang benar-benar ada di disk begitu ia dihapus atau gagal
+ * diperpanjang. Jangan menyusun ulang aturannya di klien.
+ */
+export type DomainStatus = "none" | "pending" | "active" | "failed";
+
+/**
+ * Satu event di daftar lintas-organisasi milik super admin.
+ *
+ * Sengaja bukan `Event`: daftar ini menyeberangi semua organisasi, jadi tiap
+ * baris membawa organisasinya dan tidak membawa konfigurasi per-event (aturan,
+ * lapangan, kategori) yang dibaca dashboard organizer.
+ */
+export interface AdminEvent {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  organization?: { id: string; name: string; slug: string };
+  plan?: PlanSummary;
+  custom_domain: string | null;
+  domain_status: DomainStatus;
+  domain_verified_at: string | null;
+  domain_certified_at: string | null;
+  /** Pesan certbot/DNS apa adanya — satu-satunya petunjuk kenapa aktivasi gagal. */
+  domain_error: string | null;
+  domain_attempted_at: string | null;
+  created_at: string;
+}
+
 // ---- Platform counters ----
 
 export interface AdminEventStats {
