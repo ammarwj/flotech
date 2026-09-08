@@ -9,11 +9,11 @@ use Illuminate\Console\Command;
 /**
  * Keep the nginx config and the certificates in step with the database.
  *
- * Two jobs the admin panel cannot do alone. Activation is one click, but a
- * domain whose DNS has not propagated yet fails then and would stay failed
- * forever without a retry — and the generated config lives on a host directory
- * that only the `scheduler` container mounts, so an admin acting through the
- * `api` container never wrote it in the first place.
+ * The one job the admin panel cannot do alone: a domain whose DNS has not
+ * propagated yet fails on the first click and would stay failed forever
+ * without a retry. `pending()` backs off for `retry_after_minutes` after each
+ * failed attempt (button or cron) to protect the Let's Encrypt quota, so this
+ * is also what eventually retries a domain the admin activated too early.
  *
  * Runs every minute and is a single query when there is nothing to do.
  */

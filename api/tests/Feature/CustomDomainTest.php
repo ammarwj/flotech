@@ -191,6 +191,50 @@ class CustomDomainTest extends TestCase
         $this->assertNull($event->domain_error);
     }
 
+    /**
+     * Certbot always ends its output with a fixed "ask for help at
+     * community.letsencrypt.org" footer — the least useful line in the run,
+     * and what a naive "last line of output" would surface to the admin
+     * instead of the actual DNS/challenge reason a few lines above it.
+     * Comparing against that footer text is what proves the real line won.
+     */
+    public function test_failed_activation_surfaces_the_certbot_detail_line_not_the_footer(): void
+    {
+        Process::fake([
+            '*' => Process::result(
+                output: '',
+                errorOutput: implode("\n", [
+                    'Saving debug log to /tmp/certbot-log-xxx/log',
+                    'Certbot failed to authenticate some domains (authenticator: webroot).',
+                    '  Domain: event-a.test',
+                    '  Type:   unauthorized',
+                    '  Detail: 198.51.100.1: Invalid response from http://event-a.test/.well-known/acme-challenge/x: 404',
+                    '',
+                    'Some challenges have failed.',
+                    'Ask for help or search for solutions at https://community.letsencrypt.org.'
+                        .' See the logfile /tmp/certbot-log-xxx/log or re-run Certbot with -v for more details.',
+                ]),
+                exitCode: 1,
+            ),
+        ]);
+
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->eventOn($org);
+        $event->forceFill(['custom_domain' => 'event-a.test'])->save();
+
+        $this->mock(DomainService::class, function ($mock) {
+            $mock->makePartial()->shouldReceive('verifyDns')->andReturn(true);
+        });
+
+        $response = $this->actingAs($this->superAdmin(), 'api')
+            ->postJson("/api/v1/admin/events/{$event->id}/domain/activate")
+            ->assertStatus(422);
+
+        $message = $response->json('message');
+        $this->assertStringContainsString('Detail:', $message);
+        $this->assertStringNotContainsString('Ask for help', $message);
+    }
+
     public function test_releasing_clears_every_derived_column(): void
     {
         Process::fake();

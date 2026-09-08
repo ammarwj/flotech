@@ -16,10 +16,13 @@ use Illuminate\Support\Facades\Process;
  * writes all three in one order and nothing else touches any of them — the same
  * reason WalletService owns every ledger write.
  *
- * Runs in the `scheduler` container, the only one that bind-mounts the host
- * directories. That is deliberate: certbot's exit code is then known in the same
- * process that holds the database connection, so the outcome is recorded where
- * it is learnt, with no handshake back from the host. The host keeps the one job
+ * Runs wherever the call lands: synchronously in `api` for the activation
+ * button, and in `scheduler` for `domains:sync`/`domains:renew`. Both
+ * bind-mount the same host directories (docker-compose.yml) so either one can
+ * write the shared nginx config and hand certbot a webroot the host can
+ * actually see — certbot's exit code is then known in the same process that
+ * holds the database connection, so the outcome is recorded where it is
+ * learnt, with no handshake back from the host. The host keeps the one job
  * only it can do — reloading nginx.
  */
 class DomainService
@@ -491,13 +494,27 @@ class DomainService
         return false;
     }
 
-    /** Certbot puts the useful line last; the rest is progress chatter. */
+    /**
+     * The line that actually explains a certbot failure.
+     *
+     * Certbot always ends its output with a fixed "ask for help at
+     * community.letsencrypt.org / re-run with -v" footer — the least useful
+     * line in the whole run, and exactly what a naive "last line" would
+     * return. The real reason is the "  Detail: ..." line a few lines above
+     * it, so prefer that when present.
+     */
     private function lastMeaningfulLine(string $output): ?string
     {
         $lines = array_values(array_filter(
             array_map('trim', explode("\n", $output)),
             fn ($line) => $line !== '',
         ));
+
+        foreach (array_reverse($lines) as $line) {
+            if (str_starts_with($line, 'Detail:')) {
+                return mb_substr($line, 0, 500);
+            }
+        }
 
         return $lines ? mb_substr(end($lines), 0, 500) : null;
     }

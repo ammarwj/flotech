@@ -94,7 +94,8 @@ aktivasi — jangan hidupkan key-nya sebelum gate-nya benar-benar ada.
 
 ### Tahap 5 — Infra
 - [x] `api/Dockerfile`: `certbot` di stage `base`
-- [x] `docker-compose.yml`: bind-mount `/opt/flo-event/*` **hanya** di `scheduler`,
+- [x] `docker-compose.yml`: bind-mount `/opt/flo-event/*` di `api` **dan** `scheduler`
+      (anchor `&domain_volumes`/`*domain_volumes` — lihat bug di bawah),
       `INTERNAL_API_URL` di `environment:` service `web` (bukan `args:`)
 - [x] `deploy/host-nginx/flo-event-domains.conf` + `flo-domains-reload.{path,service}`
 - [x] `deploy/setup-custom-domains.sh` + bab 9 di `deploy.md`
@@ -102,9 +103,57 @@ aktivasi — jangan hidupkan key-nya sebelum gate-nya benar-benar ada.
 
 ---
 
+## Bug produksi (2026-09-06/08): tombol "Aktifkan" selalu gagal di klik pertama
+
+**Gejala**: klik "Aktifkan & terbitkan SSL" di `/admin/events` gagal dengan pesan
+generik certbot ("Ask for help or search for solutions at
+https://community.letsencrypt.org...").
+
+**Akar masalah**: rencana awal cuma memasang bind-mount `/opt/flo-event/*` di
+`scheduler` — asumsinya certbot selalu dijalankan `domains:sync`. Tapi tombol
+"Aktifkan" memanggil `EventController::activateDomain()` → `DomainService::issue()`
+**sinkron di container `api`**, yang tidak punya mount itu sama sekali. `publish()`
+diam-diam no-op (`is_dir()` gagal), jadi blok port-80 domain baru **tidak pernah**
+ditulis ke nginx host, dan `certbotCommand()` menulis config-dir/webroot certbot ke
+path yang tidak terlihat host mana pun. Challenge HTTP-01 pasti 404 — klik pertama
+dijamin gagal untuk domain manapun yang belum pernah disentuh `domains:sync`.
+
+**Bug kedua yang memperparah**: `lastMeaningfulLine()` mengambil baris terakhir
+output certbot secara naif — yang selalu berupa footer generik "Ask for help...",
+bukan baris `Detail: ...` yang sebenarnya menjelaskan kegagalan (biasanya beberapa
+baris di atasnya).
+
+**Perbaikan**:
+1. `docker-compose.yml` — pindahkan bind-mount jadi milik `api` (anchor
+   `&domain_volumes`), `scheduler` alias (`*domain_volumes`) supaya keduanya tidak
+   bisa berselisih lagi. Divalidasi dengan `docker compose config`.
+2. `DomainService::lastMeaningfulLine()` — cari baris berawalan `Detail:` dari
+   belakang dulu, baru jatuh ke baris terakhir kalau tidak ada.
+3. Docblock `SyncCustomDomains` yang tadinya (salah) mendokumentasikan asimetri
+   mount sebagai desain — diperbaiki.
+4. Test baru `test_failed_activation_surfaces_the_certbot_detail_line_not_the_footer`
+   di `CustomDomainTest.php` — membandingkan bahwa `domain_error` memuat `Detail:`
+   dan **bukan** "Ask for help", dengan output certbot palsu yang punya keduanya.
+
+**Verifikasi**: `php artisan test` — 503 lulus / 3161 assertion / 0 gagal.
+`docker compose config` — kedua service membawa keempat mount yang identik.
+
+**Deploy ke VPS**: rebuild `api` bersamaan dengan service lain yang sudah ada di
+instruksi `deploy.md` (`docker compose up -d --build api worker scheduler web`) —
+sebelumnya `api` tidak perlu di-rebuild untuk perubahan compose murni, tapi kali
+ini volumenya berubah jadi container `api` harus di-recreate.
+
+**Event yang sudah kadung gagal di VPS**: `activateDomain()` tidak mengecek
+backoff `pending()` (itu hanya dibaca `domains:sync`), jadi cukup klik "Aktifkan"
+lagi sesudah deploy fix ini — tidak perlu reset manual `domain_attempted_at`
+lewat tinker/SQL.
+
+---
+
 ## Status verifikasi (2026-09-06)
 
-- `php artisan test` — **502 lulus / 3156 assertion / 0 gagal**
+- `php artisan test` — **503 lulus / 3161 assertion / 0 gagal** (sesudah bug
+  bind-mount `api` di bawah diperbaiki)
 - `bun test proxy.test.ts` — **5 lulus / 0 gagal**
 - `bunx tsc --noEmit` — bersih
 - `bun run build` — sukses, `ƒ Proxy (Middleware)` terdaftar, tidak ada lagi

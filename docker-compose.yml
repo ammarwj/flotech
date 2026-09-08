@@ -68,6 +68,21 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
       - APP_ENV=production
+    # Custom domains: `POST .../domain/activate` (the "Aktifkan" button) runs
+    # DomainService::issue() synchronously in whichever container serves that
+    # request — this one. Without this mount, publish() silently no-ops (the
+    # directory does not exist) while certbot still runs, so the ACME
+    # challenge it writes is never visible to host nginx and always 404s.
+    # `scheduler` needs the identical mounts for its own reason (domains:sync
+    # / domains:renew) — anchored so the two lists cannot drift apart.
+    volumes: &domain_volumes
+      - /opt/flo-event/letsencrypt:/opt/flo-event/letsencrypt
+      - /opt/flo-event/certbot-www:/opt/flo-event/certbot-www
+      - /opt/flo-event/nginx:/opt/flo-event/nginx
+      # The reload flag is a file, so its directory is what gets mounted;
+      # bind-mounting the file itself breaks when it is replaced rather than
+      # rewritten.
+      - /opt/flo-event/flags:/opt/flo-event/flags
     depends_on:
       db:
         condition: service_healthy
@@ -104,19 +119,11 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
       - APP_ENV=production
-    # Custom domains. Only this service gets them: it is the one that runs
-    # certbot (domains:sync / domains:renew), and host nginx reads what it
-    # writes. `api` and `worker` share no filesystem with it by design — that is
-    # why domain state travels through the DB, never through a spool file.
+    # Same mounts as `api` (see comment there — anchored to stay identical).
+    # `worker` shares no filesystem with either by design: it never calls
+    # DomainService, so domain state travels through the DB, never a spool file.
     # Created by deploy/setup-custom-domains.sh.
-    volumes:
-      - /opt/flo-event/letsencrypt:/opt/flo-event/letsencrypt
-      - /opt/flo-event/certbot-www:/opt/flo-event/certbot-www
-      - /opt/flo-event/nginx:/opt/flo-event/nginx
-      # The reload flag is a file, so its directory is what gets mounted;
-      # bind-mounting the file itself breaks when it is replaced rather than
-      # rewritten.
-      - /opt/flo-event/flags:/opt/flo-event/flags
+    volumes: *domain_volumes
     depends_on:
       - api
       - redis
