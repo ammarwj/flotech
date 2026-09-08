@@ -276,15 +276,13 @@ export default function ManageTeamPage() {
                 disabled={!editable}
               />
             </div>
-            <div className="sm:col-span-2">
-              <CustomFieldEditor
-                fields={schema.team_fields}
-                value={teamFields}
-                onChange={setTeamFields}
-                disabled={!editable}
-                idPrefix="team"
-              />
-            </div>
+            <CustomFieldEditor
+              fields={schema.team_fields}
+              value={teamFields}
+              onChange={setTeamFields}
+              disabled={!editable}
+              idPrefix="team"
+            />
           </CardContent>
         </Card>
 

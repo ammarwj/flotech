@@ -6,7 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, ListChecks, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { getEvent, getRegistrationForm, syncRegistrationForm } from "@/lib/api/events";
+import {
+  getEvent,
+  getRegistrationForm,
+  syncRegistrationForm,
+} from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import {
@@ -39,7 +43,12 @@ const EMPTY_FIELD: CustomField = {
   options: [],
 };
 
-const EMPTY_DOC: DocumentSlot = { key: "", label: "", required: false, accept: [...ACCEPTS] };
+const EMPTY_DOC: DocumentSlot = {
+  key: "",
+  label: "",
+  required: false,
+  accept: [...ACCEPTS],
+};
 
 /**
  * Suggest a key from the label, so the common case needs no thought about it.
@@ -98,16 +107,28 @@ export default function RegistrationFormPage() {
 
   // ---- Row helpers, one pair per shape ----
 
-  const setField = (section: FieldSection, i: number, patch: Partial<CustomField>) =>
+  const setField = (
+    section: FieldSection,
+    i: number,
+    patch: Partial<CustomField>,
+  ) =>
     setSchema((s) => ({
       ...s,
-      [section]: s[section].map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
+      [section]: s[section].map((row, idx) =>
+        idx === i ? { ...row, ...patch } : row,
+      ),
     }));
 
-  const setDoc = (section: DocSection, i: number, patch: Partial<DocumentSlot>) =>
+  const setDoc = (
+    section: DocSection,
+    i: number,
+    patch: Partial<DocumentSlot>,
+  ) =>
     setSchema((s) => ({
       ...s,
-      [section]: s[section].map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
+      [section]: s[section].map((row, idx) =>
+        idx === i ? { ...row, ...patch } : row,
+      ),
     }));
 
   const addRow = (section: keyof RegistrationFormSchema) =>
@@ -120,7 +141,10 @@ export default function RegistrationFormPage() {
     }));
 
   const removeRow = (section: keyof RegistrationFormSchema, i: number) =>
-    setSchema((s) => ({ ...s, [section]: s[section].filter((_, idx) => idx !== i) }));
+    setSchema((s) => ({
+      ...s,
+      [section]: s[section].filter((_, idx) => idx !== i),
+    }));
 
   if (formQuery.isLoading) {
     return (
@@ -141,31 +165,9 @@ export default function RegistrationFormPage() {
         }
         backHref={`/organizer/events/${eventId}/edit`}
         backLabel="Kelola event"
-        actions={
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            {save.isPending ? "Menyimpan…" : "Simpan formulir"}
-          </Button>
-        }
       />
 
       <div className="grid gap-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              Kosongkan bagian yang tidak dibutuhkan — bagian yang kosong{" "}
-              <strong>tidak muncul sama sekali</strong> di form pendaftaran, bukan tampil kosong.
-              Kunci adalah yang tersimpan di tiap jawaban dan berkas: mengganti{" "}
-              <em>label</em> aman dan langsung berlaku, tapi kunci yang sudah dipakai peserta tidak
-              bisa diganti nama atau dihapus.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Peserta wajib melengkapi field dan dokumen wajib{" "}
-              <strong>per baris pemain</strong>: begitu sebuah nama pemain diketik, baris itu harus
-              lengkap. Tim tetap boleh mendaftar dengan roster kosong dan melengkapinya nanti.
-            </p>
-          </CardContent>
-        </Card>
-
         <Card>
           <SectionHeader
             icon={ListChecks}
@@ -273,7 +275,11 @@ function FieldRows({
 }: {
   section: FieldSection;
   rows: CustomField[];
-  onChange: (section: FieldSection, i: number, patch: Partial<CustomField>) => void;
+  onChange: (
+    section: FieldSection,
+    i: number,
+    patch: Partial<CustomField>,
+  ) => void;
   onRemove: (section: keyof RegistrationFormSchema, i: number) => void;
   onAdd: (section: keyof RegistrationFormSchema) => void;
   errors: Record<string, string>;
@@ -287,7 +293,10 @@ function FieldRows({
         const error = errors[`${section}.${i}.key`] ?? errors[section];
 
         return (
-          <div key={i} className="grid gap-2 rounded-xl border border-border p-3">
+          <div
+            key={i}
+            className="grid gap-2 rounded-xl border border-border p-3"
+          >
             <div className="grid gap-2 md:grid-cols-[1fr_1fr_170px_auto]">
               <Input
                 value={row.label}
@@ -348,7 +357,10 @@ function FieldRows({
                   placeholder={"Putra\nPutri"}
                   onChange={(e) =>
                     onChange(section, i, {
-                      options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean),
+                      options: e.target.value
+                        .split("\n")
+                        .map((o) => o.trim())
+                        .filter(Boolean),
                     })
                   }
                 />
@@ -360,7 +372,9 @@ function FieldRows({
                 type="checkbox"
                 className="h-4 w-4 rounded border-input"
                 checked={row.required}
-                onChange={(e) => onChange(section, i, { required: e.target.checked })}
+                onChange={(e) =>
+                  onChange(section, i, { required: e.target.checked })
+                }
               />
               Wajib diisi
             </label>
@@ -371,7 +385,12 @@ function FieldRows({
       })}
 
       <div>
-        <Button type="button" size="sm" variant="outline" onClick={() => onAdd(section)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onAdd(section)}
+        >
           <Plus className="h-4 w-4" />
           {addLabel}
         </Button>
@@ -393,7 +412,11 @@ function DocRows({
 }: {
   section: DocSection;
   rows: DocumentSlot[];
-  onChange: (section: DocSection, i: number, patch: Partial<DocumentSlot>) => void;
+  onChange: (
+    section: DocSection,
+    i: number,
+    patch: Partial<DocumentSlot>,
+  ) => void;
   onRemove: (section: keyof RegistrationFormSchema, i: number) => void;
   onAdd: (section: keyof RegistrationFormSchema) => void;
   errors: Record<string, string>;
@@ -417,7 +440,10 @@ function DocRows({
         const error = errors[`${section}.${i}.key`] ?? errors[section];
 
         return (
-          <div key={i} className="grid gap-2 rounded-xl border border-border p-3">
+          <div
+            key={i}
+            className="grid gap-2 rounded-xl border border-border p-3"
+          >
             <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
               <Input
                 value={row.label}
@@ -451,7 +477,9 @@ function DocRows({
             </div>
 
             <div className="flex flex-wrap items-center gap-4">
-              <span className="text-sm text-muted-foreground">Format diterima:</span>
+              <span className="text-sm text-muted-foreground">
+                Format diterima:
+              </span>
               {ACCEPTS.map((kind) => (
                 <label key={kind} className="flex items-center gap-1.5 text-sm">
                   <input
@@ -470,7 +498,9 @@ function DocRows({
                 type="checkbox"
                 className="h-4 w-4 rounded border-input"
                 checked={row.required}
-                onChange={(e) => onChange(section, i, { required: e.target.checked })}
+                onChange={(e) =>
+                  onChange(section, i, { required: e.target.checked })
+                }
               />
               Wajib diunggah
             </label>
@@ -481,7 +511,12 @@ function DocRows({
       })}
 
       <div>
-        <Button type="button" size="sm" variant="outline" onClick={() => onAdd(section)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onAdd(section)}
+        >
           <Plus className="h-4 w-4" />
           {addLabel}
         </Button>

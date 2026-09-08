@@ -270,7 +270,9 @@ export function RosterEditor({
           </div>
 
           {hasExtras && (
-            <div className="mt-3 grid gap-3 border-t border-border pt-3">
+            <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+              {/* The editor emits bare cells, so the columns are ours to declare;
+                  everything after it spans the full width. */}
               <CustomFieldEditor
                 fields={schema.player_fields}
                 value={p.custom_fields ?? {}}
@@ -278,19 +280,21 @@ export function RosterEditor({
                 disabled={disabled}
                 idPrefix={`player-${i}`}
               />
-              <DocumentUploadFields
-                slots={schema.player_documents}
-                value={p.documents ?? []}
-                onChange={(documents) => set(i, { documents })}
-                onBusyChange={onBusyChange}
-                disabled={disabled}
-              />
-              {missing.length > 0 && (
-                <p className="text-xs text-destructive">
-                  Lengkapi dulu: {missing.join(", ")}. Pemain yang datanya belum lengkap tidak akan
-                  tersimpan.
-                </p>
-              )}
+              <div className="grid gap-3 sm:col-span-2">
+                <DocumentUploadFields
+                  slots={schema.player_documents}
+                  value={p.documents ?? []}
+                  onChange={(documents) => set(i, { documents })}
+                  onBusyChange={onBusyChange}
+                  disabled={disabled}
+                />
+                {missing.length > 0 && (
+                  <p className="text-xs text-destructive">
+                    Lengkapi dulu: {missing.join(", ")}. Pemain yang datanya belum lengkap tidak akan
+                    tersimpan.
+                  </p>
+                )}
+              </div>
             </div>
           )}
           </PlayerRowShell>

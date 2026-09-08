@@ -244,20 +244,18 @@ export function ManualTeamDialog({
               error={fieldErrors?.contact_phone}
               onChange={(v) => setInfo({ ...info, contact_phone: v })}
             />
-            <div className="sm:col-span-2">
-              <CustomFieldEditor
-                fields={schema.team_fields}
-                value={teamFields}
-                onChange={setTeamFields}
-                idPrefix="manual-team"
-                // Server keys these by their full path; the editor keys by field key.
-                fieldErrors={Object.fromEntries(
-                  Object.entries(fieldErrors ?? {})
-                    .filter(([k]) => k.startsWith("custom_fields."))
-                    .map(([k, v]) => [k.slice("custom_fields.".length), v])
-                )}
-              />
-            </div>
+            <CustomFieldEditor
+              fields={schema.team_fields}
+              value={teamFields}
+              onChange={setTeamFields}
+              idPrefix="manual-team"
+              // Server keys these by their full path; the editor keys by field key.
+              fieldErrors={Object.fromEntries(
+                Object.entries(fieldErrors ?? {})
+                  .filter(([k]) => k.startsWith("custom_fields."))
+                  .map(([k, v]) => [k.slice("custom_fields.".length), v])
+              )}
+            />
           </div>
 
           {/* Nothing at all when the event asks for no team documents. */}

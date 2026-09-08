@@ -16,6 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
  *
  * `idPrefix` keeps labels bound to their own input when several of these are on
  * one page (the team's fields plus one set per player row).
+ *
+ * Emits bare cells into the CALLER's grid rather than a grid of its own. Nested,
+ * a lone extra field started a fresh two-column row and sat half-width beside a
+ * gap, while the built-in fields it belongs with flowed in the row above — the
+ * fields looked like a different form. `long_text` spans two columns, which only
+ * means anything if the columns are the caller's.
  */
 export function CustomFieldEditor({
   fields,
@@ -38,7 +44,7 @@ export function CustomFieldEditor({
   const set = (key: string, v: string) => onChange({ ...value, [key]: v });
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <>
       {fields.map((field) => {
         const id = `${idPrefix}-${field.key}`;
         const answer = value[field.key] ?? "";
@@ -100,6 +106,6 @@ export function CustomFieldEditor({
           </div>
         );
       })}
-    </div>
+    </>
   );
 }

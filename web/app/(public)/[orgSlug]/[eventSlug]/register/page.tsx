@@ -424,16 +424,12 @@ function RegisterTeamPage() {
             )}
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
-            {schema.team_fields.length > 0 && (
-              <div className="sm:col-span-2">
-                <CustomFieldEditor
-                  fields={schema.team_fields}
-                  value={teamFields}
-                  onChange={setTeamFields}
-                  idPrefix="team"
-                />
-              </div>
-            )}
+            <CustomFieldEditor
+              fields={schema.team_fields}
+              value={teamFields}
+              onChange={setTeamFields}
+              idPrefix="team"
+            />
           </CardContent>
         </Card>
 
