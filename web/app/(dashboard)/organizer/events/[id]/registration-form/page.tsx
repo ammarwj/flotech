@@ -19,6 +19,7 @@ import {
   FIELD_TYPES,
   type CustomField,
   type DocumentAccept,
+  uniqueKey,
   type DocumentSlot,
   type RegistrationFormSchema,
 } from "@/lib/registration-form";
@@ -50,19 +51,6 @@ const EMPTY_DOC: DocumentSlot = {
   accept: [...ACCEPTS],
 };
 
-/**
- * Suggest a key from the label, so the common case needs no thought about it.
- * Only ever fills a key the organizer hasn't typed into — the key is what is
- * stored on every answer, and overwriting one they chose would rename it.
- */
-function keyFrom(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 50);
-}
-
 export default function RegistrationFormPage() {
   const { orgId } = useActiveOrg();
   const { id: eventId } = useParams<{ id: string }>();
@@ -82,6 +70,24 @@ export default function RegistrationFormPage() {
 
   const [schema, setSchema] = useState<RegistrationFormSchema>(EMPTY_SCHEMA);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  /**
+   * Keys that already exist on the server. Their labels stay editable, but the
+   * key underneath must not move: the API refuses to rename one that teams have
+   * already answered, and with the key hidden the organizer would have no way to
+   * see why a label change suddenly failed to save. A row still being typed has
+   * no saved key, so its key keeps tracking the label.
+   */
+  const savedKeys = new Set(
+    formQuery.data
+      ? [
+          ...formQuery.data.team_fields,
+          ...formQuery.data.player_fields,
+          ...formQuery.data.team_documents,
+          ...formQuery.data.player_documents,
+        ].map((r) => r.key)
+      : [],
+  );
 
   // Seed the editor once the saved schema arrives. Keyed on the fetched object
   // so a refetch after save re-syncs, and local edits aren't clobbered between.
@@ -183,8 +189,8 @@ export default function RegistrationFormPage() {
               onAdd={addRow}
               errors={fieldErrors}
               addLabel="Tambah field tim"
-              keyPlaceholder="alamat_tim"
               labelPlaceholder="Alamat Tim"
+              savedKeys={savedKeys}
             />
           </CardContent>
         </Card>
@@ -204,8 +210,8 @@ export default function RegistrationFormPage() {
               onAdd={addRow}
               errors={fieldErrors}
               addLabel="Tambah field pemain"
-              keyPlaceholder="no_ktp"
               labelPlaceholder="No. KTP"
+              savedKeys={savedKeys}
             />
           </CardContent>
         </Card>
@@ -225,8 +231,8 @@ export default function RegistrationFormPage() {
               onAdd={addRow}
               errors={fieldErrors}
               addLabel="Tambah dokumen tim"
-              keyPlaceholder="surat_mandat"
               labelPlaceholder="Surat Mandat"
+              savedKeys={savedKeys}
             />
           </CardContent>
         </Card>
@@ -246,8 +252,8 @@ export default function RegistrationFormPage() {
               onAdd={addRow}
               errors={fieldErrors}
               addLabel="Tambah dokumen pemain"
-              keyPlaceholder="ktp"
               labelPlaceholder="KTP"
+              savedKeys={savedKeys}
             />
           </CardContent>
         </Card>
@@ -270,8 +276,8 @@ function FieldRows({
   onAdd,
   errors,
   addLabel,
-  keyPlaceholder,
   labelPlaceholder,
+  savedKeys,
 }: {
   section: FieldSection;
   rows: CustomField[];
@@ -284,8 +290,8 @@ function FieldRows({
   onAdd: (section: keyof RegistrationFormSchema) => void;
   errors: Record<string, string>;
   addLabel: string;
-  keyPlaceholder: string;
   labelPlaceholder: string;
+  savedKeys: Set<string>;
 }) {
   return (
     <div className="grid gap-3">
@@ -297,55 +303,60 @@ function FieldRows({
             key={i}
             className="grid gap-2 rounded-xl border border-border p-3"
           >
-            <div className="grid gap-2 md:grid-cols-[1fr_1fr_170px_auto]">
-              <Input
-                value={row.label}
-                placeholder={labelPlaceholder}
-                aria-label="Label field"
-                onChange={(e) =>
-                  onChange(section, i, {
-                    label: e.target.value,
-                    // Only auto-fill a key the organizer never typed into.
-                    ...(row.key === "" || row.key === keyFrom(row.label)
-                      ? { key: keyFrom(e.target.value) }
-                      : {}),
-                  })
-                }
-              />
-              <Input
-                value={row.key}
-                placeholder={keyPlaceholder}
-                aria-label="Kunci field"
-                aria-invalid={!!error}
-                onChange={(e) => onChange(section, i, { key: e.target.value })}
-              />
-              <Select
-                value={row.type}
-                aria-label="Tipe field"
-                onChange={(e) =>
-                  onChange(section, i, {
-                    type: e.target.value as CustomField["type"],
-                    // Options only mean anything for a select; dropping them
-                    // keeps a stale list from riding along on another type.
-                    ...(e.target.value === "select" ? {} : { options: [] }),
-                  })
-                }
-              >
-                {FIELD_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => onRemove(section, i)}
-                aria-label="Hapus field"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            <div className="grid gap-2 md:grid-cols-[1fr_170px_auto]">
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Pertanyaan
+                </Label>
+                <Input
+                  value={row.label}
+                  placeholder={labelPlaceholder}
+                  aria-invalid={!!error}
+                  onChange={(e) =>
+                    onChange(section, i, {
+                      label: e.target.value,
+                      // A key already on the server stays put — teams have
+                      // answered under it, and the API refuses to rename it.
+                      ...(savedKeys.has(row.key)
+                        ? {}
+                        : { key: uniqueKey(e.target.value, rows, i) }),
+                    })
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">Tipe</Label>
+                <Select
+                  value={row.type}
+                  aria-label="Tipe field"
+                  onChange={(e) =>
+                    onChange(section, i, {
+                      type: e.target.value as CustomField["type"],
+                      // Options only mean anything for a select; dropping them
+                      // keeps a stale list from riding along on another type.
+                      ...(e.target.value === "select" ? {} : { options: [] }),
+                    })
+                  }
+                >
+                  {FIELD_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {/* Sits on the inputs' row, not the labels'. */}
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRemove(section, i)}
+                  aria-label="Hapus field"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {row.type === "select" && (
@@ -407,8 +418,8 @@ function DocRows({
   onAdd,
   errors,
   addLabel,
-  keyPlaceholder,
   labelPlaceholder,
+  savedKeys,
 }: {
   section: DocSection;
   rows: DocumentSlot[];
@@ -421,8 +432,8 @@ function DocRows({
   onAdd: (section: keyof RegistrationFormSchema) => void;
   errors: Record<string, string>;
   addLabel: string;
-  keyPlaceholder: string;
   labelPlaceholder: string;
+  savedKeys: Set<string>;
 }) {
   const toggleAccept = (row: DocumentSlot, i: number, kind: DocumentAccept) => {
     const next = row.accept.includes(kind)
@@ -444,36 +455,37 @@ function DocRows({
             key={i}
             className="grid gap-2 rounded-xl border border-border p-3"
           >
-            <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-              <Input
-                value={row.label}
-                placeholder={labelPlaceholder}
-                aria-label="Label dokumen"
-                onChange={(e) =>
-                  onChange(section, i, {
-                    label: e.target.value,
-                    ...(row.key === "" || row.key === keyFrom(row.label)
-                      ? { key: keyFrom(e.target.value) }
-                      : {}),
-                  })
-                }
-              />
-              <Input
-                value={row.key}
-                placeholder={keyPlaceholder}
-                aria-label="Kunci dokumen"
-                aria-invalid={!!error}
-                onChange={(e) => onChange(section, i, { key: e.target.value })}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => onRemove(section, i)}
-                aria-label="Hapus dokumen"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Nama dokumen
+                </Label>
+                <Input
+                  value={row.label}
+                  placeholder={labelPlaceholder}
+                  aria-invalid={!!error}
+                  onChange={(e) =>
+                    onChange(section, i, {
+                      label: e.target.value,
+                      // See FieldRows: a saved key is frozen.
+                      ...(savedKeys.has(row.key)
+                        ? {}
+                        : { key: uniqueKey(e.target.value, rows, i) }),
+                    })
+                  }
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRemove(section, i)}
+                  aria-label="Hapus dokumen"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-4">

@@ -182,3 +182,35 @@ export function missingFor(
 
   return missing;
 }
+
+/**
+ * The key stored behind a label — it lands in `custom_fields` and
+ * `document_type`. Derived, never typed: the builder used to show the key in a
+ * box beside the label, and with nothing to tell the two apart organizers filled
+ * both with prose and the save 422'd on a key that was never theirs to write.
+ */
+export function keyFrom(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50);
+}
+
+/**
+ * `keyFrom`, kept distinct from every other row in the same list. Two fields
+ * both called "Alamat" derive one key, and with the column hidden the organizer
+ * can no longer pull them apart by hand — so the collision is settled here,
+ * before reaching an API that would only reject it.
+ */
+export function uniqueKey(
+  label: string,
+  rows: Array<{ key: string }>,
+  self: number
+): string {
+  const base = keyFrom(label);
+  if (!base) return "";
+  const taken = new Set(rows.filter((_, i) => i !== self).map((r) => r.key));
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) if (!taken.has(`${base}_${n}`)) return `${base}_${n}`;
+}

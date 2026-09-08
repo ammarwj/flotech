@@ -66,6 +66,16 @@ Catatan frontend:
   organizer. Begitu event mendefinisikan slot, server menolak dokumen tak bertipe — dan UI yang
   dirender dari skema tidak punya tempat menampilkannya, jadi ia akan duduk tak terlihat dan
   mem-422-kan **setiap** simpan. Event tanpa slot melewatkan semuanya apa adanya.
+- **Kolom `key` tidak ada di pembangun skema.** Dua kotak teks berdampingan tanpa penanda mana
+  pertanyaan dan mana nama mesin membuat organizer mengisi keduanya dengan prosa, dan save 422 pada
+  key yang memang bukan haknya menulis. Sekarang key diturunkan dari label (`keyFrom`/`uniqueKey` di
+  `lib/registration-form.ts`, ada testnya di `lib/registration-form.test.ts`) dan **dibekukan begitu
+  tersimpan di server** — API menolak rename key yang sudah punya jawaban, dan dengan kolomnya
+  disembunyikan organizer tidak akan pernah bisa melihat kenapa ganti label tiba-tiba gagal.
+- **`CustomFieldEditor` memancarkan sel telanjang**, bukan grid sendiri. Bersarang di
+  `sm:col-span-2`, satu field tambahan memulai baris dua-kolom baru dan berdiri setengah lebar di
+  samping ruang kosong — terlihat seperti form lain. Kolomnya milik pemanggil; `roster-editor` yang
+  wrappernya satu kolom sekarang mendeklarasikan `sm:grid-cols-2` sendiri.
 - **Gate Simpan = `teamMissing` + `hasIncompletePlayer()`** di ketiga form. Servernya menolak baris
   setengah jadi secara semua-atau-tidak, jadi tanpa gate ini satu baris kurang berkas membuang
   seluruh isi form.
