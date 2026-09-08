@@ -35,7 +35,7 @@ class RegistrationController extends Controller
     {
         $query = $this->event($request, $event)
             ->teams()
-            ->with(['players', 'officials', 'documents', 'category'])
+            ->with(['players.documents', 'officials', 'documents', 'category'])
             ->latest('registered_at');
 
         // Optional server-side filters. The manual-match team picker uses these to
@@ -118,6 +118,7 @@ class RegistrationController extends Controller
                 'platform_fee' => 0,
             ]);
 
+            $this->roster->applyCustomFields($team, $data['custom_fields'] ?? []);
             $this->roster->syncPlayers($team, $data['players'] ?? []);
             $this->roster->syncOfficials($team, $data['officials'] ?? []);
             $this->roster->syncDocuments($team, $data['documents'] ?? []);
@@ -126,7 +127,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($team->fresh()->load(['players', 'officials', 'documents', 'category'])),
+            new TeamResource($team->fresh()->load(['players.documents', 'officials', 'documents', 'category'])),
             'Tim berhasil ditambahkan.',
             201,
         );
@@ -156,6 +157,10 @@ class RegistrationController extends Controller
                 'contact_phone' => $data['contact_phone'] ?? null,
             ]);
 
+            // Null, not [], when the key is absent: a client that predates the
+            // custom fields must not clear the answers already stored.
+            $this->roster->applyCustomFields($teamModel, $data['custom_fields'] ?? null);
+
             $this->roster->syncPlayers($teamModel, $data['players'] ?? []);
 
             // Guarded, unlike the roster above: a client that predates the bench
@@ -170,7 +175,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($teamModel->fresh()->load(['players', 'officials', 'documents', 'category'])),
+            new TeamResource($teamModel->fresh()->load(['players.documents', 'officials', 'documents', 'category'])),
             'Data tim diperbarui',
         );
     }
@@ -202,7 +207,7 @@ class RegistrationController extends Controller
             $this->announceStatus($teamModel, $validated['status']);
         }
 
-        return ApiResponse::success(new TeamResource($teamModel->load(['players', 'officials', 'documents'])), 'Status pendaftaran diperbarui');
+        return ApiResponse::success(new TeamResource($teamModel->load(['players.documents', 'officials', 'documents'])), 'Status pendaftaran diperbarui');
     }
 
     /**

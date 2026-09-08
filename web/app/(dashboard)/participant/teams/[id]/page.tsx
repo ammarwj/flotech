@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, X, Loader2, CreditCard, LogOut, Users, UserCog, FileText, Upload } from "lucide-react";
+import { ChevronLeft, Loader2, CreditCard, LogOut, Users, UserCog, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   getMyTeam,
-  signUpload,
   updateMyTeam,
   withdrawMyTeam,
   payRegistration,
@@ -19,6 +18,13 @@ import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
+import {
+  hasIncompletePlayer,
+  missingFor,
+  schemaOf,
+  type CustomFieldAnswers,
+  type DocumentRow,
+} from "@/lib/registration-form";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +35,8 @@ import { Badge } from "@/components/ui/badge";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { RosterEditor, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
-
-type DocRow = { id?: string; file_name: string; file_url: string };
+import { CustomFieldEditor } from "@/components/team/custom-field-editor";
+import { DocumentUploadFields } from "@/components/team/document-upload-field";
 
 const LOCKED = ["rejected", "disqualified", "withdrawn"];
 
@@ -47,12 +53,16 @@ export default function ManageTeamPage() {
   // slots and there is no team name to type.
   const rosterSize = team?.category?.roster_size ?? null;
   const isFixed = typeof rosterSize === "number";
+  const schema = schemaOf(team?.event);
 
   const [info, setInfo] = useState({ name: "", contact_name: "", contact_phone: "" });
+  const [teamFields, setTeamFields] = useState<CustomFieldAnswers>({});
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [officials, setOfficials] = useState<OfficialRow[]>([]);
-  const [docs, setDocs] = useState<DocRow[]>([]);
+  const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  const teamMissing = missingFor(schema.team_fields, schema.team_documents, teamFields, docs);
 
   // Seed the form once the team loads.
   useEffect(() => {
@@ -62,6 +72,7 @@ export default function ManageTeamPage() {
       contact_name: team.contact_name ?? "",
       contact_phone: team.contact_phone ?? "",
     });
+    setTeamFields(team.custom_fields ?? {});
     setPlayers(
       (team.players ?? []).map((p) => ({
         id: p.id,
@@ -69,6 +80,8 @@ export default function ManageTeamPage() {
         jersey_number: p.jersey_number ?? "",
         position: p.position ?? "",
         photo_url: p.photo_url ?? null,
+        custom_fields: p.custom_fields ?? {},
+        documents: p.documents ?? [],
       }))
     );
     setOfficials(
@@ -79,38 +92,27 @@ export default function ManageTeamPage() {
         photo_url: o.photo_url ?? null,
       }))
     );
+    // Documents predating this feature carry no type. Once the event defines
+    // slots the server refuses them, and the schema-driven UI has nowhere to
+    // show them — so they'd sit here invisibly and 422 every save. Dropping them
+    // is what saving does anyway; when the event defines no slots they pass
+    // through untouched, as they always have.
+    const slots = schemaOf(team.event).team_documents;
     setDocs(
-      (team.documents ?? []).map((d) => ({
-        id: d.id,
-        file_name: d.file_name ?? "Dokumen",
-        file_url: d.file_url,
-      }))
+      (team.documents ?? [])
+        .filter((d) => slots.length === 0 || slots.some((s) => s.key === d.document_type))
+        .map((d) => ({
+          id: d.id,
+          document_type: d.document_type,
+          file_name: d.file_name ?? "Dokumen",
+          file_url: d.file_url,
+        }))
     );
   }, [team]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["my-team", params.id] });
     qc.invalidateQueries({ queryKey: ["my-teams"] });
-  };
-
-  // Files land in storage as they're picked; only their metadata is saved with
-  // the rest of the form, so an upload that is never saved leaves no row behind.
-  const handleFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const signed = await signUpload(file.name, file.type);
-        if (signed.upload_url) {
-          await fetch(signed.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-        }
-        setDocs((d) => [...d, { file_name: file.name, file_url: signed.file_url }]);
-      }
-    } catch {
-      toast.error("Gagal mengunggah dokumen. Coba lagi.");
-    } finally {
-      setUploading(false);
-    }
   };
 
   const save = useMutation({
@@ -121,6 +123,7 @@ export default function ManageTeamPage() {
         // A tunggal/ganda entry is its players — the backend renames it from the
         // roster, so what travels here is only a placeholder.
         name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : info.name,
+        custom_fields: teamFields,
         players: roster
           .filter((p) => p.full_name.trim())
           .map((p) => ({
@@ -129,6 +132,8 @@ export default function ManageTeamPage() {
             jersey_number: p.jersey_number,
             position: p.position,
             photo_url: p.photo_url,
+            custom_fields: p.custom_fields ?? {},
+            documents: p.documents ?? [],
           })),
         officials: officials
           .filter((o) => o.full_name.trim())
@@ -138,7 +143,7 @@ export default function ManageTeamPage() {
             role: o.role || null,
             photo_url: o.photo_url,
           })),
-        documents: docs.map((d) => ({ id: d.id, file_url: d.file_url, file_name: d.file_name })),
+        documents: docs,
       };
       return updateMyTeam(params.id, payload);
     },
@@ -271,6 +276,15 @@ export default function ManageTeamPage() {
                 disabled={!editable}
               />
             </div>
+            <div className="sm:col-span-2">
+              <CustomFieldEditor
+                fields={schema.team_fields}
+                value={teamFields}
+                onChange={setTeamFields}
+                disabled={!editable}
+                idPrefix="team"
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -300,6 +314,8 @@ export default function ManageTeamPage() {
               sport={team.event?.sport_type}
               disabled={!editable}
               size={rosterSize}
+              schema={schema}
+              onBusyChange={setUploading}
             />
           </CardContent>
         </Card>
@@ -323,73 +339,33 @@ export default function ManageTeamPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="inline-flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Dokumen
-            </CardTitle>
-            <CardDescription>
-              Berkas pendukung (KTP, surat, dll) yang bisa dilewati saat mendaftar.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {editable && (
-              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-alt)] px-6 py-8 text-center transition-colors hover:border-[var(--brand-500)]">
-                {uploading ? (
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                ) : (
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                )}
-                <span className="text-sm font-medium">
-                  {uploading ? "Mengunggah…" : "Klik untuk mengunggah berkas"}
-                </span>
-                <span className="text-xs text-muted-foreground">PDF, JPG, atau PNG</span>
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  disabled={uploading}
-                  onChange={(e) => handleFiles(e.target.files)}
-                />
-              </label>
-            )}
+        {/* Only what the event asked for. An event defining no team documents
+            renders no card at all, rather than an empty dropzone. */}
+        {schema.team_documents.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="inline-flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Dokumen Tim
+              </CardTitle>
+              <CardDescription>Berkas yang diminta penyelenggara event ini.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DocumentUploadFields
+                slots={schema.team_documents}
+                value={docs}
+                onChange={setDocs}
+                onBusyChange={setUploading}
+                disabled={!editable}
+              />
+            </CardContent>
+          </Card>
+        )}
 
-            {docs.length > 0 ? (
-              <ul className="mt-3 grid gap-2">
-                {docs.map((d, i) => (
-                  <li
-                    key={d.id ?? `new-${i}`}
-                    className="flex items-center gap-2 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <a
-                      href={d.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate hover:underline"
-                    >
-                      {d.file_name}
-                    </a>
-                    {editable && (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="ml-auto shrink-0 text-muted-foreground"
-                        aria-label={`Hapus dokumen ${d.file_name}`}
-                        onClick={() => setDocs(docs.filter((_, j) => j !== i))}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              !editable && <p className="text-sm text-muted-foreground">Tidak ada dokumen.</p>
-            )}
-          </CardContent>
-        </Card>
+        {editable && teamMissing.length > 0 && (
+          <p className="text-sm text-destructive">
+            Lengkapi dulu: {teamMissing.join(", ")}.
+          </p>
+        )}
 
         {editable && (
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -412,7 +388,18 @@ export default function ManageTeamPage() {
               <LogOut className="h-4 w-4" />
               Tarik tim
             </Button>
-            <Button type="submit" size="lg" disabled={save.isPending}>
+            {/* A half-finished player row is rejected outright by the server, so
+                blocking here is what keeps a 422 from costing the whole form. */}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={
+                save.isPending ||
+                uploading ||
+                teamMissing.length > 0 ||
+                hasIncompletePlayer(schema, players)
+              }
+            >
               {save.isPending ? "Menyimpan…" : "Simpan perubahan"}
             </Button>
           </div>

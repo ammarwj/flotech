@@ -45,7 +45,14 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
-import type { Team, TeamStatus } from "@/types/api";
+import {
+  schemaOf,
+  type CustomField,
+  type CustomFieldAnswers,
+  type DocumentSlot,
+  type RegistrationFormSchema,
+} from "@/lib/registration-form";
+import type { Team, TeamDocument, TeamStatus } from "@/types/api";
 
 function initials(name: string) {
   return name
@@ -86,12 +93,14 @@ export default function RegistrationsPage() {
     enabled: !!orgId,
   });
 
-  // Only for the position suggestions in the roster editor.
+  // Position suggestions for the roster editor, and the registration form both
+  // the manual dialog and the detail panel render from.
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
     queryFn: () => getEvent(orgId!, eventId),
     enabled: !!orgId,
   });
+  const schema = schemaOf(eventQuery.data);
 
   const saveManual = useMutation({
     mutationFn: (payload: RegisterTeamPayload) =>
@@ -262,6 +271,7 @@ export default function RegistrationsPage() {
                   key={team.id}
                   team={team}
                   sport={eventQuery.data?.sport_type}
+                  schema={schema}
                   pending={mutate.isPending}
                   onUpdate={(status) => mutate.mutate({ teamId: team.id, status })}
                   onEdit={() => setManual(team)}
@@ -279,6 +289,7 @@ export default function RegistrationsPage() {
         team={manual !== "new" ? manual : null}
         categories={eventQuery.data?.categories ?? []}
         sport={eventQuery.data?.sport_type}
+        schema={schema}
         pending={saveManual.isPending}
         fieldErrors={manualErrors}
         onClose={() => {
@@ -294,6 +305,7 @@ export default function RegistrationsPage() {
 function RegistrationCard({
   team,
   sport,
+  schema,
   pending,
   onUpdate,
   onEdit,
@@ -301,6 +313,8 @@ function RegistrationCard({
   team: Team;
   /** Sport slug — a roster stores position keys, not the words to show. */
   sport?: string | null;
+  /** The event's registration form — labels for the answers stored by key. */
+  schema: RegistrationFormSchema;
   pending: boolean;
   onUpdate: (status: TeamStatus) => void;
   onEdit: () => void;
@@ -421,6 +435,11 @@ function RegistrationCard({
               )}
             </Info>
             {team.status === "approved" && <Info label="Disetujui" value={fmtDateTime(team.approved_at)} />}
+            {/* Answers to the event's own team fields, alongside the built-in
+                ones — they are the same kind of fact about the team. */}
+            {schema.team_fields.map((f) => (
+              <Info key={f.key} label={f.label} value={team.custom_fields?.[f.key] || "—"} />
+            ))}
           </div>
 
           <div className="mt-5">
@@ -434,19 +453,23 @@ function RegistrationCard({
                 {players.map((p, i) => (
                   <div
                     key={p.id ?? i}
-                    className="flex items-center gap-2.5 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
+                    className="rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
                   >
-                    {squadFields && (
-                      <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
-                        {p.jersey_number || "–"}
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{p.full_name}</span>
-                    {p.position && (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {positionLabel(sport, p.position)}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2.5">
+                      {squadFields && (
+                        <span className="w-6 shrink-0 text-center font-mono text-xs text-muted-foreground">
+                          {p.jersey_number || "–"}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-medium">{p.full_name}</span>
+                      {p.position && (
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {positionLabel(sport, p.position)}
+                        </span>
+                      )}
+                    </div>
+                    <Answers fields={schema.player_fields} answers={p.custom_fields} />
+                    <DocLinks docs={p.documents ?? []} slots={schema.player_documents} compact />
                   </div>
                 ))}
               </div>
@@ -481,39 +504,102 @@ function RegistrationCard({
               <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                 Dokumen ({docs.length})
               </h4>
-              <div className="grid gap-1.5">
-                {docs.map((d, i) => {
-                  const url = /^https?:\/\//.test(d.file_url) ? d.file_url : null;
-                  const label = d.file_name ?? d.document_type ?? "Dokumen";
-                  return url ? (
-                    <a
-                      key={d.id ?? i}
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm transition-colors hover:border-[var(--brand-500)]"
-                    >
-                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    </a>
-                  ) : (
-                    <div
-                      key={d.id ?? i}
-                      className="flex items-center gap-2 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm text-muted-foreground"
-                    >
-                      <FileText className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{label}</span>
-                      <span className="shrink-0 text-xs">tidak tersedia</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <DocLinks docs={docs} slots={schema.team_documents} />
             </div>
           )}
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * Answers to the event's custom fields, labelled from the schema.
+ *
+ * Only fields that were actually answered are listed: an unanswered optional
+ * field is nothing to report, and the required ones cannot be blank.
+ */
+function Answers({
+  fields,
+  answers,
+}: {
+  fields: CustomField[];
+  answers?: CustomFieldAnswers;
+}) {
+  const filled = fields.filter((f) => (answers?.[f.key] ?? "").trim());
+  if (filled.length === 0) return null;
+
+  return (
+    <dl className="mt-1.5 grid gap-0.5 border-t border-border pt-1.5 text-xs">
+      {filled.map((f) => (
+        <div key={f.key} className="flex gap-1.5">
+          <dt className="shrink-0 text-muted-foreground">{f.label}:</dt>
+          <dd className="min-w-0 break-words">{answers?.[f.key]}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * Uploaded documents as links, titled by the slot they answer rather than the
+ * stored filename — "KTP" is what the organizer is looking for, "IMG_2043.webp"
+ * is not. Documents from before this feature carry no type and keep their name.
+ */
+function DocLinks({
+  docs,
+  slots,
+  compact,
+}: {
+  docs: TeamDocument[];
+  slots: DocumentSlot[];
+  /** Inside a player row, where the section already has a heading. */
+  compact?: boolean;
+}) {
+  if (docs.length === 0) return null;
+
+  return (
+    <div className={cn("grid gap-1.5", compact && "mt-1.5 border-t border-border pt-1.5")}>
+      {docs.map((d, i) => {
+        const url = /^https?:\/\//.test(d.file_url) ? d.file_url : null;
+        const label =
+          slots.find((s) => s.key === d.document_type)?.label ??
+          d.file_name ??
+          d.document_type ??
+          "Dokumen";
+
+        return url ? (
+          <a
+            key={d.id ?? i}
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(
+              "flex items-center gap-2 truncate transition-colors",
+              compact
+                ? "text-xs text-[var(--brand-600)] hover:underline"
+                : "rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm hover:border-[var(--brand-500)]"
+            )}
+          >
+            <FileText className={cn("shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4 text-muted-foreground")} />
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </a>
+        ) : (
+          <div
+            key={d.id ?? i}
+            className={cn(
+              "flex items-center gap-2 text-muted-foreground",
+              compact ? "text-xs" : "rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
+            )}
+          >
+            <FileText className={cn("shrink-0", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            <span className="shrink-0 text-xs">tidak tersedia</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

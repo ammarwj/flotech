@@ -19,6 +19,7 @@ class Team extends Model
         'logo_url',
         'contact_name',
         'contact_phone',
+        'custom_fields',
         'status',
         'group_name',
         'seed_pot',
@@ -43,6 +44,7 @@ class Team extends Model
     protected function casts(): array
     {
         return [
+            'custom_fields' => 'array',
             'registered_at' => 'datetime',
             'approved_at' => 'datetime',
             'paid_at' => 'datetime',
@@ -80,7 +82,26 @@ class Team extends Model
         return $this->hasMany(TeamOfficial::class)->orderBy('sort_order');
     }
 
+    /**
+     * The team's own documents — a mandate letter, a club deed.
+     *
+     * Scoped to the rows no player owns, which is what every reader means by
+     * "the team's documents": a player's KTP belongs on their roster row, not in
+     * a list rendered under the team's name. The unscoped set still exists on
+     * the table and is what MediaCleanupService sweeps by team_id, so both
+     * kinds are cleaned up from the team alone.
+     */
     public function documents(): HasMany
+    {
+        return $this->hasMany(RegistrationDocument::class)->whereNull('player_id');
+    }
+
+    /**
+     * Both kinds at once. Only the pruning side of TeamRosterService wants this:
+     * a file that moved from a team slot to a player slot in one request is not
+     * stale, and reading only one scope would delete the file just saved.
+     */
+    public function allDocuments(): HasMany
     {
         return $this->hasMany(RegistrationDocument::class);
     }

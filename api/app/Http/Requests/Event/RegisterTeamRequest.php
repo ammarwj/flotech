@@ -34,41 +34,9 @@ class RegisterTeamRequest extends FormRequest
             'contact_name' => [$contact, 'string', 'max:255'],
             'contact_phone' => [$contact, 'string', 'max:20'],
 
-            // Roster and documents may be left for later and completed from the
-            // participant dashboard — a manager who doesn't have the squad list
-            // in hand yet should still be able to claim a slot. A player row that
-            // *is* sent still needs a name.
-            'players' => ['nullable', 'array'],
-            // Load-bearing, not decoration: validated() drops any key without a
-            // rule, so leaving this out strips the id from every row. Sync then
-            // reads them all as new, recreates them, and deletes the originals —
-            // and player_match_stats cascades on that delete, so an organizer
-            // editing a team to add its crest would silently erase every goal it
-            // has ever scored. MyTeamController declares the same rule.
-            'players.*.id' => ['nullable', 'string'],
-            'players.*.full_name' => ['required', 'string', 'max:255'],
-            'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
-            'players.*.position' => ['nullable', 'string', 'max:50'],
-            'players.*.photo_url' => ['nullable', 'string'],
-
-            // The bench: pelatih, manajer, ofisial. Optional everywhere and for
-            // every participant_type — a singles entrant may bring a coach too.
-            'officials' => ['nullable', 'array', 'max:20'],
-            // Same contract as players.*.id: without it every official is read
-            // as new, recreated, and the photo already uploaded for that row is
-            // orphaned. MyTeamController declares the same rule.
-            'officials.*.id' => ['nullable', 'string'],
-            'officials.*.full_name' => ['required', 'string', 'max:255'],
-            'officials.*.role' => ['nullable', 'string', 'max:30'],
-            'officials.*.photo_url' => ['nullable', 'string'],
-
-            'documents' => ['nullable', 'array'],
-            // Same contract as the roster: without the id every document is
-            // re-uploaded as a new row and loses its uploaded_at.
-            'documents.*.id' => ['nullable', 'string'],
-            'documents.*.file_url' => ['required', 'string'],
-            'documents.*.file_name' => ['nullable', 'string', 'max:255'],
-            'documents.*.document_type' => ['nullable', 'string', 'max:100'],
+            // Roster, bench, documents and custom-field answers. Shared with
+            // MyTeamController@update so the two cannot drift.
+            ...TeamPayloadRules::make('nullable'),
         ];
     }
 }

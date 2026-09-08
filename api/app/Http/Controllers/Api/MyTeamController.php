@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Event\TeamPayloadRules;
 use App\Http\Resources\PublicBankAccountResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
@@ -26,7 +27,7 @@ class MyTeamController extends Controller
     public function index(): JsonResponse
     {
         $teams = $this->scope()
-            ->with(['event', 'category', 'players', 'officials', 'documents'])
+            ->with(['event', 'category', 'players.documents', 'officials', 'documents'])
             ->latest('registered_at')
             ->get();
 
@@ -38,7 +39,7 @@ class MyTeamController extends Controller
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'category', 'players', 'officials', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with(['event', 'category', 'players.documents', 'officials', 'documents'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -61,35 +62,20 @@ class MyTeamController extends Controller
             'contact_name' => ['sometimes', 'required', 'string', 'max:255'],
             'contact_phone' => ['sometimes', 'required', 'string', 'max:20'],
 
-            // Registration lets both of these be skipped, so this is where they
-            // get completed. An empty array is a legitimate value (it clears the
-            // list), which is why there is no `min:1`.
-            'players' => ['sometimes', 'array'],
-            'players.*.id' => ['nullable', 'string'],
-            'players.*.full_name' => ['required', 'string', 'max:255'],
-            'players.*.jersey_number' => ['nullable', 'string', 'max:5'],
-            'players.*.position' => ['nullable', 'string', 'max:50'],
-            'players.*.photo_url' => ['nullable', 'string'],
-
-            // The bench. Same rules as RegisterTeamRequest — including why the
-            // id has to be declared.
-            'officials' => ['sometimes', 'array', 'max:20'],
-            'officials.*.id' => ['nullable', 'string'],
-            'officials.*.full_name' => ['required', 'string', 'max:255'],
-            'officials.*.role' => ['nullable', 'string', 'max:30'],
-            'officials.*.photo_url' => ['nullable', 'string'],
-
-            'documents' => ['sometimes', 'array'],
-            'documents.*.id' => ['nullable', 'string'],
-            'documents.*.file_url' => ['required', 'string'],
-            'documents.*.file_name' => ['nullable', 'string', 'max:255'],
-            'documents.*.document_type' => ['nullable', 'string', 'max:100'],
+            // Registration lets these be skipped, so this is where they get
+            // completed. An empty array is a legitimate value (it clears the
+            // list), which is why `sometimes` rather than `nullable`: an omitted
+            // key must leave the stored list alone.
+            ...TeamPayloadRules::make('sometimes'),
         ]);
 
         DB::transaction(function () use ($model, $data) {
             $model->update(array_intersect_key($data, array_flip([
                 'name', 'logo_url', 'contact_name', 'contact_phone',
             ])));
+
+            // Null when absent, so an older client cannot clear the answers.
+            $this->roster->applyCustomFields($model, $data['custom_fields'] ?? null);
 
             if (array_key_exists('players', $data)) {
                 $this->roster->syncPlayers($model, $data['players']);
@@ -105,7 +91,7 @@ class MyTeamController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
             'Data tim diperbarui',
         );
     }
@@ -140,7 +126,7 @@ class MyTeamController extends Controller
         $payment = $this->registration->startPayment($model);
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
+            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -165,7 +151,7 @@ class MyTeamController extends Controller
         $this->registration->submitProof($model, $data['payment_proof_url']);
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players', 'officials', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
     }

@@ -184,6 +184,9 @@ Route::prefix('v1')->group(function () {
     Route::post('uploads/sign', [UploadController::class, 'sign']);
     // Direct image upload (compressed client-side; used for banners & logos).
     Route::post('uploads/image', [UploadController::class, 'image']);
+    // Registration documents. Unlike uploads/sign it validates type and size,
+    // and re-encodes images to WebP — the public registration form posts here.
+    Route::post('uploads/document', [UploadController::class, 'document']);
 
     // ---- Authenticated app ----
     // `track.seen` stamps users.last_seen_at (throttled) so admins can see who is
@@ -238,6 +241,12 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             // Status moves through its own guarded verb, never the form save.
             Route::patch('events/{event}/status', [EventController::class, 'updateStatus']);
+            // What the registration form asks entrants for. Its own screen, not
+            // a block in the event form: it is decided once, before registration
+            // opens, and the event form is already a page of its own. `tenant`
+            // like the form save — this is configuration, not a money surface.
+            Route::get('events/{event}/registration-form', [EventController::class, 'registrationForm']);
+            Route::put('events/{event}/registration-form', [EventController::class, 'syncRegistrationForm']);
             // Downloads of this event's data. Behind org.admin with the rest of
             // the data surface, and gated on the event's own `export_data` —
             // this route exists precisely because gating /registrations instead

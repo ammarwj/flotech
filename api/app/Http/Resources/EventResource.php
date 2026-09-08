@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Event;
+use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -49,6 +50,11 @@ class EventResource extends JsonResource
             // event that has never been configured binds as {} rather than [].
             // Organizer-only: the public resource has no business carrying it.
             'rules_config' => (object) ($this->rules_config ?? []),
+            // What the registration form asks entrants for. Unlike rules_config
+            // this one is also public — the public register page renders itself
+            // from it — which is why it is its own column and not a namespace
+            // inside that one.
+            'registration_form' => RegistrationForm::forEvent($this->resource)->toArray(),
             'description' => $this->description,
             'banner_url' => $this->banner_url,
             // Format, bracket config, fee and team cap live on each category.

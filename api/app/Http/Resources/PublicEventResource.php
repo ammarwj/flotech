@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Event;
+use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -32,6 +33,11 @@ class PublicEventResource extends JsonResource
             'registration_open' => $this->registration_open,
             'registration_close' => $this->registration_close,
             'registration_is_open' => $this->isRegistrationOpen(),
+            // The *shape* of the form, which the public register page has to
+            // have to render itself. The answers given to it stay organizer-side
+            // — see the roster below, trimmed for the same reason: an address or
+            // an ID number is exactly the class of field this resource filters.
+            'registration_form' => RegistrationForm::forEvent($this->resource)->toArray(),
             'location_name' => $this->location_name,
             'location_address' => $this->location_address,
             'description' => $this->description,

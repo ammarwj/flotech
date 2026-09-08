@@ -1,3 +1,5 @@
+import type { CustomFieldAnswers, RegistrationFormSchema } from "@/lib/registration-form";
+
 export interface ApiEnvelope<T> {
   success: boolean;
   message: string;
@@ -664,6 +666,12 @@ export interface SportEvent {
   banner_url: string | null;
   /** Competition rules the organizer set, namespaced. {} when never configured. */
   rules_config: EventRulesConfig;
+  /**
+   * Documents and custom fields this event collects at registration. Always all
+   * four lists; empty ones mean the form asks for nothing extra. Read it through
+   * schemaOf() — never branch on the raw shape.
+   */
+  registration_form: RegistrationFormSchema;
   /** The competitions inside this event; each carries its own format & fee. */
   categories: EventCategory[];
   teams_count?: number;
@@ -776,6 +784,13 @@ export interface Player {
   position?: string | null;
   /** Optional profile photo (R2/local URL). */
   photo_url?: string | null;
+  /** Answers to the event's player_fields, keyed by field key. {} when none. */
+  custom_fields?: CustomFieldAnswers;
+  /**
+   * This player's own documents. Nested rather than a flat list keyed by
+   * player_id because a new player has no id yet when the form is assembled.
+   */
+  documents?: TeamDocument[];
 }
 
 /**
@@ -790,6 +805,11 @@ export interface TeamOfficial {
   photo_url?: string | null;
 }
 
+/**
+ * One uploaded file. `document_type` is a key from the event's team_documents or
+ * player_documents — which of the two it belongs to comes from where the row
+ * sits, not from a field on it.
+ */
 export interface TeamDocument {
   id?: string;
   document_type?: string | null;
@@ -819,8 +839,11 @@ export interface Team extends ManualPaymentFields {
   platform_fee: number;
   paid_at: string | null;
   midtrans_token: string | null;
+  /** Answers to the event's team_fields, keyed by field key. {} when none. */
+  custom_fields?: CustomFieldAnswers;
   players?: Player[];
   officials?: TeamOfficial[];
+  /** The team's own documents — player documents live on their player row. */
   documents?: TeamDocument[];
   event?: SportEvent;
   category?: EventCategory;
@@ -891,6 +914,12 @@ export interface PublicEvent {
   location_address: string | null;
   description: string | null;
   banner_url: string | null;
+  /**
+   * What the registration form asks for. The schema is public because the public
+   * form has to render it; the answers deliberately are not — no custom_fields
+   * anywhere on PublicTeam.
+   */
+  registration_form: RegistrationFormSchema;
   /** The competitions inside this event; each carries its own format & fee. */
   categories: EventCategory[];
   tickets_on_sale: boolean;

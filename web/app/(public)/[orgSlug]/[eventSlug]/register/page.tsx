@@ -7,9 +7,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import {
   ChevronLeft,
-  X,
-  Upload,
-  FileText,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -23,11 +20,19 @@ import { useOptionalSession } from "@/components/auth/use-optional-session";
 import {
   getPublicEvent,
   registerTeam,
-  signUpload,
   submitTeamProof,
   uploadImage,
   type RegisterTeamPayload,
 } from "@/lib/api/events";
+import {
+  hasIncompletePlayer,
+  missingFor,
+  schemaOf,
+  type CustomFieldAnswers,
+  type DocumentRow,
+} from "@/lib/registration-form";
+import { CustomFieldEditor } from "@/components/team/custom-field-editor";
+import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
@@ -39,8 +44,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 import { participantLabel } from "@/lib/scoring";
-
-type DocRow = { file_name: string; file_url: string };
 
 function RegisterTeamPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
@@ -84,8 +87,13 @@ function RegisterTeamPage() {
   // Starts empty, unlike the roster: a bench is genuinely optional, so an empty
   // list shouldn't look like a field someone forgot to fill.
   const [officials, setOfficials] = useState<OfficialRow[]>([]);
-  const [docs, setDocs] = useState<DocRow[]>([]);
+  // What this event asks for beyond the fixed fields. Empty lists render
+  // nothing at all — an event that defines no documents shows no upload UI.
+  const schema = schemaOf(event);
+  const [teamFields, setTeamFields] = useState<CustomFieldAnswers>({});
+  const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [uploading, setUploading] = useState(false);
+  const teamMissing = missingFor(schema.team_fields, schema.team_documents, teamFields, docs);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +143,7 @@ function RegisterTeamPage() {
         // A placeholder the backend overwrites with the players' names.
         name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : team.name,
         logo_url: isFixed ? "" : team.logo_url,
+        custom_fields: teamFields,
         players: roster
           .filter((p) => p.full_name.trim())
           .map((p) => ({
@@ -142,6 +151,8 @@ function RegisterTeamPage() {
             jersey_number: p.jersey_number,
             position: p.position,
             photo_url: p.photo_url,
+            custom_fields: p.custom_fields ?? {},
+            documents: p.documents ?? [],
           })),
         officials: officials
           .filter((o) => o.full_name.trim())
@@ -150,7 +161,7 @@ function RegisterTeamPage() {
             role: o.role || null,
             photo_url: o.photo_url,
           })),
-        documents: docs.map((d) => ({ file_url: d.file_url, file_name: d.file_name })),
+        documents: docs,
       };
       return registerTeam(params.orgSlug, params.eventSlug, payload);
     },
@@ -175,25 +186,6 @@ function RegisterTeamPage() {
           : "Gagal mengirim bukti"
       ),
   });
-
-  const handleFiles = async (files: FileList | null) => {
-    if (!files) return;
-    setUploading(true);
-    setError(null);
-    try {
-      for (const file of Array.from(files)) {
-        const signed = await signUpload(file.name, file.type);
-        if (signed.upload_url) {
-          await fetch(signed.upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-        }
-        setDocs((d) => [...d, { file_name: file.name, file_url: signed.file_url }]);
-      }
-    } catch {
-      setError("Gagal mengunggah dokumen.");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   // Paid registration: the order was created and we're handing off to Midtrans.
   // Show a "redirecting" state instead of a misleading success card.
@@ -432,6 +424,16 @@ function RegisterTeamPage() {
             )}
             <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
             <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
+            {schema.team_fields.length > 0 && (
+              <div className="sm:col-span-2">
+                <CustomFieldEditor
+                  fields={schema.team_fields}
+                  value={teamFields}
+                  onChange={setTeamFields}
+                  idPrefix="team"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -451,6 +453,11 @@ function RegisterTeamPage() {
               {isFixed
                 ? "Nama pendaftaran diambil dari sini — mis. “Dimas / Ammar”."
                 : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Tim Saya."}
+              {/* "Optional" stays true — an empty roster is still accepted. What
+                  changes is that a name once typed brings obligations with it,
+                  and that is worth saying before someone types one. */}
+              {(schema.player_fields.length > 0 || schema.player_documents.length > 0) &&
+                " Setiap pemain yang dimasukkan wajib dilengkapi data dan berkasnya."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -459,6 +466,8 @@ function RegisterTeamPage() {
               onChange={setPlayers}
               sport={event?.sport_type}
               size={rosterSize}
+              schema={schema}
+              onBusyChange={setUploading}
             />
           </CardContent>
         </Card>
@@ -482,51 +491,28 @@ function RegisterTeamPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              Dokumen <span className="font-normal text-muted-foreground">(opsional)</span>
-            </CardTitle>
-            <CardDescription>
-              Berkas pendukung (KTP, surat, dll). Bisa menyusul lewat dashboard Tim Saya.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--bg-alt)] px-6 py-8 text-center transition-colors hover:border-[var(--brand-500)]">
-              {uploading ? (
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              ) : (
-                <Upload className="h-6 w-6 text-muted-foreground" />
-              )}
-              <span className="text-sm font-medium">
-                {uploading ? "Mengunggah…" : "Klik untuk mengunggah berkas"}
-              </span>
-              <span className="text-xs text-muted-foreground">PDF, JPG, atau PNG</span>
-              <input type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-            </label>
-            {docs.length > 0 && (
-              <ul className="mt-3 grid gap-2">
-                {docs.map((d, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-2 rounded-md border border-border bg-[var(--surface)] px-3 py-2 text-sm"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{d.file_name}</span>
-                    <button
-                      type="button"
-                      className="ml-auto text-muted-foreground hover:text-[var(--danger)]"
-                      onClick={() => setDocs(docs.filter((_, j) => j !== i))}
-                      aria-label="Hapus dokumen"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        {/* Only the documents this event actually asks for. An event that
+            defines none renders no card at all — there is no generic "upload
+            anything" box any more, and the API rejects untyped files too. */}
+        {schema.team_documents.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dokumen Tim</CardTitle>
+              <CardDescription>
+                Berkas yang diminta penyelenggara untuk tim ini. Bisa menyusul lewat dashboard Tim
+                Saya, kecuali yang ditandai wajib.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DocumentUploadFields
+                slots={schema.team_documents}
+                value={docs}
+                onChange={setDocs}
+                onBusyChange={setUploading}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <label className="flex cursor-pointer items-start gap-2.5 text-sm">
           <input
@@ -556,6 +542,10 @@ function RegisterTeamPage() {
               mutation.isPending ||
               uploading ||
               logoUploading ||
+              teamMissing.length > 0 ||
+              // A named-but-incomplete player is rejected wholesale by the API,
+              // so stop it here rather than lose the form to a 422.
+              hasIncompletePlayer(schema, players) ||
               (isFixed && !fixedRoster(players, rosterSize).every((p) => p.full_name.trim()))
             }
           >

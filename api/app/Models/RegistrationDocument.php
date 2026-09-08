@@ -12,6 +12,7 @@ class RegistrationDocument extends Model
 
     protected $fillable = [
         'team_id',
+        'player_id',
         'document_type',
         'file_url',
         'file_name',
@@ -27,8 +28,19 @@ class RegistrationDocument extends Model
         ];
     }
 
+    /**
+     * Always set, including on a player's document. MediaCleanupService sweeps
+     * this table by team_id, so keeping it filled is what lets player documents
+     * be cleaned up without that service learning this feature exists.
+     */
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /** Null on a team document (mandate letter); set on a player's (KTP). */
+    public function player(): BelongsTo
+    {
+        return $this->belongsTo(Player::class);
     }
 }

@@ -1,3 +1,5 @@
+import type { CustomFieldAnswers, RegistrationFormSchema } from "@/lib/registration-form";
+
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
@@ -11,6 +13,7 @@ import type {
   RegisterTeamResult,
   RubberFormatRow,
   SportEvent,
+  TeamDocument,
   Team,
   TeamStatus,
   TournamentFormat,
@@ -114,6 +117,34 @@ export async function updateEventStatus(
   const { data } = await apiClient.patch<ApiEnvelope<SportEvent>>(
     `/organizations/${orgId}/events/${eventId}/status`,
     { status }
+  );
+  return data.data;
+}
+
+/** What this event's registration form asks for. Always all four lists. */
+export async function getRegistrationForm(
+  orgId: string,
+  eventId: string
+): Promise<RegistrationFormSchema> {
+  const { data } = await apiClient.get<ApiEnvelope<RegistrationFormSchema>>(
+    `/organizations/${orgId}/events/${eventId}/registration-form`
+  );
+  return data.data;
+}
+
+/**
+ * Replace the whole schema. Labels may change freely, but a key that already has
+ * answers or documents behind it can be neither renamed nor dropped — the API
+ * answers 422 naming the key rather than silently orphaning what was collected.
+ */
+export async function syncRegistrationForm(
+  orgId: string,
+  eventId: string,
+  schema: RegistrationFormSchema
+): Promise<RegistrationFormSchema> {
+  const { data } = await apiClient.put<ApiEnvelope<RegistrationFormSchema>>(
+    `/organizations/${orgId}/events/${eventId}/registration-form`,
+    schema
   );
   return data.data;
 }
@@ -240,6 +271,25 @@ export async function getPublicEvent(orgSlug: string, eventSlug: string): Promis
   return data.data;
 }
 
+/**
+ * One player in a team payload.
+ *
+ * Documents are nested here rather than sent as a flat list keyed by player_id:
+ * a player being created has no id yet, so ownership has to come from position
+ * in the payload. The server enforces completeness per row — a row with a name
+ * must carry every required field and document, or nothing about it is stored.
+ */
+export interface TeamPlayerInput {
+  id?: string;
+  full_name: string;
+  jersey_number?: string;
+  position?: string;
+  photo_url?: string | null;
+  /** Answers to the event's player_fields, keyed by field key. */
+  custom_fields?: CustomFieldAnswers;
+  documents?: TeamDocument[];
+}
+
 export interface RegisterTeamPayload {
   /** Which competition category inside the event the team is entering. */
   category_id: string;
@@ -248,11 +298,14 @@ export interface RegisterTeamPayload {
   /** Required on the public form; optional for offline entry by the organizer. */
   contact_name: string | null;
   contact_phone: string | null;
+  /** Answers to the event's team_fields, keyed by field key. */
+  custom_fields?: CustomFieldAnswers;
   /** Optional at registration — the roster can be completed later. `id` marks an existing player when editing. */
-  players?: { id?: string; full_name: string; jersey_number?: string; position?: string; photo_url?: string | null }[];
+  players?: TeamPlayerInput[];
   /** The bench — pelatih, manajer, ofisial. Optional for every participant type. */
   officials?: { id?: string; full_name: string; role?: string | null; photo_url?: string | null }[];
-  documents?: { id?: string; file_url: string; file_name?: string; document_type?: string }[];
+  /** The team's own documents; a player's live on their row above. */
+  documents?: TeamDocument[];
 }
 
 export async function registerTeam(
@@ -280,6 +333,28 @@ export async function signUpload(
     folder,
   });
   return data.data;
+}
+
+/**
+ * Upload a registration document — the only way this feature puts files anywhere.
+ *
+ * Not signUpload: that signs whatever it is handed, checking neither type nor
+ * size, so the 5 MB cap and the WebP re-encode would exist only in the browser.
+ * This endpoint enforces both server-side and hands back the *stored* file name,
+ * which is what the extension check reads — an image renamed by the re-encode
+ * must not still claim to be a .png.
+ */
+export async function uploadDocument(
+  file: File,
+  folder = "documents"
+): Promise<{ file_url: string; file_name: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", folder);
+  const { data } = await apiClient.post<
+    ApiEnvelope<{ file_url: string; key: string; file_name: string; size: number }>
+  >("/uploads/document", form);
+  return { file_url: data.data.file_url, file_name: data.data.file_name };
 }
 
 /** Upload an image (already compressed) and get back a directly usable URL. */
@@ -317,10 +392,11 @@ export interface UpdateMyTeamPayload {
   logo_url?: string | null;
   contact_name?: string;
   contact_phone?: string;
+  custom_fields?: CustomFieldAnswers;
   /** Every list here is a full replacement: rows with an id are kept, omitted rows are deleted. */
-  players?: { id?: string; full_name: string; jersey_number?: string; position?: string; photo_url?: string | null }[];
+  players?: TeamPlayerInput[];
   officials?: { id?: string; full_name: string; role?: string | null; photo_url?: string | null }[];
-  documents?: { id?: string; file_url: string; file_name?: string | null; document_type?: string | null }[];
+  documents?: TeamDocument[];
 }
 
 export async function updateMyTeam(teamId: string, payload: UpdateMyTeamPayload): Promise<Team> {

@@ -31,7 +31,28 @@ export default async function globalSetup() {
   if (!login.ok()) {
     throw new Error(
       "Akun seeder admin@floevent.id tidak bisa login.\n" +
-        "Jalankan: docker compose exec api php artisan db:seed",
+        "Jalankan: docker compose exec api php artisan db:seed && " +
+        "docker compose exec api php artisan db:seed --class=UserSeeder --force",
+    );
+  }
+
+  // A crashed @gateway-off run leaves the switch down, and the next default run
+  // then dies in fixture setup with "Checkout tidak menghasilkan order id
+  // Midtrans" — every spec that buys a plan, which is nearly all of them. The
+  // failure reads like a broken checkout, so say what it actually is here.
+  const token = (await login.json()).data.access_token;
+  const settings = await ctx.get(`${API_URL}/admin/settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const gateway = (await settings.json()).data?.settings?.find(
+    (s: { key: string; value: unknown }) => s.key === "payment_gateway_enabled",
+  );
+  if (gateway && !gateway.value) {
+    throw new Error(
+      "payment_gateway_enabled mati di DB dev — sisa run @gateway-off yang crash.\n" +
+        "Nyalakan lagi di /admin/settings, atau: docker compose exec api php artisan tinker " +
+        "--execute=\"App\\Models\\PlatformSetting::where('key','payment_gateway_enabled')" +
+        "->update(['value'=>'1']); App\\Services\\PlatformSettings::flush();\"",
     );
   }
 

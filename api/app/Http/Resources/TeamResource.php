@@ -24,6 +24,10 @@ class TeamResource extends JsonResource
             'logo_url' => $this->logo_url,
             'contact_name' => $this->contact_name,
             'contact_phone' => $this->contact_phone,
+            // Answers to the extra fields this event's registration form asked
+            // for. Organizer-side only — PublicEventResource never carries them,
+            // for the same reason its roster is trimmed to on-pitch fields.
+            'custom_fields' => (object) ($this->custom_fields ?? []),
             'status' => $this->status,
             'group_name' => $this->group_name,
             'seed_pot' => $this->seed_pot,
@@ -52,6 +56,18 @@ class TeamResource extends JsonResource
                 'jersey_number' => $p->jersey_number,
                 'position' => $p->position,
                 'photo_url' => $p->photo_url,
+                'custom_fields' => (object) ($p->custom_fields ?? []),
+                // Sent back nested, the same shape the client posts them in —
+                // a player's documents belong to their row, and the edit form
+                // round-trips what it received.
+                'documents' => $p->relationLoaded('documents')
+                    ? $p->documents->map(fn ($d) => [
+                        'id' => $d->id,
+                        'document_type' => $d->document_type,
+                        'file_name' => $d->file_name,
+                        'file_url' => $d->file_url,
+                    ])
+                    : [],
             ])),
             'officials' => $this->whenLoaded('officials', fn () => $this->officials->map(fn ($o) => [
                 'id' => $o->id,

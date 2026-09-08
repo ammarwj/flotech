@@ -7,10 +7,19 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { nameInput } from "@/lib/name";
 import { uploadImage } from "@/lib/api/events";
+import {
+  EMPTY_SCHEMA,
+  missingFor,
+  type CustomFieldAnswers,
+  type DocumentRow,
+  type RegistrationFormSchema,
+} from "@/lib/registration-form";
 import { usesSquadFields } from "@/lib/scoring";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { CustomFieldEditor } from "@/components/team/custom-field-editor";
+import { DocumentUploadFields } from "@/components/team/document-upload-field";
 
 export type PlayerRow = {
   id?: string;
@@ -19,13 +28,23 @@ export type PlayerRow = {
   position: string;
   /** Optional profile photo — the stored URL. */
   photo_url?: string | null;
+  /** Answers to the event's player_fields. */
+  custom_fields?: CustomFieldAnswers;
+  /** This player's own documents — nested here because a new row has no id yet. */
+  documents?: DocumentRow[];
   /** Render-only: local blob for instant preview (dev storage URLs aren't always renderable). */
   photo_preview?: string;
   /** Render-only: upload in flight. */
   photo_uploading?: boolean;
 };
 
-export const emptyPlayer = (): PlayerRow => ({ full_name: "", jersey_number: "", position: "" });
+export const emptyPlayer = (): PlayerRow => ({
+  full_name: "",
+  jersey_number: "",
+  position: "",
+  custom_fields: {},
+  documents: [],
+});
 
 /**
  * Pin a roster to the exact length a singles/doubles category requires, padding
@@ -34,6 +53,21 @@ export const emptyPlayer = (): PlayerRow => ({ full_name: "", jersey_number: "",
  */
 export function fixedRoster(players: PlayerRow[], size: number): PlayerRow[] {
   return Array.from({ length: size }, (_, i) => players[i] ?? emptyPlayer());
+}
+
+/**
+ * Wraps a player row, boxed only when the event asks for more than the name.
+ * A plain roster stays the flat list it has always been; once a row carries its
+ * own fields and files, the border is what says where one player ends.
+ */
+function PlayerRowShell({
+  bordered,
+  children,
+}: {
+  bordered: boolean;
+  children: React.ReactNode;
+}) {
+  return bordered ? <div className="rounded-xl border border-border p-3">{children}</div> : <>{children}</>;
 }
 
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
@@ -54,6 +88,8 @@ export function RosterEditor({
   sport,
   disabled,
   size,
+  schema = EMPTY_SCHEMA,
+  onBusyChange,
 }: {
   players: PlayerRow[];
   onChange: (players: PlayerRow[]) => void;
@@ -66,6 +102,14 @@ export function RosterEditor({
    * to grow: the rows are the entry, so there is nothing to add or remove.
    */
   size?: number | null;
+  /**
+   * The event's registration form. Defaults to empty, which renders exactly the
+   * roster this component has always rendered — an event that asks for nothing
+   * extra is unchanged by this feature.
+   */
+  schema?: RegistrationFormSchema;
+  /** Lets the form disable Save while a document upload is in flight. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const { positionsFor, sport: sportDef } = useCatalog();
   const fixed = typeof size === "number";
@@ -104,14 +148,30 @@ export function RosterEditor({
     }
   };
 
+  // Anything the event asks of each player. Empty lists render nothing, so a
+  // sport-only roster keeps exactly the shape it had before this feature.
+  const hasExtras = schema.player_fields.length > 0 || schema.player_documents.length > 0;
+
   return (
     <div className="grid gap-2">
       {players.map((p, i) => {
         const shown = photoShown(p);
+        // Checked only once a name is typed — the same rule the server applies.
+        // A blank row is a row not filled in yet, not an incomplete one.
+        const missing = p.full_name.trim()
+          ? missingFor(
+              schema.player_fields,
+              schema.player_documents,
+              p.custom_fields,
+              p.documents ?? []
+            )
+          : [];
+
         return (
-          // Wraps on a narrow form: number, position and the remove button drop
-          // to a second line rather than squeezing the name field to nothing.
-          <div key={p.id ?? `new-${i}`} className="flex flex-wrap items-center gap-2">
+          <PlayerRowShell key={p.id ?? `new-${i}`} bordered={hasExtras}>
+          {/* Wraps on a narrow form: number, position and the remove button drop
+              to a second line rather than squeezing the name field to nothing. */}
+          <div className="flex flex-wrap items-center gap-2">
             {/* Optional profile photo. A label wrapping a hidden input keeps it a
                 single self-contained control per row. */}
             <div className="relative h-9 w-9 shrink-0">
@@ -208,6 +268,32 @@ export function RosterEditor({
               </Button>
             )}
           </div>
+
+          {hasExtras && (
+            <div className="mt-3 grid gap-3 border-t border-border pt-3">
+              <CustomFieldEditor
+                fields={schema.player_fields}
+                value={p.custom_fields ?? {}}
+                onChange={(custom_fields) => set(i, { custom_fields })}
+                disabled={disabled}
+                idPrefix={`player-${i}`}
+              />
+              <DocumentUploadFields
+                slots={schema.player_documents}
+                value={p.documents ?? []}
+                onChange={(documents) => set(i, { documents })}
+                onBusyChange={onBusyChange}
+                disabled={disabled}
+              />
+              {missing.length > 0 && (
+                <p className="text-xs text-destructive">
+                  Lengkapi dulu: {missing.join(", ")}. Pemain yang datanya belum lengkap tidak akan
+                  tersimpan.
+                </p>
+              )}
+            </div>
+          )}
+          </PlayerRowShell>
         );
       })}
 

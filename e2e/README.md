@@ -56,6 +56,10 @@ API/web mati atau seeder belum pernah dijalankan.
 aman dijalankan kapan saja di DB dev tanpa merusak data yang ada dan tanpa
 saling mengotori antar-test. Satu-satunya akun seeder yang dipakai adalah
 `admin@floevent.id` (super admin) — perannya tidak bisa dibuat lewat API.
+`db:seed` saja **tidak** membuatnya: `DatabaseSeeder` sengaja tidak memanggil
+`UserSeeder` (akun lemah + transaksi palsu tidak boleh bocor ke produksi), jadi
+di DB dev jalankan keduanya —
+`php artisan db:seed && php artisan db:seed --class=UserSeeder --force`.
 Pengecualiannya konten landing (FAQ/testimoni): itu global dan terlihat siapa
 pun yang membuka landing dev, jadi spec yang membuatnya wajib menyapunya lagi.
 

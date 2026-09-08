@@ -15,6 +15,16 @@ import { phoneInput } from "@/lib/phone";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
+import { CustomFieldEditor } from "@/components/team/custom-field-editor";
+import { DocumentUploadFields } from "@/components/team/document-upload-field";
+import {
+  EMPTY_SCHEMA,
+  hasIncompletePlayer,
+  missingFor,
+  type CustomFieldAnswers,
+  type DocumentRow,
+  type RegistrationFormSchema,
+} from "@/lib/registration-form";
 import { participantLabel } from "@/lib/scoring";
 
 /**
@@ -30,6 +40,7 @@ export function ManualTeamDialog({
   team,
   categories,
   sport,
+  schema = EMPTY_SCHEMA,
   pending,
   fieldErrors,
   onClose,
@@ -41,6 +52,12 @@ export function ManualTeamDialog({
   /** The event's competition categories the team can be entered in. */
   categories: EventCategory[];
   sport?: string | null;
+  /**
+   * The event's registration form. The organizer entering a team by hand answers
+   * the same questions a team would — otherwise an offline entry is the one way
+   * into the event that skips them.
+   */
+  schema?: RegistrationFormSchema;
   pending?: boolean;
   fieldErrors?: Record<string, string>;
   onClose: () => void;
@@ -73,9 +90,24 @@ export function ManualTeamDialog({
           jersey_number: p.jersey_number ?? "",
           position: p.position ?? "",
           photo_url: p.photo_url ?? null,
+          custom_fields: p.custom_fields ?? {},
+          documents: p.documents ?? [],
         }))
       : [emptyPlayer()]
   );
+  const [teamFields, setTeamFields] = useState<CustomFieldAnswers>(team?.custom_fields ?? {});
+  const [docs, setDocs] = useState<DocumentRow[]>(() =>
+    // Documents predating this feature carry no type, and the server refuses
+    // them once the event defines slots — see the same filter on the
+    // participant's team page.
+    (team?.documents ?? []).filter(
+      (d) =>
+        schema.team_documents.length === 0 ||
+        schema.team_documents.some((s) => s.key === d.document_type)
+    )
+  );
+  // Documents upload as they're picked, like the logo; Save waits for them.
+  const [docUploading, setDocUploading] = useState(false);
   const [officials, setOfficials] = useState<OfficialRow[]>(() =>
     (team?.officials ?? []).map((o) => ({
       id: o.id,
@@ -90,6 +122,7 @@ export function ManualTeamDialog({
   const roster = isFixed ? fixedRoster(players, rosterSize) : players;
   // Every slot filled is the same rule the backend enforces on a fixed roster.
   const rosterReady = isFixed ? roster.every((p) => p.full_name.trim()) : true;
+  const teamMissing = missingFor(schema.team_fields, schema.team_documents, teamFields, docs);
 
   const submit = () =>
     onSubmit({
@@ -102,6 +135,8 @@ export function ManualTeamDialog({
       // else. Send null rather than "" so a cleared field actually clears.
       contact_name: info.contact_name.trim() || null,
       contact_phone: info.contact_phone.trim() || null,
+      custom_fields: teamFields,
+      documents: docs,
       players: roster
         .filter((p) => p.full_name.trim())
         .map((p) => ({
@@ -110,6 +145,8 @@ export function ManualTeamDialog({
           jersey_number: p.jersey_number,
           position: p.position,
           photo_url: p.photo_url,
+          custom_fields: p.custom_fields ?? {},
+          documents: p.documents ?? [],
         })),
       officials: officials
         .filter((o) => o.full_name.trim())
@@ -207,7 +244,34 @@ export function ManualTeamDialog({
               error={fieldErrors?.contact_phone}
               onChange={(v) => setInfo({ ...info, contact_phone: v })}
             />
+            <div className="sm:col-span-2">
+              <CustomFieldEditor
+                fields={schema.team_fields}
+                value={teamFields}
+                onChange={setTeamFields}
+                idPrefix="manual-team"
+                // Server keys these by their full path; the editor keys by field key.
+                fieldErrors={Object.fromEntries(
+                  Object.entries(fieldErrors ?? {})
+                    .filter(([k]) => k.startsWith("custom_fields."))
+                    .map(([k, v]) => [k.slice("custom_fields.".length), v])
+                )}
+              />
+            </div>
           </div>
+
+          {/* Nothing at all when the event asks for no team documents. */}
+          {schema.team_documents.length > 0 && (
+            <div className="grid gap-2">
+              <Label className="font-semibold">Dokumen tim</Label>
+              <DocumentUploadFields
+                slots={schema.team_documents}
+                value={docs}
+                onChange={setDocs}
+                onBusyChange={setDocUploading}
+              />
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label className="font-semibold">
@@ -229,6 +293,8 @@ export function ManualTeamDialog({
               onChange={setPlayers}
               sport={sport}
               size={rosterSize}
+              schema={schema}
+              onBusyChange={setDocUploading}
             />
             {isFixed && (
               <p className="text-xs text-muted-foreground">
@@ -246,7 +312,12 @@ export function ManualTeamDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border p-4">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">
+          {teamMissing.length > 0 && (
+            <p className="mr-auto text-xs text-destructive">
+              Lengkapi dulu: {teamMissing.join(", ")}.
+            </p>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Batal
           </Button>
@@ -255,7 +326,10 @@ export function ManualTeamDialog({
             disabled={
               pending ||
               logoUploading ||
+              docUploading ||
               !resolvedCategoryId ||
+              teamMissing.length > 0 ||
+              hasIncompletePlayer(schema, roster) ||
               (isFixed ? !rosterReady : !info.name.trim())
             }
           >

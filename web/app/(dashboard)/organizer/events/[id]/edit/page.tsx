@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Eye, CalendarClock, Images } from "lucide-react";
+import { Trash2, Eye, CalendarClock, ClipboardList, Images } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -181,6 +181,12 @@ export default function EditEventPage() {
               <Link href={`/organizer/events/${eventId}/schedule`}>
                 <CalendarClock className="h-4 w-4" />
                 Jadwal & Klasemen
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/registration-form`}>
+                <ClipboardList className="h-4 w-4" />
+                Formulir Pendaftaran
               </Link>
             </Button>
             <Button asChild variant="outline">

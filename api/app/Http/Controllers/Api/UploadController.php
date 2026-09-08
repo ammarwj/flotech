@@ -59,6 +59,65 @@ class UploadController extends Controller
     }
 
     /**
+     * Store a registration document — a KTP scan, a mandate letter.
+     *
+     * Documents used to go through sign() below, which validates neither the
+     * type nor the size of what it hands out a URL for. This one does both, and
+     * turns an accepted image into WebP the same way image() does. That is what
+     * makes "images become WebP, 5 MB maximum" a rule rather than a hope: a
+     * browser that cannot produce a WebP blob falls back to the original file,
+     * and other clients post here directly.
+     *
+     * A PDF passes through as-is. There is nothing to re-encode, and it is the
+     * format an organizer asking for a signed letter actually wants.
+     */
+    public function document(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'], // 5 MB
+            'folder' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $file = $request->file('file');
+        $folder = trim($request->input('folder', 'documents'), '/') ?: 'documents';
+        $isPdf = strtolower($file->getClientOriginalExtension()) === 'pdf'
+            || $file->getMimeType() === 'application/pdf';
+
+        if ($isPdf) {
+            $contents = (string) file_get_contents($file->getRealPath());
+            $mime = 'application/pdf';
+            $ext = 'pdf';
+        } else {
+            $contents = (string) (new ImageManager(new GdDriver))
+                ->decodePath($file->getRealPath())
+                ->scaleDown(width: 2000, height: 2000)
+                ->encode(new WebpEncoder(quality: 82));
+            $mime = 'image/webp';
+            $ext = 'webp';
+        }
+
+        $key = $folder.'/'.Str::uuid().'.'.$ext;
+
+        if (config('r2.key')) {
+            $this->r2->put($key, $contents, $mime);
+            $url = $this->r2->publicUrl($key);
+        } else {
+            Storage::disk('public')->put($key, $contents);
+            $url = Storage::disk('public')->url($key);
+        }
+
+        return ApiResponse::success([
+            'file_url' => $url,
+            'key' => $key,
+            // The stored name, not the one the browser sent: it is what the
+            // extension check in TeamRosterService reads, and an image renamed
+            // by the re-encode must not still claim to be a .png.
+            'file_name' => Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)).'.'.$ext,
+            'size' => strlen($contents),
+        ]);
+    }
+
+    /**
      * Issue a presigned URL for a direct-to-R2 upload. When R2 is not
      * configured (dev), returns a mock so the registration flow still works.
      */

@@ -68,6 +68,7 @@ class Event extends Model
         'description',
         'banner_url',
         'rules_config',
+        'registration_form',
     ];
 
     protected function casts(): array
@@ -82,6 +83,7 @@ class Event extends Model
             'domain_attempted_at' => 'datetime',
             'courts' => 'array',
             'rules_config' => 'array',
+            'registration_form' => 'array',
         ];
     }
 

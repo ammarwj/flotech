@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\PlanFeatureException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\StoreEventRequest;
+use App\Http\Requests\Event\SyncRegistrationFormRequest;
 use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Jobs\PurgeMediaJob;
@@ -14,10 +15,13 @@ use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\EventPlanOrder;
 use App\Models\Organization;
+use App\Models\Player;
+use App\Models\RegistrationDocument;
 use App\Services\Catalog;
 use App\Services\MediaCleanupService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
+use App\Support\RegistrationForm;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -478,6 +482,91 @@ class EventController extends Controller
         }
 
         return $this->transition($model, 'open');
+    }
+
+    /**
+     * The shape of this event's registration form: the extra fields and the
+     * documents entrants have to supply.
+     *
+     * Its own route rather than a block inside the event form, which is already
+     * long enough to be its own screen — and it is edited on its own rhythm:
+     * once, before registration opens, by someone deciding what to collect.
+     */
+    public function registrationForm(Request $request, string $organization, string $event): JsonResponse
+    {
+        $model = $this->find($request, $event);
+
+        return ApiResponse::success(RegistrationForm::forEvent($model)->toArray());
+    }
+
+    /**
+     * Replace that shape.
+     *
+     * Labels may be changed at any time and take effect immediately — the label
+     * is presentation, and an organizer who typed "KTP" but meant "KTP/SIM"
+     * should not have to start over. The *key* is what teams' answers and
+     * documents are stored under, so a key that is already in use may not be
+     * renamed or removed: doing so would orphan every answer given under it
+     * while looking like a successful save. Same guard, same reason, as
+     * SportController::syncPositions and the sport_official_roles master.
+     */
+    public function syncRegistrationForm(SyncRegistrationFormRequest $request, string $organization, string $event): JsonResponse
+    {
+        $model = $this->find($request, $event);
+
+        $form = RegistrationForm::fromArray($request->validated());
+
+        if ($errors = $this->retiredKeys($model, $form)) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        $model->update(['registration_form' => $form->toArray()]);
+
+        return ApiResponse::success($form->toArray(), 'Formulir pendaftaran diperbarui');
+    }
+
+    /**
+     * Keys that already carry data but are missing from the submitted schema.
+     *
+     * Checked against what is stored, not against the previous schema: a key
+     * nobody ever answered may be dropped freely, and that is the common case
+     * while the organizer is still designing the form.
+     *
+     * @return array<string, string>
+     */
+    protected function retiredKeys(Event $model, RegistrationForm $form): array
+    {
+        $teamIds = $model->teams()->pluck('id');
+
+        if ($teamIds->isEmpty()) {
+            return [];
+        }
+
+        $used = [
+            'team_fields' => $model->teams()->pluck('custom_fields')
+                ->flatMap(fn ($f) => array_keys(is_array($f) ? $f : []))->unique(),
+            'player_fields' => Player::whereIn('team_id', $teamIds)->pluck('custom_fields')
+                ->flatMap(fn ($f) => array_keys(is_array($f) ? $f : []))->unique(),
+            'team_documents' => RegistrationDocument::whereIn('team_id', $teamIds)
+                ->whereNull('player_id')->pluck('document_type')->filter()->unique(),
+            'player_documents' => RegistrationDocument::whereIn('team_id', $teamIds)
+                ->whereNotNull('player_id')->pluck('document_type')->filter()->unique(),
+        ];
+
+        $errors = [];
+        $submitted = $form->toArray();
+
+        foreach ($used as $section => $keys) {
+            $kept = array_column($submitted[$section], 'key');
+
+            foreach ($keys as $key) {
+                if (! in_array($key, $kept, true)) {
+                    $errors[$section] = "Key \"{$key}\" sudah dipakai peserta dan tidak bisa dihapus atau diganti namanya. Ganti labelnya saja.";
+                }
+            }
+        }
+
+        return $errors;
     }
 
     protected function org(Request $request): Organization

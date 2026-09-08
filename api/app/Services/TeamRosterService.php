@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Jobs\PurgeMediaJob;
+use App\Models\Player;
 use App\Models\Team;
+use App\Support\RegistrationForm;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -26,9 +28,11 @@ class TeamRosterService
         $this->assertRosterSize($team, $players);
         $this->assertPositionsExist($team, $players);
 
+        $form = RegistrationForm::forEvent($team->event);
         $keepIds = [];
+        $errors = [];
 
-        foreach ($players as $row) {
+        foreach ($players as $i => $row) {
             $attrs = [
                 'full_name' => $row['full_name'],
                 'jersey_number' => $row['jersey_number'] ?? null,
@@ -36,16 +40,38 @@ class TeamRosterService
                 'photo_url' => $row['photo_url'] ?? null,
             ];
 
+            // Absent means "not sent by this client", which must leave whatever
+            // is stored alone; an empty array means "cleared".
+            if (array_key_exists('custom_fields', $row)) {
+                $attrs['custom_fields'] = $this->cleanAnswers($form->playerFields, $row['custom_fields']);
+            }
+
             $existing = ! empty($row['id'])
                 ? $team->players()->whereKey($row['id'])->first()
                 : null;
 
             if ($existing) {
                 $existing->update($attrs);
-                $keepIds[] = $existing->id;
+                $player = $existing;
             } else {
-                $keepIds[] = $team->players()->create($attrs)->id;
+                $player = $team->players()->create($attrs);
             }
+
+            $keepIds[] = $player->id;
+
+            if (array_key_exists('documents', $row)) {
+                $errors += $this->syncDocumentRows($team, $row['documents'] ?? [], $player, "players.{$i}.documents");
+            }
+
+            // After the sync, never before: the documents that make this row
+            // complete may be ones already in storage, sent back as rows carrying
+            // an id. Asserting off the payload alone would reject a participant
+            // who opens their edit form, changes nothing, and saves.
+            $errors += $this->rowErrors($form, $player, $row, $i);
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
 
         $stale = $team->players()->whereKeyNot($keepIds)->pluck('photo_url')->all();
@@ -53,6 +79,43 @@ class TeamRosterService
         $this->purgePruned($stale, $team->players()->pluck('photo_url')->all());
 
         $this->syncDerivedName($team, $players);
+    }
+
+    /**
+     * Is this player row complete enough to keep?
+     *
+     * The rule the organizer asked for: a roster may be left empty and filled in
+     * later, but once a name is typed that row has to carry the fields and
+     * documents the event requires. It falls out of the loop shape rather than
+     * an `if` — nothing sent means nothing checked — so "may be completed later"
+     * cannot be forgotten when this method changes.
+     *
+     * The caller throws, so a half-finished row is never written: the whole
+     * registration rolls back and the name it was rejected for is not in the
+     * database at all.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, string>
+     */
+    private function rowErrors(RegistrationForm $form, Player $player, array $row, int $i): array
+    {
+        $errors = $this->answerErrors(
+            $form->playerFields,
+            $row['custom_fields'] ?? $player->custom_fields ?? [],
+            "players.{$i}.custom_fields",
+        );
+
+        // Read back rather than counted from the payload, for the same reason
+        // the assert runs after the sync.
+        $uploaded = $player->documents()->pluck('document_type')->filter()->all();
+
+        foreach ($form->playerDocuments as $doc) {
+            if ($doc['required'] && ! in_array($doc['key'], $uploaded, true)) {
+                $errors["players.{$i}.documents"] = "Dokumen \"{$doc['label']}\" wajib diunggah untuk {$player->full_name}.";
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -205,37 +268,228 @@ class TeamRosterService
     }
 
     /**
+     * The team's own documents — a mandate letter, a club deed. A player's KTP
+     * arrives nested in their roster row and is handled by syncPlayers().
+     *
      * The file is already in storage by the time it gets here — only its
      * metadata travels through this method.
      *
      * @param  array<int, array<string, mixed>>  $documents
+     *
+     * @throws ValidationException
      */
     public function syncDocuments(Team $team, array $documents): void
     {
+        $errors = $this->syncDocumentRows($team, $documents, null, 'documents');
+
+        $form = RegistrationForm::forEvent($team->event);
+        $uploaded = $team->documents()->pluck('document_type')->filter()->all();
+
+        foreach ($form->teamDocuments as $doc) {
+            if ($doc['required'] && ! in_array($doc['key'], $uploaded, true)) {
+                $errors['documents'] = "Dokumen \"{$doc['label']}\" wajib diunggah.";
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    /**
+     * Sync one scope of a team's documents: the team's own ($player null) or a
+     * single player's.
+     *
+     * Scoping the *pruning* is the load-bearing part. This used to sweep every
+     * row the team had; called once per player it would delete the team's
+     * documents and every other player's on each pass, taking their stored files
+     * with them through purgePruned().
+     *
+     * Rows carrying an id are updated, not merely kept. They used to be skipped,
+     * which quietly made document_type write-once: an organizer who filed a KTP
+     * under the wrong slot had no way to correct it.
+     *
+     * Errors are returned rather than thrown because syncPlayers() collects them
+     * across the whole roster — one 422 listing every incomplete row beats the
+     * participant discovering them one save at a time.
+     *
+     * @param  array<int, array<string, mixed>>  $documents
+     * @return array<string, string>
+     */
+    private function syncDocumentRows(Team $team, array $documents, ?Player $player, string $errorKey): array
+    {
+        $form = RegistrationForm::forEvent($team->event);
+        $allowed = array_column($form->documentsFor($player ? 'player' : 'team'), 'key');
+
+        // Rebuilt on each use rather than held: the same query is run three
+        // times below and an Eloquent builder is not reusable after execution.
+        $scope = $player
+            ? fn () => $team->allDocuments()->where('player_id', $player->id)
+            : fn () => $team->allDocuments()->whereNull('player_id');
+
         $keepIds = [];
+        $errors = [];
 
-        foreach ($documents as $row) {
-            $existing = ! empty($row['id'])
-                ? $team->documents()->whereKey($row['id'])->first()
-                : null;
+        foreach ($documents as $i => $row) {
+            $type = $row['document_type'] ?? null;
 
-            if ($existing) {
-                $keepIds[] = $existing->id;
+            if ($error = $this->documentTypeError($form, $type, $allowed, $row['file_name'] ?? $row['file_url'])) {
+                $errors["{$errorKey}.{$i}.document_type"] = $error;
 
                 continue;
             }
 
-            $keepIds[] = $team->documents()->create([
+            $attrs = [
+                'player_id' => $player?->id,
                 'file_url' => $row['file_url'],
                 'file_name' => $row['file_name'] ?? null,
-                'document_type' => $row['document_type'] ?? null,
-                'uploaded_at' => Carbon::now(),
-            ])->id;
+                'document_type' => $type,
+            ];
+
+            $existing = ! empty($row['id']) ? $scope()->whereKey($row['id'])->first() : null;
+
+            if ($existing) {
+                $existing->update($attrs);
+                $keepIds[] = $existing->id;
+            } else {
+                $keepIds[] = $scope()->create($attrs + ['uploaded_at' => Carbon::now()])->id;
+            }
         }
 
-        $stale = $team->documents()->whereKeyNot($keepIds)->pluck('file_url')->all();
-        $team->documents()->whereKeyNot($keepIds)->delete();
-        $this->purgePruned($stale, $team->documents()->pluck('file_url')->all());
+        $stale = $scope()->whereKeyNot($keepIds)->pluck('file_url')->all();
+        $scope()->whereKeyNot($keepIds)->delete();
+
+        // Compared against *both* scopes: a file moved from a team slot onto a
+        // player's in one request is not stale, and from here the two halves of
+        // that move are the same request.
+        $this->purgePruned($stale, $team->allDocuments()->pluck('file_url')->all());
+
+        return $errors;
+    }
+
+    /**
+     * A document must name a slot this event defined, and its file must be one
+     * of the kinds that slot accepts.
+     *
+     * This is also what makes "no documents defined ⇒ nothing to upload" true on
+     * the server and not just in the UI: with an empty schema every type is
+     * unknown, so an older client cannot post stray files into the event.
+     */
+    private function documentTypeError(RegistrationForm $form, ?string $type, array $allowed, ?string $file): ?string
+    {
+        if ($type === null || $type === '') {
+            // Documents predating this feature carry no type, and an event that
+            // defines none has nothing to check against.
+            return $form->documentKeys() === [] ? null : 'Jenis dokumen wajib dipilih.';
+        }
+
+        if (! in_array($type, $allowed, true)) {
+            return 'Jenis dokumen tidak dikenali untuk event ini.';
+        }
+
+        $accept = $form->document($type)['accept'] ?? [];
+        $ext = strtolower(pathinfo((string) $file, PATHINFO_EXTENSION));
+        $ext = $ext === 'jpeg' ? 'jpg' : $ext;
+
+        // A webp is what UploadController turns every accepted image into, so an
+        // extension check that refused it would reject the files we produced.
+        if ($ext !== '' && $ext !== 'webp' && ! in_array($ext, $accept, true)) {
+            return 'Format berkas tidak diterima untuk jenis dokumen ini.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Write a team's answers to the custom fields this event defined.
+     *
+     * Separate from syncDocuments() because the two are separately optional: a
+     * participant fixing a typo in their team name sends neither, and neither
+     * absence may wipe the other's data.
+     *
+     * @param  array<string, mixed>|null  $answers
+     *
+     * @throws ValidationException
+     */
+    public function applyCustomFields(Team $team, ?array $answers): void
+    {
+        $form = RegistrationForm::forEvent($team->event);
+
+        $errors = $this->answerErrors($form->teamFields, $answers ?? $team->custom_fields ?? [], 'custom_fields');
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        if ($answers !== null) {
+            $team->update(['custom_fields' => $this->cleanAnswers($form->teamFields, $answers)]);
+        }
+    }
+
+    /**
+     * Keep only answers to fields that exist, as strings.
+     *
+     * Dropping unknown keys rather than rejecting them is deliberate: an
+     * organizer may remove a field that is still sitting in a browser tab
+     * somewhere, and that should not turn into a 422 the participant cannot act
+     * on. Removing a field that already has answers is blocked at the schema
+     * end (EventController), which is where the organizer can actually respond.
+     *
+     * @param  list<array<string, mixed>>  $fields
+     * @param  mixed  $answers
+     * @return array<string, string>
+     */
+    private function cleanAnswers(array $fields, $answers): array
+    {
+        if (! is_array($answers)) {
+            return [];
+        }
+
+        $clean = [];
+
+        foreach ($fields as $field) {
+            $value = $answers[$field['key']] ?? null;
+
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $clean[$field['key']] = trim((string) $value);
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Required fields must be answered, and a select's answer must be one of its
+     * options — a client is free to render a text box, but the stored value has
+     * to mean something to the organizer reading the export.
+     *
+     * @param  list<array<string, mixed>>  $fields
+     * @param  mixed  $answers
+     * @return array<string, string>
+     */
+    private function answerErrors(array $fields, $answers, string $prefix): array
+    {
+        $answers = is_array($answers) ? $answers : [];
+        $errors = [];
+
+        foreach ($fields as $field) {
+            $value = $answers[$field['key']] ?? null;
+            $value = is_scalar($value) ? trim((string) $value) : '';
+
+            if ($value === '') {
+                if ($field['required']) {
+                    $errors["{$prefix}.{$field['key']}"] = "{$field['label']} wajib diisi.";
+                }
+
+                continue;
+            }
+
+            if ($field['type'] === 'select' && ! in_array($value, $field['options'], true)) {
+                $errors["{$prefix}.{$field['key']}"] = "Pilihan {$field['label']} tidak dikenali.";
+            }
+        }
+
+        return $errors;
     }
 
     /**

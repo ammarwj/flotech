@@ -28,6 +28,7 @@ use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -276,27 +277,36 @@ class PublicEventController extends Controller
             );
         }
 
-        $team = $event->teams()->create([
-            'category_id' => $category->id,
-            'name' => $data['name'],
-            'logo_url' => $data['logo_url'] ?? null,
-            'contact_name' => $data['contact_name'],
-            'contact_phone' => $data['contact_phone'],
-            'status' => 'pending',
-            'registered_at' => Carbon::now(),
-            'manager_user_id' => auth('api')->user()?->id,
-        ]);
-        // startPayment charges this category's fee and reads the rail and the
-        // platform fee off the event's plan — attach both so it doesn't re-query.
-        $team->setRelation('category', $category);
-        $team->setRelation('event', $event);
+        // One transaction, so an incomplete roster row leaves nothing behind:
+        // the entrant is told what is missing and no half-registered team is
+        // sitting in the organizer's list under a name that was rejected.
+        $team = DB::transaction(function () use ($event, $category, $data) {
+            $team = $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => $data['name'],
+                'logo_url' => $data['logo_url'] ?? null,
+                'contact_name' => $data['contact_name'],
+                'contact_phone' => $data['contact_phone'],
+                'status' => 'pending',
+                'registered_at' => Carbon::now(),
+                'manager_user_id' => auth('api')->user()?->id,
+            ]);
+            // startPayment charges this category's fee and reads the rail and the
+            // platform fee off the event's plan — attach both so it doesn't re-query.
+            $team->setRelation('category', $category);
+            $team->setRelation('event', $event);
 
-        // Through the roster service, not straight into the tables: it is what
-        // validates a player's position against the sport's master list, and a
-        // public form is exactly where an unknown one would arrive.
-        $this->roster->syncPlayers($team, $data['players'] ?? []);
-        $this->roster->syncOfficials($team, $data['officials'] ?? []);
-        $this->roster->syncDocuments($team, $data['documents'] ?? []);
+            // Through the roster service, not straight into the tables: it is
+            // what validates a player's position against the sport's master list
+            // and a row's answers against this event's registration form, and a
+            // public form is exactly where a bad one would arrive.
+            $this->roster->applyCustomFields($team, $data['custom_fields'] ?? []);
+            $this->roster->syncPlayers($team, $data['players'] ?? []);
+            $this->roster->syncOfficials($team, $data['officials'] ?? []);
+            $this->roster->syncDocuments($team, $data['documents'] ?? []);
+
+            return $team;
+        });
 
         // Charge the registration fee when the event has one; free events are
         // settled immediately inside startPayment().
@@ -309,7 +319,7 @@ class PublicEventController extends Controller
             : 'Pendaftaran dibuat. Selesaikan pembayaran biaya pendaftaran untuk mengirim ke penyelenggara.';
 
         return ApiResponse::success([
-            'team' => new TeamResource($team->fresh()->load(['players', 'officials', 'documents', 'event', 'category'])),
+            'team' => new TeamResource($team->fresh()->load(['players.documents', 'officials', 'documents', 'event', 'category'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
