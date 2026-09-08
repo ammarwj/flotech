@@ -36,6 +36,16 @@ api/.phpunit.result.cache
 docker/data/
 certbot/
 
+# ---- Custom domain runtime state ----
+# Only appears if the repo happens to be checked out at /opt/flo-event, the
+# same path config/domains.php's default paths point at (see deploy/setup-
+# custom-domains.sh: ROOT=/opt/flo-event). Written by the containers/setup
+# script, not by us — never commit it.
+/flags/
+/letsencrypt/
+/certbot-www/
+/nginx/custom-domains.conf
+
 # ---- Backup DB (db-backup.sh / db-restore-local.sh) ----
 backups-data-prod/
 
