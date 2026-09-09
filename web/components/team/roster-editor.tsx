@@ -67,12 +67,19 @@ function PlayerRowShell({
   bordered: boolean;
   children: React.ReactNode;
 }) {
-  return bordered ? <div className="rounded-xl border border-border p-3">{children}</div> : <>{children}</>;
+  return bordered ? (
+    <div className="rounded-xl border border-border p-3">{children}</div>
+  ) : (
+    <>{children}</>
+  );
 }
 
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
 function photoShown(p: PlayerRow): string | null {
-  return p.photo_preview ?? (p.photo_url && /^https?:\/\//.test(p.photo_url) ? p.photo_url : null);
+  return (
+    p.photo_preview ??
+    (p.photo_url && /^https?:\/\//.test(p.photo_url) ? p.photo_url : null)
+  );
 }
 
 /**
@@ -139,7 +146,10 @@ export function RosterEditor({
     // Compress + instant local preview, then upload and keep the returned URL.
     try {
       const webp = await compressToWebp(file, { maxDim: 512, quality: 0.85 });
-      set(i, { photo_preview: URL.createObjectURL(webp), photo_uploading: true });
+      set(i, {
+        photo_preview: URL.createObjectURL(webp),
+        photo_uploading: true,
+      });
       const url = await uploadImage(webp, "players");
       set(i, { photo_url: url, photo_uploading: false });
     } catch {
@@ -150,7 +160,8 @@ export function RosterEditor({
 
   // Anything the event asks of each player. Empty lists render nothing, so a
   // sport-only roster keeps exactly the shape it had before this feature.
-  const hasExtras = schema.player_fields.length > 0 || schema.player_documents.length > 0;
+  const hasExtras =
+    schema.player_fields.length > 0 || schema.player_documents.length > 0;
 
   return (
     <div className="grid gap-2">
@@ -163,140 +174,169 @@ export function RosterEditor({
               schema.player_fields,
               schema.player_documents,
               p.custom_fields,
-              p.documents ?? []
+              p.documents ?? [],
             )
           : [];
 
         return (
           <PlayerRowShell key={p.id ?? `new-${i}`} bordered={hasExtras}>
-          {/* Wraps on a narrow form: number, position and the remove button drop
-              to a second line rather than squeezing the name field to nothing. */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Optional profile photo. A label wrapping a hidden input keeps it a
-                single self-contained control per row. */}
-            <div className="relative h-9 w-9 shrink-0">
-              <label
-                className={`grid h-9 w-9 place-items-center overflow-hidden rounded-md border border-border bg-[var(--bg-soft)] text-muted-foreground ${
-                  disabled ? "" : "cursor-pointer hover:border-[var(--brand-500)]"
-                }`}
-                aria-label={`Foto pemain ${i + 1}`}
-              >
-                {p.photo_uploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : shown ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shown} alt={p.full_name || `Pemain ${i + 1}`} className="h-full w-full object-cover" />
-                ) : disabled ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <ImagePlus className="h-4 w-4" />
-                )}
-                {!disabled && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={p.photo_uploading}
-                    onChange={(e) => {
-                      uploadPhoto(i, e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                )}
-              </label>
-              {!disabled && shown && !p.photo_uploading && (
-                <button
-                  type="button"
-                  aria-label={`Hapus foto pemain ${i + 1}`}
-                  onClick={() => set(i, { photo_url: null, photo_preview: undefined })}
-                  className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[var(--surface)] text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
+            {/* Wraps on a narrow form: number, position and the remove button drop
+              to a second line rather than squeezing the name field to nothing.
+              items-start, not center: the photo column is taller than the h-10
+              controls because of its caption, and centering would push the name
+              field down past it. */}
+            <div className="flex flex-wrap items-start gap-2">
+              {/* Optional profile photo. A label wrapping a hidden input keeps it a
+                single self-contained control per row. The caption under the box
+                is what names the icon for a sighted user — aria-label reaches
+                only a screen reader, and a title only a mouse. */}
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <div className="relative h-10 w-10">
+                  <label
+                    className={`grid h-10 w-10 place-items-center overflow-hidden rounded-md border border-border bg-[var(--bg-soft)] text-muted-foreground ${
+                      disabled
+                        ? ""
+                        : "cursor-pointer hover:border-[var(--brand-500)] hover:text-foreground"
+                    }`}
+                    aria-label={`Foto pemain ${i + 1}`}
+                    title={
+                      disabled
+                        ? undefined
+                        : "Unggah foto pemain (opsional, maks 2 MB)"
+                    }
+                  >
+                    {p.photo_uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : shown ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={shown}
+                        alt={p.full_name || `Pemain ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : disabled ? (
+                      <User className="h-4 w-4" />
+                    ) : (
+                      <ImagePlus className="h-4 w-4" />
+                    )}
+                    {!disabled && (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={p.photo_uploading}
+                        onChange={(e) => {
+                          uploadPhoto(i, e.target.files?.[0]);
+                          e.target.value = "";
+                        }}
+                      />
+                    )}
+                  </label>
+                  {!disabled && shown && !p.photo_uploading && (
+                    <button
+                      type="button"
+                      aria-label={`Hapus foto pemain ${i + 1}`}
+                      onClick={() =>
+                        set(i, { photo_url: null, photo_preview: undefined })
+                      }
+                      className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[var(--surface)] text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </div>
+                <span className="text-[0.625rem] leading-none text-muted-foreground">
+                  Upload Foto
+                </span>
+              </div>
+              <Input
+                // flex-1 rather than the default w-full: in a wrapping row a
+                // 100%-wide item claims a whole line to itself. min-w keeps the
+                // name readable — it forces the row to wrap instead of shrinking
+                // the one field that matters down to a few characters.
+                className="min-w-[10rem] flex-1"
+                placeholder={
+                  fixed && size > 1 ? `Pemain ${i + 1}` : "Nama pemain"
+                }
+                aria-label={`Nama pemain ${i + 1}`}
+                value={p.full_name}
+                disabled={disabled}
+                onChange={(e) =>
+                  set(i, { full_name: nameInput(e.target.value) })
+                }
+              />
+              {squadFields && (
+                <Input
+                  className="w-20 shrink-0"
+                  placeholder="No."
+                  aria-label={`Nomor punggung pemain ${i + 1}`}
+                  inputMode="numeric"
+                  value={p.jersey_number}
+                  disabled={disabled}
+                  // A jersey number is digits only — drop letters/symbols as they type or paste.
+                  onChange={(e) =>
+                    set(i, { jersey_number: e.target.value.replace(/\D/g, "") })
+                  }
+                />
+              )}
+              {positions.length > 0 && !fixed && (
+                <Select
+                  className="w-36 shrink-0"
+                  aria-label={`Posisi pemain ${i + 1}`}
+                  value={p.position}
+                  disabled={disabled}
+                  onChange={(e) => set(i, { position: e.target.value })}
                 >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                  <option value="">Posisi</option>
+                  {positions.map((pos) => (
+                    <option key={pos.key} value={pos.key}>
+                      {pos.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              {!disabled && !fixed && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0 text-muted-foreground"
+                  aria-label={`Hapus pemain ${i + 1}`}
+                  onClick={() => onChange(players.filter((_, j) => j !== i))}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               )}
             </div>
-            <Input
-              // flex-1 rather than the default w-full: in a wrapping row a
-              // 100%-wide item claims a whole line to itself. min-w keeps the
-              // name readable — it forces the row to wrap instead of shrinking
-              // the one field that matters down to a few characters.
-              className="min-w-[10rem] flex-1"
-              placeholder={fixed && size > 1 ? `Pemain ${i + 1}` : "Nama pemain"}
-              aria-label={`Nama pemain ${i + 1}`}
-              value={p.full_name}
-              disabled={disabled}
-              onChange={(e) => set(i, { full_name: nameInput(e.target.value) })}
-            />
-            {squadFields && (
-              <Input
-                className="w-20 shrink-0"
-                placeholder="No."
-                aria-label={`Nomor punggung pemain ${i + 1}`}
-                inputMode="numeric"
-                value={p.jersey_number}
-                disabled={disabled}
-                // A jersey number is digits only — drop letters/symbols as they type or paste.
-                onChange={(e) => set(i, { jersey_number: e.target.value.replace(/\D/g, "") })}
-              />
-            )}
-            {positions.length > 0 && !fixed && (
-              <Select
-                className="w-36 shrink-0"
-                aria-label={`Posisi pemain ${i + 1}`}
-                value={p.position}
-                disabled={disabled}
-                onChange={(e) => set(i, { position: e.target.value })}
-              >
-                <option value="">Posisi</option>
-                {positions.map((pos) => (
-                  <option key={pos.key} value={pos.key}>
-                    {pos.label}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {!disabled && !fixed && (
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="shrink-0 text-muted-foreground"
-                aria-label={`Hapus pemain ${i + 1}`}
-                onClick={() => onChange(players.filter((_, j) => j !== i))}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
 
-          {hasExtras && (
-            <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
-              {/* The editor emits bare cells, so the columns are ours to declare;
+            {hasExtras && (
+              <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                {/* The editor emits bare cells, so the columns are ours to declare;
                   everything after it spans the full width. */}
-              <CustomFieldEditor
-                fields={schema.player_fields}
-                value={p.custom_fields ?? {}}
-                onChange={(custom_fields) => set(i, { custom_fields })}
-                disabled={disabled}
-                idPrefix={`player-${i}`}
-              />
-              <div className="grid gap-3 sm:col-span-2">
-                <DocumentUploadFields
-                  slots={schema.player_documents}
-                  value={p.documents ?? []}
-                  onChange={(documents) => set(i, { documents })}
-                  onBusyChange={onBusyChange}
+                <CustomFieldEditor
+                  fields={schema.player_fields}
+                  value={p.custom_fields ?? {}}
+                  onChange={(custom_fields) => set(i, { custom_fields })}
                   disabled={disabled}
+                  idPrefix={`player-${i}`}
                 />
-                {missing.length > 0 && (
-                  <p className="text-xs text-destructive">
-                    Lengkapi dulu: {missing.join(", ")}. Pemain yang datanya belum lengkap tidak akan
-                    tersimpan.
-                  </p>
-                )}
+                <div className="grid gap-3 sm:col-span-2">
+                  <DocumentUploadFields
+                    slots={schema.player_documents}
+                    value={p.documents ?? []}
+                    onChange={(documents) => set(i, { documents })}
+                    onBusyChange={onBusyChange}
+                    disabled={disabled}
+                  />
+                  {missing.length > 0 && (
+                    <p className="text-xs text-destructive">
+                      Lengkapi dulu: {missing.join(", ")}. Pemain yang datanya
+                      belum lengkap tidak akan tersimpan.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </PlayerRowShell>
         );
       })}

@@ -27,7 +27,10 @@ export const emptyOfficial = (): OfficialRow => ({ full_name: "", role: "" });
 
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
 function photoShown(o: OfficialRow): string | null {
-  return o.photo_preview ?? (o.photo_url && /^https?:\/\//.test(o.photo_url) ? o.photo_url : null);
+  return (
+    o.photo_preview ??
+    (o.photo_url && /^https?:\/\//.test(o.photo_url) ? o.photo_url : null)
+  );
 }
 
 /**
@@ -73,7 +76,10 @@ export function OfficialEditor({
     }
     try {
       const webp = await compressToWebp(file, { maxDim: 512, quality: 0.85 });
-      set(i, { photo_preview: URL.createObjectURL(webp), photo_uploading: true });
+      set(i, {
+        photo_preview: URL.createObjectURL(webp),
+        photo_uploading: true,
+      });
       const url = await uploadImage(webp, "officials");
       set(i, { photo_url: url, photo_uploading: false });
     } catch {
@@ -86,48 +92,73 @@ export function OfficialEditor({
     <div className="grid gap-2">
       {officials.map((o, i) => {
         const shown = photoShown(o);
+        // items-start for the same reason as RosterEditor: the captioned photo
+        // column is taller than the controls beside it.
         return (
-          <div key={o.id ?? `new-${i}`} className="flex flex-wrap items-center gap-2">
-            <div className="relative h-9 w-9 shrink-0">
-              <label
-                className={`grid h-9 w-9 place-items-center overflow-hidden rounded-md border border-border bg-[var(--bg-soft)] text-muted-foreground ${
-                  disabled ? "" : "cursor-pointer hover:border-[var(--brand-500)]"
-                }`}
-                aria-label={`Foto ofisial ${i + 1}`}
-              >
-                {o.photo_uploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : shown ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shown} alt={o.full_name || `Ofisial ${i + 1}`} className="h-full w-full object-cover" />
-                ) : disabled ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <ImagePlus className="h-4 w-4" />
-                )}
-                {!disabled && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={o.photo_uploading}
-                    onChange={(e) => {
-                      uploadPhoto(i, e.target.files?.[0]);
-                      e.target.value = "";
-                    }}
-                  />
-                )}
-              </label>
-              {!disabled && shown && !o.photo_uploading && (
-                <button
-                  type="button"
-                  aria-label={`Hapus foto ofisial ${i + 1}`}
-                  onClick={() => set(i, { photo_url: null, photo_preview: undefined })}
-                  className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[var(--surface)] text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
+          <div
+            key={o.id ?? `new-${i}`}
+            className="flex flex-wrap items-start gap-2"
+          >
+            {/* Caption under the box, same as RosterEditor: it is what names the
+                icon for a sighted user. */}
+            <div className="flex shrink-0 flex-col items-center gap-1">
+              <div className="relative h-10 w-10">
+                <label
+                  className={`grid h-10 w-10 place-items-center overflow-hidden rounded-md border border-border bg-[var(--bg-soft)] text-muted-foreground ${
+                    disabled
+                      ? ""
+                      : "cursor-pointer hover:border-[var(--brand-500)] hover:text-foreground"
+                  }`}
+                  aria-label={`Foto ofisial ${i + 1}`}
+                  title={
+                    disabled
+                      ? undefined
+                      : "Unggah foto ofisial (opsional, maks 2 MB)"
+                  }
                 >
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              )}
+                  {o.photo_uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : shown ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={shown}
+                      alt={o.full_name || `Ofisial ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : disabled ? (
+                    <User className="h-4 w-4" />
+                  ) : (
+                    <ImagePlus className="h-4 w-4" />
+                  )}
+                  {!disabled && (
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={o.photo_uploading}
+                      onChange={(e) => {
+                        uploadPhoto(i, e.target.files?.[0]);
+                        e.target.value = "";
+                      }}
+                    />
+                  )}
+                </label>
+                {!disabled && shown && !o.photo_uploading && (
+                  <button
+                    type="button"
+                    aria-label={`Hapus foto ofisial ${i + 1}`}
+                    onClick={() =>
+                      set(i, { photo_url: null, photo_preview: undefined })
+                    }
+                    className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[var(--surface)] text-muted-foreground shadow-sm ring-1 ring-border hover:text-destructive"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                )}
+              </div>
+              <span className="text-[0.625rem] leading-none text-muted-foreground">
+                Upload Foto
+              </span>
             </div>
             <Input
               className="min-w-[10rem] flex-1"
