@@ -122,6 +122,18 @@ export async function getIdlePlanCredits(): Promise<EventPlanOrder[]> {
   return data.data;
 }
 
+/**
+ * Receipts already accepted, newest first (capped server-side).
+ *
+ * A log, not a queue — the decision is made and there is nothing to act on.
+ * Rejections are absent on purpose: `verified_at` stays null on one, so it is
+ * still the organizer's move, not a closed case.
+ */
+export async function getVerifiedPlanOrders(): Promise<EventPlanOrder[]> {
+  const { data } = await apiClient.get<ApiEnvelope<EventPlanOrder[]>>("/admin/plan-orders/history");
+  return data.data;
+}
+
 /** Events of one organization, thin, for the reassign picker. */
 export interface AdminOrgEvent {
   id: string;

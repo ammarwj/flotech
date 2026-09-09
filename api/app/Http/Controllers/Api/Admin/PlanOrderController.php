@@ -44,6 +44,33 @@ class PlanOrderController extends Controller
     }
 
     /**
+     * Receipts already ruled on, newest first.
+     *
+     * `verified_at` is the whole filter, and it is the same column
+     * scopeAwaitingVerification() requires to be null — so a row is in exactly
+     * one of the two lists and cannot be silently dropped by both. A rejection
+     * deliberately leaves it null (see HasManualPayment), which is why this is a
+     * log of approvals rather than of decisions: a rejected receipt is still
+     * waiting on the organizer, not settled.
+     *
+     * Capped rather than paginated: this answers "did we already accept that
+     * transfer?", asked minutes to days after the fact. The permanent record is
+     * the receipt PDF, and every row here is already reachable through the
+     * organization's own billing page.
+     */
+    public function history(): JsonResponse
+    {
+        $verified = EventPlanOrder::query()
+            ->whereNotNull('verified_at')
+            ->with(['plan', 'organization', 'event', 'verifier'])
+            ->latest('verified_at')
+            ->limit(50)
+            ->get();
+
+        return ApiResponse::success(EventPlanOrderResource::collection($verified));
+    }
+
+    /**
      * Paid plans nobody has spent yet, oldest first.
      *
      * Money already taken for an event that never happened. The credit never

@@ -440,6 +440,9 @@ Route::prefix('v1')->group(function () {
             // Paid, unspent, and old. Not a queue — a ledger of what the
             // platform owes in entitlements nobody has claimed.
             Route::get('plan-orders/idle', [AdminPlanOrderController::class, 'idle']);
+            // Receipts already accepted. Same column the queue filters on, so a
+            // row leaves that list exactly as it lands in this one.
+            Route::get('plan-orders/history', [AdminPlanOrderController::class, 'history']);
             Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
             Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
             // The escape hatch for an event stuck on the wrong plan — see the

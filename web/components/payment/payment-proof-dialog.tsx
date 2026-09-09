@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ExternalLink, FileText, ImageOff, Maximize2, Minimize2, ReceiptText, X } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  FileText,
+  ImageOff,
+  ReceiptText,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,7 +35,10 @@ const IMAGE_PATH = /\.(jpe?g|png|gif|webp|avif|bmp|heic|heif)$/i;
 
 /** "30 Jul 2026, 01.03" — the same shape every other dashboard queue prints. */
 const fmtDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+  new Date(iso).toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 
 function looksLikeImage(url: string): boolean {
   try {
@@ -49,6 +59,11 @@ function looksLikeImage(url: string): boolean {
  * Written against a plain proof URL rather than a Subscription/TicketOrder so
  * the super admin's plan queue and an organizer's event queue can share it;
  * everything model-specific arrives as `details`.
+ *
+ * Drop `onApprove`/`onReject` and the same dialog becomes read-only — how the
+ * approval log reopens a receipt months later. Looking one up is the same act
+ * as looking one up to rule on it; the only thing the log lacks is a verdict to
+ * cast, so that is the only thing it omits.
  */
 export function PaymentProofDialog({
   open,
@@ -71,16 +86,20 @@ export function PaymentProofDialog({
   proofUrl: string | null;
   uploadedAt?: string | null;
   details: ProofDetail[];
-  /** Why accepting is irreversible, shown above the buttons. */
-  consequence: string;
+  /** Why accepting is irreversible, shown above the buttons. Omit when read-only. */
+  consequence?: string;
   rejectPlaceholder?: string;
   busy?: boolean;
-  onApprove: () => void;
-  onReject: (reason: string) => void;
+  /**
+   * Both handlers or neither. Without them the dialog is the same receipt with
+   * nothing to decide — what the approval log needs, since re-litigating a
+   * verdict from here would be a second, unlogged ruling on a settled bill.
+   */
+  onApprove?: () => void;
+  onReject?: (reason: string) => void;
 }) {
   const [mode, setMode] = useState<"view" | "reject">("view");
   const [reason, setReason] = useState("");
-  const [zoomed, setZoomed] = useState(false);
   const [broken, setBroken] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -93,23 +112,49 @@ export function PaymentProofDialog({
     setSeenProof(proofUrl);
     setMode("view");
     setReason("");
-    setZoomed(false);
     setBroken(false);
     setLoaded(false);
   }
 
   const renderable = proofUrl !== null && looksLikeImage(proofUrl) && !broken;
+  const decidable = !!onApprove && !!onReject;
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader icon={ReceiptText} title={title} description={description} />
+        <DialogHeader
+          icon={ReceiptText}
+          title={title}
+          description={description}
+        />
 
         <DialogBody>
-          <div className="overflow-hidden rounded-lg border border-border bg-[var(--bg-soft)]">
+          <div className=" rounded-lg border border-border bg-[var(--bg-soft)]">
             {proofUrl && renderable && (
-              <div className={zoomed ? "max-h-[60vh] overflow-auto" : ""}>
-                {!loaded && <Skeleton className="h-64 w-full rounded-none" />}
+              /*
+               * The box takes the image's height, and the cap lives on the
+               * image — not on a fixed frame. A frame tall enough for a phone
+               * screenshot leaves a landscape receipt floating in dead grey,
+               * and one sized for landscape shrinks the very digits being
+               * matched against the bank statement.
+               *
+               * `70vh` because portrait is the common case: a transfer receipt
+               * is a screenshot. The details block below it scrolls on a short
+               * window, which is free — the footer sits outside DialogBody, so
+               * the verdict buttons never move.
+               *
+               * Clicking opens the file at native size, which is the zoom. The
+               * in-place toggle this replaces swapped one clipped rendering for
+               * another, and a browser tab already does the job properly.
+               */
+              <a
+                href={proofUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Buka ukuran penuh"
+                className="flex items-center justify-center p-2"
+              >
+                {!loaded && <Skeleton className="h-64 w-full" />}
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed
                     object-storage URL on an unknown host; next/image would need
                     every bucket in remotePatterns. */}
@@ -119,14 +164,10 @@ export function PaymentProofDialog({
                   onLoad={() => setLoaded(true)}
                   onError={() => setBroken(true)}
                   className={
-                    loaded
-                      ? zoomed
-                        ? "w-full max-w-none"
-                        : "mx-auto max-h-[46vh] w-auto object-contain"
-                      : "hidden"
+                    loaded ? "max-h-[70vh] max-w-full object-contain" : "hidden"
                   }
                 />
-              </div>
+              </a>
             )}
 
             {proofUrl && !renderable && (
@@ -140,7 +181,8 @@ export function PaymentProofDialog({
                   {broken ? "Gambar gagal dimuat" : "Bukti bukan berupa gambar"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Buka berkasnya di tab baru untuk memeriksanya sebelum memutuskan.
+                  Buka berkasnya di tab baru untuk memeriksanya sebelum
+                  memutuskan.
                 </p>
               </div>
             )}
@@ -148,7 +190,9 @@ export function PaymentProofDialog({
             {!proofUrl && (
               <div className="flex flex-col items-center gap-2 p-8 text-center">
                 <ImageOff className="h-7 w-7 text-muted-foreground" />
-                <p className="text-sm font-semibold">Tidak ada bukti terlampir</p>
+                <p className="text-sm font-semibold">
+                  Tidak ada bukti terlampir
+                </p>
               </div>
             )}
           </div>
@@ -160,25 +204,12 @@ export function PaymentProofDialog({
                   ? `Diunggah ${fmtDateTime(uploadedAt)}`
                   : "Waktu unggah tidak tercatat"}
               </p>
-              <div className="flex items-center gap-1">
-                {renderable && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setZoomed((z) => !z)}
-                  >
-                    {zoomed ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                    {zoomed ? "Perkecil" : "Perbesar"}
-                  </Button>
-                )}
-                <Button asChild size="sm" variant="ghost">
-                  <a href={proofUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    Tab baru
-                  </a>
-                </Button>
-              </div>
+              <Button asChild size="sm" variant="ghost">
+                <a href={proofUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Buka ukuran penuh
+                </a>
+              </Button>
             </div>
           )}
 
@@ -202,16 +233,27 @@ export function PaymentProofDialog({
                 className="min-h-[80px]"
               />
               <p className="text-xs text-muted-foreground">
-                Alasannya ditampilkan ke pembayar, dan mereka bisa mengunggah bukti baru.
+                Alasannya ditampilkan ke pembayar, dan mereka bisa mengunggah
+                bukti baru.
               </p>
             </div>
           ) : (
-            <p className={dialogConsequences.default}>{consequence}</p>
+            consequence && (
+              <p className={dialogConsequences.default}>{consequence}</p>
+            )
           )}
         </DialogBody>
 
         <DialogFooter>
-          {mode === "reject" ? (
+          {!decidable ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
+              Tutup
+            </Button>
+          ) : mode === "reject" ? (
             <>
               <Button
                 type="button"
@@ -228,7 +270,7 @@ export function PaymentProofDialog({
                 type="button"
                 variant="destructive"
                 disabled={busy || reason.trim().length === 0}
-                onClick={() => onReject(reason.trim())}
+                onClick={() => onReject?.(reason.trim())}
               >
                 <X className="h-4 w-4" />
                 {busy ? "Mengirim…" : "Kirim penolakan"}

@@ -217,6 +217,8 @@ export interface EventPlanOrder extends ManualPaymentFields {
   bank_account?: PublicBankAccount | null;
   /** Only in the super admin's verification queue, which spans organizations. */
   organization?: { id: string; name: string };
+  /** Name of the super admin who accepted the receipt — approval log only. */
+  verified_by?: string | null;
 }
 
 /**

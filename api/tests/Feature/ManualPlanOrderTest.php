@@ -377,6 +377,63 @@ class ManualPlanOrderTest extends TestCase
             ->assertJsonPath('data.0.id', $paid['id']);
     }
 
+    /**
+     * The queue and the log are the same column read two ways.
+     *
+     * Asserting the log is non-empty after an approval proves nothing: it would
+     * pass just as well if the row never left the queue, and a super admin
+     * would see the same receipt twice and rule on it twice. So both lists are
+     * counted on both sides of the approval — 1/0 becomes 0/1. The rejected
+     * order is there to hold the other half of the rule: `verified_at` stays
+     * null on a rejection, so that one is in neither list.
+     */
+    public function test_approving_moves_an_order_out_of_the_queue_and_into_the_history(): void
+    {
+        $user = User::factory()->create();
+        $plan = $this->plan();
+        $this->platformAccount();
+        $this->gateway(false);
+
+        $approvedOrg = $this->org($user);
+        $approved = $this->checkout($user, $approvedOrg, $plan)["plan_order"];
+        $rejectedOrg = $this->org($user);
+        $rejected = $this->checkout($user, $rejectedOrg, $plan)["plan_order"];
+
+        foreach ([[$approvedOrg, $approved], [$rejectedOrg, $rejected]] as [$org, $order]) {
+            $this->actingAs($user, 'api')
+                ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order['id']}/proof", [
+                    'payment_proof_url' => 'https://cdn.test/proof.jpg',
+                ])
+                ->assertOk();
+        }
+
+        $admin = $this->superAdmin();
+
+        $this->actingAs($admin, 'api')->getJson('/api/v1/admin/plan-orders')
+            ->assertOk()->assertJsonCount(2, 'data');
+        $this->actingAs($admin, 'api')->getJson('/api/v1/admin/plan-orders/history')
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        $this->actingAs($admin, 'api')
+            ->postJson("/api/v1/admin/plan-orders/{$approved['id']}/approve")
+            ->assertOk();
+
+        $this->actingAs($admin, 'api')
+            ->postJson("/api/v1/admin/plan-orders/{$rejected['id']}/reject", [
+                'reason' => 'Nominal tidak cocok.',
+            ])
+            ->assertOk();
+
+        $this->actingAs($admin, 'api')->getJson('/api/v1/admin/plan-orders')
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        $this->actingAs($admin, 'api')->getJson('/api/v1/admin/plan-orders/history')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $approved['id'])
+            ->assertJsonPath('data.0.verified_by', $admin->name);
+    }
+
     /** A cancelled invoice was still issued and emailed; its number is spent. */
     public function test_a_cancelled_manual_invoice_does_not_recycle_its_number(): void
     {
