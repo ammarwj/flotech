@@ -11,18 +11,66 @@ import {
   isSameMonth,
   isToday,
   parseISO,
+  setMonth,
+  setYear,
   startOfMonth,
   startOfWeek,
   subMonths,
 } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 /** Canonical value format shared with the API (`YYYY-MM-DD`). */
 const ISO = "yyyy-MM-dd";
+const MONTHS = Array.from({ length: 12 }, (_, m) =>
+  format(new Date(2000, m, 1), "MMMM", { locale: idLocale })
+);
+/**
+ * How far back the year dropdown reaches. Custom registration fields ask for
+ * birth dates, so the chevrons alone would mean ~430 clicks to reach 1990.
+ */
+const YEARS_BACK = 100;
+const YEARS_AHEAD = 10;
+
+/**
+ * Month/year jump in the calendar header. A bare styled <select> reads as a
+ * plain title — nobody clicks a heading — so it's dressed as a pill with a
+ * caret. The native element stays underneath (invisible, stretched over the
+ * pill) to keep the mobile wheel picker and keyboard behaviour for free.
+ */
+function HeaderSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  options: { value: number; label: string }[];
+}) {
+  return (
+    <div className="relative inline-flex items-center gap-1 rounded-md border border-border bg-background py-1 pl-2 pr-1.5 text-sm font-semibold transition-colors hover:border-primary hover:bg-accent focus-within:ring-2 focus-within:ring-ring">
+      <span>{options.find((o) => o.value === value)?.label}</span>
+      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="absolute inset-0 cursor-pointer opacity-0 focus-visible:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 /**
  * Calendar date picker that reads/writes plain `YYYY-MM-DD` strings, so it's a
@@ -85,6 +133,16 @@ export function DatePicker({
 
   const isDisabledDay = (d: Date) => !!min && format(d, ISO) < min;
 
+  // Always include the year currently in view, so a stored value outside the
+  // window (or a `min` far ahead) still renders as the selected option.
+  const thisYear = new Date().getFullYear();
+  const from = Math.min(
+    min ? parseISO(min).getFullYear() : thisYear - YEARS_BACK,
+    viewMonth.getFullYear()
+  );
+  const to = Math.max(thisYear + YEARS_AHEAD, viewMonth.getFullYear());
+  const years = Array.from({ length: to - from + 1 }, (_, i) => to - i);
+
   const pick = (d: Date) => {
     if (isDisabledDay(d)) return;
     onChange(format(d, ISO));
@@ -118,7 +176,7 @@ export function DatePicker({
       {open && (
         <div
           role="dialog"
-          className="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-[17.5rem] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
+          className="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-76 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
         >
           <div className="mb-2 flex items-center justify-between">
             <button
@@ -129,9 +187,20 @@ export function DatePicker({
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-              {format(viewMonth, "MMMM yyyy", { locale: idLocale })}
-            </span>
+            <div className="flex items-center gap-1" style={{ fontFamily: "var(--font-display)" }}>
+              <HeaderSelect
+                label="Bulan"
+                value={viewMonth.getMonth()}
+                onChange={(v) => setViewMonth((m) => setMonth(m, v))}
+                options={MONTHS.map((label, i) => ({ value: i, label }))}
+              />
+              <HeaderSelect
+                label="Tahun"
+                value={viewMonth.getFullYear()}
+                onChange={(v) => setViewMonth((m) => setYear(m, v))}
+                options={years.map((y) => ({ value: y, label: String(y) }))}
+              />
+            </div>
             <button
               type="button"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
