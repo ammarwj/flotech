@@ -27,6 +27,12 @@ class StoreEventRequest extends FormRequest
             // since both need the organization.
             'plan_order_id' => ['nullable', 'uuid'],
             'slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],
+            // Which rail this event sells on. Absent = the column default
+            // (`gateway`), exactly how every event behaved before the column
+            // existed. Whether this org and this plan may actually use the
+            // chosen rail is EventController::paymentMethodFor()'s job — it
+            // needs the claimed plan, which only exists inside the transaction.
+            'payment_method' => ['sometimes', Rule::in(['gateway', 'manual'])],
             'sport_type' => ['required', Rule::in(Catalog::sportSlugs())],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],

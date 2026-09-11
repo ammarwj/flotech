@@ -1,4 +1,10 @@
-import type { EventPlanOrder, Plan, PlanFeatureDetail, SportEvent } from "@/types/api";
+import type {
+  EventPlanOrder,
+  Plan,
+  PlanFeatureDetail,
+  PlanSummary,
+  SportEvent,
+} from "@/types/api";
 
 /**
  * Entitlements belong to an event, not to an organization: a plan is bought once
@@ -60,6 +66,14 @@ export const isGalleryEnabled = (e?: SportEvent | null) => planAllows(e, "event_
 export const isSponsorLogosEnabled = (e?: SportEvent | null) => planAllows(e, "sponsor_logos");
 export const isOnlineRegistrationEnabled = (e?: SportEvent | null) =>
   planAllows(e, "online_registration");
+
+/**
+ * Plan-keyed, unlike its neighbours: the caller is the event form, which gates
+ * the payment-method select before the event row exists. Mirrors
+ * PlanGate::planAllows(?Plan, …), which exists for the same reason.
+ */
+export const planAllowsGateway = (p?: PlanSummary | null) =>
+  p?.features?.["payment_gateway"] === "true";
 
 export const getCategoryLimit = (e?: SportEvent | null) => planLimit(e, "max_categories");
 export const getTeamsPerCategoryLimit = (e?: SportEvent | null) =>

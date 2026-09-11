@@ -11,12 +11,17 @@ use Illuminate\Support\Carbon;
 /**
  * Which rail a payment travels on, and whether it may travel at all.
  *
- * Normally Midtrans. When a super admin switches the gateway off (Midtrans is
- * down), every organization falls back to manual bank transfer: the buyer pays
- * the organizer's own account and uploads proof. That fallback is never an
- * organization's choice — manual money never reaches the platform, so there is
- * nothing to take a fee from, and letting organizers opt in would simply end
- * fee revenue.
+ * Two rules, and only one of them is the event's. Each event picks its own rail
+ * in `events.payment_method`: Midtrans, or manual bank transfer where the buyer
+ * pays the organizer's own account and uploads proof. Above that sits the super
+ * admin's global switch — when Midtrans is down they turn it off and *every*
+ * event is forced onto manual, whatever it picked. The switch overrides; it
+ * never negotiates.
+ *
+ * Manual money never reaches the platform, so there is nothing to take a fee
+ * from: an event on manual sells at a zero `platform_fee` and writes nothing to
+ * the wallet. That is the price of letting organizers choose, and it is a
+ * deliberate one.
  *
  * Ticket purchase, registration payment and plan checkout all ask this, so the
  * rule lives here rather than in three controllers. The first two collect money
@@ -27,10 +32,33 @@ class PaymentRails
 {
     public function __construct(protected PlanGate $gate) {}
 
-    /** True while the gateway is switched off and everyone is on manual transfer. */
-    public function isManual(): bool
+    /**
+     * True while the super admin has the gateway switched off platform-wide.
+     *
+     * Not "is this payment manual?" — an event that picked manual is manual with
+     * the gateway perfectly healthy. Ask methodFor() that question.
+     */
+    public function gatewayIsDown(): bool
     {
         return ! PlatformSettings::paymentGatewayEnabled();
+    }
+
+    /**
+     * The rail this event's next paid order will be born on.
+     *
+     * The event's own choice, unless the platform overrides it: while the
+     * gateway is off everything is manual, and an event that picked the gateway
+     * gets no exemption from the outage.
+     *
+     * Public because EventResource publishes exactly this answer. The dashboard
+     * must never recombine the two rules itself — a second copy of "global AND
+     * event" is how the organizer's screen and the buyer's checkout end up
+     * disagreeing about the same event, the same shape of bug as the two readers
+     * of `stage`.
+     */
+    public function methodFor(Event $event): string
+    {
+        return $this->gatewayIsDown() || $event->payment_method === 'manual' ? 'manual' : 'gateway';
     }
 
     /** How long a manual order may sit unpaid before `tickets:expire-manual` voids it. */
@@ -44,11 +72,12 @@ class PaymentRails
      * a manual one. Returns null when it goes through the gateway or costs
      * nothing, so callers can read `$bank !== null` as "this one is manual".
      *
-     * Event-scoped, not org-scoped: the gateway entitlement is bought per event,
-     * so two events of one organizer can legitimately answer differently. The
-     * manual destination is still the organizer's own account — money on that
-     * rail never reaches the platform, which is why platformDestination() is a
-     * separate method and stays planless.
+     * Event-scoped, not org-scoped, twice over: the rail is picked per event and
+     * the gateway entitlement is bought per event, so two events of one
+     * organizer can legitimately answer differently. The manual destination is
+     * still the organizer's own account — money on that rail never reaches the
+     * platform, which is why platformDestination() is a separate method and
+     * stays planless.
      *
      * @throws PaymentException when the organizer can't collect this money at all
      */
@@ -59,12 +88,16 @@ class PaymentRails
             return null;
         }
 
-        if ($this->isManual()) {
+        if ($this->methodFor($event) === 'manual') {
             $bank = $event->organization->bankAccounts()->where('is_primary', true)->first();
 
+            // Two messages, because the buyer can act on the difference: an
+            // outage is temporary and nobody's fault, a chosen rail with no
+            // account is setup the organizer still owes them.
             if (! $bank) {
-                throw new PaymentException(
-                    'Pembayaran sedang dialihkan ke transfer manual, tetapi penyelenggara belum menyiapkan rekening tujuan. Hubungi penyelenggara.',
+                throw new PaymentException($this->gatewayIsDown()
+                    ? 'Pembayaran sedang dialihkan ke transfer manual, tetapi penyelenggara belum menyiapkan rekening tujuan. Hubungi penyelenggara.'
+                    : 'Penyelenggara event ini menerima pembayaran lewat transfer manual, tetapi belum menyiapkan rekening tujuan. Hubungi penyelenggara.',
                 );
             }
 
@@ -91,7 +124,8 @@ class PaymentRails
      * entitlement of a specific event. Plan money flows the other way, and there
      * is no event to read an entitlement from: the organizer pays first and
      * creates the event afterwards. Buying a plan is the one flow that must work
-     * with no entitlement anywhere.
+     * with no entitlement anywhere — and the one that reads the global switch
+     * alone, since there is no event here to have chosen a rail.
      *
      * @throws PaymentException when the gateway is off and no platform account is on file
      */
@@ -102,7 +136,7 @@ class PaymentRails
             return null;
         }
 
-        if (! $this->isManual()) {
+        if (! $this->gatewayIsDown()) {
             return null;
         }
 

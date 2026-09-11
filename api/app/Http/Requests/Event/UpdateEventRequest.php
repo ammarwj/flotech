@@ -27,6 +27,10 @@ class UpdateEventRequest extends FormRequest
             // EventController@updateStatus, which enforces Event::TRANSITIONS.
             // Accepting it on the form save would let a caller jump straight to
             // `finished` — and that pays the organizer out.
+            // Same as the store request; see there. Switching rails is allowed
+            // with orders already outstanding — each order snapshots its own
+            // method, so nothing already issued changes.
+            'payment_method' => ['sometimes', Rule::in(['gateway', 'manual'])],
             'start_date' => ['sometimes', 'date'],
             'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
             'timezone' => ['sometimes', 'string', Rule::in(DateTimeZone::listIdentifiers())],

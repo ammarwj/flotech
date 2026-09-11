@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Event;
+use App\Services\PaymentRails;
 use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -26,6 +27,13 @@ class EventResource extends JsonResource
             // "not loaded".
             'plan_id' => $this->plan_id,
             'plan' => new PlanSummaryResource($this->whenLoaded('plan')),
+            // The rail this event picked, and the rail it will actually sell on.
+            // Two fields because the difference is the point: the first binds the
+            // form, the second is what the next buyer meets — they part while the
+            // platform gateway is switched off. Published rather than left for
+            // the client to recombine, same reasoning as `next_statuses`.
+            'payment_method' => $this->payment_method,
+            'effective_payment_method' => app(PaymentRails::class)->methodFor($this->resource),
             'name' => $this->name,
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,

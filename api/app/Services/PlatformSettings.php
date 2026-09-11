@@ -37,7 +37,7 @@ class PlatformSettings
             'config' => 'payments.gateway_enabled',
             'type' => 'bool',
             'label' => 'Payment gateway aktif',
-            'description' => 'Matikan saat Midtrans bermasalah. Semua organisasi otomatis beralih ke transfer manual ke rekening mereka sendiri — platform tidak memotong fee dari pembayaran itu.',
+            'description' => 'Matikan saat Midtrans bermasalah. Semua event dipaksa ke transfer manual ke rekening organizer sendiri — pilihan metode pembayaran di tiap event diabaikan selama ini mati, dan platform tidak memotong fee dari pembayaran itu.',
         ],
         'wallet_minimum_withdrawal' => [
             'config' => 'wallet.minimum_withdrawal',

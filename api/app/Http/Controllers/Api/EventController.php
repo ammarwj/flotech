@@ -15,6 +15,7 @@ use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\EventPlanOrder;
 use App\Models\Organization;
+use App\Models\Plan;
 use App\Models\Player;
 use App\Models\RegistrationDocument;
 use App\Services\Catalog;
@@ -69,6 +70,12 @@ class EventController extends Controller
             $data['slug'] = $this->uniqueSlug($org, $data['slug'] ?? $data['name']);
             $data['status'] = 'draft';
             $data['plan_id'] = $order->plan_id;
+
+            // Only now is the plan known, and a refusal here rolls the whole
+            // thing back — so the credit isn't burned by a rejected rail.
+            if (array_key_exists('payment_method', $data)) {
+                $data['payment_method'] = $this->paymentMethodFor($org, $order->plan, $data['payment_method']);
+            }
 
             $event = $org->events()->create($data);
             // syncCategories gates on the plan; hand it over rather than let it
@@ -153,6 +160,18 @@ class EventController extends Controller
         $data = $request->validated();
         $categories = $data['categories'] ?? null;
         unset($data['categories']);
+
+        // Only when the field is actually sent. Without that guard, an organizer
+        // whose primary account was deleted after picking manual could no longer
+        // even rename their event — a 422 on a field that isn't on the screen
+        // they are filling in.
+        if (array_key_exists('payment_method', $data)) {
+            $data['payment_method'] = $this->paymentMethodFor(
+                $this->org($request),
+                $model->plan,
+                $data['payment_method'],
+            );
+        }
 
         // rules_config is one column holding several independent rulebooks, so a
         // plain update() would let the form that knows about one of them delete
@@ -340,6 +359,41 @@ class EventController extends Controller
 
             PurgeMediaJob::dispatch($urls)->afterCommit();
         }
+    }
+
+    /**
+     * The rail this event may be saved on.
+     *
+     * Two ways to pick one that cannot work, and both are 422s bound to the
+     * field the organizer is looking at rather than 403s: this is a select on a
+     * form, and a toast about entitlements would leave it unmarked. Deliberately
+     * without an `errors.feature` key for the same reason — isPlanLimitError()
+     * would swallow it into a toast.
+     *
+     * PaymentRails::destinationFor() refuses the missing account again at
+     * checkout, and that is not belt-and-braces: the account can be deleted long
+     * after the event is saved, and this only runs when the field is sent.
+     *
+     * Plan-keyed rather than event-keyed because store() gates before the event
+     * row exists — the same reason PlanGate carries both layers.
+     *
+     * @throws ValidationException
+     */
+    protected function paymentMethodFor(Organization $org, ?Plan $plan, string $method): string
+    {
+        if ($method === 'manual' && ! $org->bankAccounts()->where('is_primary', true)->exists()) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Transfer manual butuh rekening tujuan. Isi rekening penarikan di menu Dompet dulu.',
+            ]);
+        }
+
+        if ($method === 'gateway' && ! $this->gate->planAllows($plan, 'payment_gateway')) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Paket event ini tidak termasuk pembayaran online. Pilih transfer manual atau naikkan paketnya.',
+            ]);
+        }
+
+        return $method;
     }
 
     /**

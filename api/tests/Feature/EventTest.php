@@ -44,6 +44,121 @@ class EventTest extends TestCase
         ], $overrides);
     }
 
+    private function bankAccount(Organization $org): void
+    {
+        $org->bankAccounts()->create([
+            'bank_name' => 'BCA',
+            'bank_code' => '014',
+            'account_number' => '1234567890',
+            'account_holder' => 'Flo Event EO',
+            'is_primary' => true,
+        ]);
+    }
+
+    /**
+     * Manual is refused until there is somewhere for the money to go — then the
+     * *same payload* is accepted. Asserting the 422 alone would pass just as
+     * well if the field were never stored at all.
+     */
+    public function test_saving_an_event_on_manual_without_a_bank_account_is_refused_then_accepted(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+        $payload = $this->payload(['payment_method' => 'manual']);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method');
+
+        $this->bankAccount($org);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.payment_method', 'manual')
+            ->assertJsonPath('data.effective_payment_method', 'manual');
+
+        $this->assertDatabaseHas('events', ['organization_id' => $org->id, 'payment_method' => 'manual']);
+    }
+
+    /**
+     * The refusal happens inside the transaction that spends the credit, so it
+     * has to roll back — otherwise a mistyped rail costs the organizer a plan.
+     */
+    public function test_a_refused_payment_method_does_not_burn_the_plan_credit(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload(['payment_method' => 'manual']))
+            ->assertStatus(422);
+
+        $this->assertSame(1, $org->planOrders()->unconsumed()->count());
+        $this->assertDatabaseCount('events', 0);
+    }
+
+    /**
+     * Picking the gateway the plan doesn't carry is a 422 on the field, not the
+     * 403 the checkout throws — this is a select on a form, and a feature toast
+     * would leave it unmarked. The manual retry proves the event was otherwise
+     * fine.
+     */
+    public function test_choosing_the_gateway_on_a_plan_without_it_is_refused_at_save_time(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+        $plan = $this->fullPlan();
+        $plan->features()->where('feature_key', 'payment_gateway')->update(['value' => 'false']);
+        $this->creditFor($org, $plan);
+        $this->bankAccount($org);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload(['payment_method' => 'gateway']))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method')
+            ->assertJsonMissingPath('errors.feature');
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload(['payment_method' => 'manual']))
+            ->assertCreated()
+            ->assertJsonPath('data.payment_method', 'manual');
+    }
+
+    /**
+     * The `array_key_exists` guard. An account can be deleted long after the
+     * event was saved on manual, and the organizer must still be able to edit
+     * everything else — a 422 on a field that isn't on their screen is a dead
+     * end with no way out of it.
+     */
+    public function test_editing_an_unrelated_field_does_not_revalidate_the_payment_method(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+        $this->bankAccount($org);
+
+        $eventId = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload(['payment_method' => 'manual']))
+            ->assertCreated()
+            ->json('data.id');
+
+        $org->bankAccounts()->delete();
+
+        $this->actingAs($user, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$eventId}", ['name' => 'Renamed Cup'])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Renamed Cup')
+            ->assertJsonPath('data.payment_method', 'manual');
+
+        // Sending it explicitly is still refused — the guard narrows when the
+        // rule runs, it does not remove it.
+        $this->actingAs($user, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$eventId}", ['payment_method' => 'manual'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_method');
+    }
+
     public function test_member_can_create_event(): void
     {
         $user = User::factory()->create();

@@ -70,10 +70,16 @@ class ManualPaymentTest extends TestCase
         ]);
     }
 
-    private function event(Organization $org): Event
+    /**
+     * `gateway` by default, which is the column default too — so every test
+     * written before events could pick a rail keeps exercising exactly what it
+     * always did.
+     */
+    private function event(Organization $org, string $method = 'gateway'): Event
     {
         $event = $org->events()->create([
             'plan_id' => $this->planId(),
+            'payment_method' => $method,
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
             'start_date' => '2026-08-01', 'end_date' => '2026-08-02',
@@ -156,6 +162,179 @@ class ManualPaymentTest extends TestCase
             $org->wallet()->first()->transactions()->count(),
             'Only the gateway order may write a ledger entry.',
         );
+    }
+
+    /**
+     * The per-event choice, stated as one test.
+     *
+     * Two events of one organizer, on the *same plan*, at the same price, with
+     * the platform gateway up — so neither the plan nor the global switch can
+     * explain the difference. Anything less and the test would still pass with
+     * `events.payment_method` ignored entirely.
+     */
+    public function test_two_events_of_one_org_take_the_same_purchase_down_different_rails(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        $this->bankAccount($org);
+        $this->gateway(true);
+
+        $online = $this->event($org, 'gateway');
+        $offline = $this->event($org, 'manual');
+        $onlineCat = $online->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+        $offlineCat = $offline->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+
+        $a = $this->buy($org, $online, $onlineCat->id, 2);
+        $b = $this->buy($org, $offline, $offlineCat->id, 2);
+
+        $this->assertSame('gateway', $a['payment_method']);
+        $this->assertSame('manual', $b['payment_method'], 'The event picked manual with the gateway perfectly healthy.');
+
+        $this->assertNull($a['bank_account']);
+        $this->assertSame('1234567890', $b['bank_account']['account_number']);
+
+        $orderA = TicketOrder::find($a['order']['id']);
+        $orderB = TicketOrder::find($b['order']['id']);
+
+        $this->assertSame(5000.0, (float) $orderA->platform_fee);
+        $this->assertSame(0.0, (float) $orderB->platform_fee, 'Manual money never reaches us — nothing to take a cut of.');
+
+        $this->assertNull($orderA->payment_deadline_at);
+        $this->assertEqualsWithDelta(
+            Carbon::now()->addHours(config('payments.manual_order_ttl_hours'))->timestamp,
+            $orderB->payment_deadline_at->timestamp,
+            60,
+        );
+
+        // The wallet firewall, compared rather than asserted: exactly one of the
+        // two purchases was allowed to write a ledger row.
+        $this->assertSame(1, $org->wallet()->first()->transactions()->count());
+    }
+
+    /**
+     * The switch overrides; it never negotiates. Same event, same stored choice,
+     * bought twice — the only thing that changes between the two orders is the
+     * platform switch.
+     */
+    public function test_the_global_switch_overrides_an_event_that_chose_the_gateway(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        $this->bankAccount($org);
+        $event = $this->event($org, 'gateway');
+        $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+
+        $this->gateway(true);
+        $up = $this->buy($org, $event, $category->id, 1);
+
+        $this->gateway(false);
+        $down = $this->buy($org, $event, $category->id, 1);
+
+        $this->assertSame('gateway', $up['payment_method']);
+        $this->assertSame('manual', $down['payment_method']);
+        $this->assertSame('1234567890', $down['bank_account']['account_number']);
+
+        // The event never changed its mind; the platform did.
+        $this->assertSame('gateway', $event->fresh()->payment_method);
+    }
+
+    /**
+     * The asymmetry is deliberate: choosing the gateway without the entitlement
+     * is still refused outright, while the manual rail on the very same plan
+     * sells. Compared on one plan so the refusal can't be read as "this plan
+     * cannot sell tickets".
+     */
+    public function test_choosing_the_gateway_without_the_entitlement_is_refused_while_a_manual_event_on_the_same_plan_sells(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        // Not via orgWithPlan()'s $features: `+` keeps the left operand, so its
+        // defaults would quietly win.
+        $this->testPlan->features()->where('feature_key', 'payment_gateway')->update(['value' => 'false']);
+        $this->bankAccount($org);
+        $this->gateway(true);
+
+        $refused = $this->event($org, 'gateway');
+        $selling = $this->event($org, 'manual');
+        $refusedCat = $refused->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+        $sellingCat = $selling->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+
+        $this->postJson("/api/v1/public/events/{$org->slug}/{$refused->slug}/tickets/purchase", [
+            'ticket_category_id' => $refusedCat->id,
+            'quantity' => 1,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+        ])->assertStatus(403)->assertJsonPath('errors.feature', 'payment_gateway');
+
+        $this->assertDatabaseCount('ticket_orders', 0);
+
+        $sold = $this->buy($org, $selling, $sellingCat->id, 1);
+        $this->assertSame('manual', $sold['payment_method']);
+    }
+
+    /**
+     * The checkout guard is a safety net, not a duplicate: the account can be
+     * deleted long after the event was saved on manual. Compared against a
+     * gateway event of the same org, which needs no account at all.
+     */
+    public function test_an_event_on_manual_without_a_primary_account_refuses_the_sale_even_with_the_gateway_up(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        $this->gateway(true);
+
+        $online = $this->event($org, 'gateway');
+        $offline = $this->event($org, 'manual');
+        $onlineCat = $online->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+        $offlineCat = $offline->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+
+        $this->assertSame('gateway', $this->buy($org, $online, $onlineCat->id, 1)['payment_method']);
+
+        $this->postJson("/api/v1/public/events/{$org->slug}/{$offline->slug}/tickets/purchase", [
+            'ticket_category_id' => $offlineCat->id,
+            'quantity' => 1,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+        ])->assertStatus(422);
+
+        $this->assertSame(0, $offlineCat->fresh()->sold, 'A refused sale must not reserve quota.');
+        $this->assertDatabaseCount('ticket_orders', 1);
+    }
+
+    /**
+     * Why `payment_method` is *not* locked once orders exist, unlike a
+     * category's `participant_type`: every order snapshots its own rail, fee and
+     * deadline, so switching changes nothing already issued. Switching rails is
+     * also the organizer's own remedy when the gateway keeps failing them —
+     * locking it would lock exactly while they are selling.
+     */
+    public function test_switching_rails_leaves_orders_already_taken_untouched(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        $this->bankAccount($org);
+        $this->gateway(true);
+
+        $event = $this->event($org, 'manual');
+        $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+
+        $before = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
+
+        $this->actingAs($owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}", ['payment_method' => 'gateway'])
+            ->assertOk()
+            ->assertJsonPath('data.payment_method', 'gateway');
+
+        $before->refresh();
+        $this->assertSame('manual', $before->payment_method, 'The order was born manual and stays manual.');
+        $this->assertSame(0.0, (float) $before->platform_fee);
+        $this->assertNotNull($before->payment_deadline_at);
+
+        // Only what comes next rides the new rail.
+        $after = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
+        $this->assertSame('gateway', $after->payment_method);
+        $this->assertSame(2500.0, (float) $after->platform_fee);
+        $this->assertNull($after->payment_deadline_at);
     }
 
     public function test_purchase_returns_the_organizers_account_while_the_gateway_is_off(): void

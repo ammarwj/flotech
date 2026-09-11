@@ -643,6 +643,17 @@ export interface SportEvent {
    */
   plan_id: string | null;
   plan?: PlanSummary;
+  /**
+   * The rail this event picked. Binds the form; this is what gets saved.
+   */
+  payment_method: PaymentMethod;
+  /**
+   * The rail the next buyer will actually meet — the event's choice unless the
+   * platform gateway is switched off, which forces every event to manual. The
+   * server combines the two rules (PaymentRails::methodFor); never recombine
+   * them here, or this screen and the buyer's checkout will disagree.
+   */
+  effective_payment_method: PaymentMethod;
   name: string;
   slug: string;
   sport_type: SportType;

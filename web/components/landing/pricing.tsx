@@ -116,7 +116,7 @@ export function Pricing() {
           <p className="price-foot">
             {feeFootnote(plans)}
             {
-              " Kalau payment gateway sedang bermasalah, pembayaran otomatis dialihkan ke transfer manual ke rekeningmu — tanpa potongan fee."
+              " Biaya platform tiket & pendaftaran dibayarkan oleh peserta, bukan penyelenggara. "
             }
           </p>
         )}

@@ -107,8 +107,9 @@ export default function AdminSettingsPage() {
           <div className="text-sm">
             <p className="font-semibold">Semua organizer akan memakai transfer manual</p>
             <p className="mt-1 text-muted-foreground">
-              Pembeli transfer langsung ke rekening organizer dan mengunggah bukti untuk
-              diverifikasi. Platform tidak memotong fee dari pembayaran itu.
+              Ini menimpa pilihan tiap event — event yang memilih pembayaran online ikut dialihkan
+              selama gateway mati. Pembeli transfer langsung ke rekening organizer dan mengunggah
+              bukti untuk diverifikasi. Platform tidak memotong fee dari pembayaran itu.
               {orgsWithoutBank > 0 && (
                 <>
                   {" "}

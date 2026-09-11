@@ -34,6 +34,8 @@ import { LeagueConfigCard } from "@/components/event/standings-rules";
 import { rupiah } from "@/lib/labels";
 import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { planAllowsGateway } from "@/lib/plan";
 import { disciplineStatDefs, tracksDiscipline } from "@/lib/scoring";
 import { compressToWebp } from "@/lib/image";
 import { uploadImage, type EventCategoryInput, type EventInput } from "@/lib/api/events";
@@ -427,10 +429,15 @@ export function EventForm({
   plan?: PlanSummary;
 }) {
   const { sports, tournament_formats } = useCatalog();
+  const { org } = useActiveOrg();
+
+  // The edit page passes no `plan` prop even though the event carries one, so
+  // fall back to it — otherwise every proactive gate here is dead on edit.
+  const activePlan = plan ?? initial?.plan;
 
   // -1 (and an absent key) means unlimited, matching PlanGate.
   const capOf = (key: string): number | null => {
-    const raw = plan?.features?.[key];
+    const raw = activePlan?.features?.[key];
     if (raw === undefined) return null;
     const n = Number(raw);
     return Number.isNaN(n) || n < 0 ? null : n;
@@ -438,11 +445,21 @@ export function EventForm({
   const categoryCap = capOf("max_categories");
   const teamsCap = capOf("max_teams_per_category");
 
+  // The three things that decide what the payment-method control may offer.
+  // `org` is null until the query lands: say nothing rather than warn wrongly.
+  const gatewayDown = org ? !org.payment_gateway_enabled : false;
+  const gatewayInPlan = planAllowsGateway(activePlan);
+  const noBank = org ? !org.has_bank_account : false;
+
   const [v, setV] = useState<EventInput>({
     name: initial?.name ?? "",
     // Empty until the catalog arrives; the first sport then becomes the default,
     // so the form works no matter what the admin has configured.
     sport_type: initial?.sport_type ?? "",
+    // A new event on a plan without the gateway is born manual, so nobody meets
+    // a 422 over a control they never touched. Never seeded from the platform
+    // override — see the select below.
+    payment_method: initial?.payment_method ?? (gatewayInPlan ? "gateway" : "manual"),
     start_date: initial?.start_date ?? "",
     end_date: initial?.end_date ?? "",
     timezone: initial?.timezone ?? "Asia/Jakarta",
@@ -756,6 +773,60 @@ export function EventForm({
               penonton di zona mana pun akan melihat jam yang sama.
             </FieldHint>
           </div>
+
+          <div className="grid gap-2 sm:max-w-[50%] sm:pr-2">
+            <Label htmlFor="payment_method" className="font-semibold">
+              Metode pembayaran
+            </Label>
+            {/* While the platform gateway is off the control SHOWS "Transfer
+                manual" but `v.payment_method` is untouched, so handleSubmit
+                still sends the stored choice. Sending the displayed value
+                instead would rewrite every event saved during one outage to
+                manual, permanently and silently. Show the override, never save
+                it. */}
+            <Select
+              id="payment_method"
+              value={gatewayDown ? "manual" : (v.payment_method ?? "gateway")}
+              disabled={gatewayDown}
+              onChange={(e) => set("payment_method", e.target.value as EventInput["payment_method"])}
+              aria-invalid={!!errorFor("payment_method")}
+              className={invalidCls("payment_method")}
+            >
+              {/* Disabled rather than hidden: the option the plan withholds is
+                  exactly what the hint below is talking about. */}
+              <option value="gateway" disabled={!gatewayInPlan}>
+                Pembayaran online (Midtrans)
+              </option>
+              <option value="manual">Transfer manual</option>
+            </Select>
+            {errorFor("payment_method") ? (
+              <FieldError message={errorFor("payment_method")} />
+            ) : gatewayDown ? (
+              <FieldHint>
+                Payment gateway platform sedang dimatikan, jadi semua event memakai transfer manual.
+                Pilihanmu tersimpan dan berlaku lagi begitu gateway dinyalakan.
+              </FieldHint>
+            ) : !gatewayInPlan ? (
+              <FieldHint>
+                Paket event ini tidak termasuk pembayaran online. Naikkan paket kalau ingin memakai
+                Midtrans.
+              </FieldHint>
+            ) : noBank && v.payment_method === "manual" ? (
+              <FieldHint>
+                Transfer manual butuh rekening tujuan — isi rekening penarikan di{" "}
+                <Link href="/organizer/wallet" className="underline underline-offset-2">
+                  Dompet
+                </Link>{" "}
+                dulu, kalau tidak event ini tidak bisa menerima pembayaran.
+              </FieldHint>
+            ) : (
+              <FieldHint>
+                Pembayaran online masuk lewat Midtrans dan dipotong fee platform. Transfer manual
+                masuk langsung ke rekeningmu tanpa potongan — tapi kamu yang memverifikasi tiap
+                bukti transfer.
+              </FieldHint>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -797,6 +868,9 @@ export function EventForm({
             <Plus className="h-4 w-4" />
             Tambah kategori
           </Button>
+          {/* Keyed on the `plan` prop, not `activePlan`: on the edit page
+              EventPlanPanel already states the same caps and the same way up,
+              directly above this form. */}
           {plan && (categoryCap !== null || teamsCap !== null) && (
             <p className="text-xs text-muted-foreground">
               Paket {plan.name}:{" "}

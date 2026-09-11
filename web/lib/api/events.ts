@@ -43,6 +43,7 @@ export type EventInput = Partial<
     | "sport_type"
     // No "status": transitions go through updateEventStatus(), which is the
     // only path the backend still accepts them on.
+    | "payment_method"
     | "start_date"
     | "end_date"
     | "timezone"

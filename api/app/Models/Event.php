@@ -47,6 +47,7 @@ class Event extends Model
     protected $fillable = [
         'organization_id',
         'plan_id',
+        'payment_method',
         'name',
         'slug',
         'custom_domain',
