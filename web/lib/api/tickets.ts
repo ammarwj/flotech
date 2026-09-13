@@ -113,6 +113,8 @@ export interface PurchasePayload {
   buyer_email: string;
   buyer_phone?: string;
   holder_names?: string[];
+  /** Required when the event's rail is gateway and the total is > 0. */
+  payment_channel?: string;
 }
 
 export async function purchaseTickets(

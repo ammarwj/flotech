@@ -77,6 +77,9 @@ class ManualPlanOrderTest extends TestCase
         return $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
+                // Ignored on the manual rail, required on gateway — safe to
+                // always send so this helper works for both.
+                'payment_channel' => 'va',
             ])
             ->assertStatus($status)
             ->json('data');

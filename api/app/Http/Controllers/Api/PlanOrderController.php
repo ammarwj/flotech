@@ -67,7 +67,7 @@ class PlanOrderController extends Controller
         $org = $request->attributes->get('organization');
         $plan = Plan::findOrFail($request->input('plan_id'));
 
-        $result = $this->orders->checkout($org, $plan);
+        $result = $this->orders->checkout($org, $plan, $request->string('payment_channel')->toString() ?: null);
 
         return ApiResponse::success($this->checkoutPayload($result), 'Checkout dibuat', 201);
     }
@@ -116,11 +116,12 @@ class PlanOrderController extends Controller
 
         $data = $request->validate([
             'plan_id' => ['required', 'uuid', Rule::exists('plans', 'id')->where('is_active', true)],
+            'payment_channel' => ['nullable', 'string'],
         ], [
             'plan_id.required' => 'Pilih paket tujuan upgrade.',
         ]);
 
-        $result = $this->orders->checkoutUpgrade($planOrder, Plan::findOrFail($data['plan_id']));
+        $result = $this->orders->checkoutUpgrade($planOrder, Plan::findOrFail($data['plan_id']), $data['payment_channel'] ?? null);
 
         return ApiResponse::success($this->checkoutPayload($result), 'Tagihan upgrade dibuat', 201);
     }
@@ -155,7 +156,7 @@ class PlanOrderController extends Controller
             return ApiResponse::error('Bukti pembayaranmu sedang diperiksa admin.', null, 422);
         }
 
-        $result = $this->orders->pay($planOrder);
+        $result = $this->orders->pay($planOrder, $request->string('payment_channel')->toString() ?: null);
 
         return ApiResponse::success($this->checkoutPayload($result), 'Pembayaran dibuka');
     }

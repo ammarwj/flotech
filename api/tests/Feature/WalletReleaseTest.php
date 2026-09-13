@@ -39,10 +39,10 @@ class WalletReleaseTest extends TestCase
         ]);
     }
 
-    /** An org with 95.000 pending from one paid order on an event ending 2026-08-02. */
+    /** An org with 100.000 pending from one paid order on an event ending 2026-08-02. */
     private function seedPendingIncome(User $user): array
     {
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
         $event = $org->events()->create([
             'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
@@ -56,6 +56,7 @@ class WalletReleaseTest extends TestCase
             'quantity' => 2,
             'buyer_name' => 'Budi',
             'buyer_email' => 'budi@test.com',
+            'payment_channel' => 'va',
         ])->assertCreated();
 
         return [$org, $event];
@@ -71,7 +72,7 @@ class WalletReleaseTest extends TestCase
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
             'balance_pending' => '0.00',
-            'balance_available' => '95000.00',
+            'balance_available' => '100000.00',
         ]);
         $this->assertDatabaseHas('wallet_transactions', ['organization_id' => $org->id, 'status' => 'available']);
     }
@@ -86,7 +87,7 @@ class WalletReleaseTest extends TestCase
 
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_available' => '95000.00',
+            'balance_available' => '100000.00',
             'balance_pending' => '0.00',
         ]);
     }
@@ -100,7 +101,7 @@ class WalletReleaseTest extends TestCase
 
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => '95000.00',
+            'balance_pending' => '100000.00',
             'balance_available' => '0.00',
         ]);
     }
@@ -121,7 +122,7 @@ class WalletReleaseTest extends TestCase
         // 2026-08-02 17:00 UTC = 00:00 WIB the next day. Over.
         Carbon::setTestNow('2026-08-02 17:00:00');
         $this->artisan('wallet:release')->assertSuccessful();
-        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '95000.00']);
+        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '100000.00']);
     }
 
     public function test_cancelled_event_funds_are_never_released(): void
@@ -134,7 +135,7 @@ class WalletReleaseTest extends TestCase
 
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => '95000.00',
+            'balance_pending' => '100000.00',
             'balance_available' => '0.00',
         ]);
     }
@@ -164,7 +165,7 @@ class WalletReleaseTest extends TestCase
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
             'balance_pending' => '0.00',
-            'balance_available' => '95000.00',
+            'balance_available' => '100000.00',
         ]);
     }
 
@@ -183,7 +184,7 @@ class WalletReleaseTest extends TestCase
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
             'balance_pending' => '0.00',
-            'balance_available' => '95000.00',
+            'balance_available' => '100000.00',
         ]);
     }
 

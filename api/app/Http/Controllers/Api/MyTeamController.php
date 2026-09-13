@@ -115,7 +115,7 @@ class MyTeamController extends Controller
     /**
      * (Re)start the payment for an unpaid registration fee.
      */
-    public function pay(string $team): JsonResponse
+    public function pay(Request $request, string $team): JsonResponse
     {
         $model = $this->scope()->with(['event', 'category'])->findOrFail($team);
 
@@ -123,7 +123,7 @@ class MyTeamController extends Controller
             return ApiResponse::error('Pendaftaran ini sudah dibayar.', null, 422);
         }
 
-        $payment = $this->registration->startPayment($model);
+        $payment = $this->registration->startPayment($model, $request->string('payment_channel')->toString() ?: null);
 
         return ApiResponse::success([
             'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),

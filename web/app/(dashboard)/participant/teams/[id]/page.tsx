@@ -26,6 +26,7 @@ import {
   type DocumentRow,
 } from "@/lib/registration-form";
 import { useConfirm } from "@/components/shared/confirm-provider";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +62,8 @@ export default function ManageTeamPage() {
   const [officials, setOfficials] = useState<OfficialRow[]>([]);
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [channel, setChannel] = useState<string | null>(null);
+  const requiresChannel = Boolean(team?.event?.requires_payment_channel) && (team?.payment_amount ?? 0) > 0;
 
   const teamMissing = missingFor(schema.team_fields, schema.team_documents, teamFields, docs);
 
@@ -165,7 +168,7 @@ export default function ManageTeamPage() {
   });
 
   const pay = useMutation({
-    mutationFn: () => payRegistration(params.id),
+    mutationFn: () => payRegistration(params.id, requiresChannel ? channel! : undefined),
     onSuccess: (res) => {
       if (!res.mock && res.redirect_url) {
         window.location.href = res.redirect_url;
@@ -231,11 +234,21 @@ export default function ManageTeamPage() {
                 </p>
               </div>
             </div>
-            <Button onClick={() => pay.mutate()} disabled={pay.isPending}>
+            <Button onClick={() => pay.mutate()} disabled={pay.isPending || (requiresChannel && !channel)}>
               {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
               Bayar sekarang
             </Button>
           </CardContent>
+          {requiresChannel && (
+            <CardContent className="pt-0">
+              <ChannelPicker
+                amount={team.payment_amount}
+                audience="participant"
+                value={channel}
+                onChange={setChannel}
+              />
+            </CardContent>
+          )}
         </Card>
       )}
 

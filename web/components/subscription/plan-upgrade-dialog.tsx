@@ -11,6 +11,7 @@ import { parseApiError } from "@/lib/api/errors";
 import { checkoutOutcome } from "@/lib/checkout";
 import { formatPlanFeature, getPlanColor } from "@/lib/plan";
 import { rupiah } from "@/lib/labels";
+import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -20,6 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from "@/components/ui/dialog";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import type { EventPlanOrder, PlanUpgradeOption } from "@/types/api";
 
 /**
@@ -47,7 +49,12 @@ export function PlanUpgradeDialog({
 }) {
   const router = useRouter();
   const qc = useQueryClient();
+  const { org } = useActiveOrg();
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  // Set only while the gateway is live and an option is waiting on a channel
+  // choice before the difference is charged.
+  const [channelOption, setChannelOption] = useState<PlanUpgradeOption | null>(null);
+  const [channel, setChannel] = useState<string | null>(null);
 
   const optionsQuery = useQuery({
     queryKey: ["plan-upgrade-options", orgId, order.id],
@@ -59,7 +66,8 @@ export function PlanUpgradeDialog({
   });
 
   const upgrade = useMutation({
-    mutationFn: (planId: string) => upgradePlanOrder(orgId, order.id, planId),
+    mutationFn: ({ planId, channel }: { planId: string; channel: string | null }) =>
+      upgradePlanOrder(orgId, order.id, planId, channel ?? undefined),
     onSuccess: (res) => {
       const outcome = checkoutOutcome(res);
 
@@ -95,7 +103,11 @@ export function PlanUpgradeDialog({
       });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses upgrade.").message),
-    onSettled: () => setPendingPlanId(null),
+    onSettled: () => {
+      setPendingPlanId(null);
+      setChannelOption(null);
+      setChannel(null);
+    },
   });
 
   const options = optionsQuery.data ?? [];
@@ -167,8 +179,13 @@ export function PlanUpgradeDialog({
                   size="sm"
                   disabled={upgrade.isPending}
                   onClick={() => {
+                    if (org?.payment_gateway_enabled) {
+                      setChannel(null);
+                      setChannelOption(option);
+                      return;
+                    }
                     setPendingPlanId(option.plan.id);
-                    upgrade.mutate(option.plan.id);
+                    upgrade.mutate({ planId: option.plan.id, channel: null });
                   }}
                 >
                   {pendingPlanId === option.plan.id ? "Memproses…" : `Naik ke ${option.plan.name}`}
@@ -184,6 +201,43 @@ export function PlanUpgradeDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <Dialog
+        open={!!channelOption}
+        onOpenChange={(next) => !upgrade.isPending && !next && setChannelOption(null)}
+      >
+        <DialogContent>
+          <DialogHeader
+            title="Pilih metode pembayaran"
+            description={channelOption ? `Naik ke ${channelOption.plan.name}.` : undefined}
+          />
+          <DialogBody>
+            {channelOption && (
+              <ChannelPicker
+                amount={channelOption.price_difference}
+                audience="organizer"
+                value={channel}
+                onChange={setChannel}
+              />
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setChannelOption(null)} disabled={upgrade.isPending}>
+              Batal
+            </Button>
+            <Button
+              disabled={!channel || upgrade.isPending}
+              onClick={() => {
+                if (!channelOption) return;
+                setPendingPlanId(channelOption.plan.id);
+                upgrade.mutate({ planId: channelOption.plan.id, channel });
+              }}
+            >
+              Lanjutkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

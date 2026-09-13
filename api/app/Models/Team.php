@@ -30,6 +30,9 @@ class Team extends Model
         'payment_amount',
         'platform_fee',
         'payment_method',
+        'payment_channel',
+        'gateway_fee',
+        'service_fee',
         'midtrans_order_id',
         'midtrans_token',
         'paid_at',
@@ -50,6 +53,8 @@ class Team extends Model
             'paid_at' => 'datetime',
             'payment_amount' => 'decimal:2',
             'platform_fee' => 'decimal:2',
+            'gateway_fee' => 'decimal:2',
+            'service_fee' => 'decimal:2',
             'payment_proof_uploaded_at' => 'datetime',
             'payment_deadline_at' => 'datetime',
             'verified_at' => 'datetime',
@@ -59,6 +64,13 @@ class Team extends Model
     protected function paymentStateColumn(): string
     {
         return 'payment_status';
+    }
+
+    // Buyer-paid total: what actually gets charged, including fees the
+    // organizer never sees. payment_amount stays the registration's own fee.
+    public function getGrossAmountAttribute(): float
+    {
+        return (float) $this->payment_amount + (float) $this->gateway_fee + (float) $this->service_fee;
     }
 
     public function event(): BelongsTo

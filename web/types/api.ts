@@ -212,6 +212,13 @@ export interface EventPlanOrder extends ManualPaymentFields {
   midtrans_order_id: string | null;
   payment_type: string | null;
   paid_at: string | null;
+  /** Buyer-paid, on top of `amount`. `gateway_tax` is already inside `gateway_fee`. */
+  payment_channel: string | null;
+  gateway_fee: number;
+  gateway_tax: number;
+  service_fee: number;
+  /** amount + gateway_fee + service_fee — what Midtrans charged. */
+  gross_amount: number;
   plan?: Plan;
   /** Where to transfer. Only on an unpaid manual bill. */
   bank_account?: PublicBankAccount | null;
@@ -654,6 +661,8 @@ export interface SportEvent {
    * them here, or this screen and the buyer's checkout will disagree.
    */
   effective_payment_method: PaymentMethod;
+  /** Whether a "pay again" checkout must show the channel picker before creating a Snap token. */
+  requires_payment_channel: boolean;
   name: string;
   slug: string;
   sport_type: SportType;
@@ -941,6 +950,8 @@ export interface PublicEvent {
   photos?: EventPhoto[];
   approved_teams_count: number;
   approved_teams?: PublicTeam[];
+  /** Whether checkout must show the payment-channel picker before creating a Snap token. */
+  requires_payment_channel: boolean;
 }
 
 /** Public organizer profile — the outward-facing subset of Organization. */
@@ -1195,8 +1206,15 @@ export interface AdminPayment {
   organization_name: string | null;
   event_name: string | null;
   payer: string | null;
+  /** What the organizer sells at and gets credited — fees below are the buyer's surcharge on top. */
   amount: number;
+  /** Retired plan-tiered cut. Always 0 on new gateway orders; old rows still carry real values. */
   platform_fee: number;
+  payment_method: PaymentMethod;
+  payment_channel: string | null;
+  gateway_fee: number;
+  service_fee: number;
+  gross_amount: number;
   status: string;
   paid_at: string | null;
 }
@@ -1211,7 +1229,7 @@ export interface PlatformSetting {
   label: string;
   /** Longer explanation for settings whose blast radius isn't obvious. */
   description: string | null;
-  type: "money" | "int" | "bool";
+  type: "money" | "int" | "bool" | "percent";
   value: number | boolean;
   /** From config/wallet.php or config/payments.php — used when never overridden. */
   default: number | boolean;

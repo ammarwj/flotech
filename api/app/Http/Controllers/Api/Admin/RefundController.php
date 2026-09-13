@@ -17,6 +17,11 @@ use Illuminate\Http\Request;
  * Refunding here voids the order and reverses the organizer's wallet credit.
  * It does NOT move money back to the buyer — that must also be done in the
  * Midtrans dashboard.
+ *
+ * `amount` is the price the organizer sells at and gets credited; `gateway_fee`
+ * and `service_fee` are the buyer's own surcharge on top, and `gross_amount` is
+ * what Midtrans charged. `platform_fee` is the retired plan-tiered cut — always
+ * 0 on new gateway orders, kept because old rows still carry real values.
  */
 class RefundController extends Controller
 {
@@ -40,6 +45,11 @@ class RefundController extends Controller
                 'payer' => $order->buyer_name,
                 'amount' => (float) $order->total_price,
                 'platform_fee' => (float) $order->platform_fee,
+                'payment_method' => $order->payment_method,
+                'payment_channel' => $order->payment_channel,
+                'gateway_fee' => (float) $order->gateway_fee,
+                'service_fee' => (float) $order->service_fee,
+                'gross_amount' => $order->gross_amount,
                 'status' => $order->status,
                 'paid_at' => $order->paid_at,
             ]);
@@ -59,6 +69,11 @@ class RefundController extends Controller
                 'payer' => $team->name,
                 'amount' => (float) $team->payment_amount,
                 'platform_fee' => (float) $team->platform_fee,
+                'payment_method' => $team->payment_method,
+                'payment_channel' => $team->payment_channel,
+                'gateway_fee' => (float) $team->gateway_fee,
+                'service_fee' => (float) $team->service_fee,
+                'gross_amount' => $team->gross_amount,
                 'status' => $team->payment_status,
                 'paid_at' => $team->paid_at,
             ]);

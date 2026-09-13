@@ -34,12 +34,20 @@ import {
 import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+} from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
@@ -99,6 +107,11 @@ function RegisterTeamPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
+  const [channel, setChannel] = useState<string | null>(null);
+  // Open only between pressing "Kirim Pendaftaran" and choosing how to pay.
+  const [pickingChannel, setPickingChannel] = useState(false);
+  const fee = selectedCategory?.registration_fee ?? 0;
+  const requiresChannel = Boolean(event?.requires_payment_channel) && fee > 0;
 
   // Local blob for instant preview (dev R2 returns a non-renderable mock:// URL).
   const logoShown = logoPreview ?? (team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null);
@@ -162,6 +175,7 @@ function RegisterTeamPage() {
             photo_url: o.photo_url,
           })),
         documents: docs,
+        payment_channel: requiresChannel ? channel! : undefined,
       };
       return registerTeam(params.orgSlug, params.eventSlug, payload);
     },
@@ -175,6 +189,10 @@ function RegisterTeamPage() {
     },
     onError: (err) =>
       setError(err instanceof AxiosError ? (err.response?.data?.message ?? "Gagal mendaftar") : "Gagal mendaftar"),
+    // Close either way: the error banner lives on the form behind this dialog,
+    // and on success the page is either redirecting to Midtrans or swapping
+    // itself for the result card.
+    onSettled: () => setPickingChannel(false),
   });
 
   const proof = useMutation({
@@ -334,6 +352,15 @@ function RegisterTeamPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
+          // Paid registration on the gateway rail: pick a channel first. The
+          // picker is a step at the end rather than a field in the middle
+          // because it prices the whole registration, and the fee only means
+          // anything once the form is actually being submitted.
+          if (requiresChannel) {
+            setChannel(null);
+            setPickingChannel(true);
+            return;
+          }
           mutation.mutate();
         }}
         className="grid gap-5"
@@ -397,7 +424,10 @@ function RegisterTeamPage() {
                   <Select
                     id="category"
                     value={resolvedCategoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
+                    onChange={(e) => {
+                      setCategoryId(e.target.value);
+                      setChannel(null);
+                    }}
                   >
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -549,6 +579,41 @@ function RegisterTeamPage() {
           </Button>
         </div>
       </form>
+
+      <Dialog
+        open={pickingChannel}
+        onOpenChange={(next) => !mutation.isPending && !next && setPickingChannel(false)}
+      >
+        <DialogContent>
+          <DialogHeader
+            title="Pilih metode pembayaran"
+            description={`Biaya pendaftaran ${selectedCategory?.name ?? ""}.`.trim()}
+          />
+          <DialogBody>
+            <ChannelPicker
+              amount={fee}
+              audience="participant"
+              value={channel}
+              onChange={setChannel}
+            />
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setPickingChannel(false)}
+              disabled={mutation.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              disabled={!channel || mutation.isPending}
+              onClick={() => mutation.mutate()}
+            >
+              {mutation.isPending ? "Mengirim…" : "Daftar & Bayar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

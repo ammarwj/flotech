@@ -59,11 +59,20 @@ export async function updateOrganization(
   return data.data;
 }
 
-/** Buy a plan. There is no cycle — one payment covers one event. */
-export async function checkoutPlan(orgId: string, planId: string): Promise<CheckoutResult> {
+/**
+ * Buy a plan. There is no cycle — one payment covers one event.
+ *
+ * `paymentChannel` is required exactly when the org's gateway is live (see
+ * `org.payment_gateway_enabled`) — ignored on the manual rail.
+ */
+export async function checkoutPlan(
+  orgId: string,
+  planId: string,
+  paymentChannel?: string
+): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
     `/organizations/${orgId}/plan-orders/checkout`,
-    { plan_id: planId }
+    { plan_id: planId, payment_channel: paymentChannel }
   );
   return data.data;
 }
@@ -80,9 +89,14 @@ export async function getPlanOrders(orgId: string): Promise<EventPlanOrder[]> {
 }
 
 /** Reopen payment for an unpaid invoice. Returns a fresh Snap transaction. */
-export async function payPlanOrder(orgId: string, orderId: string): Promise<CheckoutResult> {
+export async function payPlanOrder(
+  orgId: string,
+  orderId: string,
+  paymentChannel?: string
+): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
-    `/organizations/${orgId}/plan-orders/${orderId}/pay`
+    `/organizations/${orgId}/plan-orders/${orderId}/pay`,
+    { payment_channel: paymentChannel }
   );
   return data.data;
 }
@@ -108,11 +122,12 @@ export async function getPlanUpgradeOptions(
 export async function upgradePlanOrder(
   orgId: string,
   orderId: string,
-  planId: string
+  planId: string,
+  paymentChannel?: string
 ): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
     `/organizations/${orgId}/plan-orders/${orderId}/upgrade`,
-    { plan_id: planId }
+    { plan_id: planId, payment_channel: paymentChannel }
   );
   return data.data;
 }

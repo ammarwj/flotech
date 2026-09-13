@@ -307,6 +307,8 @@ export interface RegisterTeamPayload {
   officials?: { id?: string; full_name: string; role?: string | null; photo_url?: string | null }[];
   /** The team's own documents; a player's live on their row above. */
   documents?: TeamDocument[];
+  /** Required when the category fee is > 0 and the event's rail is gateway. */
+  payment_channel?: string;
 }
 
 export async function registerTeam(
@@ -410,9 +412,13 @@ export async function withdrawMyTeam(teamId: string): Promise<Team> {
   return data.data;
 }
 
-export async function payRegistration(teamId: string): Promise<PayRegistrationResult> {
+export async function payRegistration(
+  teamId: string,
+  paymentChannel?: string
+): Promise<PayRegistrationResult> {
   const { data } = await apiClient.post<ApiEnvelope<PayRegistrationResult>>(
-    `/my-teams/${teamId}/pay`
+    `/my-teams/${teamId}/pay`,
+    { payment_channel: paymentChannel }
   );
   return data.data;
 }

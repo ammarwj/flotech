@@ -59,14 +59,6 @@ class FeatureDefinitionSeeder extends Seeder
                 'sort_order' => 40,
             ],
             [
-                'feature_key' => 'platform_fee_percent',
-                'feature_label' => 'Fee platform (%)',
-                'feature_group' => 'payment',
-                'feature_type' => 'numeric',
-                'description' => 'Potongan platform dari tiap penjualan tiket dan biaya pendaftaran.',
-                'sort_order' => 50,
-            ],
-            [
                 'feature_key' => 'qr_tickets',
                 'feature_label' => 'Tiket penonton online',
                 'feature_group' => 'ticket',

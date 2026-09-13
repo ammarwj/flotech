@@ -31,18 +31,22 @@ class PlanGate
     /**
      * Numeric keys where a *smaller* number is the better deal.
      *
-     * Every other number here is a capacity — categories, entries, photos — and
-     * more of it is better. `platform_fee_percent` is the one that runs the
-     * other way: Starter takes 3%, Professional takes 1%. Read on the capacity
-     * scale it looks like Professional gives less, and planCovers() refuses the
-     * single most obvious upgrade in the catalogue. It did, until this list
-     * existed.
+     * Every number here is normally a capacity — categories, entries, photos —
+     * and more of it is better. This list is for the rare key that runs the
+     * other way, so planCovers() doesn't refuse an upgrade just because that
+     * one number went down.
      *
      * Adding a numeric feature key where less is more means adding it here too —
      * alongside the PlanSeeder and FeatureDefinitionSeeder entries CLAUDE.md
      * already asks for.
+     *
+     * A `static` property rather than a `const` so a test can inject a
+     * synthetic key via reflection and exercise this branch even when, as
+     * today, the real catalogue has nothing that belongs in it.
+     *
+     * @var list<string>
      */
-    private const LOWER_IS_BETTER = ['platform_fee_percent'];
+    private static array $lowerIsBetter = [];
 
     public function value(Event $event, string $featureKey): ?string
     {
@@ -183,7 +187,7 @@ class PlanGate
                 $mine = (int) $value;
                 $other = is_numeric($theirs) ? (int) $theirs : 0;
 
-                if (in_array($key, self::LOWER_IS_BETTER, true)) {
+                if (in_array($key, self::$lowerIsBetter, true)) {
                     if ($other > $mine) {
                         return false;
                     }

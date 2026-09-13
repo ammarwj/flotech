@@ -46,7 +46,7 @@ class ManualPaymentTest extends TestCase
     {
         $plan = Plan::create(['name' => 'Test', 'slug' => 'test-'.uniqid(), 'price' => 0]);
 
-        $features = ['qr_tickets' => 'true', 'payment_gateway' => 'true', 'platform_fee_percent' => '5'] + $features;
+        $features = ['qr_tickets' => 'true', 'payment_gateway' => 'true'] + $features;
         foreach ($features as $key => $value) {
             $plan->features()->create(['feature_key' => $key, 'value' => $value]);
         }
@@ -96,6 +96,7 @@ class ManualPaymentTest extends TestCase
             'quantity' => $qty,
             'buyer_name' => 'Budi',
             'buyer_email' => 'budi@test.com',
+            'payment_channel' => 'va',
         ])->assertCreated()->json('data');
     }
 
@@ -123,10 +124,11 @@ class ManualPaymentTest extends TestCase
         $this->assertSame('gateway', $gatewayOrder['payment_method']);
         $this->assertNull($gatewayOrder['bank_account']);
 
-        // 2 x 50.000 = 100.000 gross − 5% fee = 95.000 net, held.
+        // 2 x 50.000 = 100.000. Gateway/service fees are buyer-paid now, so the
+        // organizer's net is the full ticket price.
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => 95000,
+            'balance_pending' => 100000,
         ]);
         $this->assertSame(1, $org->wallet()->first()->transactions()->count());
 
@@ -155,7 +157,7 @@ class ManualPaymentTest extends TestCase
         // The comparison: a paid manual order moved the wallet by exactly nothing.
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => 95000,
+            'balance_pending' => 100000,
         ]);
         $this->assertSame(
             1,
@@ -196,7 +198,7 @@ class ManualPaymentTest extends TestCase
         $orderA = TicketOrder::find($a['order']['id']);
         $orderB = TicketOrder::find($b['order']['id']);
 
-        $this->assertSame(5000.0, (float) $orderA->platform_fee);
+        $this->assertSame(0.0, (float) $orderA->platform_fee, 'Gateway/service fees are buyer-paid now, not cut from the organizer.');
         $this->assertSame(0.0, (float) $orderB->platform_fee, 'Manual money never reaches us — nothing to take a cut of.');
 
         $this->assertNull($orderA->payment_deadline_at);
@@ -333,7 +335,7 @@ class ManualPaymentTest extends TestCase
         // Only what comes next rides the new rail.
         $after = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
         $this->assertSame('gateway', $after->payment_method);
-        $this->assertSame(2500.0, (float) $after->platform_fee);
+        $this->assertSame(0.0, (float) $after->platform_fee);
         $this->assertNull($after->payment_deadline_at);
     }
 

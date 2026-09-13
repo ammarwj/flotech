@@ -1,21 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Inbox, ReceiptText, Wallet } from "lucide-react";
+import {
+  CheckCircle2,
+  CreditCard,
+  Inbox,
+  ReceiptText,
+  Wallet,
+} from "lucide-react";
 
 import {
   approvePlanOrder,
   getIdlePlanCredits,
   getPendingPlanOrders,
+  getPlanPurchases,
   getVerifiedPlanOrders,
   rejectPlanOrder,
 } from "@/lib/api/admin-wallet";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { PillTabs } from "@/components/event/pill-tabs";
@@ -109,29 +119,81 @@ export default function AdminEventPlanOrdersPage() {
     queryFn: getIdlePlanCredits,
   });
 
+  /**
+   * Every settled purchase, both rails. The three lists above are all built on
+   * manual-transfer columns, so a plan bought through Midtrans appeared in none
+   * of them — this is the only place the platform's own gateway revenue, and
+   * the fees charged on top of it, can be seen.
+   */
+  const [pq, setPq] = useState({ method: "", channel: "", from: "", to: "" });
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+
+  // Debounce the search box so we don't fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const purchasesQuery = useQuery({
+    queryKey: ["admin-plan-purchases", { q, ...pq, page }],
+    queryFn: () =>
+      getPlanPurchases({
+        q: q || undefined,
+        method: (pq.method || undefined) as "gateway" | "manual" | undefined,
+        channel: pq.channel || undefined,
+        from: pq.from || undefined,
+        to: pq.to || undefined,
+        page,
+      }),
+  });
+
+  /** Any filter change resets the page — page 3 of a new filter is usually empty. */
+  const setFilter = (patch: Partial<typeof pq>) => {
+    setPq((f) => ({ ...f, ...patch }));
+    setPage(1);
+  };
+
+  const filtered = !!(q || pq.method || pq.channel || pq.from || pq.to);
+
   const rows = query.data ?? [];
   const idle = idleQuery.data ?? [];
   const history = historyQuery.data ?? [];
+  const purchases = purchasesQuery.data?.items ?? [];
+  const purchaseMeta = purchasesQuery.data?.meta;
   const busy = approve.isPending || reject.isPending;
-
 
   return (
     <div>
       <PageHeader
-        title="Verifikasi Pembelian Paket"
-        description="Pembayaran paket lewat transfer manual."
+        title="Pembelian Paket"
+        description="Pembayaran paket oleh organizer — lewat payment gateway maupun transfer manual."
       />
 
-      {/* Three lists that share a page but not a job: work waiting on a
-          decision, decisions already made, and money owed in entitlements
-          nobody has claimed. Tabs rather than stacked sections — scrolling past
-          two lists to reach the third made the queue, which is the only one
-          with anything to do, look like a footnote to its own page. */}
+      {/* Four lists that share a page but not a job: work waiting on a
+          decision, decisions already made, every settled purchase on either
+          rail, and money owed in entitlements nobody has claimed. Tabs rather
+          than stacked sections — scrolling past three lists to reach the last
+          made the queue, which is the only one with anything to do, look like a
+          footnote to its own page. */}
       <PillTabs
         items={[
-          { key: "queue", label: `Menunggu verifikasi${rows.length ? ` (${rows.length})` : ""}`, icon: Inbox },
+          {
+            key: "queue",
+            label: `Menunggu verifikasi${rows.length ? ` (${rows.length})` : ""}`,
+            icon: Inbox,
+          },
           { key: "history", label: "Riwayat", icon: CheckCircle2 },
-          { key: "idle", label: `Kredit menganggur${idle.length ? ` (${idle.length})` : ""}`, icon: Wallet },
+          { key: "purchases", label: "Semua pembelian", icon: CreditCard },
+          {
+            key: "idle",
+            label: `Kredit menganggur${idle.length ? ` (${idle.length})` : ""}`,
+            icon: Wallet,
+          },
         ]}
         activeKey={tab}
         onSelect={setTab}
@@ -150,14 +212,17 @@ export default function AdminEventPlanOrdersPage() {
 
             {query.isError && (
               <p className="text-sm text-[var(--danger)]">
-                Gagal memuat antrean (butuh akses Super Admin &amp; API berjalan).
+                Gagal memuat antrean (butuh akses Super Admin &amp; API
+                berjalan).
               </p>
             )}
 
             {query.data && rows.length === 0 && (
               <Card className="flex flex-col items-center gap-2 p-10 text-center">
                 <Inbox className="h-8 w-8 text-muted-foreground" />
-                <p className="font-semibold">Tidak ada yang menunggu verifikasi</p>
+                <p className="font-semibold">
+                  Tidak ada yang menunggu verifikasi
+                </p>
                 <p className="text-sm text-muted-foreground">
                   Bukti transfer pembayaran paket akan muncul di sini.
                 </p>
@@ -177,7 +242,9 @@ export default function AdminEventPlanOrdersPage() {
                         {sub.event?.name ?? "Belum dipakai"} &middot;{" "}
                         {sub.invoice_number ?? "—"}
                       </p>
-                      <p className="mt-1 text-sm font-bold">{rupiah(sub.amount)}</p>
+                      <p className="mt-1 text-sm font-bold">
+                        {rupiah(sub.amount)}
+                      </p>
                       {sub.payment_proof_uploaded_at && (
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Diunggah {fmtDateTime(sub.payment_proof_uploaded_at)}
@@ -190,7 +257,9 @@ export default function AdminEventPlanOrdersPage() {
                     <Button
                       size="sm"
                       disabled={busy}
-                      onClick={() => setReviewing({ order: sub, settled: false })}
+                      onClick={() =>
+                        setReviewing({ order: sub, settled: false })
+                      }
                     >
                       <ReceiptText className="h-4 w-4" />
                       Lihat bukti &amp; verifikasi
@@ -205,8 +274,9 @@ export default function AdminEventPlanOrdersPage() {
         {tab === "history" && (
           <>
             <p className="mb-3 text-sm text-muted-foreground">
-              Bukti transfer yang sudah di-acc. Yang ditolak tidak muncul di sini —
-              organizer masih bisa mengunggah ulang, jadi perkaranya belum selesai.
+              Bukti transfer yang sudah di-acc. Yang ditolak tidak muncul di
+              sini — organizer masih bisa mengunggah ulang, jadi perkaranya
+              belum selesai.
             </p>
 
             {historyQuery.isPending && <Skeleton className="h-24 rounded-xl" />}
@@ -245,7 +315,9 @@ export default function AdminEventPlanOrdersPage() {
                         Diterima
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {order.verified_at ? fmtDateTime(order.verified_at) : "—"}
+                        {order.verified_at
+                          ? fmtDateTime(order.verified_at)
+                          : "—"}
                         {order.verified_by ? ` · ${order.verified_by}` : ""}
                       </p>
                     </div>
@@ -268,6 +340,175 @@ export default function AdminEventPlanOrdersPage() {
           </>
         )}
 
+        {tab === "purchases" && (
+          <>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Semua pembelian paket yang sudah lunas, lewat payment gateway
+              maupun transfer manual.
+            </p>
+
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Input
+                placeholder="Cari invoice, kwitansi, atau organisasi…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="lg:col-span-2"
+              />
+              <Select
+                value={pq.method}
+                onChange={(e) => setFilter({ method: e.target.value })}
+              >
+                <option value="">Semua metode</option>
+                <option value="gateway">Payment gateway</option>
+                <option value="manual">Transfer manual</option>
+              </Select>
+              {/* Channel only exists on the gateway rail, so offering it beside
+                  "Transfer manual" would be a filter that can only ever return
+                  nothing. */}
+              <Select
+                value={pq.channel}
+                onChange={(e) => setFilter({ channel: e.target.value })}
+                disabled={pq.method === "manual"}
+              >
+                <option value="">Semua channel</option>
+                <option value="va">Virtual Account</option>
+                <option value="ewallet">E-Wallet / QRIS</option>
+                <option value="retail">Gerai Retail</option>
+              </Select>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Dibayar dari
+                <Input
+                  type="date"
+                  value={pq.from}
+                  max={pq.to || undefined}
+                  onChange={(e) => setFilter({ from: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                sampai
+                <Input
+                  type="date"
+                  value={pq.to}
+                  min={pq.from || undefined}
+                  onChange={(e) => setFilter({ to: e.target.value })}
+                />
+              </label>
+              {filtered && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-end justify-self-start"
+                  onClick={() => {
+                    setSearch("");
+                    setPq({ method: "", channel: "", from: "", to: "" });
+                    setPage(1);
+                  }}
+                >
+                  Reset filter
+                </Button>
+              )}
+            </div>
+
+            {purchasesQuery.isPending && (
+              <Skeleton className="h-24 rounded-xl" />
+            )}
+
+            {purchasesQuery.data && purchases.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {filtered
+                  ? "Tidak ada pembelian yang cocok dengan filter ini."
+                  : "Belum ada pembelian paket yang lunas."}
+              </p>
+            )}
+
+            <div className="grid gap-2">
+              {purchases.map((order) => {
+                const fees = order.gateway_fee + order.service_fee;
+                return (
+                  <Card
+                    key={order.id}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">
+                          {order.organization?.name ?? "Organisasi dihapus"}
+                        </p>
+                        <Badge
+                          variant={
+                            order.payment_method === "gateway"
+                              ? "info"
+                              : "neutral"
+                          }
+                        >
+                          {order.payment_method === "gateway"
+                            ? `Gateway${order.payment_channel ? ` · ${order.payment_channel}` : ""}`
+                            : "Transfer manual"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {order.plan?.name ?? "Paket dihapus"} &middot;{" "}
+                        {order.receipt_number ?? order.invoice_number ?? "—"}{" "}
+                        &middot; {order.event?.name ?? "Kredit belum dipakai"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Dibayar{" "}
+                        {order.paid_at ? fmtDateTime(order.paid_at) : "—"}
+                      </p>
+                    </div>
+                    <div className="text-right text-sm">
+                      <p className="font-bold tabular-nums">
+                        {rupiah(order.gross_amount)}
+                      </p>
+                      {/* The split matters here: `amount` is plan revenue and
+                          the number upgrade pricing reads, the rest is the
+                          buyer's surcharge passed through to Midtrans and us. */}
+                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                        Paket {rupiah(order.amount)}
+                        {fees > 0 && (
+                          <>
+                            {" · "}
+                            fee gateway {rupiah(order.gateway_fee)}
+                            {" · "}
+                            fee platform {rupiah(order.service_fee)}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {purchaseMeta && purchaseMeta.last_page > 1 && (
+              <div className="mt-4 flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Halaman {purchaseMeta.page} dari {purchaseMeta.last_page} ·{" "}
+                  {purchaseMeta.total} pembelian
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={purchaseMeta.page <= 1}
+                  >
+                    Sebelumnya
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={purchaseMeta.page >= purchaseMeta.last_page}
+                  >
+                    Berikutnya
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {tab === "idle" && (
           <>
             <p className="mb-3 text-sm text-muted-foreground">
@@ -278,7 +519,8 @@ export default function AdminEventPlanOrdersPage() {
 
             {idleQuery.data && idle.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                Tidak ada kredit yang menganggur. Semua paket lunas sudah dipakai.
+                Tidak ada kredit yang menganggur. Semua paket lunas sudah
+                dipakai.
               </p>
             )}
 
@@ -301,7 +543,8 @@ export default function AdminEventPlanOrdersPage() {
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="text-right text-sm">
                       <p className="text-muted-foreground">
-                        Dibayar {credit.paid_at ? fmtDateTime(credit.paid_at) : "—"}
+                        Dibayar{" "}
+                        {credit.paid_at ? fmtDateTime(credit.paid_at) : "—"}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {credit.idle_reminded_at
@@ -338,7 +581,11 @@ export default function AdminEventPlanOrdersPage() {
         <PaymentProofDialog
           open
           onOpenChange={(next) => !next && setReviewing(null)}
-          title={reviewing.settled ? "Bukti transfer (sudah diterima)" : "Bukti transfer paket"}
+          title={
+            reviewing.settled
+              ? "Bukti transfer (sudah diterima)"
+              : "Bukti transfer paket"
+          }
           description={`${reviewing.order.organization?.name ?? "Organisasi dihapus"} · ${
             reviewing.order.invoice_number ?? "tanpa nomor invoice"
           }`}
@@ -359,7 +606,9 @@ export default function AdminEventPlanOrdersPage() {
             {
               label: "Jumlah",
               value: (
-                <span className="font-bold">{rupiah(reviewing.order.amount)}</span>
+                <span className="font-bold">
+                  {rupiah(reviewing.order.amount)}
+                </span>
               ),
             },
             // Only on a settled bill, and it is the whole reason to reopen one.
@@ -384,7 +633,9 @@ export default function AdminEventPlanOrdersPage() {
           rejectPlaceholder="Alasan penolakan (dilihat organizer)"
           busy={busy}
           onApprove={
-            reviewing.settled ? undefined : () => approve.mutate(reviewing.order.id)
+            reviewing.settled
+              ? undefined
+              : () => approve.mutate(reviewing.order.id)
           }
           onReject={
             reviewing.settled

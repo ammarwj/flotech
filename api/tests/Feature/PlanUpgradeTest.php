@@ -69,6 +69,7 @@ class PlanUpgradeTest extends TestCase
         $response = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", [
                 'plan_id' => $this->big()->id,
+                'payment_channel' => 'va',
             ])
             ->assertCreated();
 
@@ -93,6 +94,7 @@ class PlanUpgradeTest extends TestCase
         $response = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$free->id}/upgrade", [
                 'plan_id' => $this->big()->id,
+                'payment_channel' => 'va',
             ])
             ->assertCreated();
 
@@ -124,7 +126,7 @@ class PlanUpgradeTest extends TestCase
         $onSmall->update(['amount' => 150000]);
 
         $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$onSmall->id}/upgrade", ['plan_id' => $big->id])
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$onSmall->id}/upgrade", ['plan_id' => $big->id, 'payment_channel' => 'va'])
             ->assertCreated();
     }
 
@@ -196,6 +198,7 @@ class PlanUpgradeTest extends TestCase
         $upgradeId = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", [
                 'plan_id' => $this->big()->id,
+                'payment_channel' => 'va',
             ])
             ->assertCreated()
             ->json('data.plan_order.id');
@@ -220,7 +223,7 @@ class PlanUpgradeTest extends TestCase
         $credit->update(['amount' => 150000]);
 
         $upgradeId = $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id])
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id, 'payment_channel' => 'va'])
             ->json('data.plan_order.id');
         $this->settle(EventPlanOrder::findOrFail($upgradeId));
 
@@ -262,6 +265,7 @@ class PlanUpgradeTest extends TestCase
         $upgradeId = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade", [
                 'plan_id' => $this->big()->id,
+                'payment_channel' => 'va',
             ])
             ->assertCreated()
             ->json('data.plan_order.id');
@@ -288,6 +292,7 @@ class PlanUpgradeTest extends TestCase
         $upgradeId = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade", [
                 'plan_id' => $this->big()->id,
+                'payment_channel' => 'va',
             ])
             ->json('data.plan_order.id');
 
@@ -313,12 +318,12 @@ class PlanUpgradeTest extends TestCase
         $big = $this->big();
 
         $first = $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id])
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id, 'payment_channel' => 'va'])
             ->json('data.plan_order.id');
         $this->settle(EventPlanOrder::findOrFail($first));
 
         $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id])
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade", ['plan_id' => $big->id, 'payment_channel' => 'va'])
             ->assertStatus(403);
     }
 
@@ -331,10 +336,10 @@ class PlanUpgradeTest extends TestCase
         $big = $this->big();
 
         $url = "/api/v1/organizations/{$org->id}/plan-orders/{$credit->id}/upgrade";
-        $first = $this->actingAs($owner, 'api')->postJson($url, ['plan_id' => $big->id])->json('data.plan_order.id');
+        $first = $this->actingAs($owner, 'api')->postJson($url, ['plan_id' => $big->id, 'payment_channel' => 'va'])->json('data.plan_order.id');
         EventPlanOrder::whereKey($first)->update(['status' => 'past_due']);
 
-        $second = $this->actingAs($owner, 'api')->postJson($url, ['plan_id' => $big->id])->json('data.plan_order.id');
+        $second = $this->actingAs($owner, 'api')->postJson($url, ['plan_id' => $big->id, 'payment_channel' => 'va'])->json('data.plan_order.id');
 
         // One outstanding bill, not two — otherwise both could be settled and
         // the organizer would pay the difference twice for one move.
@@ -343,13 +348,15 @@ class PlanUpgradeTest extends TestCase
     }
 
     /**
-     * The synthetic plans above are convenient and they lie: none of them
-     * carries `platform_fee_percent`, the one numeric key in the real catalogue
-     * where a *smaller* number is the better deal (Starter 3%, Pro 2%,
-     * Professional 1%). Read on the capacity scale that looks like a loss, and
-     * planCovers() refused Starter → Pro — the single most obvious upgrade there
-     * is. Twelve green tests said nothing about it. So this one asks the
-     * catalogue the migration actually seeds.
+     * The synthetic plans above are convenient and they used to lie: none of
+     * them carried `platform_fee_percent`, once the one numeric key in the real
+     * catalogue where a *smaller* number was the better deal (Starter 3%, Pro
+     * 2%, Professional 1%). Read on the capacity scale that looked like a
+     * loss, and planCovers() refused Starter → Pro — the single most obvious
+     * upgrade there is. Twelve green tests said nothing about it. Gateway fees
+     * are buyer-paid now and that key is gone from the catalogue, but this
+     * test still asks the real seeded plans rather than synthetic ones — the
+     * next numeric key that runs backwards deserves the same catch.
      */
     public function test_the_real_catalogue_upgrades_in_the_order_its_prices_suggest(): void
     {
@@ -386,6 +393,38 @@ class PlanUpgradeTest extends TestCase
     }
 
     /**
+     * The real catalogue has no numeric key left where less is the better
+     * deal, so the branch in `PlanGate::planCovers()` that reads such a key
+     * has nothing exercising it above. This plants one synthetically —
+     * `PlanGate::$lowerIsBetter` is a static property precisely so a test can
+     * do this via reflection — so the branch itself, not just today's empty
+     * catalogue, stays proven.
+     */
+    public function test_plancovers_treats_a_declared_lower_is_better_key_as_backwards(): void
+    {
+        $prop = new \ReflectionProperty(\App\Services\PlanGate::class, 'lowerIsBetter');
+        $prop->setAccessible(true);
+        $original = $prop->getValue();
+        $prop->setValue(null, ['discount_percent']);
+
+        try {
+            $cheap = $this->planWith(['discount_percent' => '10'], 'Cheap');
+            $generous = $this->planWith(['discount_percent' => '20'], 'Generous');
+            $stingy = $this->planWith(['discount_percent' => '5'], 'Stingy');
+
+            $gate = app(\App\Services\PlanGate::class);
+
+            // A bigger discount is worse for the platform — planCovers() must
+            // read it as backwards, not as a capacity increase.
+            $this->assertFalse($gate->planCovers($cheap, $generous));
+            // A smaller discount is the better deal, so it upgrades cleanly.
+            $this->assertTrue($gate->planCovers($cheap, $stingy));
+        } finally {
+            $prop->setValue(null, $original);
+        }
+    }
+
+    /**
      * Two upgrades in a row must still total the catalogue price.
      *
      * Pricing each step against the order's own `amount` passes every
@@ -408,11 +447,11 @@ class PlanUpgradeTest extends TestCase
 
         $url = fn (string $id) => "/api/v1/organizations/{$org->id}/plan-orders/{$id}/upgrade";
 
-        $first = $this->actingAs($owner, 'api')->postJson($url($order->id), ['plan_id' => $pro->id])
+        $first = $this->actingAs($owner, 'api')->postJson($url($order->id), ['plan_id' => $pro->id, 'payment_channel' => 'va'])
             ->assertCreated()->json('data.plan_order');
         $this->settle(EventPlanOrder::findOrFail($first['id']));
 
-        $second = $this->actingAs($owner, 'api')->postJson($url($first['id']), ['plan_id' => $professional->id])
+        $second = $this->actingAs($owner, 'api')->postJson($url($first['id']), ['plan_id' => $professional->id, 'payment_channel' => 'va'])
             ->assertCreated()->json('data.plan_order');
 
         $total = (float) $order->amount + (float) $first['amount'] + (float) $second['amount'];

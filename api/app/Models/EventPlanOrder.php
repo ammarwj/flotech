@@ -39,6 +39,10 @@ class EventPlanOrder extends Model
         'midtrans_token',
         'paid_at',
         'payment_method',
+        'payment_channel',
+        'gateway_fee',
+        'gateway_tax',
+        'service_fee',
         'payment_proof_url',
         'payment_proof_uploaded_at',
         'payment_deadline_at',
@@ -51,6 +55,11 @@ class EventPlanOrder extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'gateway_fee' => 'decimal:2',
+            // The tax already counted inside gateway_fee — a display split, so
+            // it must never be added into gross_amount.
+            'gateway_tax' => 'decimal:2',
+            'service_fee' => 'decimal:2',
             'consumed_at' => 'datetime',
             'idle_reminded_at' => 'datetime',
             'paid_at' => 'datetime',
@@ -58,6 +67,15 @@ class EventPlanOrder extends Model
             'payment_deadline_at' => 'datetime',
             'verified_at' => 'datetime',
         ];
+    }
+
+    // Buyer-paid total: what the organizer is actually charged, including fees
+    // the platform never keeps as plan revenue. `amount` stays the plan's own
+    // price (or upgrade difference) — paidTowardsPlan() and the invoice/receipt
+    // PDFs both depend on it never including fees.
+    public function getGrossAmountAttribute(): float
+    {
+        return (float) $this->amount + (float) $this->gateway_fee + (float) $this->service_fee;
     }
 
     /**

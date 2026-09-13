@@ -34,6 +34,10 @@ class RegisterTeamRequest extends FormRequest
             'contact_name' => [$contact, 'string', 'max:255'],
             'contact_phone' => [$contact, 'string', 'max:20'],
 
+            // Only meaningful on the public route, which pays through
+            // startPayment(); the organizer's offline entry ignores it.
+            'payment_channel' => ['nullable', 'string'],
+
             // Roster, bench, documents and custom-field answers. Shared with
             // MyTeamController@update so the two cannot drift.
             ...TeamPayloadRules::make('nullable'),

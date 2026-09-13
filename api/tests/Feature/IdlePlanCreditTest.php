@@ -76,7 +76,10 @@ class IdlePlanCreditTest extends TestCase
         $order->update(['amount' => $starter->price, 'paid_at' => now()->subDays(40)]);
 
         $upgradeId = $this->actingAs($owner, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade", ['plan_id' => $pro->id])
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade", [
+                'plan_id' => $pro->id,
+                'payment_channel' => 'va',
+            ])
             ->assertCreated()
             ->json('data.plan_order.id');
 

@@ -87,9 +87,29 @@
             <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
             <td class="right">{{ $money($order->amount) }}</td>
         </tr>
+        @if ($order->service_fee > 0)
+            <tr>
+                <td colspan="2">Biaya layanan</td>
+                <td class="right">{{ $money($order->service_fee) }}</td>
+            </tr>
+        @endif
+        @if ($order->gateway_fee > 0)
+            {{-- gateway_fee already includes gateway_tax; the fee line shows the
+                 pre-tax part so the two rows add up to what was charged. --}}
+            <tr>
+                <td colspan="2">Biaya payment gateway</td>
+                <td class="right">{{ $money($order->gateway_fee - $order->gateway_tax) }}</td>
+            </tr>
+        @endif
+        @if ($order->gateway_tax > 0)
+            <tr>
+                <td colspan="2">PPN</td>
+                <td class="right">{{ $money($order->gateway_tax) }}</td>
+            </tr>
+        @endif
         <tr class="total">
             <td colspan="2" class="right">Total</td>
-            <td class="right">{{ $money($order->amount) }}</td>
+            <td class="right">{{ $money($order->gross_amount) }}</td>
         </tr>
     </table>
 

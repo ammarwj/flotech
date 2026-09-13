@@ -80,7 +80,6 @@ trait CreatesPlannedEvents
             'max_categories' => '-1',
             'max_teams_per_category' => '-1',
             'payment_gateway' => 'true',
-            'platform_fee_percent' => '0',
             'qr_tickets' => 'true',
             'export_data' => 'true',
             'sponsor_logos' => 'true',

@@ -24,6 +24,9 @@ class PurchaseTicketRequest extends FormRequest
             'buyer_phone' => ['nullable', 'string', 'max:30'],
             'holder_names' => ['nullable', 'array'],
             'holder_names.*' => ['nullable', 'string', 'max:255'],
+            // Required only when the order turns out to be a paid gateway one —
+            // enforced in the controller, which is the only place that knows.
+            'payment_channel' => ['nullable', 'string'],
         ];
     }
 }

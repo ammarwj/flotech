@@ -22,6 +22,10 @@ class CheckoutRequest extends FormRequest
             // orders keep pointing at a real plan and their invoices still read
             // correctly, but nobody may buy one.
             'plan_id' => ['required', 'uuid', Rule::exists('plans', 'id')->where('is_active', true)],
+            // Whether this is actually required depends on the rail (gateway vs
+            // manual/outage), which only EventPlanOrderService::resolvePayment()
+            // knows — same reason PurchaseTicketRequest leaves it nullable here.
+            'payment_channel' => ['nullable', 'string'],
         ];
     }
 

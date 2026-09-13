@@ -158,7 +158,7 @@ class MailNotificationTest extends TestCase
         $org = $this->org($owner);
 
         $service = app(EventPlanOrderService::class);
-        $subscription = $service->checkout($org, $this->testPlan)['order'];
+        $subscription = $service->checkout($org, $this->testPlan, 'va')['order'];
 
         // Midtrans re-delivers; activate() runs twice for one payment.
         $service->activate($subscription->fresh());

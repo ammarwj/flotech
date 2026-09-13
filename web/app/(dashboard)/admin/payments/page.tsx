@@ -129,14 +129,34 @@ export default function AdminPaymentsPage() {
                   <Badge variant="outline">
                     {row.kind === "ticket_order" ? "Tiket" : "Pendaftaran"}
                   </Badge>
+                  <Badge variant={row.payment_method === "gateway" ? "info" : "neutral"}>
+                    {row.payment_method === "gateway"
+                      ? `Gateway${row.payment_channel ? ` · ${row.payment_channel}` : ""}`
+                      : "Transfer manual"}
+                  </Badge>
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {row.payer ?? "—"} &middot; {row.event_name ?? "—"} &middot;{" "}
                   {row.organization_name ?? "—"}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {row.reference ?? "—"} &middot; {dateTime(row.paid_at)} &middot; biaya platform{" "}
-                  {rupiah(row.platform_fee)}
+                  {row.reference ?? "—"} &middot; {dateTime(row.paid_at)}
+                </p>
+                {/* The headline number is what the organizer sells at and gets
+                    credited. Fees are the buyer's surcharge on top — showing
+                    them as one total would misstate both. */}
+                <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                  {row.gateway_fee + row.service_fee > 0 ? (
+                    <>
+                      Dibayar pembeli {rupiah(row.gross_amount)} &middot; fee gateway{" "}
+                      {rupiah(row.gateway_fee)} &middot; fee platform {rupiah(row.service_fee)}
+                    </>
+                  ) : (
+                    <>
+                      Dibayar pembeli {rupiah(row.gross_amount)} &middot; tanpa fee
+                      {row.platform_fee > 0 && <> &middot; potongan lama {rupiah(row.platform_fee)}</>}
+                    </>
+                  )}
                 </p>
               </div>
 

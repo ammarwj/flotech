@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Event;
+use App\Services\PaymentRails;
 use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -45,6 +46,11 @@ class PublicEventResource extends JsonResource
             // Each category runs its own format at its own price.
             'categories' => EventCategoryResource::collection($this->whenLoaded('categories')),
             'tickets_on_sale' => $this->ticketCategories()->where('is_active', true)->exists(),
+            // UI-only: whether the checkout/register flow must show the
+            // channel picker before paying. The money decision is still made
+            // exactly once, in destinationFor() when the order is written —
+            // this never substitutes for it.
+            'requires_payment_channel' => app(PaymentRails::class)->methodFor($this->resource) === 'gateway',
             'organization' => [
                 'name' => $this->organization?->name,
                 'slug' => $this->organization?->slug,

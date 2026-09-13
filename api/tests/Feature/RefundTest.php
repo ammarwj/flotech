@@ -37,7 +37,6 @@ class RefundTest extends TestCase
         // Events in this test run on this plan — planId() is what puts it there.
         $this->testPlan = $plan;
         $plan->features()->create(['feature_key' => 'qr_tickets', 'value' => 'true']);
-        $plan->features()->create(['feature_key' => 'platform_fee_percent', 'value' => '5']);
         // PaymentRails refuses an online payment without this; every seeded plan grants it.
         $plan->features()->create(['feature_key' => 'payment_gateway', 'value' => 'true']);
 
@@ -59,6 +58,7 @@ class RefundTest extends TestCase
             'quantity' => 2,
             'buyer_name' => 'Budi',
             'buyer_email' => 'budi@test.com',
+            'payment_channel' => 'va',
         ])->assertCreated()->json('data.order.id');
 
         return [$org, $event, TicketOrder::findOrFail($orderId)];
@@ -106,7 +106,7 @@ class RefundTest extends TestCase
         $this->assertDatabaseHas('wallet_transactions', [
             'category' => 'refund',
             'type' => 'debit',
-            'amount' => '95000.00',
+            'amount' => '100000.00',
         ]);
     }
 
@@ -129,7 +129,7 @@ class RefundTest extends TestCase
         // it exactly — leaving nothing behind to absorb the refund.
         $this->actingAs($this->admin, 'api')
             ->postJson("/api/v1/admin/wallets/{$org->wallet->id}/adjust", [
-                'amount' => 10000, 'description' => 'Kompensasi',
+                'amount' => 5000, 'description' => 'Kompensasi',
             ])->assertOk();
 
         $withdrawalId = $this->actingAs($org->owner, 'api')
@@ -150,7 +150,7 @@ class RefundTest extends TestCase
 
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_available' => '-95000.00',
+            'balance_available' => '-100000.00',
         ]);
 
         // A negative balance can never satisfy amount + fee, so payouts stop.

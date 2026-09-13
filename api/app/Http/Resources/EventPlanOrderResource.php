@@ -58,6 +58,15 @@ class EventPlanOrderResource extends JsonResource
             'midtrans_order_id' => $this->midtrans_order_id,
             'payment_type' => $this->payment_type,
             'paid_at' => $this->paid_at,
+
+            // Buyer-paid fees on top of `amount`. `gateway_tax` is already
+            // inside `gateway_fee` — a display split, never added again — and
+            // `gross_amount` is what Midtrans actually charged.
+            'payment_channel' => $this->payment_channel,
+            'gateway_fee' => (float) $this->gateway_fee,
+            'gateway_tax' => (float) $this->gateway_tax,
+            'service_fee' => (float) $this->service_fee,
+            'gross_amount' => $this->gross_amount,
             'plan' => new PlanResource($this->whenLoaded('plan')),
 
             // Manual transfer. `awaiting_verification` is derived, not stored —

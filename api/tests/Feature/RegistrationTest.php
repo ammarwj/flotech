@@ -117,7 +117,9 @@ class RegistrationTest extends TestCase
         // No Midtrans credentials in tests → gateway is mocked and the fee
         // settles immediately (dev convenience), so the team is marked paid.
         $this->actingAs(User::factory()->create(), 'api')
-            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event))
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", $this->teamPayload($event, [
+                'payment_channel' => 'va',
+            ]))
             ->assertCreated()
             ->assertJsonPath('data.team.payment_amount', 150000)
             ->assertJsonPath('data.team.payment_status', 'paid')

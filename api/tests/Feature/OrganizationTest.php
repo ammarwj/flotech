@@ -109,6 +109,7 @@ class OrganizationTest extends TestCase
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $pro->id,
+                'payment_channel' => 'va',
             ])
             ->assertCreated()
             ->assertJsonPath('data.mock', true)

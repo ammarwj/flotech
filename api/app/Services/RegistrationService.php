@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Models\BankAccount;
-use App\Models\Event;
-use App\Models\Organization;
 use App\Models\Team;
 use App\Models\User;
 use App\Notifications\RegistrationPaid;
@@ -24,22 +22,11 @@ use Throwable;
 class RegistrationService
 {
     public function __construct(
-        protected PlanGate $gate,
         protected MidtransService $midtrans,
         protected WalletService $wallet,
         protected PaymentRails $rails,
+        protected PaymentFeeCalculator $fees,
     ) {}
-
-    /**
-     * Platform fee for a registration amount, from the *event's* plan (0 when
-     * unset). Same key and same reasoning as TicketService::platformFee().
-     */
-    public function platformFee(Event $event, float $amount): float
-    {
-        $percent = (float) ($this->gate->value($event, 'platform_fee_percent') ?? 0);
-
-        return round($amount * $percent / 100, 2);
-    }
 
     /**
      * Start payment for a team's registration fee. Free registrations settle
@@ -47,16 +34,21 @@ class RegistrationService
      * gateway switched off — a manual transfer to the organizer's own account
      * that an org admin approves from the buyer's uploaded proof.
      *
+     * `$channel` is required exactly when the payment turns out to be a paid
+     * gateway one — checked here, not in each caller, because both callers
+     * (MyTeamController::pay, PublicEventController::register) would otherwise
+     * have to duplicate "is this manual or free" to know whether to demand it.
+     *
      * @return array{snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: BankAccount|null}
      *
-     * @throws PaymentException when the organizer can't collect
+     * @throws PaymentException when the organizer can't collect, or a gateway payment has no channel
      */
-    public function startPayment(Team $team): array
+    public function startPayment(Team $team, ?string $channel = null): array
     {
-        // Both the rail and the fee are read off the event now, so the caller no
-        // longer passes the organization in. PublicEventController::register()
-        // sets the `event` relation on the fresh team for the same reason it
-        // sets `category` — so this does not re-query it.
+        // The rail is read off the event now, so the caller no longer passes
+        // the organization in. PublicEventController::register() sets the
+        // `event` relation on the fresh team for the same reason it sets
+        // `category` — so this does not re-query it.
         $event = $team->event;
         $org = $event->organization;
         $amount = (float) $team->category->registration_fee;
@@ -73,14 +65,39 @@ class RegistrationService
             return $this->result(null, null, true, 'gateway', null);
         }
 
+        $gatewayFee = 0.0;
+        $serviceFee = 0.0;
+        $enabledPayments = [];
+
+        if (! $manual) {
+            if (! $channel) {
+                throw new PaymentException(
+                    'Pilih metode pembayaran.',
+                    ['payment_channel' => ['Metode pembayaran wajib dipilih.']],
+                );
+            }
+
+            $breakdown = $this->fees->forChannel(
+                $channel,
+                $amount,
+                PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
+            );
+            $gatewayFee = $breakdown['gateway_fee'];
+            $serviceFee = $breakdown['service_fee'];
+            $enabledPayments = $breakdown['midtrans_payments'];
+        }
+
         $orderId = $team->midtrans_order_id ?: 'REG-'.Str::upper(Str::random(10));
 
         $team->update([
             'payment_status' => 'unpaid',
             'payment_amount' => $amount,
             // Manual money never reaches us, so there is nothing to take a cut of.
-            'platform_fee' => $manual ? 0 : $this->platformFee($event, $amount),
+            'platform_fee' => 0,
             'payment_method' => $manual ? 'manual' : 'gateway',
+            'payment_channel' => $manual ? null : $channel,
+            'gateway_fee' => $gatewayFee,
+            'service_fee' => $serviceFee,
             'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
             'midtrans_order_id' => $orderId,
         ]);
@@ -90,9 +107,10 @@ class RegistrationService
         }
 
         $snap = $this->midtrans->createSnapTransaction(
-            ['order_id' => $orderId, 'gross_amount' => (int) round($amount)],
+            ['order_id' => $orderId, 'gross_amount' => (int) round($team->gross_amount)],
             ['first_name' => $team->contact_name ?? $team->name, 'email' => $org->contact_email],
             rtrim((string) config('app.frontend_url'), '/')."/{$org->slug}/{$team->event->slug}/register?status=success",
+            $enabledPayments,
         );
 
         if ($snap['token']) {

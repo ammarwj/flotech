@@ -20,11 +20,13 @@ import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PlanOrderStatusBadge } from "@/components/shared/status-badge";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import { PlanUpgradeDialog } from "@/components/subscription/plan-upgrade-dialog";
 import {
   DocumentPreviewDialog,
@@ -50,6 +52,10 @@ export default function BillingPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewDocument | null>(null);
   const [upgrading, setUpgrading] = useState<EventPlanOrder | null>(null);
+  // Set only while the gateway is live and a past-due order is waiting on a
+  // channel choice before pay() reopens its Snap token.
+  const [payingOrder, setPayingOrder] = useState<EventPlanOrder | null>(null);
+  const [payChannel, setPayChannel] = useState<string | null>(null);
 
   const closePreview = () => {
     setPreview((current) => {
@@ -65,7 +71,8 @@ export default function BillingPage() {
   });
 
   const pay = useMutation({
-    mutationFn: (order: EventPlanOrder) => payPlanOrder(orgId!, order.id),
+    mutationFn: ({ order, channel }: { order: EventPlanOrder; channel: string | null }) =>
+      payPlanOrder(orgId!, order.id, channel ?? undefined),
     onSuccess: (res) => {
       const outcome = checkoutOutcome(res);
 
@@ -94,7 +101,11 @@ export default function BillingPage() {
       toast.success("Tagihan lunas", { description: "Paketnya siap dipakai untuk satu event." });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal membuka pembayaran.").message),
-    onSettled: () => setBusyId(null),
+    onSettled: () => {
+      setBusyId(null);
+      setPayingOrder(null);
+      setPayChannel(null);
+    },
   });
 
   const proof = useMutation({
@@ -286,8 +297,13 @@ export default function BillingPage() {
                       size="sm"
                       disabled={busyId === order.id}
                       onClick={() => {
+                        if (org.payment_gateway_enabled) {
+                          setPayChannel(null);
+                          setPayingOrder(order);
+                          return;
+                        }
                         setBusyId(order.id);
-                        pay.mutate(order);
+                        pay.mutate({ order, channel: null });
                       }}
                     >
                       Bayar sekarang
@@ -327,6 +343,43 @@ export default function BillingPage() {
       </section>
 
       <DocumentPreviewDialog document={preview} onClose={closePreview} />
+
+      <Dialog
+        open={!!payingOrder}
+        onOpenChange={(next) => !pay.isPending && !next && setPayingOrder(null)}
+      >
+        <DialogContent>
+          <DialogHeader
+            title="Pilih metode pembayaran"
+            description={payingOrder ? `Lunasi ${payingOrder.plan?.name ?? "paket"}.` : undefined}
+          />
+          <DialogBody>
+            {payingOrder && (
+              <ChannelPicker
+                amount={payingOrder.amount}
+                audience="organizer"
+                value={payChannel}
+                onChange={setPayChannel}
+              />
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPayingOrder(null)} disabled={pay.isPending}>
+              Batal
+            </Button>
+            <Button
+              disabled={!payChannel || pay.isPending}
+              onClick={() => {
+                if (!payingOrder) return;
+                setBusyId(payingOrder.id);
+                pay.mutate({ order: payingOrder, channel: payChannel });
+              }}
+            >
+              Lanjutkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {upgrading && orgId && (
         <PlanUpgradeDialog

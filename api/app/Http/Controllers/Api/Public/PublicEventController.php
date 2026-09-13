@@ -310,7 +310,7 @@ class PublicEventController extends Controller
 
         // Charge the registration fee when the event has one; free events are
         // settled immediately inside startPayment().
-        $payment = $this->registration->startPayment($team);
+        $payment = $this->registration->startPayment($team, $data['payment_channel'] ?? null);
 
         $this->announce($team, $org);
 

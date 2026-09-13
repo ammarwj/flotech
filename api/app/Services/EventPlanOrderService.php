@@ -38,6 +38,7 @@ class EventPlanOrderService
         protected MidtransService $midtrans,
         protected PaymentRails $rails,
         protected PlanGate $gate,
+        protected PaymentFeeCalculator $fees,
     ) {}
 
     /**
@@ -50,28 +51,35 @@ class EventPlanOrderService
      * nothing to start or expire — what the order is waiting for is an event to
      * be spent on, not a clock.
      *
+     * The organizer is the buyer here, so — same as tickets and registrations —
+     * they pay gateway fee + platform margin on top of the plan price. `$channel`
+     * is required exactly when resolvePayment() decides this is going out on the
+     * gateway rail for a non-zero amount.
+     *
      * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    public function checkout(Organization $org, Plan $plan): array
+    public function checkout(Organization $org, Plan $plan, ?string $channel = null): array
     {
         $amount = (float) $plan->price;
 
         // Asked *before* the row exists: a refused checkout must not burn an
-        // invoice number, and nextNumber() has no way to hand one back. A
-        // non-null account is itself the signal that this payment is manual.
-        $bank = $this->rails->platformDestination($amount);
-        $manual = $bank !== null;
+        // invoice number, and nextNumber() has no way to hand one back.
+        $payment = $this->resolvePayment($amount, $channel);
 
         $order = $org->planOrders()->create([
             'plan_id' => $plan->id,
             'invoice_number' => $this->nextNumber('invoice'),
             'amount' => $amount,
             'status' => 'past_due', // awaiting payment; flips to paid on settlement
-            'payment_method' => $manual ? 'manual' : 'gateway',
-            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
+            'payment_method' => $payment['bank'] !== null ? 'manual' : 'gateway',
+            'payment_channel' => $payment['channel'],
+            'gateway_fee' => $payment['gateway_fee'],
+            'gateway_tax' => $payment['gateway_tax'],
+            'service_fee' => $payment['service_fee'],
+            'payment_deadline_at' => $payment['bank'] !== null ? $this->rails->deadline() : null,
         ]);
 
-        $result = $this->start($order, $bank);
+        $result = $this->start($order, $payment['bank'], $payment['midtrans_payments']);
 
         // Only when the bill is genuinely outstanding. Without a payment gateway
         // configured openSnap() settles on the spot, and mailing "please pay"
@@ -99,7 +107,7 @@ class EventPlanOrderService
      *
      * @throws PlanFeatureException
      */
-    public function checkoutUpgrade(EventPlanOrder $order, Plan $target): array
+    public function checkoutUpgrade(EventPlanOrder $order, Plan $target, ?string $channel = null): array
     {
         if ($order->status !== 'paid') {
             throw new PlanFeatureException('Paket ini belum lunas, jadi belum bisa di-upgrade.', ['feature' => 'plan_upgrade_unpaid']);
@@ -136,11 +144,10 @@ class EventPlanOrderService
         $pending = $order->upgrades()->where('status', 'past_due')->latest()->first();
 
         if ($pending && $pending->plan_id === $target->id) {
-            return $this->pay($pending);
+            return $this->pay($pending, $channel);
         }
 
-        $bank = $this->rails->platformDestination($difference);
-        $manual = $bank !== null;
+        $payment = $this->resolvePayment($difference, $channel);
 
         $upgrade = $order->organization->planOrders()->create([
             'plan_id' => $target->id,
@@ -148,11 +155,15 @@ class EventPlanOrderService
             'invoice_number' => $this->nextNumber('invoice'),
             'amount' => $difference,
             'status' => 'past_due',
-            'payment_method' => $manual ? 'manual' : 'gateway',
-            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
+            'payment_method' => $payment['bank'] !== null ? 'manual' : 'gateway',
+            'payment_channel' => $payment['channel'],
+            'gateway_fee' => $payment['gateway_fee'],
+            'gateway_tax' => $payment['gateway_tax'],
+            'service_fee' => $payment['service_fee'],
+            'payment_deadline_at' => $payment['bank'] !== null ? $this->rails->deadline() : null,
         ]);
 
-        $result = $this->start($upgrade, $bank);
+        $result = $this->start($upgrade, $payment['bank'], $payment['midtrans_payments']);
 
         if ($upgrade->refresh()->status === 'past_due') {
             $this->mail($upgrade, fn (EventPlanOrder $o) => new PlanOrderInvoiceIssued($o));
@@ -183,17 +194,56 @@ class EventPlanOrderService
      *
      * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    public function pay(EventPlanOrder $order): array
+    public function pay(EventPlanOrder $order, ?string $channel = null): array
     {
-        $bank = $this->rails->platformDestination((float) $order->amount);
-        $manual = $bank !== null;
+        $payment = $this->resolvePayment((float) $order->amount, $channel);
 
         $order->update([
-            'payment_method' => $manual ? 'manual' : 'gateway',
-            'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
+            'payment_method' => $payment['bank'] !== null ? 'manual' : 'gateway',
+            'payment_channel' => $payment['channel'],
+            'gateway_fee' => $payment['gateway_fee'],
+            'gateway_tax' => $payment['gateway_tax'],
+            'service_fee' => $payment['service_fee'],
+            'payment_deadline_at' => $payment['bank'] !== null ? $this->rails->deadline() : null,
         ]);
 
-        return $this->start($order, $bank);
+        return $this->start($order, $payment['bank'], $payment['midtrans_payments']);
+    }
+
+    /**
+     * Decide the rail for `$amount`, and — on the gateway rail for a non-zero
+     * amount — the buyer-paid fee breakdown on top of it. Manual and free
+     * orders get null/0s, identical to what every call site wrote by hand
+     * before this existed.
+     *
+     * @return array{bank: ?SiteSetting, channel: ?string, gateway_fee: float, gateway_tax: float, service_fee: float, midtrans_payments: array}
+     */
+    protected function resolvePayment(float $amount, ?string $channel): array
+    {
+        $bank = $this->rails->platformDestination($amount);
+
+        if ($bank !== null || $amount <= 0) {
+            return ['bank' => $bank, 'channel' => null, 'gateway_fee' => 0.0, 'gateway_tax' => 0.0, 'service_fee' => 0.0, 'midtrans_payments' => []];
+        }
+
+        if ($channel === null) {
+            throw new PaymentException('Pilih metode pembayaran.', ['payment_channel' => ['Metode pembayaran wajib dipilih.']]);
+        }
+
+        $breakdown = $this->fees->forChannel(
+            $channel,
+            $amount,
+            PaymentFeeCalculator::AUDIENCE_ORGANIZER,
+        );
+
+        return [
+            'bank' => null,
+            'channel' => $breakdown['channel'],
+            'gateway_fee' => $breakdown['gateway_fee'],
+            'gateway_tax' => $breakdown['gateway_tax'],
+            'service_fee' => $breakdown['service_fee'],
+            'midtrans_payments' => $breakdown['midtrans_payments'],
+        ];
     }
 
     /**
@@ -205,10 +255,10 @@ class EventPlanOrderService
      *
      * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    protected function start(EventPlanOrder $order, ?SiteSetting $bank): array
+    protected function start(EventPlanOrder $order, ?SiteSetting $bank, array $enabledPayments = []): array
     {
         if ($bank === null) {
-            return $this->openSnap($order);
+            return $this->openSnap($order, $enabledPayments);
         }
 
         return [
@@ -224,7 +274,7 @@ class EventPlanOrderService
     /**
      * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
      */
-    protected function openSnap(EventPlanOrder $order): array
+    protected function openSnap(EventPlanOrder $order, array $enabledPayments = []): array
     {
         $org = $order->organization;
 
@@ -234,10 +284,13 @@ class EventPlanOrderService
         // Adding a PLN- arm to that match would strand every outstanding SUB-.
         $orderId = 'PLN-'.Str::upper(Str::random(10));
 
+        // gross_amount includes the fee the organizer pays on top of the plan
+        // price — amount itself never does, see getGrossAmountAttribute().
         $snap = $this->midtrans->createSnapTransaction(
-            ['order_id' => $orderId, 'gross_amount' => (int) round((float) $order->amount)],
+            ['order_id' => $orderId, 'gross_amount' => (int) round($order->gross_amount)],
             ['first_name' => $org->name, 'email' => $org->contact_email],
             rtrim((string) config('app.frontend_url'), '/').'/organizer/billing?status=success',
+            $enabledPayments,
         );
 
         $order->update([

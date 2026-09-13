@@ -175,11 +175,15 @@ export default function AdminSettingsPage() {
                   <Label htmlFor={s.key}>{s.label}</Label>
                   <Input
                     id={s.key}
-                    inputMode="numeric"
+                    inputMode={s.type === "int" ? "numeric" : "decimal"}
                     value={shownText(s)}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, [s.key]: e.target.value.replace(/[^0-9]/g, "") }))
-                    }
+                    onChange={(e) => {
+                      const raw =
+                        s.type === "int"
+                          ? e.target.value.replace(/[^0-9]/g, "")
+                          : e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                      setValues((v) => ({ ...v, [s.key]: raw }));
+                    }}
                   />
                   {fieldErrors[s.key] ? (
                     <p className="text-xs font-medium text-[var(--danger)]">{fieldErrors[s.key]}</p>
@@ -209,5 +213,7 @@ export default function AdminSettingsPage() {
 function formatNumeric(setting: PlatformSetting, raw: string | number | boolean): string {
   const n = Number(raw);
   if (!Number.isFinite(n)) return "—";
-  return setting.type === "money" ? rupiah(n) : `${n} hari`;
+  if (setting.type === "money") return rupiah(n);
+  if (setting.type === "percent") return `${n}%`;
+  return `${n} hari`;
 }

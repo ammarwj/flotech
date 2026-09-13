@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\Public\EventViewController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
+use App\Http\Controllers\Api\Public\PublicPaymentController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RegistrationController;
@@ -147,6 +148,10 @@ Route::prefix('v1')->group(function () {
 
     // Certificate verification — what the QR printed on every certificate opens.
     Route::get('public/certificates/{number}', [PublicCertificateController::class, 'show']);
+
+    // Fee breakdown per channel, for the picker shown before any checkout
+    // (tickets, registrations, plan orders) creates its Snap token.
+    Route::get('public/payment-channels', [PublicPaymentController::class, 'channels']);
 
     Route::prefix('public/events/{orgSlug}/{eventSlug}')->group(function () {
         Route::get('/', [PublicEventController::class, 'show']);
@@ -443,6 +448,9 @@ Route::prefix('v1')->group(function () {
             // Receipts already accepted. Same column the queue filters on, so a
             // row leaves that list exactly as it lands in this one.
             Route::get('plan-orders/history', [AdminPlanOrderController::class, 'history']);
+            // Every settled purchase, both rails. The three lists above all key
+            // off manual-transfer columns, so gateway purchases show up only here.
+            Route::get('plan-orders/purchases', [AdminPlanOrderController::class, 'purchases']);
             Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
             Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
             // The escape hatch for an event stuck on the wrong plan — see the

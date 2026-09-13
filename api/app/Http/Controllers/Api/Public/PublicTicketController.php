@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
+use App\Services\PaymentFeeCalculator;
 use App\Services\PaymentRails;
 use App\Services\PlanGate;
 use App\Services\TicketService;
@@ -26,6 +27,7 @@ class PublicTicketController extends Controller
         protected TicketService $tickets,
         protected MidtransService $midtrans,
         protected PaymentRails $rails,
+        protected PaymentFeeCalculator $fees,
     ) {}
 
     /**
@@ -90,6 +92,34 @@ class PublicTicketController extends Controller
         $bank = $this->rails->destinationFor($event, $total);
         $manual = $bank !== null;
 
+        // The buyer picks a channel before we know the fee, and the fee before
+        // we can create the Snap token — this is the one place that ordering
+        // is enforced for tickets.
+        $channel = null;
+        $gatewayFee = 0.0;
+        $serviceFee = 0.0;
+        $enabledPayments = [];
+
+        if (! $manual && $total > 0) {
+            if (empty($data['payment_channel'])) {
+                return ApiResponse::error(
+                    'Pilih metode pembayaran.',
+                    ['payment_channel' => ['Metode pembayaran wajib dipilih.']],
+                    422,
+                );
+            }
+
+            $breakdown = $this->fees->forChannel(
+                $data['payment_channel'],
+                $total,
+                PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
+            );
+            $channel = $breakdown['channel'];
+            $gatewayFee = $breakdown['gateway_fee'];
+            $serviceFee = $breakdown['service_fee'];
+            $enabledPayments = $breakdown['midtrans_payments'];
+        }
+
         $orderId = 'TIX-'.Str::upper(Str::random(10));
 
         $order = $this->tickets->purchase(
@@ -101,21 +131,23 @@ class PublicTicketController extends Controller
                 'quantity' => $data['quantity'],
             ],
             $data['holder_names'] ?? [],
-            // Manual money never reaches us, so there is nothing to take a cut of.
-            $manual ? 0.0 : $this->tickets->platformFee($event, $total),
             $orderId,
             auth('api')->id(),
             $manual ? 'manual' : 'gateway',
             $manual ? $this->rails->deadline() : null,
+            $channel,
+            $gatewayFee,
+            $serviceFee,
         );
 
         $snap = ['token' => null, 'redirect_url' => null, 'mock' => false];
 
         if (! $manual) {
             $snap = $this->midtrans->createSnapTransaction(
-                ['order_id' => $orderId, 'gross_amount' => (int) round($total)],
+                ['order_id' => $orderId, 'gross_amount' => (int) round($order->gross_amount)],
                 ['first_name' => $data['buyer_name'], 'email' => $data['buyer_email']],
                 rtrim((string) config('app.frontend_url'), '/').'/tickets/'.$order->id,
+                $enabledPayments,
             );
 
             if ($snap['token']) {

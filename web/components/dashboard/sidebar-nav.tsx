@@ -160,7 +160,7 @@ export const ADMIN_NAV: NavSection[] = [
         short: "Paket",
       },
       { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
-      { href: "/admin/plan-orders", label: "Verifikasi Pembelian", icon: BadgeCheck },
+      { href: "/admin/plan-orders", label: "Pembelian Paket", icon: BadgeCheck },
     ],
   },
   {

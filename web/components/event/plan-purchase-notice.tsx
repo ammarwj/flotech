@@ -11,9 +11,12 @@ import { getPublicPlans } from "@/lib/api/plans";
 import { checkoutPlan } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
 import { checkoutOutcome } from "@/lib/checkout";
+import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import { PlanCard } from "@/components/subscription/plan-card";
 import { PlanGrid } from "@/components/subscription/plan-grid";
 import type { Plan } from "@/types/api";
@@ -29,12 +32,18 @@ import type { Plan } from "@/types/api";
 export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
   const router = useRouter();
   const qc = useQueryClient();
+  const { org } = useActiveOrg();
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  // Set only while the gateway is live and a plan is waiting on a channel
+  // choice — manual checkout never shows this dialog.
+  const [channelPlan, setChannelPlan] = useState<Plan | null>(null);
+  const [channel, setChannel] = useState<string | null>(null);
 
   const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
 
   const checkout = useMutation({
-    mutationFn: (plan: Plan) => checkoutPlan(orgId!, plan.id),
+    mutationFn: ({ plan, channel }: { plan: Plan; channel: string | null }) =>
+      checkoutPlan(orgId!, plan.id, channel ?? undefined),
     onSuccess: (res) => {
       const outcome = checkoutOutcome(res);
 
@@ -67,7 +76,11 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
       toast.success("Paket siap dipakai", { description: "Lanjutkan mengisi detail eventmu." });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses pembelian.").message),
-    onSettled: () => setPendingPlanId(null),
+    onSettled: () => {
+      setPendingPlanId(null);
+      setChannelPlan(null);
+      setChannel(null);
+    },
   });
 
   return (
@@ -109,8 +122,13 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
             isPending={pendingPlanId === plan.id}
             disabled={checkout.isPending || !orgId}
             onSelect={(p) => {
+              if (org?.payment_gateway_enabled) {
+                setChannel(null);
+                setChannelPlan(p);
+                return;
+              }
               setPendingPlanId(p.id);
-              checkout.mutate(p);
+              checkout.mutate({ plan: p, channel: null });
             }}
           />
         ))}
@@ -123,6 +141,47 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
         </Link>
         .
       </p>
+
+      <Dialog
+        open={!!channelPlan}
+        onOpenChange={(next) => !checkout.isPending && !next && setChannelPlan(null)}
+      >
+        <DialogContent>
+          <DialogHeader
+            title="Pilih metode pembayaran"
+            description={channelPlan ? `Beli paket ${channelPlan.name}.` : undefined}
+          />
+          <DialogBody>
+            {channelPlan && (
+              <ChannelPicker
+                amount={channelPlan.price}
+                audience="organizer"
+                value={channel}
+                onChange={setChannel}
+              />
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setChannelPlan(null)}
+              disabled={checkout.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              disabled={!channel || checkout.isPending}
+              onClick={() => {
+                if (!channelPlan) return;
+                setPendingPlanId(channelPlan.id);
+                checkout.mutate({ plan: channelPlan, channel });
+              }}
+            >
+              Lanjutkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

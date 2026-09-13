@@ -3,6 +3,7 @@ import type {
   AdminPayment,
   AdminWallet,
   ApiEnvelope,
+  Paginated,
   PlatformSettingsPayload,
   EventPlanOrder,
   Withdrawal,
@@ -131,6 +132,32 @@ export async function getIdlePlanCredits(): Promise<EventPlanOrder[]> {
  */
 export async function getVerifiedPlanOrders(): Promise<EventPlanOrder[]> {
   const { data } = await apiClient.get<ApiEnvelope<EventPlanOrder[]>>("/admin/plan-orders/history");
+  return data.data;
+}
+
+export interface PlanPurchaseQuery {
+  /** Invoice/receipt number, Midtrans order id, or organization name. */
+  q?: string;
+  method?: "gateway" | "manual" | "";
+  channel?: string;
+  /** Both inclusive, on `paid_at`, as YYYY-MM-DD. */
+  from?: string;
+  to?: string;
+  page?: number;
+}
+
+/**
+ * Every settled plan purchase, both rails. The queue and the history above key
+ * off manual-transfer columns, so a plan bought through Midtrans shows up only
+ * here. Paginated because this list only grows — it is a ledger, not a queue.
+ */
+export async function getPlanPurchases(
+  params: PlanPurchaseQuery = {}
+): Promise<Paginated<EventPlanOrder>> {
+  const { data } = await apiClient.get<ApiEnvelope<Paginated<EventPlanOrder>>>(
+    "/admin/plan-orders/purchases",
+    { params }
+  );
   return data.data;
 }
 

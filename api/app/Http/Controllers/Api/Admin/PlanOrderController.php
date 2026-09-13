@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\PaymentRails;
 use App\Services\EventPlanOrderService;
 use App\Support\ApiResponse;
+use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,59 @@ class PlanOrderController extends Controller
             ->get();
 
         return ApiResponse::success(EventPlanOrderResource::collection($verified));
+    }
+
+    /**
+     * Every plan purchase, both rails, newest paid first.
+     *
+     * The three lists above all key off manual transfer — `awaitingVerification`
+     * and `verified_at` are columns only a manual receipt ever fills — so a plan
+     * bought through Midtrans appeared in none of them, and the platform's own
+     * gateway revenue was invisible here. This is the list that answers "what
+     * have organizers actually paid us", which is a different question from
+     * "what do I have to rule on".
+     *
+     * Paginated, unlike the two lists above: those are queues that get worked
+     * down, this one only ever grows.
+     */
+    public function purchases(Request $request): JsonResponse
+    {
+        $page = EventPlanOrder::query()
+            ->whereNotNull('paid_at')
+            ->when(
+                in_array($request->query('method'), ['gateway', 'manual'], true),
+                fn ($q) => $q->where('payment_method', $request->query('method')),
+            )
+            ->when(
+                in_array($request->query('channel'), array_keys(config('payment_fees.channels')), true),
+                fn ($q) => $q->where('payment_channel', $request->query('channel')),
+            )
+            // Search::anyColumn rather than a plain LIKE: LIKE is
+            // case-sensitive on Postgres, so "INV/2026" would miss inv/2026.
+            ->when($request->query('q'), fn ($q, $term) => $q->where(
+                fn ($w) => Search::anyColumn(
+                    $w,
+                    ['invoice_number', 'receipt_number', 'midtrans_order_id'],
+                    (string) $term,
+                )->orWhereHas(
+                    'organization',
+                    fn ($o) => Search::anyColumn($o, ['name'], (string) $term),
+                ),
+            ))
+            ->when($request->query('from'), fn ($q, $from) => $q->whereDate('paid_at', '>=', $from))
+            ->when($request->query('to'), fn ($q, $to) => $q->whereDate('paid_at', '<=', $to))
+            ->with(['plan', 'organization', 'event'])
+            ->latest('paid_at')
+            ->paginate(min((int) $request->query('per_page', 20), 100));
+
+        return ApiResponse::success([
+            'items' => EventPlanOrderResource::collection($page->items()),
+            'meta' => [
+                'page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
+        ]);
     }
 
     /**

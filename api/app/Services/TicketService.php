@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Mail\TicketPurchasedMail;
-use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketCategory;
 use App\Models\TicketOrder;
@@ -28,23 +27,6 @@ class TicketService
     public function __construct(protected PlanGate $gate, protected WalletService $wallet) {}
 
     /**
-     * Platform fee for an order amount, from the *event's* plan (0 when unset).
-     *
-     * The same `platform_fee_percent` key backs registration fees — one rate per
-     * plan, one row on the pricing card. Two keys that must always hold the same
-     * number are exactly the drift this codebase keeps single-sourcing to avoid.
-     *
-     * Read from the event, not the organization: an organizer running a Starter
-     * event and a Professional event is charged 3% on one and 1% on the other.
-     */
-    public function platformFee(Event $event, float $amount): float
-    {
-        $percent = (float) ($this->gate->value($event, 'platform_fee_percent') ?? 0);
-
-        return round($amount * $percent / 100, 2);
-    }
-
-    /**
      * Create a pending order, reserve the quota and issue one QR ticket per
      * seat. Runs in a transaction so quota and tickets stay consistent.
      *
@@ -53,15 +35,19 @@ class TicketService
      * stays a manual one for the rest of its life. `$deadline` only applies to
      * manual orders — nothing else releases their reserved quota.
      *
+     * `platform_fee` is always written 0: the column stays for historical
+     * orders, but the fee it used to hold is now the buyer-paid gateway/service
+     * fee below, computed by the caller from PaymentFeeCalculator.
+     *
      * @param  array{buyer_name: string, buyer_email: string, buyer_phone?: string|null, quantity: int}  $buyer
      * @param  list<string|null>  $holderNames
      */
-    public function purchase(TicketCategory $category, array $buyer, array $holderNames, float $platformFee, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null): TicketOrder
+    public function purchase(TicketCategory $category, array $buyer, array $holderNames, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null, ?string $paymentChannel = null, float $gatewayFee = 0.0, float $serviceFee = 0.0): TicketOrder
     {
         $quantity = (int) $buyer['quantity'];
         $unitPrice = (float) $category->price;
 
-        return DB::transaction(function () use ($category, $buyer, $holderNames, $platformFee, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline) {
+        return DB::transaction(function () use ($category, $buyer, $holderNames, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee) {
             $category->increment('sold', $quantity);
 
             $order = $category->orders()->create([
@@ -73,9 +59,12 @@ class TicketService
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'total_price' => $unitPrice * $quantity,
-                'platform_fee' => $platformFee,
+                'platform_fee' => 0,
                 'status' => 'pending',
                 'payment_method' => $paymentMethod,
+                'payment_channel' => $paymentChannel,
+                'gateway_fee' => $gatewayFee,
+                'service_fee' => $serviceFee,
                 'payment_deadline_at' => $deadline,
                 'midtrans_order_id' => $orderId,
             ]);

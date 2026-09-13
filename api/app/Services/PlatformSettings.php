@@ -60,6 +60,28 @@ class PlatformSettings
             'max' => 90,
             'label' => 'Masa tahan setelah event selesai (hari)',
         ],
+        // Two margins, not one rate applied twice. The money moves between
+        // different parties in each case — a participant paying an organizer,
+        // versus an organizer paying us — so they are priced independently and
+        // one can be zero while the other is not. PaymentFeeCalculator takes
+        // the key as an argument rather than picking it, so a call site that
+        // forgets to say which one it is cannot silently inherit the other.
+        'service_fee_percent' => [
+            'config' => 'payments.service_fee_percent',
+            'type' => 'percent',
+            'min' => 0,
+            'max' => 100,
+            'label' => 'Fee platform ke peserta (%)',
+            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Ditambahkan ke tagihan peserta di atas fee gateway.',
+        ],
+        'plan_service_fee_percent' => [
+            'config' => 'payments.plan_service_fee_percent',
+            'type' => 'percent',
+            'min' => 0,
+            'max' => 100,
+            'label' => 'Fee platform ke organizer (%)',
+            'description' => 'Margin platform pada pembelian paket event oleh organizer. Ditambahkan ke tagihan organizer di atas fee gateway.',
+        ],
     ];
 
     /** @var array<string, string>|null in-request memo */
@@ -105,6 +127,7 @@ class PlatformSettings
         return match ($type) {
             'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
             'int' => (int) $value,
+            'percent' => (float) $value,
             default => (float) $value,
         };
     }

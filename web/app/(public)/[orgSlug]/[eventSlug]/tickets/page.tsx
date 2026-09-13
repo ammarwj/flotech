@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { ChannelPicker } from "@/components/payment/channel-picker";
 import { rupiah } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useEventBase } from "@/lib/event-base";
@@ -27,6 +28,7 @@ export default function BuyTicketsPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
+  const [channel, setChannel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const eventQuery = useQuery({
@@ -52,6 +54,7 @@ export default function BuyTicketsPage() {
       : selectedCat.remaining
   );
   const total = (selectedCat?.price ?? 0) * quantity;
+  const requiresChannel = Boolean(eventQuery.data?.requires_payment_channel) && total > 0;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -61,6 +64,7 @@ export default function BuyTicketsPage() {
         buyer_name: buyer.name,
         buyer_email: buyer.email,
         buyer_phone: buyer.phone || undefined,
+        payment_channel: requiresChannel ? channel! : undefined,
       }),
     onSuccess: (res) => {
       if (!res.mock && res.redirect_url) {
@@ -80,7 +84,12 @@ export default function BuyTicketsPage() {
     onError: (err) => setError(parseApiError(err, "Gagal memproses pembelian.").message),
   });
 
-  const canSubmit = selected && quantity > 0 && buyer.name.trim() && buyer.email.trim();
+  const canSubmit =
+    selected &&
+    quantity > 0 &&
+    buyer.name.trim() &&
+    buyer.email.trim() &&
+    (!requiresChannel || channel);
 
   if (eventQuery.isError) {
     return (
@@ -139,6 +148,7 @@ export default function BuyTicketsPage() {
                   onClick={() => {
                     setSelected(cat.id);
                     setQuantity(1);
+                    setChannel(null);
                   }}
                   className={cn(
                     "w-full rounded-xl border p-4 text-left transition-colors",
@@ -241,6 +251,15 @@ export default function BuyTicketsPage() {
                   placeholder="08xxxxxxxxxx"
                 />
               </div>
+
+              {requiresChannel && (
+                <ChannelPicker
+                  amount={total}
+                  audience="participant"
+                  value={channel}
+                  onChange={setChannel}
+                />
+              )}
 
               <div className="flex items-center justify-between border-t border-border pt-4">
                 <span className="text-sm text-muted-foreground">Total</span>

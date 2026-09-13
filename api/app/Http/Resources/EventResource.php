@@ -34,6 +34,11 @@ class EventResource extends JsonResource
             // the client to recombine, same reasoning as `next_statuses`.
             'payment_method' => $this->payment_method,
             'effective_payment_method' => app(PaymentRails::class)->methodFor($this->resource),
+            // For the "pay again" button on the participant dashboard: whether
+            // that payment must go through the channel picker before a Snap
+            // token is created. Same rule PublicEventResource uses for the
+            // first-time checkout flow.
+            'requires_payment_channel' => app(PaymentRails::class)->methodFor($this->resource) === 'gateway',
             'name' => $this->name,
             'slug' => $this->slug,
             'sport_type' => $this->sport_type,

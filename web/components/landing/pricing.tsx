@@ -9,11 +9,7 @@ import { observeReveals } from "@/components/landing/reveal-init";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getPublicPlans } from "@/lib/api/plans";
 import { rupiahCompact } from "@/lib/labels";
-import {
-  formatPlanFeature,
-  getPlanColor,
-  getPlanFeatureValue,
-} from "@/lib/plan";
+import { formatPlanFeature, getPlanColor } from "@/lib/plan";
 import type { Plan } from "@/types/api";
 import { CheckIcon, CrossIcon } from "./icons";
 
@@ -31,18 +27,6 @@ import { CheckIcon, CrossIcon } from "./icons";
  */
 function ctaFor(plan: Plan): { label: string; href: string } {
   return { label: `Pilih ${plan.name}`, href: "/register" };
-}
-
-/** Platform fee per plan, e.g. "3% (Starter) · 2% (Pro)". */
-function feeFootnote(plans: Plan[]): string | null {
-  const fees = plans.flatMap((plan) => {
-    const fee = getPlanFeatureValue(plan, "platform_fee_percent");
-    return fee ? [`${fee}% (${plan.name})`] : [];
-  });
-
-  return fees.length > 0
-    ? `Platform fee tiket & pendaftaran: ${fees.join(" · ")}.`
-    : null;
 }
 
 export function Pricing() {
@@ -114,10 +98,8 @@ export function Pricing() {
 
         {plans && (
           <p className="price-foot">
-            {feeFootnote(plans)}
-            {
-              " Biaya platform tiket & pendaftaran dibayarkan oleh peserta, bukan penyelenggara. "
-            }
+            Biaya platform tiket & pendaftaran dibayarkan oleh peserta, bukan
+            penyelenggara.
           </p>
         )}
       </div>

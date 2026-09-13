@@ -15,7 +15,8 @@ use Tests\TestCase;
 
 /**
  * Income: a paid ticket order or registration fee credits the organizer's
- * wallet with the net (gross − platform fee), held until the event is over.
+ * wallet with the full gross amount, held until the event is over. Gateway
+ * and service fees are paid by the buyer on top — they never touch this.
  */
 class WalletTest extends TestCase
 {
@@ -65,24 +66,25 @@ class WalletTest extends TestCase
             'quantity' => $qty,
             'buyer_name' => 'Budi',
             'buyer_email' => 'budi@test.com',
+            'payment_channel' => 'va',
         ])->assertCreated()->json('data.order.id');
     }
 
-    public function test_paid_ticket_order_credits_net_amount_as_pending(): void
+    public function test_paid_ticket_order_credits_the_full_gross_amount_as_pending(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
         $this->buy($org, $event, $category->id, 2);
 
-        // 2 x 50.000 = 100.000 gross, 5% platform fee = 5.000, net = 95.000.
+        // 2 x 50.000 = 100.000 gross, credited in full — no fee is cut from the organizer.
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => '95000.00',
+            'balance_pending' => '100000.00',
             'balance_available' => '0.00',
-            'total_earned' => '95000.00',
+            'total_earned' => '100000.00',
         ]);
 
         $this->assertDatabaseHas('wallet_transactions', [
@@ -91,8 +93,8 @@ class WalletTest extends TestCase
             'category' => 'ticket_sale',
             'status' => 'pending',
             'gross_amount' => '100000.00',
-            'fee_amount' => '5000.00',
-            'amount' => '95000.00',
+            'fee_amount' => '0.00',
+            'amount' => '100000.00',
         ]);
     }
 
@@ -108,25 +110,10 @@ class WalletTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_plan_without_fee_percent_credits_full_amount(): void
-    {
-        $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
-        $event = $this->event($org);
-        $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
-
-        $this->buy($org, $event, $category->id, 1);
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '50000.00',
-        ]);
-    }
-
     public function test_paid_registration_fee_credits_wallet(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['platform_fee_percent' => '10']);
+        $org = $this->orgWithPlan($user);
         $event = $this->event($org);
         $event->categories->first()->update(['registration_fee' => 150000]);
 
@@ -141,22 +128,23 @@ class WalletTest extends TestCase
                     ['full_name' => 'Player 1', 'jersey_number' => '1'],
                     ['full_name' => 'Player 2', 'jersey_number' => '2'],
                 ],
+                'payment_channel' => 'va',
             ])->assertCreated();
 
-        // 150.000 gross − 10% = 135.000 net.
+        // 150.000 gross, credited in full — no fee is cut from the organizer.
         $this->assertDatabaseHas('wallet_transactions', [
             'organization_id' => $org->id,
             'category' => 'registration_fee',
             'status' => 'pending',
-            'amount' => '135000.00',
-            'fee_amount' => '15000.00',
+            'amount' => '150000.00',
+            'fee_amount' => '0.00',
         ]);
     }
 
     public function test_redelivered_settlement_does_not_credit_twice(): void
     {
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
@@ -171,7 +159,7 @@ class WalletTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 1);
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => '95000.00',
+            'balance_pending' => '100000.00',
         ]);
     }
 
@@ -180,7 +168,7 @@ class WalletTest extends TestCase
         config()->set('services.midtrans.server_key', 'test-server-key');
 
         $user = User::factory()->create();
-        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true', 'platform_fee_percent' => '5']);
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
@@ -194,7 +182,7 @@ class WalletTest extends TestCase
             'quantity' => 2,
             'unit_price' => 50000,
             'total_price' => 100000,
-            'platform_fee' => 5000,
+            'platform_fee' => 0,
             'status' => 'pending',
             'midtrans_order_id' => 'TIX-ABCDEFGHIJ',
         ]);
@@ -216,7 +204,7 @@ class WalletTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 1);
         $this->assertDatabaseHas('wallets', [
             'organization_id' => $org->id,
-            'balance_pending' => '95000.00',
+            'balance_pending' => '100000.00',
         ]);
     }
 }

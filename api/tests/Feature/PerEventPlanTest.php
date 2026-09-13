@@ -65,102 +65,6 @@ class PerEventPlanTest extends TestCase
             ->assertCreated();
     }
 
-    /**
-     * Identical price, different fee.
-     *
-     * A single order's fee would come out right under any constant percentage —
-     * including one still read off the organization. Two events at one price is
-     * the only shape that pins it to the event.
-     */
-    public function test_platform_fee_comes_from_the_event_plan_not_the_organization(): void
-    {
-        $user = $this->owner();
-        $org = $this->orgFor($user);
-
-        $cheap = $this->eventOn($org, $this->planWith([
-            'qr_tickets' => 'true', 'payment_gateway' => 'true', 'platform_fee_percent' => '3',
-        ]));
-        $dear = $this->eventOn($org, $this->planWith([
-            'qr_tickets' => 'true', 'payment_gateway' => 'true', 'platform_fee_percent' => '1',
-        ]));
-
-        $fees = [];
-
-        foreach ([$cheap, $dear] as $event) {
-            $category = $event->ticketCategories()->create([
-                'name' => 'Reguler', 'price' => 100000, 'is_active' => true,
-            ]);
-
-            $orderId = $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
-                'ticket_category_id' => $category->id,
-                'quantity' => 1,
-                'buyer_name' => 'Budi',
-                'buyer_email' => 'budi@test.com',
-            ])->assertCreated()->json('data.order.id');
-
-            $fees[] = (float) $event->ticketOrders()->findOrFail($orderId)->platform_fee;
-        }
-
-        $this->assertSame([3000.0, 1000.0], $fees, 'The fee must follow the event, not the organization.');
-    }
-
-    /**
-     * The registration fee reads the same key off the same event — and manual
-     * money still never reaches the wallet, on either plan.
-     */
-    public function test_registration_fee_uses_the_same_key_and_manual_never_touches_the_wallet(): void
-    {
-        $user = $this->owner();
-        $org = $this->orgFor($user);
-        $org->bankAccounts()->create([
-            'bank_name' => 'BCA', 'account_number' => '123', 'account_holder' => 'EO', 'is_primary' => true,
-        ]);
-
-        foreach ([['3', 3000.0], ['1', 1000.0]] as [$percent, $expected]) {
-            $event = $this->eventOn($org, $this->planWith([
-                'online_registration' => 'true', 'payment_gateway' => 'true', 'platform_fee_percent' => $percent,
-            ]), ['registration_open' => now()->subDay(), 'registration_close' => now()->addDays(10)]);
-
-            $category = $event->categories()->create([
-                'name' => 'Umum', 'slug' => 'umum-'.uniqid(), 'tournament_format' => 'league',
-                'registration_fee' => 100000, 'sort_order' => 0,
-            ]);
-
-            // Registering publicly needs an account: the team is tied to the
-            // manager who filed it.
-            $manager = User::factory()->create();
-
-            // Gateway rail: the plan's percentage applies.
-            $gateway = $this->actingAs($manager, 'api')->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
-                'category_id' => $category->id,
-                'name' => 'Gateway FC',
-                'contact_name' => 'Andi',
-                'contact_phone' => '08123456789',
-                'players' => [['full_name' => 'P1', 'jersey_number' => '1']],
-            ])->assertCreated()->json('data.team.id');
-
-            $this->assertSame($expected, (float) $event->teams()->findOrFail($gateway)->platform_fee);
-
-            // Manual rail, same event, same price: no fee and no ledger entry,
-            // because the money went straight to the organizer's own account.
-            $this->withGatewayOff(function () use ($org, $event, $category, $manager) {
-                $manual = $this->actingAs($manager, 'api')->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
-                    'category_id' => $category->id,
-                    'name' => 'Manual FC',
-                    'contact_name' => 'Budi',
-                    'contact_phone' => '08123456780',
-                    'players' => [['full_name' => 'P2', 'jersey_number' => '2']],
-                ])->assertCreated()->json('data.team.id');
-
-                $team = $event->teams()->findOrFail($manual);
-                $this->assertSame(0.0, (float) $team->platform_fee);
-                $this->assertDatabaseMissing('wallet_transactions', [
-                    'source_type' => 'team', 'source_id' => $team->id,
-                ]);
-            });
-        }
-    }
-
     // ---- the credit ledger --------------------------------------------------
 
     /**
@@ -647,7 +551,7 @@ class PerEventPlanTest extends TestCase
         $plan->update(['price' => 150000]);
 
         $service = app(\App\Services\EventPlanOrderService::class);
-        $order = $service->checkout($org, $plan)['order'];
+        $order = $service->checkout($org, $plan, 'va')['order'];
 
         $before = $org->fresh()->getAttributes();
 
@@ -670,25 +574,5 @@ class PerEventPlanTest extends TestCase
             \App\Notifications\PlanOrderPaid::class,
             1,
         );
-    }
-
-    /** Run something with the payment gateway switched off. */
-    private function withGatewayOff(callable $fn): void
-    {
-        \App\Models\PlatformSetting::updateOrCreate(
-            ['key' => 'payment_gateway_enabled'],
-            ['value' => '0', 'type' => 'bool'],
-        );
-        \App\Services\PlatformSettings::flush();
-
-        try {
-            $fn();
-        } finally {
-            \App\Models\PlatformSetting::updateOrCreate(
-                ['key' => 'payment_gateway_enabled'],
-                ['value' => '1', 'type' => 'bool'],
-            );
-            \App\Services\PlatformSettings::flush();
-        }
     }
 }

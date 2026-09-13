@@ -7,6 +7,7 @@ use App\Models\Plan;
 use App\Models\SiteSetting;
 use App\Models\EventPlanOrder;
 use App\Models\User;
+use App\Notifications\PlanOrderInvoiceIssued;
 use App\Notifications\PlanOrderPaid;
 use App\Services\BillingDocumentService;
 use App\Services\PlatformSettings;
@@ -48,6 +49,9 @@ class PlanOrderBillingTest extends TestCase
         return $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/checkout", [
                 'plan_id' => $plan->id,
+                // Ignored on the manual rail, required on gateway — safe to
+                // always send so this helper works for both.
+                'payment_channel' => 'va',
             ])
             ->assertCreated()
             ->json('data');
@@ -140,6 +144,40 @@ class PlanOrderBillingTest extends TestCase
         $rendered = (string) $mail->render();
         $this->assertStringContainsString($subscription->invoice_number, $rendered);
         $this->assertStringContainsString($subscription->receipt_number, $rendered);
+    }
+
+    /**
+     * The mail body must total the same as the PDF stapled to it.
+     *
+     * Both emails printed `amount` — the plan price alone — while the attached
+     * document totalled `gross_amount`, so an organizer charged for fees was
+     * told two different numbers in one message. Asserting the gross is present
+     * is not enough on its own: this also asserts the bare plan price is *not*
+     * presented as the total, which is the half that was wrong.
+     */
+    public function test_billing_mail_totals_the_fees_the_same_way_the_pdf_does(): void
+    {
+        PlatformSettings::put(['plan_service_fee_percent' => 1.5], null);
+        PlatformSettings::flush();
+
+        $user = User::factory()->create();
+        $org = $this->org($user, 'org-mail-total');
+        $plan = $this->plan();
+
+        $order = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)['plan_order']['id']);
+        app(EventPlanOrderService::class)->activate($order->fresh(), 'bank_transfer');
+        $order = $order->fresh();
+
+        $this->assertGreaterThan((float) $order->amount, $order->gross_amount, 'sanity: this order must carry fees');
+
+        $money = fn (float $n) => number_format($n, 0, ',', '.');
+
+        foreach ([new PlanOrderPaid($order), new PlanOrderInvoiceIssued($order)] as $notification) {
+            $rendered = (string) $notification->toMail($user)->render();
+
+            $this->assertStringContainsString($money($order->gross_amount), $rendered);
+            $this->assertStringContainsString($money((float) $order->gateway_tax), $rendered);
+        }
     }
 
     public function test_invoice_pdf_downloads_and_receipt_requires_payment(): void
@@ -241,7 +279,9 @@ class PlanOrderBillingTest extends TestCase
         PlatformSettings::flush();
 
         $offline = $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay")
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay", [
+                'payment_channel' => 'va',
+            ])
             ->assertOk()
             ->json('data');
 
@@ -256,7 +296,9 @@ class PlanOrderBillingTest extends TestCase
         PlatformSettings::flush();
 
         $online = $this->actingAs($user, 'api')
-            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay")
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$sub->id}/pay", [
+                'payment_channel' => 'va',
+            ])
             ->assertOk()
             ->json('data');
 
@@ -299,5 +341,213 @@ class PlanOrderBillingTest extends TestCase
 
         $this->assertSame('manual', $sub->fresh()->payment_method);
         $this->assertNotNull($sub->fresh()->payment_proof_url);
+    }
+
+    /**
+     * The organizer is the buyer here: gateway checkout adds fee on top of the
+     * plan price, manual does not. Compared on the same plan so the plan price
+     * itself can't explain the difference — `amount` (what paidTowardsPlan()
+     * sums) must stay identical while `gross_amount` (what Midtrans/the PDF
+     * see) diverges.
+     */
+    public function test_gateway_checkout_charges_the_buyer_a_fee_while_manual_does_not(): void
+    {
+        // The organizer-side margin: a plan purchase must not read the rate set
+        // for participants buying tickets. Both are set, differently, so
+        // reading the wrong one shows up as a wrong number.
+        PlatformSettings::put([
+            'service_fee_percent' => 9,
+            'plan_service_fee_percent' => 1.5,
+        ], null);
+        PlatformSettings::flush();
+
+        $user = User::factory()->create();
+        $plan = $this->plan();
+
+        $gatewayOrg = $this->org($user, 'org-gateway');
+        $viaGateway = EventPlanOrder::findOrFail($this->checkout($user, $gatewayOrg, $plan)['plan_order']['id']);
+
+        $this->assertSame('va', $viaGateway->payment_channel);
+        $this->assertEqualsWithDelta(4000 * 1.11, $viaGateway->gateway_fee, 0.001);
+        // Snapshotted, not recomputed at render time: the invoice prints the
+        // tax as its own line and must keep printing the rate that applied the
+        // day it was issued, even after config/payment_fees.php changes.
+        $this->assertEqualsWithDelta(440.0, $viaGateway->gateway_tax, 0.001);
+        $this->assertLessThan(
+            (float) $viaGateway->gateway_fee,
+            (float) $viaGateway->gateway_tax,
+            'gateway_tax is a part of gateway_fee, not an amount on top of it',
+        );
+        $this->assertEqualsWithDelta(399000 * 1.5 / 100, $viaGateway->service_fee, 0.001);
+        $this->assertEqualsWithDelta(
+            399000 + $viaGateway->gateway_fee + $viaGateway->service_fee,
+            $viaGateway->gross_amount,
+            0.001,
+        );
+
+        PlatformSettings::put(['payment_gateway_enabled' => false], null);
+        PlatformSettings::flush();
+        SiteSetting::create([
+            'bank_name' => 'BCA',
+            'account_number' => '9998887777',
+            'account_holder' => 'PT Flo Event Indonesia',
+        ]);
+
+        $manualOrg = $this->org($user, 'org-manual');
+        $viaManual = EventPlanOrder::findOrFail($this->checkout($user, $manualOrg, $plan)['plan_order']['id']);
+
+        $this->assertNull($viaManual->payment_channel);
+        $this->assertSame(0.0, (float) $viaManual->gateway_fee);
+        $this->assertSame(0.0, (float) $viaManual->gateway_tax);
+        $this->assertSame(0.0, (float) $viaManual->service_fee);
+        $this->assertSame(399000.0, (float) $viaManual->gross_amount);
+
+        // Same plan, same `amount` — the fee never leaks into the number
+        // paidTowardsPlan()/upgrade pricing reads.
+        $this->assertSame((float) $viaGateway->amount, (float) $viaManual->amount);
+    }
+
+    /**
+     * A second upgrade must price against what was actually owed for the
+     * plan, not against a bill that already included the first upgrade's
+     * gateway fee. Using gross_amount instead of amount here would overcharge
+     * on every upgrade after the first.
+     */
+    /**
+     * The admin purchase list has to show gateway purchases, which is the whole
+     * reason it exists: the queue and the history are both built on
+     * manual-transfer columns, so a plan bought through Midtrans reached
+     * neither. Compared against the history endpoint on the same data — a list
+     * that returned only manual rows would still look populated on its own.
+     */
+    public function test_the_admin_purchase_list_shows_gateway_orders_the_verification_lists_cannot(): void
+    {
+        $user = User::factory()->create();
+        $plan = $this->plan();
+        $org = $this->org($user, 'org-purchases');
+
+        $order = EventPlanOrder::findOrFail($this->checkout($user, $org, $plan)['plan_order']['id']);
+        app(EventPlanOrderService::class)->activate($order->fresh(), 'bank_transfer');
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+
+        $purchases = $this->actingAs($admin, 'api')
+            ->getJson('/api/v1/admin/plan-orders/purchases')
+            ->assertOk()
+            ->json('data.items');
+
+        $this->assertSame([$order->id], array_column($purchases, 'id'));
+        $this->assertSame('gateway', $purchases[0]['payment_method']);
+        $this->assertSame('va', $purchases[0]['payment_channel']);
+        $this->assertGreaterThan(0, $purchases[0]['gateway_fee']);
+        $this->assertGreaterThan($purchases[0]['amount'], $purchases[0]['gross_amount']);
+
+        // The list this used to be the only one of: verified_at is null on a
+        // gateway order, so it is empty here.
+        $this->actingAs($admin, 'api')
+            ->getJson('/api/v1/admin/plan-orders/history')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    /**
+     * Each filter compared against the unfiltered list on the same two orders —
+     * a filter that silently did nothing would still return rows, and asserting
+     * "the one I wanted is present" would pass right through that.
+     */
+    public function test_the_admin_purchase_list_filters_by_rail_and_by_search(): void
+    {
+        $user = User::factory()->create();
+        $plan = $this->plan();
+
+        $gatewayOrg = $this->org($user, 'org-filter-gateway');
+        $gateway = EventPlanOrder::findOrFail($this->checkout($user, $gatewayOrg, $plan)['plan_order']['id']);
+        app(EventPlanOrderService::class)->activate($gateway->fresh(), 'bank_transfer');
+
+        // A settled manual order, written directly: the manual rail needs the
+        // gateway switched off, and flipping it mid-test would also change what
+        // the gateway order above is allowed to be.
+        $manualOrg = $this->org($user, 'org-filter-manual');
+        $manual = $manualOrg->planOrders()->create([
+            'plan_id' => $plan->id,
+            'invoice_number' => 'INV/2026/02/7777',
+            'amount' => 399000,
+            'status' => 'paid',
+            'payment_method' => 'manual',
+            'paid_at' => now(),
+        ]);
+
+        $admin = User::factory()->create(['role' => 'super_admin']);
+
+        $ids = fn (array $params) => array_column(
+            $this->actingAs($admin, 'api')
+                ->getJson('/api/v1/admin/plan-orders/purchases?'.http_build_query($params))
+                ->assertOk()
+                ->json('data.items'),
+            'id',
+        );
+
+        $this->assertEqualsCanonicalizing([$gateway->id, $manual->id], $ids([]));
+        $this->assertSame([$gateway->id], $ids(['method' => 'gateway']));
+        $this->assertSame([$manual->id], $ids(['method' => 'manual']));
+        $this->assertSame([$gateway->id], $ids(['channel' => 'va']));
+
+        // Search spans the order's own numbers and its organization's name.
+        $this->assertSame([$manual->id], $ids(['q' => 'INV/2026/02/7777']));
+        $this->assertSame([$gateway->id], $ids(['q' => $gateway->invoice_number]));
+
+        // Case-insensitivity is the whole reason Search::anyColumn exists:
+        // plain LIKE is case-sensitive on Postgres but not on sqlite, so a
+        // lowercase needle is what tells the two apart.
+        $this->assertSame([$manual->id], $ids(['q' => strtolower('INV/2026/02/7777')]));
+
+        $this->assertSame([], $ids(['from' => now()->addDay()->toDateString()]));
+    }
+
+    public function test_the_admin_purchase_list_is_super_admin_only(): void
+    {
+        $this->actingAs(User::factory()->create(), 'api')
+            ->getJson('/api/v1/admin/plan-orders/purchases')
+            ->assertStatus(403);
+    }
+
+    public function test_an_upgrades_gateway_fee_does_not_compound_into_the_next_upgrades_price(): void
+    {
+        $starter = $this->plan('Starter A');
+        $starter->update(['price' => 150000]);
+        $pro = $this->plan('Pro A');
+        $pro->update(['price' => 350000]);
+        $professional = $this->plan('Professional A');
+        $professional->update(['price' => 800000]);
+
+        $user = User::factory()->create();
+        $org = $this->org($user, 'org-upgrade-fee');
+
+        $base = EventPlanOrder::findOrFail($this->checkout($user, $org, $starter)['plan_order']['id']);
+        $this->assertGreaterThan(0, $base->gateway_fee, 'sanity: gateway checkout must carry a fee to begin with');
+
+        $firstUpgradeId = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$base->id}/upgrade", [
+                'plan_id' => $pro->id,
+                'payment_channel' => 'va',
+            ])
+            ->assertCreated()
+            ->json('data.plan_order.id');
+
+        $firstUpgrade = EventPlanOrder::findOrFail($firstUpgradeId);
+        $this->assertEqualsWithDelta(350000 - 150000, $firstUpgrade->amount, 0.001);
+
+        $secondUpgradeId = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$firstUpgrade->id}/upgrade", [
+                'plan_id' => $professional->id,
+                'payment_channel' => 'va',
+            ])
+            ->assertCreated()
+            ->json('data.plan_order.id');
+
+        $secondUpgrade = EventPlanOrder::findOrFail($secondUpgradeId);
+        // Priced against 150000 + 35000 paid so far — never against the gross
+        // amounts, which would each be inflated by their own gateway_fee.
+        $this->assertEqualsWithDelta(800000 - 350000, $secondUpgrade->amount, 0.001);
     }
 }

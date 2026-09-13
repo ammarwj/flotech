@@ -25,6 +25,9 @@ class TicketOrder extends Model
         'platform_fee',
         'status',
         'payment_method',
+        'payment_channel',
+        'gateway_fee',
+        'service_fee',
         'midtrans_order_id',
         'midtrans_token',
         'paid_at',
@@ -43,6 +46,8 @@ class TicketOrder extends Model
             'unit_price' => 'decimal:2',
             'total_price' => 'decimal:2',
             'platform_fee' => 'decimal:2',
+            'gateway_fee' => 'decimal:2',
+            'service_fee' => 'decimal:2',
             'paid_at' => 'datetime',
             'payment_proof_uploaded_at' => 'datetime',
             'payment_deadline_at' => 'datetime',
@@ -53,6 +58,13 @@ class TicketOrder extends Model
     protected function paymentStateColumn(): string
     {
         return 'status';
+    }
+
+    // Buyer-paid total: what actually gets charged, including fees the
+    // organizer never sees. total_price stays the ticket's own price.
+    public function getGrossAmountAttribute(): float
+    {
+        return (float) $this->total_price + (float) $this->gateway_fee + (float) $this->service_fee;
     }
 
     public function event(): BelongsTo

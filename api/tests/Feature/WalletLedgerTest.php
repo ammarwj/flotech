@@ -32,7 +32,6 @@ class WalletLedgerTest extends TestCase
         // Events in this test run on this plan — planId() is what puts it there.
         $this->testPlan = $plan;
         $plan->features()->create(['feature_key' => 'qr_tickets', 'value' => 'true']);
-        $plan->features()->create(['feature_key' => 'platform_fee_percent', 'value' => '5']);
         // PaymentRails refuses an online payment without this; every seeded plan grants it.
         $plan->features()->create(['feature_key' => 'payment_gateway', 'value' => 'true']);
 
@@ -59,6 +58,7 @@ class WalletLedgerTest extends TestCase
                 'quantity' => $qty,
                 'buyer_name' => 'Budi',
                 'buyer_email' => 'budi@test.com',
+                'payment_channel' => 'va',
             ])->assertCreated()->json('data.order.id')
         );
 
@@ -67,14 +67,14 @@ class WalletLedgerTest extends TestCase
         $refunds = app(RefundService::class);
 
         // Two sales, then the event ends and the money is released.
-        $orderA = $buy(4);   // 200.000 gross → 190.000 net
-        $orderB = $buy(2);   // 100.000 gross →  95.000 net
+        $orderA = $buy(4);   // 200.000 gross, credited in full — no fee cut
+        $orderB = $buy(2);   // 100.000 gross, credited in full
 
         Carbon::setTestNow('2026-08-03 12:00:00');
         $wallets->releaseDue();
 
         // A late sale, credited after the sweep — so it stays held.
-        $orderC = $buy(1);   //  50.000 gross →  47.500 net
+        $orderC = $buy(1);   //  50.000 gross, credited in full
 
         // A payout that gets rejected, then one that goes through.
         $rejected = $withdrawals->request($org, $owner, 100000);
@@ -87,7 +87,7 @@ class WalletLedgerTest extends TestCase
         // cancellation).
         $refunds->refundTicketOrder($orderA->fresh(), $admin, 'Komplain');
 
-        $orderD = $buy(3);   // 150.000 gross → 142.500 net, still held
+        $orderD = $buy(3);   // 150.000 gross, credited in full, still held
         $refunds->refundTicketOrder($orderD->fresh(), $admin, 'Salah beli');
 
         $wallets->adjust($org->wallet, -1000, 'Koreksi manual');
@@ -109,13 +109,13 @@ class WalletLedgerTest extends TestCase
         $this->assertSame($expectedPending, round((float) $wallet->balance_pending, 2));
 
         // Order C never left the hold; order D's credit was cancelled outright.
-        $this->assertSame(47500.0, round((float) $wallet->balance_pending, 2));
+        $this->assertSame(50000.0, round((float) $wallet->balance_pending, 2));
         $this->assertSame(1, $ledger->where('source_id', $orderC->id)->where('status', 'pending')->count());
         $this->assertSame(1, $ledger->where('source_id', $orderD->id)->where('status', 'cancelled')->count());
 
-        // available = 190.000 + 95.000 (released) − 155.000 (completed payout)
-        //             − 190.000 (refund of A) − 1.000 (adjustment) = −61.000
-        $this->assertSame(-61000.0, round((float) $wallet->balance_available, 2));
+        // available = 200.000 + 100.000 (released) − 155.000 (completed payout)
+        //             − 200.000 (refund of A) − 1.000 (adjustment) = −56.000
+        $this->assertSame(-56000.0, round((float) $wallet->balance_available, 2));
         $this->assertSame(150000.0, round((float) $wallet->total_withdrawn, 2));
         $this->assertSame('paid', $orderB->fresh()->status);
     }
