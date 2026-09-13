@@ -36,8 +36,20 @@ dipakai di seluruh aplikasi, halaman publik, dan header email.
       terhapus. `SiteSettingsInput` jadi `Partial<SiteSettings>` supaya payload sebagian valid
 - [x] `ImageUploadField` prop `upload` opsional — favicon melewati `compressToWebp` karena
       `.ico` tidak bisa di-encode dari blob WebP
-- [x] `components/shared/logo.tsx` jadi **satu sumber**; `landing/nav.tsx` & `footer.tsx`
-      tidak lagi menyalin markupnya
+- [x] `components/shared/logo.tsx` jadi **satu sumber**. Markupnya ternyata disalin di
+      **empat** tempat, bukan tiga: `landing/nav.tsx`, `landing/footer.tsx`, dan
+      `app/(auth)/layout.tsx` — yang terakhir baru ketahuan saat user melaporkan halaman
+      login masih memakai logo bawaan. Kalau menambah surface logo baru, grep
+      `logo-mark` dulu.
+- [x] **Tidak ada flash logo bawaan saat refresh.** `Logo` client-side, jadi render
+      pertama belum punya data dan mark bawaan sempat terlukis sebelum ditukar — paling
+      terlihat di halaman login, yang logonya satu-satunya isi layar. Root layout sudah
+      mem-fetch `/site-settings` untuk favicon, jadi hasilnya dioper ke `Providers` dan
+      di-`setQueryData` **di dalam inisialisasi `useState`**, bukan di effect: effect jalan
+      setelah paint pertama — frame yang justru jadi masalahnya. Next men-dedupe fetch-nya
+      dengan milik `generateMetadata`, jadi tanpa request tambahan.
+      `SITE_SETTINGS_KEY` diekspor supaya seed, hook, dan invalidate di halaman admin tidak
+      mungkin menyimpang.
 - [x] **Cache logo, dua lapis.**
       (a) `lib/hooks/use-site-settings.ts` — satu hook dipakai `Logo` **dan** footer.
       react-query menyelesaikan opsi per *observer*, bukan per key: footer memakai default
@@ -95,3 +107,10 @@ ter-publish, semua request dari browser (termasuk login) gagal tanpa bisa tersam
 - [ ] Verifikasi manual: unggah logo & favicon sungguhan lewat UI, cek tab browser (hard
       reload — favicon di-cache agresif), lalu kosongkan keduanya dan pastikan semua surface
       kembali ke mark bawaan.
+
+## Halaman 404
+
+`web/app/not-found.tsx` (sebelumnya default Next). Dipakai untuk rute tak dikenal **dan**
+`notFound()` — yang dipanggil profil organizer publik saat slug tidak ada, jalur paling
+mungkin seorang pengunjung mendarat di sini. Karena itu tombolnya "Jelajahi event" dan "Ke
+beranda", bukan tombol "kembali" yang justru memulangkan ke tautan rusaknya.

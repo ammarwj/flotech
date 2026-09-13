@@ -23,6 +23,7 @@ import {
   uploadFavicon,
   type SiteSettingsInput,
 } from "@/lib/api/landing";
+import { SITE_SETTINGS_KEY } from "@/lib/hooks/use-site-settings";
 import { SOCIAL_PLATFORMS } from "@/lib/social";
 import type { SocialPlatform } from "@/types/api";
 
@@ -164,7 +165,7 @@ function AdminSiteSettingsPage() {
       setSocialDraft({});
       qc.invalidateQueries({ queryKey: ["admin-site-settings"] });
       // The footer in this same tab reads the public endpoint.
-      qc.invalidateQueries({ queryKey: ["public-site-settings"] });
+      qc.invalidateQueries({ queryKey: SITE_SETTINGS_KEY });
       toast.success("Pengaturan disimpan");
     },
     onError: (err) => {

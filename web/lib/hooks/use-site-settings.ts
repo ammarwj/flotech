@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { getPublicSiteSettings } from "@/lib/api/landing";
 
+/** Shared so the root layout can seed this exact entry — see Providers. */
+export const SITE_SETTINGS_KEY = ["public-site-settings"] as const;
+
 /**
  * Public site settings — contact details, socials, and the platform branding.
  *
@@ -19,7 +22,7 @@ import { getPublicSiteSettings } from "@/lib/api/landing";
  */
 export function useSiteSettings() {
   return useQuery({
-    queryKey: ["public-site-settings"],
+    queryKey: SITE_SETTINGS_KEY,
     queryFn: getPublicSiteSettings,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
