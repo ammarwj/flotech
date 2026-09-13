@@ -7,18 +7,21 @@ use App\Http\Requests\Event\TeamPayloadRules;
 use App\Http\Resources\PublicBankAccountResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
+use App\Services\ParticipantDocumentService;
 use App\Services\RegistrationService;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\Response;
 
 class MyTeamController extends Controller
 {
     public function __construct(
         protected RegistrationService $registration,
         protected TeamRosterService $roster,
+        protected ParticipantDocumentService $documents,
     ) {}
 
     /**
@@ -154,6 +157,38 @@ class MyTeamController extends Controller
             new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
+    }
+
+    /**
+     * The manager's own invoice and receipt for the registration fee.
+     *
+     * Ownership comes from `scope()` — a team belonging to somebody else is
+     * simply not in the query, so it 404s rather than 403s and the row's
+     * existence stays unconfirmed.
+     *
+     * A free registration has no numbers and so no documents: 404, not a Rp 0
+     * document claiming a payment that never happened.
+     */
+    public function invoice(string $team): Response
+    {
+        $model = $this->scope()->with('event.organization', 'category')->findOrFail($team);
+
+        abort_if($model->invoice_number === null, 404);
+
+        return $this->documents->invoice($model);
+    }
+
+    public function receipt(string $team): Response|JsonResponse
+    {
+        $model = $this->scope()->with('event.organization', 'category')->findOrFail($team);
+
+        abort_if($model->receipt_number === null, 404);
+
+        if (! $model->paid_at) {
+            return ApiResponse::error('Kwitansi baru tersedia setelah pembayaran lunas.', null, 403);
+        }
+
+        return $this->documents->receipt($model);
     }
 
     protected function isEditable(Team $team): bool

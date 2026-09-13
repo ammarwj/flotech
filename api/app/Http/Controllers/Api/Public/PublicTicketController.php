@@ -11,6 +11,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
+use App\Services\ParticipantDocumentService;
 use App\Services\PaymentFeeCalculator;
 use App\Services\PaymentRails;
 use App\Services\PlanGate;
@@ -18,6 +19,7 @@ use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
 
 class PublicTicketController extends Controller
@@ -28,6 +30,7 @@ class PublicTicketController extends Controller
         protected MidtransService $midtrans,
         protected PaymentRails $rails,
         protected PaymentFeeCalculator $fees,
+        protected ParticipantDocumentService $documents,
     ) {}
 
     /**
@@ -97,6 +100,7 @@ class PublicTicketController extends Controller
         // is enforced for tickets.
         $channel = null;
         $gatewayFee = 0.0;
+        $gatewayTax = 0.0;
         $serviceFee = 0.0;
         $enabledPayments = [];
 
@@ -116,6 +120,7 @@ class PublicTicketController extends Controller
             );
             $channel = $breakdown['channel'];
             $gatewayFee = $breakdown['gateway_fee'];
+            $gatewayTax = $breakdown['gateway_tax'];
             $serviceFee = $breakdown['service_fee'];
             $enabledPayments = $breakdown['midtrans_payments'];
         }
@@ -138,6 +143,7 @@ class PublicTicketController extends Controller
             $channel,
             $gatewayFee,
             $serviceFee,
+            $gatewayTax,
         );
 
         $snap = ['token' => null, 'redirect_url' => null, 'mock' => false];
@@ -189,6 +195,39 @@ class PublicTicketController extends Controller
         ])->findOrFail($order);
 
         return ApiResponse::success(new TicketOrderResource($ticketOrder));
+    }
+
+    /**
+     * The buyer's own invoice and receipt.
+     *
+     * Public for the same reason `order()` is: a ticket buyer never signs up,
+     * so the unguessable order id is the credential. Putting `auth:api` here
+     * would lock the documents away from precisely the people who most need to
+     * keep them — guests, who have no dashboard to find them in later.
+     *
+     * A free ticket has no numbers and therefore no documents: 404 rather than
+     * a Rp 0 document claiming a transaction that never happened.
+     */
+    public function invoice(string $order): Response
+    {
+        $ticketOrder = TicketOrder::findOrFail($order);
+
+        abort_if($ticketOrder->invoice_number === null, 404);
+
+        return $this->documents->invoice($ticketOrder);
+    }
+
+    public function receipt(string $order): Response|JsonResponse
+    {
+        $ticketOrder = TicketOrder::findOrFail($order);
+
+        abort_if($ticketOrder->receipt_number === null, 404);
+
+        if (! $ticketOrder->paid_at) {
+            return ApiResponse::error('Kwitansi baru tersedia setelah pembayaran lunas.', null, 403);
+        }
+
+        return $this->documents->receipt($ticketOrder);
     }
 
     /**

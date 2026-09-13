@@ -22,6 +22,8 @@ import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
 import { ExportButtons } from "@/components/event/export-buttons";
+import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
+import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -300,6 +302,27 @@ function BuyerCard({
               ))}
             </ul>
           )}
+
+          {/* The same documents the buyer gets. The organizer sold the ticket
+              and is named as the issuer on them, so they are theirs to read —
+              and this is the surface where a buyer's "can you resend my
+              receipt?" gets answered. */}
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              E-tiket &amp; dokumen
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {/* The buyer's own page, which needs no login — the order id is
+                  the credential. This is the link to hand back to someone who
+                  lost the email. */}
+              <CopyLinkButton path={`/tickets/${order.id}`} label="Salin tautan e-tiket" />
+              <ParticipantDocumentButtons
+                subject={{ kind: "ticket-order", id: order.id }}
+                hasInvoice={!!order.invoice_number}
+                hasReceipt={!!order.receipt_number}
+              />
+            </div>
+          </div>
         </div>
       )}
     </Card>

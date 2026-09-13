@@ -467,23 +467,10 @@ class EventPlanOrderService
      */
     public function nextNumber(string $kind): string
     {
-        $column = $kind === 'receipt' ? 'receipt_number' : 'invoice_number';
-        $prefix = config("billing.{$kind}_prefix", $kind === 'receipt' ? 'KW' : 'INV');
-        $period = Carbon::now()->format('Y/m');
-
-        return DB::transaction(function () use ($column, $prefix, $period) {
-            // Postgres rejects FOR UPDATE alongside an aggregate ("FOR UPDATE is
-            // not allowed with aggregate functions"), so take the highest row and
-            // lock *that* rather than locking a max(). Sequences are zero-padded,
-            // so lexical order is numeric order.
-            $last = EventPlanOrder::where($column, 'like', "{$prefix}/{$period}/%")
-                ->orderByDesc($column)
-                ->lockForUpdate()
-                ->value($column);
-
-            $seq = $last ? ((int) Str::afterLast($last, '/')) + 1 : 1;
-
-            return sprintf('%s/%s/%04d', $prefix, $period, $seq);
-        });
+        return app(DocumentNumberService::class)->next(
+            EventPlanOrder::class,
+            $kind === 'receipt' ? 'receipt_number' : 'invoice_number',
+            config("billing.{$kind}_prefix", $kind === 'receipt' ? 'KW' : 'INV'),
+        );
     }
 }

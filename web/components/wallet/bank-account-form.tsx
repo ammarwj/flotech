@@ -29,7 +29,12 @@ export function BankAccountForm({
   current: BankAccount | null;
   pending: boolean;
   fieldErrors: FieldErrors;
-  onSubmit: (values: BankAccountInput) => void;
+  /**
+   * Resolves once the account is stored. The form closes on that rather than on
+   * submit: a rejected number has to stay on screen with its error, still
+   * filled in.
+   */
+  onSubmit: (values: BankAccountInput) => Promise<unknown>;
 }) {
   const [editing, setEditing] = useState(!current);
   const [bankName, setBankName] = useState(current?.bank_name ?? "");
@@ -50,7 +55,19 @@ export function BankAccountForm({
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setEditing(true)}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            // Prefill from the stored account, except the number: the API
+            // masks it for the organizer (only the super admin who makes the
+            // transfer sees it in full), so the masked form would either be
+            // saved back as the real number or have to be cleared on submit.
+            setBankName(current.bank_name);
+            setAccountHolder(current.account_holder);
+            setAccountNumber("");
+            setEditing(true);
+          }}
+        >
           Ganti rekening
         </Button>
       </Card>
@@ -61,13 +78,19 @@ export function BankAccountForm({
     <Card className="p-5">
       <form
         className="grid gap-4"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          onSubmit({
-            bank_name: bankName,
-            account_number: accountNumber,
-            account_holder: accountHolder,
-          });
+          try {
+            await onSubmit({
+              bank_name: bankName,
+              account_number: accountNumber,
+              account_holder: accountHolder,
+            });
+            setEditing(false);
+          } catch {
+            // The caller already surfaced it — either as a field error below or
+            // a toast. Staying open is the whole point.
+          }
         }}
       >
         <div className="grid gap-1.5">
@@ -88,9 +111,15 @@ export function BankAccountForm({
             inputMode="numeric"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
-            placeholder="1234567890"
+            placeholder={current ? current.account_number : "1234567890"}
           />
           <FieldError message={fieldErrors.account_number} />
+          {current && (
+            <p className="text-xs text-muted-foreground">
+              Nomor rekening tersimpan hanya ditampilkan sebagian demi keamanan, jadi ketik
+              ulang lengkap — termasuk kalau nomornya tidak berubah.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-1.5">

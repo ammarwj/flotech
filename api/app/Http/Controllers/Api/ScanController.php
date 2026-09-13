@@ -102,8 +102,11 @@ class ScanController extends Controller
 
         return ApiResponse::success([
             'finance' => [
-                'gross_revenue' => (float) $paidOrders->sum('total_price'),
-                'platform_fee' => (float) (clone $paidOrders)->sum('platform_fee'),
+                // The organizer keeps all of it. `platform_fee` is retired —
+                // always 0 on new orders — and the buyer-paid gateway/service
+                // fees sit on top of the price, never inside it, so there is
+                // nothing left to deduct and nothing "gross" about this number.
+                'revenue' => (float) $paidOrders->sum('total_price'),
                 'paid_orders' => (clone $paidOrders)->count(),
                 'tickets_sold' => $totalTickets,
             ],

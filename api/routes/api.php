@@ -184,6 +184,11 @@ Route::prefix('v1')->group(function () {
     // lookup above is: the buyer never signs up, so the unguessable order id
     // is the credential.
     Route::post('ticket-orders/{order}/proof', [PublicTicketController::class, 'proof']);
+    // The buyer's invoice & receipt. Public for the same reason — a ticket
+    // buyer never signs up, so auth here would lock them out of their own
+    // documents.
+    Route::get('ticket-orders/{order}/invoice', [PublicTicketController::class, 'invoice']);
+    Route::get('ticket-orders/{order}/receipt', [PublicTicketController::class, 'receipt']);
 
     // Presigned upload URL (used by the public registration form too).
     Route::post('uploads/sign', [UploadController::class, 'sign']);
@@ -207,6 +212,9 @@ Route::prefix('v1')->group(function () {
         Route::post('my-teams/{team}/withdraw', [MyTeamController::class, 'withdraw']);
         Route::post('my-teams/{team}/pay', [MyTeamController::class, 'pay']);
         Route::post('my-teams/{team}/proof', [MyTeamController::class, 'proof']);
+        // The manager's own billing documents for the registration fee.
+        Route::get('my-teams/{team}/invoice', [MyTeamController::class, 'invoice']);
+        Route::get('my-teams/{team}/receipt', [MyTeamController::class, 'receipt']);
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);
@@ -264,6 +272,11 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);
             Route::put('events/{event}/registrations/{team}', [RegistrationController::class, 'update']);
             Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
+            // The registration fee's documents, from the organizer's side —
+            // they issued them, so they can read them. The manager's own copy
+            // is at my-teams/{team}/invoice, scoped by their session instead.
+            Route::get('events/{event}/registrations/{team}/invoice', [RegistrationController::class, 'invoice']);
+            Route::get('events/{event}/registrations/{team}/receipt', [RegistrationController::class, 'receipt']);
 
             // Photo albums & sponsor logos.
             Route::get('events/{event}/photos', [EventMediaController::class, 'photos']);

@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import {
@@ -249,6 +250,24 @@ export default function ManageTeamPage() {
               />
             </CardContent>
           )}
+        </Card>
+      )}
+
+      {(team.invoice_number || team.receipt_number) && (
+        <Card className="mb-6">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+            <div>
+              <p className="font-semibold">Dokumen pembayaran</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Invoice dan kwitansi biaya pendaftaran tim ini.
+              </p>
+            </div>
+            <ParticipantDocumentButtons
+              subject={{ kind: "my-team", id: team.id }}
+              hasInvoice={!!team.invoice_number}
+              hasReceipt={!!team.receipt_number}
+            />
+          </CardContent>
         </Card>
       )}
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -33,10 +34,13 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { PillTabs } from "@/components/event/pill-tabs";
 import { WalletTxStatusBadge, WithdrawalStatusBadge } from "@/components/shared/status-badge";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
 import { BankAccountForm } from "@/components/wallet/bank-account-form";
 import { WithdrawDialog } from "@/components/wallet/withdraw-dialog";
+import { PaymentProofDialog } from "@/components/payment/payment-proof-dialog";
+import type { Withdrawal } from "@/types/api";
 import type { LucideIcon } from "lucide-react";
 
 function StatCard({
@@ -75,13 +79,38 @@ function StatCard({
 const dateTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
-export default function WalletPage() {
+/** Three lists that share a page but not a job. `bank` is the default, so it carries no query param. */
+const TABS = [
+  { key: "bank", label: "Rekening Pencairan", icon: Landmark },
+  { key: "withdrawals", label: "Riwayat Penarikan", icon: Banknote },
+  { key: "transactions", label: "Mutasi Dompet", icon: ReceiptText },
+];
+
+function WalletPage() {
   const qc = useQueryClient();
+  const router = useRouter();
+  const params = useSearchParams();
   const { org, orgId, isLoading: orgLoading } = useActiveOrg();
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [bankErrors, setBankErrors] = useState<FieldErrors>({});
   const [withdrawErrors, setWithdrawErrors] = useState<FieldErrors>({});
+  // The transfer receipt on screen. One dialog for the whole list rather than
+  // one per row — mounting a dialog per withdrawal to show at most one is waste.
+  const [proof, setProof] = useState<Withdrawal | null>(null);
+
+  // The open tab lives in the URL, not in state: a reload — or a link shared
+  // with someone — has to land back on the same list. Defaults to the bank
+  // account, since an organizer with nowhere to be paid cannot withdraw at all.
+  const tab = TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "bank";
+
+  const setTab = (key: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (key === "bank") next.delete("tab");
+    else next.set("tab", key);
+    const qs = next.toString();
+    router.replace(qs ? `/organizer/wallet?${qs}` : "/organizer/wallet", { scroll: false });
+  };
 
   const walletQuery = useQuery({
     queryKey: ["wallet", orgId],
@@ -186,6 +215,17 @@ export default function WalletPage() {
   const belowMinimum =
     !!wallet && wallet.balance_available < wallet.rules.minimum_withdrawal + wallet.rules.admin_fee;
 
+  const minimumTotal = wallet
+    ? wallet.rules.minimum_withdrawal + wallet.rules.admin_fee
+    : 0;
+
+  // Money is in the wallet, just not withdrawable yet. Saying "belum mencapai"
+  // here reads as "you haven't sold enough", which is the wrong thing to tell
+  // an organizer sitting on millions in held funds — they would go looking for
+  // missing sales instead of waiting for their event to finish.
+  const heldCoversMinimum =
+    !!wallet && wallet.balance_pending > 0 && wallet.balance_available + wallet.balance_pending >= minimumTotal;
+
   // Say *why* the button is off rather than just disabling it.
   const blockedReason = !wallet
     ? "Memuat saldo…"
@@ -196,7 +236,9 @@ export default function WalletPage() {
         : negative
           ? "Saldo minus karena refund."
           : belowMinimum
-            ? `Saldo tersedia belum mencapai ${rupiah(wallet.rules.minimum_withdrawal + wallet.rules.admin_fee)} (termasuk biaya admin).`
+            ? heldCoversMinimum
+              ? `${rupiah(wallet.balance_pending)} masih tertahan sampai event-nya selesai. Dana cair otomatis setelah itu, lalu bisa ditarik.`
+              : `Saldo tersedia ${rupiah(wallet.balance_available)} — penarikan bisa dilakukan mulai ${rupiah(minimumTotal)} (minimum ${rupiah(wallet.rules.minimum_withdrawal)} + biaya admin ${rupiah(wallet.rules.admin_fee)}).`
             : null;
 
   return (
@@ -266,10 +308,21 @@ export default function WalletPage() {
         </>
       )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>
-          Rekening Pencairan
-        </h2>
+      {/* Three lists that share a page but not a job: where the money goes,
+          what has been sent, and where every rupiah came from. Stacked, the
+          balance cards at the top were pushed off screen by history nobody
+          had asked to read. */}
+      <div className="mt-8">
+        <PillTabs
+          items={TABS}
+          activeKey={tab}
+          onSelect={setTab}
+        />
+      </div>
+
+      <div className="mt-5">
+      {tab === "bank" && (
+        <section>
         {banksQuery.isLoading ? (
           <Skeleton className="h-[88px] rounded-xl" />
         ) : (
@@ -277,15 +330,16 @@ export default function WalletPage() {
             current={primaryBank}
             pending={bankMutation.isPending}
             fieldErrors={bankErrors}
-            onSubmit={(values) => bankMutation.mutate(values)}
+            // mutateAsync, not mutate: the form closes itself on success and
+            // has to stay open on failure, so it needs the outcome.
+            onSubmit={(values) => bankMutation.mutateAsync(values)}
           />
         )}
-      </section>
+        </section>
+      )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>
-          Riwayat Penarikan
-        </h2>
+      {tab === "withdrawals" && (
+        <section>
         {withdrawalsQuery.isLoading ? (
           <Skeleton className="h-[88px] rounded-xl" />
         ) : withdrawals.length === 0 ? (
@@ -297,27 +351,40 @@ export default function WalletPage() {
         ) : (
           <div className="grid gap-3">
             {withdrawals.map((w) => (
-              <Card key={w.id} className="flex flex-wrap items-center justify-between gap-4 p-4">
+              <Card
+                key={w.id}
+                className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4"
+              >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold tabular-nums">{rupiah(w.amount)}</span>
                     <WithdrawalStatusBadge status={w.status} />
                     <span className="text-xs text-muted-foreground">{w.reference}</span>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {w.bank_name} &middot; {w.account_number} &middot; biaya admin{" "}
-                    {rupiah(w.admin_fee)} &middot; {dateTime(w.created_at)}
-                  </p>
+                  {/* One fact per line on a phone; the middot run only reads as
+                      a list when it fits on one. */}
+                  <div className="mt-1 flex flex-col text-sm text-muted-foreground sm:block">
+                    <span>
+                      {w.bank_name} &middot; {w.account_number}
+                    </span>
+                    <span className="hidden sm:inline"> &middot; </span>
+                    <span>
+                      biaya admin {rupiah(w.admin_fee)} &middot; {dateTime(w.created_at)}
+                    </span>
+                  </div>
                   {w.admin_note && (
                     <p className="mt-1 text-sm text-[var(--danger)]">{w.admin_note}</p>
                   )}
                 </div>
                 <div className="flex gap-2">
+                  {/* Opens in place rather than a new tab: the proof is a
+                      signed object-storage link, so a raw tab drops the
+                      organizer on a bare image with no idea which withdrawal
+                      it belongs to. */}
                   {w.proof_url && (
-                    <Button asChild variant="outline" size="sm">
-                      <a href={w.proof_url} target="_blank" rel="noreferrer">
-                        Bukti transfer
-                      </a>
+                    <Button variant="outline" size="sm" onClick={() => setProof(w)}>
+                      <ReceiptText className="h-4 w-4" />
+                      Bukti transfer
                     </Button>
                   )}
                   {w.status === "pending" && (
@@ -335,12 +402,11 @@ export default function WalletPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>
-          Mutasi Dompet
-        </h2>
+      {tab === "transactions" && (
+        <section>
         {txQuery.isLoading ? (
           <Skeleton className="h-[88px] rounded-xl" />
         ) : transactions.length === 0 ? (
@@ -352,17 +418,27 @@ export default function WalletPage() {
         ) : (
           <div className="grid gap-2">
             {transactions.map((tx) => (
-              <Card key={tx.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+              // Stacks on a phone instead of wrapping: the amount used to wrap
+              // under the description while keeping text-right, leaving it
+              // stranded against the far edge with a ragged gap beside it.
+              // Below sm it reads as two left-aligned lines.
+              <Card
+                key={tx.id}
+                className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+              >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{WALLET_TX_CATEGORY_LABELS[tx.category]}</span>
                     <WalletTxStatusBadge status={tx.status} />
                   </div>
-                  <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {/* Wraps rather than truncates on a phone: a description cut
+                      to "Penjualan 2 tiket — Turnamen…" says less than the
+                      extra line costs. */}
+                  <p className="mt-0.5 text-sm text-muted-foreground sm:truncate">
                     {tx.description ?? tx.event_name ?? "—"} &middot; {dateTime(tx.created_at)}
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="shrink-0 sm:text-right">
                   <p
                     className="font-semibold tabular-nums"
                     style={{
@@ -382,7 +458,30 @@ export default function WalletPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      )}
+      </div>
+
+      {/* Read-only: no onApprove/onReject, because the transfer is already
+          done and there is nothing here to rule on. */}
+      <PaymentProofDialog
+        open={!!proof}
+        onOpenChange={(next) => !next && setProof(null)}
+        title="Bukti transfer"
+        description={proof ? `Penarikan ${proof.reference}` : undefined}
+        proofUrl={proof?.proof_url ?? null}
+        uploadedAt={proof?.completed_at ?? null}
+        details={
+          proof
+            ? [
+                { label: "Jumlah", value: <b>{rupiah(proof.amount)}</b> },
+                { label: "Biaya admin", value: rupiah(proof.admin_fee) },
+                { label: "Rekening", value: `${proof.bank_name} · ${proof.account_number}` },
+                { label: "Atas nama", value: proof.account_holder },
+              ]
+            : []
+        }
+      />
 
       {wallet && primaryBank && (
         <WithdrawDialog
@@ -396,5 +495,14 @@ export default function WalletPage() {
         />
       )}
     </>
+  );
+}
+
+export default function Page() {
+  // useSearchParams() needs a Suspense boundary or the build fails.
+  return (
+    <Suspense fallback={null}>
+      <WalletPage />
+    </Suspense>
   );
 }

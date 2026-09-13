@@ -6,12 +6,12 @@ import {
   ExternalLink,
   FileText,
   ImageOff,
+  Loader2,
   ReceiptText,
   X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -154,7 +154,15 @@ export function PaymentProofDialog({
                 title="Buka ukuran penuh"
                 className="flex items-center justify-center p-2"
               >
-                {!loaded && <Skeleton className="h-64 w-full" />}
+                {/* The skeleton's own tint is --bg-soft, which is exactly this
+                    box's background — on its own it pulses invisibly. Border
+                    and label are what make the wait legible. */}
+                {!loaded && (
+                  <div className="flex h-64 w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Memuat bukti transfer…</p>
+                  </div>
+                )}
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed
                     object-storage URL on an unknown host; next/image would need
                     every bucket in remotePatterns. */}

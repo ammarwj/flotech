@@ -8,22 +8,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { TicketCategoryInput } from "@/lib/api/tickets";
+import { fromEventInput, toEventInput } from "@/lib/match-dates";
 import type { TicketCategory } from "@/types/api";
-
-/** Trim an ISO/datetime string down to the `YYYY-MM-DDTHH:mm` input value. */
-function toLocalInput(value: string | null | undefined): string {
-  if (!value) return "";
-  return value.slice(0, 16);
-}
 
 export function TicketCategoryForm({
   initial,
+  tz,
   onSubmit,
   onCancel,
   pending,
   fieldErrors = {},
 }: {
   initial?: TicketCategory | null;
+  /** Event's IANA timezone — sale window is the venue's wall clock, not the organizer's browser. */
+  tz: string;
   onSubmit: (payload: TicketCategoryInput) => void;
   onCancel: () => void;
   pending?: boolean;
@@ -34,8 +32,8 @@ export function TicketCategoryForm({
   const [quota, setQuota] = useState(initial?.quota != null ? String(initial.quota) : "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [benefits, setBenefits] = useState((initial?.benefits ?? []).join(", "));
-  const [saleStart, setSaleStart] = useState(toLocalInput(initial?.sale_start));
-  const [saleEnd, setSaleEnd] = useState(toLocalInput(initial?.sale_end));
+  const [saleStart, setSaleStart] = useState(toEventInput(initial?.sale_start ?? null, tz));
+  const [saleEnd, setSaleEnd] = useState(toEventInput(initial?.sale_end ?? null, tz));
   const [transferable, setTransferable] = useState(initial?.is_transferable ?? false);
   const [active, setActive] = useState(initial?.is_active ?? true);
 
@@ -50,8 +48,8 @@ export function TicketCategoryForm({
         .split(",")
         .map((b) => b.trim())
         .filter(Boolean),
-      sale_start: saleStart || null,
-      sale_end: saleEnd || null,
+      sale_start: fromEventInput(saleStart, tz),
+      sale_end: fromEventInput(saleEnd, tz),
       is_transferable: transferable,
       is_active: active,
     });

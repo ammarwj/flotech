@@ -9,6 +9,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Notifications\TeamStatusChanged;
+use App\Services\ParticipantDocumentService;
 use App\Services\PlanGate;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
@@ -19,6 +20,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class RegistrationController extends Controller
@@ -26,6 +28,7 @@ class RegistrationController extends Controller
     public function __construct(
         protected PlanGate $gate,
         protected TeamRosterService $roster,
+        protected ParticipantDocumentService $documents,
     ) {}
 
     /**
@@ -183,6 +186,44 @@ class RegistrationController extends Controller
     /**
      * Approve / reject / change a registration's status.
      */
+    /**
+     * The registration fee's invoice and receipt, for the organizer.
+     *
+     * The same documents the manager downloads from /my-teams — they name the
+     * organizer as the issuer, because the fee is theirs. A separate route
+     * rather than reusing that one: this is scoped by the event through
+     * `tenant`, while the manager's is scoped by their own session, and one
+     * endpoint cannot answer to both without deciding which.
+     *
+     * A free registration has no numbers and so no documents: 404.
+     */
+    public function invoice(Request $request, string $organization, string $event, string $team): Response
+    {
+        return $this->document($request, $event, $team, 'invoice');
+    }
+
+    public function receipt(Request $request, string $organization, string $event, string $team): Response|JsonResponse
+    {
+        return $this->document($request, $event, $team, 'receipt');
+    }
+
+    /** @param  'invoice'|'receipt'  $kind */
+    protected function document(Request $request, string $event, string $team, string $kind): Response|JsonResponse
+    {
+        $teamModel = $this->event($request, $event)
+            ->teams()
+            ->with('event.organization', 'category')
+            ->findOrFail($team);
+
+        abort_if($teamModel->{"{$kind}_number"} === null, 404);
+
+        if ($kind === 'receipt' && ! $teamModel->paid_at) {
+            return ApiResponse::error('Kwitansi baru tersedia setelah pembayaran lunas.', null, 403);
+        }
+
+        return $this->documents->{$kind}($teamModel);
+    }
+
     public function updateStatus(Request $request, string $organization, string $event, string $team): JsonResponse
     {
         $eventModel = $this->event($request, $event);

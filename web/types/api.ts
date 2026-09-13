@@ -859,6 +859,9 @@ export interface Team extends ManualPaymentFields {
   payment_status: PaymentStatus;
   payment_amount: number;
   platform_fee: number;
+  /** Null on a free registration — no bill, so no document to download. */
+  invoice_number: string | null;
+  receipt_number: string | null;
   paid_at: string | null;
   midtrans_token: string | null;
   /** Answers to the event's team_fields, keyed by field key. {} when none. */
@@ -1040,6 +1043,9 @@ export interface TicketOrder extends ManualPaymentFields {
   unit_price: number;
   total_price: number;
   platform_fee: number;
+  /** Null on a free order — no bill, so no document to download. */
+  invoice_number: string | null;
+  receipt_number: string | null;
   status: TicketOrderStatus;
   paid_at: string | null;
   created_at?: string;
@@ -1068,8 +1074,8 @@ export interface ScanResponse {
 
 export interface TicketReport {
   finance: {
-    gross_revenue: number;
-    platform_fee: number;
+    /** The whole ticket price — buyer-paid fees sit on top, never inside it. */
+    revenue: number;
     paid_orders: number;
     tickets_sold: number;
   };

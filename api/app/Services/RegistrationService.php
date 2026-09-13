@@ -26,7 +26,18 @@ class RegistrationService
         protected WalletService $wallet,
         protected PaymentRails $rails,
         protected PaymentFeeCalculator $fees,
+        protected DocumentNumberService $numbers,
     ) {}
+
+    /** @param  'invoice'|'receipt'  $kind */
+    protected function number(string $kind): string
+    {
+        return $this->numbers->next(
+            Team::class,
+            "{$kind}_number",
+            config("billing.registration_{$kind}_prefix"),
+        );
+    }
 
     /**
      * Start payment for a team's registration fee. Free registrations settle
@@ -66,6 +77,7 @@ class RegistrationService
         }
 
         $gatewayFee = 0.0;
+        $gatewayTax = 0.0;
         $serviceFee = 0.0;
         $enabledPayments = [];
 
@@ -83,6 +95,7 @@ class RegistrationService
                 PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
             );
             $gatewayFee = $breakdown['gateway_fee'];
+            $gatewayTax = $breakdown['gateway_tax'];
             $serviceFee = $breakdown['service_fee'];
             $enabledPayments = $breakdown['midtrans_payments'];
         }
@@ -92,11 +105,17 @@ class RegistrationService
         $team->update([
             'payment_status' => 'unpaid',
             'payment_amount' => $amount,
+            // Kept across a retry: reopening payment is the same bill, so it
+            // must not burn a second invoice number. Free entries get none.
+            'invoice_number' => $team->invoice_number ?? ($amount > 0 ? $this->number('invoice') : null),
             // Manual money never reaches us, so there is nothing to take a cut of.
             'platform_fee' => 0,
             'payment_method' => $manual ? 'manual' : 'gateway',
             'payment_channel' => $manual ? null : $channel,
             'gateway_fee' => $gatewayFee,
+            // Already inside gateway_fee; stored so the PDF can show the tax
+            // as its own line without recomputing a rate that moves.
+            'gateway_tax' => $gatewayTax,
             'service_fee' => $serviceFee,
             'payment_deadline_at' => $manual ? $this->rails->deadline() : null,
             'midtrans_order_id' => $orderId,
@@ -198,7 +217,14 @@ class RegistrationService
         }
 
         DB::transaction(function () use ($team) {
-            $team->update(['payment_status' => 'paid', 'paid_at' => Carbon::now()]);
+            $team->update([
+                'payment_status' => 'paid',
+                'paid_at' => Carbon::now(),
+                // `??` keeps a re-delivered webhook from issuing a second
+                // receipt for one payment; free entries never get one at all.
+                'receipt_number' => $team->receipt_number
+                    ?? ((float) $team->payment_amount > 0 ? $this->number('receipt') : null),
+            ]);
 
             // A manual transfer went straight into the organizer's own bank
             // account — the money never passed through us, so crediting the

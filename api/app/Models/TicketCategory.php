@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -37,6 +39,38 @@ class TicketCategory extends Model
             'is_transferable' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * The sale window is always stored as a UTC instant.
+     *
+     * Clients send an offset-bearing ISO string ("...T10:00:00+07:00"), because
+     * a sale opens on the venue's clock, not the organizer's browser. Without
+     * this, Eloquent's fromDateTime() formats that Carbon as-is and lands the
+     * venue-local wall clock raw in a UTC column — 10:00 WIB reads back as
+     * 17:00, so the time appears to jump forward on every save.
+     *
+     * Same fix, same reason as GameMatch::scheduledAt(). A set-only Attribute
+     * bypasses the datetime cast on write and returns the DB-ready string;
+     * reads still go through the cast.
+     */
+    protected function saleStart(): Attribute
+    {
+        return self::utcInstant();
+    }
+
+    protected function saleEnd(): Attribute
+    {
+        return self::utcInstant();
+    }
+
+    private static function utcInstant(): Attribute
+    {
+        return Attribute::make(
+            set: fn ($value) => $value === null
+                ? null
+                : Carbon::parse($value)->utc()->format('Y-m-d H:i:s'),
+        );
     }
 
     public function event(): BelongsTo

@@ -219,4 +219,51 @@ class ScheduleTimezoneTest extends TestCase
         $this->assertSame('12:30', $jakarta->matches()->first()->scheduled_at->utc()->format('H:i'), '19:30 WIB is 12:30Z');
         $this->assertSame('10:30', $jayapura->matches()->first()->scheduled_at->utc()->format('H:i'), '19:30 WIT is 10:30Z');
     }
+
+    /**
+     * A ticket sale window is the same kind of value as a kickoff: the organizer
+     * types the venue's wall clock and the browser sends it with an offset.
+     *
+     * TicketCategory had the datetime cast but not the normalizing mutator, so
+     * Eloquent wrote "10:00" straight into a UTC column — the saved time then
+     * read back as 17:00 WIB, appearing to jump forward on every save.
+     *
+     * Compared across two zones: sending the same wall clock to both must
+     * produce two different instants. Asserting one event alone would pass even
+     * if the offset were being dropped again.
+     */
+    public function test_ticket_sale_window_stores_the_offset_as_a_utc_instant(): void
+    {
+        $jakarta = $this->categoryIn('Asia/Jakarta')->event;
+        $jayapura = $this->categoryIn('Asia/Jayapura')->event;
+
+        $sent = [
+            'Asia/Jakarta' => '2026-08-01T10:00:00.000+07:00',
+            'Asia/Jayapura' => '2026-08-01T10:00:00.000+09:00',
+        ];
+
+        foreach (['Asia/Jakarta' => $jakarta, 'Asia/Jayapura' => $jayapura] as $zone => $event) {
+            // Both events share the test plan, so grant the entitlement once.
+            $event->plan->features()->firstOrCreate(
+                ['feature_key' => 'qr_tickets'],
+                ['value' => 'true'],
+            );
+
+            $this->actingAs($event->organization->owner, 'api')
+                ->postJson("/api/v1/organizations/{$event->organization_id}/events/{$event->id}/ticket-categories", [
+                    'name' => 'Reguler',
+                    'price' => 50000,
+                    'sale_start' => $sent[$zone],
+                ])
+                ->assertCreated();
+
+            $stored = $event->ticketCategories()->latest('created_at')->first()->sale_start;
+
+            $this->assertSame('10:00', $stored->setTimezone($zone)->format('H:i'), "10:00 typed in {$zone} must read back as 10:00 there");
+            $this->assertSame('2026-08-01', $stored->setTimezone($zone)->format('Y-m-d'), "the sale must open on 1 Aug in {$zone}");
+        }
+
+        $this->assertSame('03:00', $jakarta->ticketCategories()->first()->sale_start->utc()->format('H:i'), '10:00 WIB is 03:00Z');
+        $this->assertSame('01:00', $jayapura->ticketCategories()->first()->sale_start->utc()->format('H:i'), '10:00 WIT is 01:00Z');
+    }
 }

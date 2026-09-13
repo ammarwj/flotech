@@ -179,16 +179,19 @@ export default function EventTicketsPage() {
         </div>
       ) : report ? (
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Not "kotor" any more: the organizer keeps the whole ticket price.
+              The old "Biaya platform" card is gone with the cut it reported —
+              gateway and service fees are paid by the buyer on top of this. */}
           <StatCard
             icon={Wallet}
-            label="Pendapatan kotor"
-            value={rupiah(report.finance.gross_revenue)}
+            label="Pendapatan"
+            value={rupiah(report.finance.revenue)}
             color="var(--brand-600)"
           />
           <StatCard
             icon={TrendingUp}
-            label="Biaya platform"
-            value={rupiah(report.finance.platform_fee)}
+            label="Pesanan lunas"
+            value={String(report.finance.paid_orders)}
             color="var(--accent-amber)"
           />
           <StatCard
@@ -223,6 +226,7 @@ export default function EventTicketsPage() {
         <Card className="mb-4 p-5">
           <h3 className="mb-4 font-semibold">Kategori baru</h3>
           <TicketCategoryForm
+            tz={eventQuery.data!.timezone}
             onSubmit={(payload) => createMut.mutate(payload)}
             onCancel={() => {
               setCreating(false);
@@ -263,6 +267,7 @@ export default function EventTicketsPage() {
               <h3 className="mb-4 font-semibold">Edit “{cat.name}”</h3>
               <TicketCategoryForm
                 initial={cat}
+                tz={eventQuery.data!.timezone}
                 onSubmit={(payload) => updateMut.mutate({ id: cat.id, payload })}
                 onCancel={() => {
                   setEditing(null);

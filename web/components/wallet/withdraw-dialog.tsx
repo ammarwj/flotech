@@ -5,7 +5,7 @@ import { Banknote, X } from "lucide-react";
 
 import type { FieldErrors } from "@/lib/api/errors";
 import type { BankAccount, Wallet } from "@/types/api";
-import { rupiah } from "@/lib/labels";
+import { angka, rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,11 +69,14 @@ export function WithdrawDialog({
             <Banknote className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            <h2
+              className="text-base font-bold"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
               Tarik Dana
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Dana ditransfer manual oleh admin ke rekening kamu, biasanya 1–2 hari kerja.
+              Proses pencairan memerlukan 1–2 hari kerja.
             </p>
           </div>
           <button
@@ -95,12 +98,17 @@ export function WithdrawDialog({
 
           <div className="grid gap-1.5">
             <Label htmlFor="amount">Jumlah penarikan</Label>
+            {/* Shown grouped, stored as bare digits: an amount with no
+                separators is read wrong at a glance, and one zero too many is
+                exactly the mistake that matters here. Stripping non-digits on
+                the way in means the separators the user sees can be retyped or
+                pasted back without breaking the value. */}
             <Input
               id="amount"
               inputMode="numeric"
-              value={amount}
+              value={amount ? angka(Number(amount)) : ""}
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
-              placeholder={String(minimum)}
+              placeholder={angka(minimum)}
             />
             <p className="text-xs text-muted-foreground">
               Saldo tersedia {rupiah(wallet.balance_available)} &middot; minimal{" "}
@@ -117,7 +125,9 @@ export function WithdrawDialog({
               </p>
             )}
             {fieldErrors.amount && (
-              <p className="text-xs font-medium text-[var(--danger)]">{fieldErrors.amount}</p>
+              <p className="text-xs font-medium text-[var(--danger)]">
+                {fieldErrors.amount}
+              </p>
             )}
           </div>
 

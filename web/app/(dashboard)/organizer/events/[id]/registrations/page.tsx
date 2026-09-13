@@ -32,6 +32,7 @@ import {
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { usesSquadFields } from "@/lib/scoring";
@@ -270,6 +271,8 @@ export default function RegistrationsPage() {
                 <RegistrationCard
                   key={team.id}
                   team={team}
+                  orgId={orgId!}
+                  eventId={eventId}
                   sport={eventQuery.data?.sport_type}
                   schema={schema}
                   pending={mutate.isPending}
@@ -304,6 +307,8 @@ export default function RegistrationsPage() {
 
 function RegistrationCard({
   team,
+  orgId,
+  eventId,
   sport,
   schema,
   pending,
@@ -311,6 +316,9 @@ function RegistrationCard({
   onEdit,
 }: {
   team: Team;
+  /** Both needed to reach the fee's documents, which are scoped by event. */
+  orgId: string;
+  eventId: string;
   /** Sport slug — a roster stores position keys, not the words to show. */
   sport?: string | null;
   /** The event's registration form — labels for the answers stored by key. */
@@ -434,6 +442,18 @@ function RegistrationCard({
                 <span className="text-sm font-medium">Gratis</span>
               )}
             </Info>
+            {/* The same documents the manager downloads. The organizer issued
+                them, so they can answer "can you resend my receipt?" without
+                asking the participant to log in. */}
+            {(team.invoice_number || team.receipt_number) && (
+              <Info label="Dokumen">
+                <ParticipantDocumentButtons
+                  subject={{ kind: "registration", orgId, eventId, id: team.id }}
+                  hasInvoice={!!team.invoice_number}
+                  hasReceipt={!!team.receipt_number}
+                />
+              </Info>
+            )}
             {team.status === "approved" && <Info label="Disetujui" value={fmtDateTime(team.approved_at)} />}
             {/* Answers to the event's own team fields, alongside the built-in
                 ones — they are the same kind of fact about the team. */}

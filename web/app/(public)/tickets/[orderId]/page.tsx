@@ -12,6 +12,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QrCode } from "@/components/event/qr-code";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
+import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
 import "../../event-shell.css";
 
@@ -134,6 +136,20 @@ export default function ETicketPage() {
               {TICKET_ORDER_STATUS_LABELS[order.status]}
             </Badge>
           </div>
+        </div>
+
+        {/* The buyer's own documents. This page is the only place they can
+            reach them — a ticket buyer never signs up, so there is no
+            dashboard to put them in. */}
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+          {/* Worth copying even from the buyer's own screen: this page is
+              reached by link, so saving it somewhere is how they get back. */}
+          <CopyLinkButton path={`/tickets/${order.id}`} label="Salin tautan" />
+          <ParticipantDocumentButtons
+            subject={{ kind: "ticket-order", id: order.id }}
+            hasInvoice={!!order.invoice_number}
+            hasReceipt={!!order.receipt_number}
+          />
         </div>
       </Card>
 

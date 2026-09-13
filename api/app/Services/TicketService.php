@@ -24,7 +24,22 @@ use Throwable;
  */
 class TicketService
 {
-    public function __construct(protected PlanGate $gate, protected WalletService $wallet) {}
+    public function __construct(
+        protected PlanGate $gate,
+        protected WalletService $wallet,
+        protected DocumentNumberService $numbers,
+        protected ParticipantDocumentService $documents,
+    ) {}
+
+    /** @param  'invoice'|'receipt'  $kind */
+    protected function number(string $kind): string
+    {
+        return $this->numbers->next(
+            TicketOrder::class,
+            "{$kind}_number",
+            config("billing.ticket_{$kind}_prefix"),
+        );
+    }
 
     /**
      * Create a pending order, reserve the quota and issue one QR ticket per
@@ -42,12 +57,12 @@ class TicketService
      * @param  array{buyer_name: string, buyer_email: string, buyer_phone?: string|null, quantity: int}  $buyer
      * @param  list<string|null>  $holderNames
      */
-    public function purchase(TicketCategory $category, array $buyer, array $holderNames, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null, ?string $paymentChannel = null, float $gatewayFee = 0.0, float $serviceFee = 0.0): TicketOrder
+    public function purchase(TicketCategory $category, array $buyer, array $holderNames, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null, ?string $paymentChannel = null, float $gatewayFee = 0.0, float $serviceFee = 0.0, float $gatewayTax = 0.0): TicketOrder
     {
         $quantity = (int) $buyer['quantity'];
         $unitPrice = (float) $category->price;
 
-        return DB::transaction(function () use ($category, $buyer, $holderNames, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee) {
+        return DB::transaction(function () use ($category, $buyer, $holderNames, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee, $gatewayTax) {
             $category->increment('sold', $quantity);
 
             $order = $category->orders()->create([
@@ -59,11 +74,17 @@ class TicketService
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'total_price' => $unitPrice * $quantity,
+                // A free ticket has no bill, so it gets no document — a Rp 0
+                // invoice claims a transaction that never happened.
+                'invoice_number' => $unitPrice * $quantity > 0 ? $this->number('invoice') : null,
                 'platform_fee' => 0,
                 'status' => 'pending',
                 'payment_method' => $paymentMethod,
                 'payment_channel' => $paymentChannel,
                 'gateway_fee' => $gatewayFee,
+                // Already inside gateway_fee; stored so the PDF can show the
+                // tax as its own line without recomputing a rate that moves.
+                'gateway_tax' => $gatewayTax,
                 'service_fee' => $serviceFee,
                 'payment_deadline_at' => $deadline,
                 'midtrans_order_id' => $orderId,
@@ -95,7 +116,14 @@ class TicketService
         }
 
         DB::transaction(function () use ($order) {
-            $order->update(['status' => 'paid', 'paid_at' => Carbon::now()]);
+            $order->update([
+                'status' => 'paid',
+                'paid_at' => Carbon::now(),
+                // `??` keeps a re-delivered webhook from issuing a second
+                // receipt for one payment; free orders never get one at all.
+                'receipt_number' => $order->receipt_number
+                    ?? ((float) $order->total_price > 0 ? $this->number('receipt') : null),
+            ]);
 
             // A manual transfer went straight into the organizer's own bank
             // account — the money never passed through us, so crediting the

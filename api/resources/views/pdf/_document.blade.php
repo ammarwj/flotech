@@ -3,8 +3,10 @@
   HTML/CSS subset: tables for layout, no flexbox or grid.
 --}}
 @php
-    $org = $order->organization;
-    $plan = $order->plan;
+    // Only the plan-order documents use these two; participant documents
+    // override every block that reads them.
+    $org = $order->organization ?? null;
+    $plan = $order->plan ?? null;
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -36,11 +38,18 @@
     <table>
         <tr>
             <td style="width: 55%; vertical-align: top;">
-                <div class="issuer-name">{{ $issuer['issuer_name'] }}</div>
-                <div class="muted">{{ $issuer['issuer_address'] }}</div>
-                <div class="muted">{{ $issuer['issuer_email'] }}</div>
-                @if (! empty($issuer['issuer_npwp']))
-                    <div class="muted">NPWP: {{ $issuer['issuer_npwp'] }}</div>
+                {{-- Who is selling. The platform for plan orders, the organizer
+                     for tickets and registration fees — that money lands in
+                     their wallet, so the document is theirs to issue. --}}
+                @hasSection('issuer')
+                    @yield('issuer')
+                @else
+                    <div class="issuer-name">{{ $issuer['issuer_name'] }}</div>
+                    <div class="muted">{{ $issuer['issuer_address'] }}</div>
+                    <div class="muted">{{ $issuer['issuer_email'] }}</div>
+                    @if (! empty($issuer['issuer_npwp']))
+                        <div class="muted">NPWP: {{ $issuer['issuer_npwp'] }}</div>
+                    @endif
                 @endif
             </td>
             <td style="vertical-align: top;">
@@ -55,12 +64,16 @@
             <tr>
                 <td style="width: 55%; vertical-align: top;">
                     <div class="muted">Ditagihkan kepada</div>
-                    <div style="font-weight: bold; margin-top: 4px;">{{ $org->name }}</div>
-                    @if ($org->contact_email)
-                        <div class="muted">{{ $org->contact_email }}</div>
-                    @endif
-                    @if ($org->contact_phone)
-                        <div class="muted">{{ $org->contact_phone }}</div>
+                    @hasSection('billed-to')
+                        @yield('billed-to')
+                    @else
+                        <div style="font-weight: bold; margin-top: 4px;">{{ $org->name }}</div>
+                        @if ($org->contact_email)
+                            <div class="muted">{{ $org->contact_email }}</div>
+                        @endif
+                        @if ($org->contact_phone)
+                            <div class="muted">{{ $org->contact_phone }}</div>
+                        @endif
                     @endif
                 </td>
                 <td style="vertical-align: top;">
@@ -78,30 +91,37 @@
             <th style="width: 140px;">Event</th>
             <th class="right" style="width: 140px;">Jumlah</th>
         </tr>
-        <tr>
-            <td>
-                <div style="font-weight: bold;">Paket {{ $plan?->name ?? '—' }}</div>
-                <div class="muted">Berlaku untuk 1 event</div>
-            </td>
-            {{-- A credit that has not been spent yet is still a valid document. --}}
-            <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
-            <td class="right">{{ $money($order->amount) }}</td>
-        </tr>
+        @hasSection('items')
+            @yield('items')
+        @else
+            <tr>
+                <td>
+                    <div style="font-weight: bold;">Paket {{ $plan?->name ?? '—' }}</div>
+                    <div class="muted">Berlaku untuk 1 event</div>
+                </td>
+                {{-- A credit that has not been spent yet is still a valid document. --}}
+                <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
+                <td class="right">{{ $money($order->amount) }}</td>
+            </tr>
+        @endif
         @if ($order->service_fee > 0)
             <tr>
                 <td colspan="2">Biaya layanan</td>
                 <td class="right">{{ $money($order->service_fee) }}</td>
             </tr>
         @endif
+        {{-- Only plan orders store the tax apart from the fee; ticket_orders and
+             teams carry the taxed total alone, so they print one combined line
+             rather than a split nothing in their row backs. --}}
         @if ($order->gateway_fee > 0)
-            {{-- gateway_fee already includes gateway_tax; the fee line shows the
-                 pre-tax part so the two rows add up to what was charged. --}}
             <tr>
-                <td colspan="2">Biaya payment gateway</td>
-                <td class="right">{{ $money($order->gateway_fee - $order->gateway_tax) }}</td>
+                <td colspan="2">{{ $taxSplit ?? false ? 'Biaya payment gateway' : 'Biaya pembayaran' }}</td>
+                <td class="right">
+                    {{ $money($taxSplit ?? false ? $order->gateway_fee - $order->gateway_tax : $order->gateway_fee) }}
+                </td>
             </tr>
         @endif
-        @if ($order->gateway_tax > 0)
+        @if (($taxSplit ?? false) && $order->gateway_tax > 0)
             <tr>
                 <td colspan="2">PPN</td>
                 <td class="right">{{ $money($order->gateway_tax) }}</td>
@@ -117,6 +137,7 @@
 
     <div class="footer">
         Dokumen ini dibuat otomatis oleh sistem {{ $issuer['issuer_name'] }} dan sah tanpa tanda tangan.
+        @yield('footer-note')
     </div>
 </body>
 </html>

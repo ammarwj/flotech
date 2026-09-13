@@ -27,6 +27,30 @@ return [
 
     'receipt_prefix' => env('BILLING_RECEIPT_PREFIX', 'KW'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Participant documents
+    |--------------------------------------------------------------------------
+    |
+    | Tickets and registration fees are issued by the ORGANIZER, not by us —
+    | that money lands in their wallet, so the identity on those PDFs comes
+    | from the `organizations` row, not from the issuer fields above.
+    |
+    | Separate prefixes so each stream keeps its own monthly sequence. Sharing
+    | one prefix would interleave three unrelated ledgers into a single run of
+    | numbers, and a gap in an invoice sequence is exactly what an auditor asks
+    | about.
+    |
+    */
+
+    'ticket_invoice_prefix' => env('BILLING_TICKET_INVOICE_PREFIX', 'INV-T'),
+
+    'ticket_receipt_prefix' => env('BILLING_TICKET_RECEIPT_PREFIX', 'KW-T'),
+
+    'registration_invoice_prefix' => env('BILLING_REG_INVOICE_PREFIX', 'INV-R'),
+
+    'registration_receipt_prefix' => env('BILLING_REG_RECEIPT_PREFIX', 'KW-R'),
+
     // Days a past_due invoice stays payable before it reads as overdue.
     'due_days' => (int) env('BILLING_DUE_DAYS', 7),
 

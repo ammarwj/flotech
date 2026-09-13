@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Team;
+use App\Services\ParticipantDocumentService;
 use App\Support\MailLinks;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,13 +32,29 @@ class RegistrationPaid extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $event = $this->team->event;
+        $docs = app(ParticipantDocumentService::class);
 
-        return (new MailMessage)
+        $mail = (new MailMessage)
             ->subject('Pembayaran diterima — '.$event->name)
             ->markdown('mail.registration-paid', [
                 'team' => $this->team,
                 'event' => $event,
                 'url' => MailLinks::team($this->team),
             ]);
+
+        // Invoice first: it is the document that came first, and mail clients
+        // list attachments in the order they were added. A free entry has
+        // neither number and gets neither file.
+        foreach (['invoice', 'receipt'] as $kind) {
+            if ($this->team->{"{$kind}_number"} !== null) {
+                $mail->attachData(
+                    $docs->bytes($kind, $this->team),
+                    $docs->filename($kind, $this->team),
+                    ['mime' => 'application/pdf'],
+                );
+            }
+        }
+
+        return $mail;
     }
 }

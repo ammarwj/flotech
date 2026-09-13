@@ -3,9 +3,11 @@
 namespace App\Mail;
 
 use App\Models\TicketOrder;
+use App\Services\ParticipantDocumentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -41,5 +43,29 @@ class TicketPurchasedMail extends Mailable implements ShouldQueue
                 'ticketUrl' => rtrim((string) config('app.frontend_url'), '/').'/tickets/'.$this->order->id,
             ],
         );
+    }
+
+    /**
+     * Invoice and receipt, in that order — mail clients list attachments the
+     * way they were added, and the bill came before the proof of payment.
+     *
+     * A free ticket has neither number and gets neither file; the confirmation
+     * itself still goes out.
+     *
+     * @return list<\Illuminate\Mail\Mailables\Attachment>
+     */
+    public function attachments(): array
+    {
+        $docs = app(ParticipantDocumentService::class);
+        $order = $this->order;
+
+        return collect(['invoice', 'receipt'])
+            ->filter(fn (string $kind) => $order->{"{$kind}_number"} !== null)
+            ->map(fn (string $kind) => Attachment::fromData(
+                fn () => $docs->bytes($kind, $order),
+                $docs->filename($kind, $order),
+            )->withMime('application/pdf'))
+            ->values()
+            ->all();
     }
 }

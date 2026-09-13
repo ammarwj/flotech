@@ -37,6 +37,9 @@ class TeamResource extends JsonResource
             'payment_status' => $this->payment_status,
             'payment_amount' => (float) $this->payment_amount,
             'platform_fee' => (float) $this->platform_fee,
+            // Null on a free registration, which never had a bill to document.
+            'invoice_number' => $this->invoice_number,
+            'receipt_number' => $this->receipt_number,
             'paid_at' => $this->paid_at,
             'midtrans_token' => $this->midtrans_token,
             'payment_method' => $this->payment_method,

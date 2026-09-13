@@ -26,6 +26,11 @@ class TicketOrderResource extends JsonResource
             'unit_price' => (float) $this->unit_price,
             'total_price' => (float) $this->total_price,
             'platform_fee' => (float) $this->platform_fee,
+            // Null on a free order, which never had a bill to document. The
+            // client shows a download button per number rather than guessing
+            // from payment status.
+            'invoice_number' => $this->invoice_number,
+            'receipt_number' => $this->receipt_number,
             'status' => $this->status,
             'paid_at' => $this->paid_at,
             'created_at' => $this->created_at,
