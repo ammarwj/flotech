@@ -35,6 +35,11 @@ class UpdateSiteSettingsRequest extends FormRequest
             'contact_email' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:20'],
             'sales_email' => ['nullable', 'email', 'max:255'],
+            // Uploaded via /uploads/image and /uploads/favicon, so what arrives
+            // here is a URL our own storage handed back — validated all the
+            // same, since nothing stops an admin pasting one in by hand.
+            'logo_url' => ['nullable', 'string', 'url', 'max:2048'],
+            'favicon_url' => ['nullable', 'string', 'url', 'max:2048'],
             'social_links' => ['nullable', 'array'],
             ...SocialPlatforms::rules(),
             // Deliberately no "all three or none": an admin must be able to save
@@ -56,6 +61,8 @@ class UpdateSiteSettingsRequest extends FormRequest
             'contact_email.email' => 'Format email kontak tidak valid.',
             'sales_email.email' => 'Format email sales tidak valid.',
             'contact_phone.max' => 'Nomor telepon maksimal 20 karakter.',
+            'logo_url.url' => 'Logo harus berupa URL yang valid.',
+            'favicon_url.url' => 'Favicon harus berupa URL yang valid.',
             'bank_name.max' => 'Nama bank maksimal 60 karakter.',
             'account_number.max' => 'Nomor rekening maksimal 40 karakter.',
             'account_holder.max' => 'Nama pemilik rekening maksimal 100 karakter.',

@@ -21,7 +21,7 @@ import {
   ReceiptText,
   MessageSquareQuote,
   HelpCircle,
-  Share2,
+  Palette,
   Activity,
   BarChart3,
   Globe,
@@ -183,7 +183,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/admin/testimonials", label: "Testimoni", icon: MessageSquareQuote },
       { href: "/admin/faqs", label: "FAQ", icon: HelpCircle },
-      { href: "/admin/site-settings", label: "Kontak & Sosmed", icon: Share2 },
+      { href: "/admin/site-settings", label: "Pengaturan Situs", icon: Palette },
     ],
   },
   {

@@ -22,6 +22,11 @@ class PublicSiteSettingResource extends JsonResource
         return [
             'contact_email' => $this->contact_email,
             'contact_phone' => $this->contact_phone,
+            // Public on purpose, unlike sales_email and the bank columns below:
+            // the nav, the footer and the favicon are rendered for visitors who
+            // are not logged in, so branding has to reach them.
+            'logo_url' => $this->logo_url,
+            'favicon_url' => $this->favicon_url,
             // `sales_email` is deliberately absent. It fed the "Hubungi Sales"
             // CTA on the Professional card, which went when the catalogue became
             // self-serve, and no enterprise tier was ever added to replace it —

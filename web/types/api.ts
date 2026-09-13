@@ -105,6 +105,13 @@ export interface SiteSettings {
    * PublicSiteSettingResource stopped shipping it — so nothing public reads it.
    */
   sales_email: string | null;
+  /**
+   * Platform branding, uploaded at /admin/site-settings. Public, unlike the
+   * fields around them: the nav, footer and favicon render for logged-out
+   * visitors. Null means "use the built-in mark".
+   */
+  logo_url: string | null;
+  favicon_url: string | null;
   social_links: SocialLinks;
   /**
    * The platform's own account — where an organizer transfers for a plan while

@@ -6,8 +6,10 @@ FROM php:8.4-cli-alpine AS base
 # exit code is known in the same process that holds the DB connection.
 RUN apk add --no-cache \
     libpng libjpeg-turbo freetype libwebp libzip icu-libs postgresql-libs certbot \
+    imagemagick imagemagick-libs \
   && apk add --no-cache --virtual .build-deps \
     $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev libzip-dev icu-dev postgresql-dev \
+    imagemagick-dev \
   && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
   && docker-php-ext-install -j"$(nproc)" \
     pdo_pgsql pgsql gd zip bcmath intl exif pcntl opcache \
@@ -15,6 +17,11 @@ RUN apk add --no-cache \
   # the C extension and set REDIS_CLIENT=phpredis in production.
   && pecl install redis \
   && docker-php-ext-enable redis \
+  # imagick, for one thing GD cannot do: encode .ico. Intervention ships an
+  # IcoEncoder for the Imagick driver only, and the platform favicon has to be
+  # a real icon file. Everything else still goes through GD.
+  && pecl install imagick \
+  && docker-php-ext-enable imagick \
   && apk del .build-deps
 
 # Composer (from official image).

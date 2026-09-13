@@ -4,11 +4,15 @@
     $brand = (string) config('brand.name');
     $head = \Illuminate\Support\Str::before($brand, '-');
     $tail = \Illuminate\Support\Str::after($brand, $head);
+
+    // Read here, not passed in: mail is rendered by a queue worker, where there
+    // is no request to carry it.
+    $logo = \App\Models\SiteSetting::current()->logo_url;
 @endphp
 <x-mail::layout>
 {{-- Header --}}
 <x-slot:header>
-<x-mail::header :url="config('brand.url')">
+<x-mail::header :url="config('brand.url')" :logo="$logo" :brand="$brand">
 {{ $head }}<span class="brand-accent">{{ $tail }}</span>
 </x-mail::header>
 </x-slot:header>

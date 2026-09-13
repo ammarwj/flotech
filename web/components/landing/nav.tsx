@@ -7,7 +7,7 @@ import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import { MobileMenuButton, MobileSheet, useSheetClose } from "@/components/shared/mobile-sheet";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { useAuthStore } from "@/stores/auth-store";
-import { LogoMark } from "./icons";
+import { Logo } from "@/components/shared/logo";
 
 // Anchors are absolute so they still reach the landing sections when the nav is
 // rendered on another page (e.g. the event catalog).
@@ -36,12 +36,7 @@ export function Nav() {
   return (
     <header className="nav" style={{ boxShadow: scrolled ? "var(--shadow-sm)" : "none" }}>
       <div className="container nav-inner">
-        <Link href="/" className="logo" aria-label="flo-event beranda">
-          <span className="logo-mark">
-            <LogoMark />
-          </span>
-          flo<span>-event</span>
-        </Link>
+        <Logo ariaLabel="flo-event beranda" />
         <nav className="nav-links">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href}>

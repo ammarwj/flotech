@@ -57,3 +57,9 @@ backups-data-prod/
 
 CLAUDE.md
 sql
+# Local Compose overrides. Never commit: deploy.sh runs `docker compose up`,
+# which picks this file up automatically — a dev override on the server would
+# mount a source tree over the built image and point the certificate paths at
+# a directory that does not exist there.
+docker-compose.override.yml
+.docker/

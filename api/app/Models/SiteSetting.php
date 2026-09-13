@@ -21,6 +21,8 @@ class SiteSetting extends Model
         'contact_email',
         'contact_phone',
         'sales_email',
+        'logo_url',
+        'favicon_url',
         'social_links',
         'bank_name',
         'bank_code',

@@ -23,6 +23,8 @@ class SiteSettingResource extends JsonResource
             'contact_email' => $this->contact_email,
             'contact_phone' => $this->contact_phone,
             'sales_email' => $this->sales_email,
+            'logo_url' => $this->logo_url,
+            'favicon_url' => $this->favicon_url,
             'social_links' => $this->socialLinksMap(),
             // The platform's own payout account, behind `superadmin`. Its public
             // counterpart deliberately omits these: the footer has no business

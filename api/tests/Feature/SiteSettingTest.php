@@ -179,4 +179,99 @@ class SiteSettingTest extends TestCase
             ->assertJsonMissingPath('data.account_number')
             ->assertJsonMissingPath('data.account_holder');
     }
+
+    /**
+     * Branding is public; the sales address and bank columns beside it are not.
+     *
+     * Compared in one response on purpose: asserting the logo is present would
+     * pass just as well if the public resource had started leaking everything.
+     */
+    public function test_branding_is_public_but_the_private_fields_stay_private(): void
+    {
+        $this->actingAs($this->superAdmin(), 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'logo_url' => 'https://cdn.example.test/platform/logo.webp',
+                'favicon_url' => 'https://cdn.example.test/platform/icon.ico',
+                'sales_email' => 'sales@floevent.id',
+                'bank_name' => 'BCA',
+            ])
+            ->assertOk();
+
+        $this->getJson('/api/v1/site-settings')
+            ->assertOk()
+            ->assertJsonPath('data.logo_url', 'https://cdn.example.test/platform/logo.webp')
+            ->assertJsonPath('data.favicon_url', 'https://cdn.example.test/platform/icon.ico')
+            ->assertJsonMissingPath('data.sales_email')
+            ->assertJsonMissingPath('data.bank_name');
+    }
+
+    /**
+     * Uploading one of the two must not demand the other — the same reason the
+     * bank fields carry no "all or nothing" rule.
+     */
+    public function test_a_logo_can_be_saved_without_a_favicon(): void
+    {
+        $this->actingAs($this->superAdmin(), 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'logo_url' => 'https://cdn.example.test/platform/logo.webp',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.logo_url', 'https://cdn.example.test/platform/logo.webp')
+            ->assertJsonPath('data.favicon_url', null);
+    }
+
+    public function test_branding_must_be_a_url(): void
+    {
+        $this->actingAs($this->superAdmin(), 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'logo_url' => 'bukan-url',
+                'favicon_url' => 'juga/bukan',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['logo_url', 'favicon_url']);
+    }
+
+    /**
+     * Every surface falls back to the built-in mark, so "nothing uploaded" has
+     * to reach the client as null rather than an absent key.
+     */
+    public function test_branding_is_null_when_nothing_has_been_uploaded(): void
+    {
+        $this->getJson('/api/v1/site-settings')
+            ->assertOk()
+            ->assertJsonPath('data.logo_url', null)
+            ->assertJsonPath('data.favicon_url', null);
+    }
+
+    /**
+     * The admin page saves one tab at a time, so a payload carrying only that
+     * tab's fields must leave every other tab alone.
+     *
+     * This is what `fill($request->validated())` buys — validated() returns
+     * only the keys that were sent. Asserting the saved field changed would
+     * pass even if the rest had been wiped, so the point is the fields that
+     * were *not* in the payload.
+     */
+    public function test_saving_one_group_of_fields_leaves_the_others_untouched(): void
+    {
+        $admin = $this->superAdmin();
+
+        $this->actingAs($admin, 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'contact_email' => 'kontak@floevent.id',
+                'bank_name' => 'BCA',
+                'social_links' => ['instagram' => '@floevent'],
+            ])
+            ->assertOk();
+
+        $this->actingAs($admin, 'api')
+            ->putJson('/api/v1/admin/site-settings', [
+                'logo_url' => 'https://cdn.example.test/logo.webp',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.logo_url', 'https://cdn.example.test/logo.webp')
+            ->assertJsonPath('data.contact_email', 'kontak@floevent.id')
+            ->assertJsonPath('data.bank_name', 'BCA')
+            ->assertJsonPath('data.social_links.instagram', 'https://instagram.com/floevent');
+    }
 }

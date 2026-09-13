@@ -23,6 +23,7 @@ export function ImageUploadField({
   onBusyChange,
   folder,
   maxDim,
+  upload,
   hint,
   className,
   previewClassName,
@@ -37,6 +38,14 @@ export function ImageUploadField({
   folder: string;
   /** Longest side kept, in pixels. */
   maxDim: number;
+  /**
+   * Where the picked file goes. Defaults to the WebP pipeline: compress in the
+   * browser, then POST to /uploads/image.
+   *
+   * The favicon overrides it — that one has to reach the server as the original
+   * image so it can be re-encoded to .ico, and a WebP blob cannot be.
+   */
+  upload?: (file: File) => Promise<string>;
   hint?: React.ReactNode;
   className?: string;
   /** Shape of the preview box, e.g. "h-20 w-20" or "aspect-[3/1] w-full". */
@@ -69,9 +78,11 @@ export function ImageUploadField({
 
     setBusy(true);
     try {
-      const webp = await compressToWebp(file, { maxDim, quality: 0.85 });
-      setPreview(URL.createObjectURL(webp));
-      onChange(await uploadImage(webp, folder));
+      // Preview from whatever we are about to send, so what is shown is what
+      // was uploaded.
+      const sent = upload ? file : await compressToWebp(file, { maxDim, quality: 0.85 });
+      setPreview(URL.createObjectURL(sent));
+      onChange(upload ? await upload(sent) : await uploadImage(sent, folder));
     } catch {
       toast.error(`Gagal mengunggah ${label.toLowerCase()}. Coba lagi.`);
       setPreview(null);

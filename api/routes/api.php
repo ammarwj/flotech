@@ -427,6 +427,9 @@ Route::prefix('v1')->group(function () {
             // Contact & socials: one row, so a settings pair instead of a resource.
             Route::get('site-settings', [SiteSettingController::class, 'index']);
             Route::put('site-settings', [SiteSettingController::class, 'update']);
+            // The platform favicon. Guarded, unlike the uploads/* routes the
+            // public registration form posts to — only this CMS uploads one.
+            Route::post('uploads/favicon', [UploadController::class, 'favicon']);
 
             // Catalog administration.
             Route::get('engines', [ConfigOptionController::class, 'engines']);

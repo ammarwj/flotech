@@ -337,6 +337,9 @@ img { max-width: 100%; display: block; }
   flex-shrink: 0;
 }
 .logo-mark svg { width: 20px; height: 20px; }
+/* An uploaded logo replaces the mark *and* the wordmark, so it is given the
+   height of the lockup it stands in for and keeps its own aspect ratio. */
+.logo-image { height: 52px; width: auto; max-width: 180px; object-fit: contain; }
 .logo span { color: var(--brand-600); }
 [data-theme="dark"] .logo span { color: var(--brand-500); }
 

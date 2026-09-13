@@ -84,7 +84,26 @@ export async function getAdminSiteSettings(): Promise<SiteSettings> {
   return data.data;
 }
 
-export type SiteSettingsInput = SiteSettings;
+/**
+ * Partial on purpose: /admin/site-settings saves one tab at a time, and the
+ * API's `fill($request->validated())` only touches the keys it was sent — so an
+ * omitted field keeps its stored value rather than being cleared.
+ */
+export type SiteSettingsInput = Partial<SiteSettings>;
+
+/**
+ * Upload the platform favicon. Unlike `uploadImage`, the file is sent as-is:
+ * the server re-encodes it to a real .ico, which it cannot do from a WebP blob.
+ */
+export async function uploadFavicon(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.post<ApiEnvelope<{ file_url: string; key: string }>>(
+    "/admin/uploads/favicon",
+    form
+  );
+  return data.data.file_url;
+}
 
 export async function updateSiteSettings(payload: SiteSettingsInput): Promise<SiteSettings> {
   const { data } = await apiClient.put<ApiEnvelope<SiteSettings>>("/admin/site-settings", payload);

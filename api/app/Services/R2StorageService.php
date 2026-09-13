@@ -67,14 +67,27 @@ class R2StorageService
     /**
      * Server-side upload of raw contents straight to R2 via the AWS SDK.
      * R2 ignores ACLs, so none is set; public reads go through publicUrl().
+     *
+     * `$immutable` is opt-in rather than the default, and the difference is the
+     * shape of the key. An upload keyed by UUID can never change its bytes — a
+     * replaced logo is a different URL — so a year of caching is free and saves
+     * re-checking the platform logo on every page load of every visit. A key
+     * that can be written twice (certificates are re-issued to
+     * `certificates/{id}.pdf`) must not carry it: the browser would keep
+     * serving the superseded file with no way to notice.
      */
-    public function put(string $key, string $contents, ?string $contentType = null): void
-    {
+    public function put(
+        string $key,
+        string $contents,
+        ?string $contentType = null,
+        bool $immutable = false,
+    ): void {
         $this->client->putObject(array_filter([
             'Bucket' => $this->bucket,
             'Key' => $key,
             'Body' => $contents,
             'ContentType' => $contentType,
+            'CacheControl' => $immutable ? 'public, max-age=31536000, immutable' : null,
         ]));
     }
 

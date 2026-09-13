@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
+use Intervention\Image\Encoders\IcoEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
 
@@ -46,16 +48,59 @@ class UploadController extends Controller
             ->scaleDown(width: 2000, height: 2000)
             ->encode(new WebpEncoder(quality: 82));
 
+        return ApiResponse::success($this->store($key, $contents, 'image/webp'));
+    }
+
+    /**
+     * The platform's favicon, stored as a real .ico.
+     *
+     * Separate from image() because it is the one upload GD cannot produce:
+     * Intervention ships an IcoEncoder for the Imagick driver only (see the
+     * imagick install in api/Dockerfile). Everything else still goes through GD
+     * and WebP — this endpoint is the only Imagick caller in the app.
+     *
+     * Behind `superadmin`, unlike the three uploads around it. Those are public
+     * because the public registration form posts to them; nothing but the admin
+     * CMS has any reason to reach this one.
+     */
+    public function favicon(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'image', 'max:5120'],
+        ]);
+
+        $contents = (string) (new ImageManager(new ImagickDriver))
+            ->decodePath($request->file('file')->getRealPath())
+            // cover(), not scaleDown(): an icon is square, and a browser given a
+            // rectangle squashes it rather than letterboxing.
+            ->cover(64, 64)
+            ->encode(new IcoEncoder);
+
+        return ApiResponse::success($this->store('platform/'.Str::uuid().'.ico', $contents, 'image/x-icon'));
+    }
+
+    /**
+     * Put the bytes somewhere they can be served from, and say where.
+     *
+     * R2 in production, the local `public` disk otherwise so uploads render in
+     * development too.
+     *
+     * @return array{file_url: string, key: string}
+     */
+    protected function store(string $key, string $contents, string $mime): array
+    {
         if (config('r2.key')) {
             // Direct SDK upload; the bucket is exposed via its public r2.dev URL.
-            $this->r2->put($key, $contents, 'image/webp');
+            // Immutable: every key here carries a UUID, so replacing an image
+            // mints a new URL rather than new bytes behind the old one.
+            $this->r2->put($key, $contents, $mime, immutable: true);
             $url = $this->r2->publicUrl($key);
         } else {
             Storage::disk('public')->put($key, $contents);
             $url = Storage::disk('public')->url($key);
         }
 
-        return ApiResponse::success(['file_url' => $url, 'key' => $key]);
+        return ['file_url' => $url, 'key' => $key];
     }
 
     /**
@@ -96,19 +141,10 @@ class UploadController extends Controller
             $ext = 'webp';
         }
 
-        $key = $folder.'/'.Str::uuid().'.'.$ext;
-
-        if (config('r2.key')) {
-            $this->r2->put($key, $contents, $mime);
-            $url = $this->r2->publicUrl($key);
-        } else {
-            Storage::disk('public')->put($key, $contents);
-            $url = Storage::disk('public')->url($key);
-        }
+        $stored = $this->store($folder.'/'.Str::uuid().'.'.$ext, $contents, $mime);
 
         return ApiResponse::success([
-            'file_url' => $url,
-            'key' => $key,
+            ...$stored,
             // The stored name, not the one the browser sent: it is what the
             // extension check in TeamRosterService reads, and an image renamed
             // by the re-encode must not still claim to be a .png.

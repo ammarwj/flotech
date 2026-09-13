@@ -2,13 +2,12 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { Mail, Phone } from "lucide-react";
 
 import { SocialIcon } from "@/components/shared/social-icon";
-import { getPublicSiteSettings } from "@/lib/api/landing";
+import { useSiteSettings } from "@/lib/hooks/use-site-settings";
 import { filledSocialLinks } from "@/lib/social";
-import { LogoMark } from "./icons";
+import { Logo } from "@/components/shared/logo";
 
 const COLUMNS = [
   {
@@ -46,7 +45,7 @@ const COLUMNS = [
 export function Footer() {
   // Rendered on six public pages, so it stays prop-less and fetches its own
   // data — the callers include async server components that could not pass it.
-  const { data } = useQuery({ queryKey: ["public-site-settings"], queryFn: getPublicSiteSettings });
+  const { data } = useSiteSettings();
 
   const socials = filledSocialLinks(data?.social_links);
   const email = data?.contact_email;
@@ -59,12 +58,7 @@ export function Footer() {
       <div className="container">
         <div className="footer-grid">
           <div>
-            <Link href="/" className="logo" style={{ marginBottom: 16 }}>
-              <span className="logo-mark">
-                <LogoMark />
-              </span>
-              flo<span>-event</span>
-            </Link>
+            <Logo style={{ marginBottom: 16 }} />
             <p style={{ color: "var(--text-muted)", fontSize: "14.5px", maxWidth: 300 }}>
               Atur Turnamen, Tanpa Batas. Platform SaaS manajemen event olahraga end-to-end untuk penyelenggara
               Indonesia.
