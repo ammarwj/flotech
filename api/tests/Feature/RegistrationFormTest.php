@@ -489,6 +489,42 @@ class RegistrationFormTest extends TestCase
             ->assertJsonValidationErrors(['file']);
     }
 
+    /**
+     * The two ways a too-big file can be refused must read the same.
+     *
+     * PHP's own limit sits underneath ours and throws the bytes away before any
+     * validator runs — that is how a 4 MB scan once came back as "The file
+     * failed to upload", naming no size, while every message in the UI promised
+     * 5 MB. Compared against the validator's message rather than asserted alone:
+     * checking only that each is a 422 passes even when one of them says
+     * nothing a person can act on.
+     */
+    public function test_oversize_messages_quote_the_limit_whichever_layer_refuses(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+
+        $viaValidator = $this->actingAs($user, 'api')
+            ->postJson('/api/v1/uploads/document', ['file' => UploadedFile::fake()->create('big.pdf', 6144, 'application/pdf')])
+            ->assertStatus(422)
+            ->json('errors.file.0');
+
+        // PHP's rejection: the field arrives carrying UPLOAD_ERR_INI_SIZE, which
+        // is what an over-upload_max_filesize file actually looks like here.
+        $overIni = UploadedFile::fake()->create('big.pdf', 10, 'application/pdf');
+        $viaPhp = $this->actingAs($user, 'api')
+            ->post('/api/v1/uploads/document', [
+                'file' => new UploadedFile(
+                    $overIni->getRealPath(), 'big.pdf', 'application/pdf', UPLOAD_ERR_INI_SIZE, true
+                ),
+            ], ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->json('errors.file.0');
+
+        $this->assertSame($viaValidator, $viaPhp);
+        $this->assertStringContainsString('MB', (string) $viaPhp);
+    }
+
     public function test_public_resource_carries_the_schema_but_no_answers(): void
     {
         $event = $this->openEvent($this->fullSchema());

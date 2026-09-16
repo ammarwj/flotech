@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\R2StorageService;
 use App\Support\ApiResponse;
+use App\Support\UploadLimits;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -32,10 +33,11 @@ class UploadController extends Controller
      */
     public function image(Request $request): JsonResponse
     {
+        UploadLimits::guard($request);
         $request->validate([
-            'file' => ['required', 'file', 'image', 'max:5120'], // 5 MB
+            'file' => ['required', 'file', 'image', 'max:'.UploadLimits::MAX_KB],
             'folder' => ['nullable', 'string', 'max:100'],
-        ]);
+        ], ['file.max' => UploadLimits::maxMessage()]);
 
         $file = $request->file('file');
         $folder = trim($request->input('folder', 'images'), '/') ?: 'images';
@@ -65,9 +67,10 @@ class UploadController extends Controller
      */
     public function favicon(Request $request): JsonResponse
     {
+        UploadLimits::guard($request);
         $request->validate([
-            'file' => ['required', 'file', 'image', 'max:5120'],
-        ]);
+            'file' => ['required', 'file', 'image', 'max:'.UploadLimits::MAX_KB],
+        ], ['file.max' => UploadLimits::maxMessage()]);
 
         $contents = (string) (new ImageManager(new ImagickDriver))
             ->decodePath($request->file('file')->getRealPath())
@@ -118,10 +121,11 @@ class UploadController extends Controller
      */
     public function document(Request $request): JsonResponse
     {
+        UploadLimits::guard($request);
         $request->validate([
-            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:5120'], // 5 MB
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:'.UploadLimits::MAX_KB],
             'folder' => ['nullable', 'string', 'max:100'],
-        ]);
+        ], ['file.max' => UploadLimits::maxMessage()]);
 
         $file = $request->file('file');
         $folder = trim($request->input('folder', 'documents'), '/') ?: 'documents';

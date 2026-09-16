@@ -41,6 +41,18 @@ export function parseApiError(
 }
 
 /**
+ * The message for one field of a 422, or `fallback` for anything else.
+ *
+ * For uploads, where the interesting failure is a size the browser already
+ * checked against its own copy of the cap: PHP's limits sit under ours and can
+ * be smaller, so the server is the only one that knows the real number. Showing
+ * a generic "coba lagi" there hides a message that says exactly what to do.
+ */
+export function fieldErrorMessage(err: unknown, field: string, fallback: string): string {
+  return parseApiError(err, fallback).fieldErrors[field] ?? fallback;
+}
+
+/**
  * True when a request was rejected because a plan limit/feature gate was hit
  * (HTTP 403 with a `feature` marker in the error bag).
  */

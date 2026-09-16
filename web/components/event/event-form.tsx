@@ -43,7 +43,7 @@ import {
   type EventCategoryInput,
   type EventInput,
 } from "@/lib/api/events";
-import type { FieldErrors } from "@/lib/api/errors";
+import { fieldErrorMessage, type FieldErrors } from "@/lib/api/errors";
 import {
   participantLabel,
   participantModes,
@@ -657,8 +657,8 @@ export function EventForm({
       const webp = await compressToWebp(file, { maxDim: 1280, quality: 0.8 });
       setBannerPreview(URL.createObjectURL(webp));
       set("banner_url", await uploadImage(webp, "events"));
-    } catch {
-      toast.error("Gagal mengunggah gambar. Coba lagi.");
+    } catch (err) {
+      toast.error(fieldErrorMessage(err, "file", "Gagal mengunggah gambar. Coba lagi."));
       setBannerPreview(null);
     } finally {
       setBannerUploading(false);

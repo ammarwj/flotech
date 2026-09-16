@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { uploadImage } from "@/lib/api/events";
+import { fieldErrorMessage } from "@/lib/api/errors";
 import { compressToWebp } from "@/lib/image";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -83,8 +84,10 @@ export function ImageUploadField({
       const sent = upload ? file : await compressToWebp(file, { maxDim, quality: 0.85 });
       setPreview(URL.createObjectURL(sent));
       onChange(upload ? await upload(sent) : await uploadImage(sent, folder));
-    } catch {
-      toast.error(`Gagal mengunggah ${label.toLowerCase()}. Coba lagi.`);
+    } catch (err) {
+      toast.error(
+        fieldErrorMessage(err, "file", `Gagal mengunggah ${label.toLowerCase()}. Coba lagi.`)
+      );
       setPreview(null);
     } finally {
       setBusy(false);

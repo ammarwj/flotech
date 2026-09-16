@@ -5,6 +5,7 @@ import { FileText, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { uploadDocument } from "@/lib/api/events";
+import { fieldErrorMessage } from "@/lib/api/errors";
 import {
   acceptAttr,
   acceptLabel,
@@ -97,8 +98,10 @@ function DocumentSlotRow({
     try {
       const { file_url, file_name } = await uploadDocument(file);
       onChange({ file_url, file_name });
-    } catch {
-      toast.error(`Gagal mengunggah ${slot.label}. Coba lagi.`);
+    } catch (err) {
+      // The server's own message when it has one — it is the only side that
+      // knows the effective size cap and the accepted types.
+      toast.error(fieldErrorMessage(err, "file", `Gagal mengunggah ${slot.label}. Coba lagi.`));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
