@@ -19,8 +19,8 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 | Fase | Isi | Status |
 |---|---|---|
 | 1 | Personel (wasit & staf) | ✅ selesai |
-| 2 | Key gerbang `id_card_generator` | 🚧 berjalan |
-| 3 | Template + editor drag-drop | ⬜ |
+| 2 | Key gerbang `id_card_generator` | ✅ selesai |
+| 3 | Template + editor drag-drop | 🚧 berjalan |
 | 4 | Renderer + batch + ZIP | ⬜ |
 | 5 | `id-cards:prune` | ⬜ |
 
@@ -68,15 +68,24 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 
 ## Fase 2 — Key gerbang
 
-- [ ] `PlanSeeder` — `id_card_generator => 'true'` di **pro** & **professional** (bukan starter)
-- [ ] `FeatureDefinitionSeeder` — `feature_group 'certificate'`, `boolean`, `sort_order` 140
-- [ ] Migrasi data `2026_09_16_100002_add_id_card_generator_feature` — seeder **tidak cukup**,
-      `deploy.sh` cuma menyemai kalau `SEED=1`. Urutan: definisi dulu, baru nilai
-- [ ] `CreatesPlannedEvents::fullPlan()`
-- [ ] `web/lib/plan.ts` `isIdCardEnabled` + docblock `anyEventAllows` (dua → tiga surface)
-- [ ] `PlanGate::orgAllows()` docblock — tiga kalimat yang jadi salah; heuristik "pemanggil
+- [x] `PlanSeeder` — `id_card_generator => 'true'` di **pro** & **professional** (bukan starter).
+      Professional ikut **wajib**, bukan pilihan: `planCovers()` menuntut target upgrade memberi
+      ≥ setiap fitur paket sekarang, jadi Professional tanpa key ini akan menolak Pro →
+      Professional — upgrade paling jelas di katalog. Persis jebakan `platform_fee_percent`
+- [x] `FeatureDefinitionSeeder` — `feature_group 'certificate'`, `boolean`, `sort_order` 140
+- [x] Migrasi data `2026_09_16_100002_add_id_card_generator_feature` — seeder **tidak cukup**,
+      `deploy.sh` cuma menyemai kalau `SEED=1`. Urutan: definisi dulu, baru nilai. Aditif:
+      baris `plan_features` yang sudah ada dilewati, supaya `'false'` yang sengaja diketik
+      super_admin di `/admin/plans` tidak diam-diam dinyalakan ulang
+- [x] `CreatesPlannedEvents::fullPlan()`
+- [x] `web/lib/plan.ts` `isIdCardEnabled` + docblock `anyEventAllows` (dua → tiga surface)
+- [x] `PlanGate::orgAllows()` docblock — tiga kalimat yang jadi salah; heuristik "pemanggil
       ketiga = tandanya per-event" diganti aturan sebenarnya (yang boleh di sini hanya baris
-      template org-scoped)
+      template org-scoped; apa pun yang ber-`event_id`, termasuk mencetak dari template itu,
+      tetap event-keyed)
+- [x] Verifikasi: `migrate` jalan di DB dev (pro & professional = `true`, label terbaca),
+      **suite penuh 573 lulus / 3540 assertion** — termasuk test upgrade yang memakai katalog
+      sungguhan, yang akan merah kalau Professional dilewatkan
 
 ## Fase 3 — Template
 

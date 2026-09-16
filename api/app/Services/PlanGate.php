@@ -127,22 +127,26 @@ class PlanGate
     }
 
     /**
-     * The one org-level question left, for the two things an organization owns
-     * rather than an event: its public profile, and its certificate templates
-     * (org-scoped rows reused across events).
+     * The one org-level question left, for the three things an organization
+     * owns rather than an event: its public profile, its certificate templates,
+     * and its ID card templates (both are org-scoped rows reused across events).
      *
      * Deliberately monotone — once an organization has run one event on a plan
      * carrying the feature, it keeps it. Revoking it when that tournament ends
      * would 404 a profile that is already indexed and linked from every past
      * event page, which is worse than a slightly generous grant.
      *
-     * Everything else must go through the event-keyed methods above. A third
-     * caller appearing here is a sign that feature is really per-event.
+     * Everything else must go through the event-keyed methods above. What
+     * belongs here is only an org-scoped template row — a row with no
+     * `event_id`, designed to be reused across events. Anything carrying an
+     * `event_id`, *including issuing from one of those templates*, stays
+     * event-keyed: designing the card is an organization's, printing a
+     * particular event's cards is that event's.
      *
-     * Deliberately not memoized, unlike planValue() above. This has exactly two
-     * callers and each asks once per request, so a cache would save nothing —
-     * while making the answer go stale the moment an event is created in the
-     * same request. One EXISTS query is the cheaper trade.
+     * Deliberately not memoized, unlike planValue() above. This has exactly
+     * three callers and each asks once per request, so a cache would save
+     * nothing — while making the answer go stale the moment an event is created
+     * in the same request. One EXISTS query is the cheaper trade.
      */
     public function orgAllows(Organization $org, string $featureKey): bool
     {

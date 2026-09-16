@@ -60,6 +60,7 @@ class PlanSeeder extends Seeder
                     'export_data' => 'true',
                     'sponsor_logos' => 'true',
                     'organizer_profile' => 'true',
+                    'id_card_generator' => 'true',
                 ],
             ],
             [
@@ -79,6 +80,10 @@ class PlanSeeder extends Seeder
                     'organizer_profile' => 'true',
                     'certificate_generator' => 'true',
                     'certificate_email' => 'true',
+                    // Pro has this one too, so Professional must carry it or
+                    // planCovers() refuses the plainest upgrade in the
+                    // catalogue — the same way a missing key would.
+                    'id_card_generator' => 'true',
                     // The boolean is what denies and the number is what caps.
                     // A numeric key on its own would grant the other two plans an
                     // uncapped gallery, because PlanGate reads an absent limit as

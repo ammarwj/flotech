@@ -61,6 +61,8 @@ export const isCertificateEnabled = (e?: SportEvent | null) =>
   planAllows(e, "certificate_generator");
 export const isCertificateEmailEnabled = (e?: SportEvent | null) =>
   planAllows(e, "certificate_email");
+export const isIdCardEnabled = (e?: SportEvent | null) =>
+  planAllows(e, "id_card_generator");
 export const isExportEnabled = (e?: SportEvent | null) => planAllows(e, "export_data");
 export const isGalleryEnabled = (e?: SportEvent | null) => planAllows(e, "event_gallery");
 export const isSponsorLogosEnabled = (e?: SportEvent | null) => planAllows(e, "sponsor_logos");
@@ -81,9 +83,11 @@ export const getTeamsPerCategoryLimit = (e?: SportEvent | null) =>
 export const getGalleryLimit = (e?: SportEvent | null) => planLimit(e, "max_gallery_photos");
 
 /**
- * The frontend mirror of PlanGate::orgAllows(), for the two org-level surfaces:
- * certificate templates and the public-profile hint. Monotone by design — see
- * the backend docblock for why revoking would be worse than being generous.
+ * The frontend mirror of PlanGate::orgAllows(), for the three org-level
+ * surfaces: certificate templates, ID card templates, and the public-profile
+ * hint. Monotone by design — see the backend docblock for why revoking would be
+ * worse than being generous, and for why only org-scoped template rows belong
+ * here while printing a particular event's cards stays event-keyed.
  */
 export function anyEventAllows(
   events: SportEvent[] | null | undefined,

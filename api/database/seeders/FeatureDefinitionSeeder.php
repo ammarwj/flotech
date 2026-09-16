@@ -122,6 +122,18 @@ class FeatureDefinitionSeeder extends Seeder
                 'description' => 'Total foto yang bisa diunggah untuk satu event.',
                 'sort_order' => 130,
             ],
+            [
+                'feature_key' => 'id_card_generator',
+                'feature_label' => 'Generator ID card',
+                // Rides in the certificate group rather than getting one of its
+                // own: a single-entry group renders as a stray heading on the
+                // pricing card, and both are the same thing to a buyer — print
+                // something from a template you laid out yourself.
+                'feature_group' => 'certificate',
+                'feature_type' => 'boolean',
+                'description' => 'Cetak kartu identitas pemain, wasit, dan staf dari template.',
+                'sort_order' => 140,
+            ],
         ];
 
         foreach ($definitions as $definition) {

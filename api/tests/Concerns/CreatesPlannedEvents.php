@@ -88,6 +88,7 @@ trait CreatesPlannedEvents
             'certificate_email' => 'true',
             'event_gallery' => 'true',
             'max_gallery_photos' => '-1',
+            'id_card_generator' => 'true',
         ]);
     }
 
