@@ -32,9 +32,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
 
-/** Which of the four lists a row lives in. */
-type FieldSection = "team_fields" | "player_fields";
-type DocSection = "team_documents" | "player_documents";
+/** Which of the six lists a row lives in. */
+type FieldSection = "team_fields" | "player_fields" | "team_official_fields";
+type DocSection = "team_documents" | "player_documents" | "team_official_documents";
 
 const EMPTY_FIELD: CustomField = {
   key: "",
@@ -83,8 +83,10 @@ export default function RegistrationFormPage() {
       ? [
           ...formQuery.data.team_fields,
           ...formQuery.data.player_fields,
+          ...formQuery.data.team_official_fields,
           ...formQuery.data.team_documents,
           ...formQuery.data.player_documents,
+          ...formQuery.data.team_official_documents,
         ].map((r) => r.key)
       : [],
   );
@@ -141,7 +143,9 @@ export default function RegistrationFormPage() {
     setSchema((s) => ({
       ...s,
       [section]:
-        section === "team_fields" || section === "player_fields"
+        section === "team_fields" ||
+        section === "player_fields" ||
+        section === "team_official_fields"
           ? [...s[section], { ...EMPTY_FIELD }]
           : [...s[section], { ...EMPTY_DOC, accept: [...ACCEPTS] }],
     }));
@@ -218,6 +222,27 @@ export default function RegistrationFormPage() {
 
         <Card>
           <SectionHeader
+            icon={Users}
+            title="Field Pelatih & Ofisial"
+            description="Pertanyaan tambahan tentang tiap pelatih/ofisial — no. lisensi, sertifikasi, dsb."
+          />
+          <CardContent>
+            <FieldRows
+              section="team_official_fields"
+              rows={schema.team_official_fields}
+              onChange={setField}
+              onRemove={removeRow}
+              onAdd={addRow}
+              errors={fieldErrors}
+              addLabel="Tambah field ofisial"
+              labelPlaceholder="No. Lisensi Pelatih"
+              savedKeys={savedKeys}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <SectionHeader
             icon={FileText}
             title="Dokumen Tim"
             description="Berkas yang dikumpulkan sekali untuk satu tim, misalnya surat mandat."
@@ -253,6 +278,27 @@ export default function RegistrationFormPage() {
               errors={fieldErrors}
               addLabel="Tambah dokumen pemain"
               labelPlaceholder="KTP"
+              savedKeys={savedKeys}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <SectionHeader
+            icon={FileText}
+            title="Dokumen Pelatih & Ofisial"
+            description="Berkas yang diminta dari setiap pelatih/ofisial, misalnya KTP atau sertifikat lisensi."
+          />
+          <CardContent>
+            <DocRows
+              section="team_official_documents"
+              rows={schema.team_official_documents}
+              onChange={setDoc}
+              onRemove={removeRow}
+              onAdd={addRow}
+              errors={fieldErrors}
+              addLabel="Tambah dokumen ofisial"
+              labelPlaceholder="KTP Pelatih"
               savedKeys={savedKeys}
             />
           </CardContent>

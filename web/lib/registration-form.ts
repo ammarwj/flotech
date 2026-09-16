@@ -33,15 +33,19 @@ export interface DocumentSlot {
 export interface RegistrationFormSchema {
   team_fields: CustomField[];
   player_fields: CustomField[];
+  team_official_fields: CustomField[];
   team_documents: DocumentSlot[];
   player_documents: DocumentSlot[];
+  team_official_documents: DocumentSlot[];
 }
 
 export const EMPTY_SCHEMA: RegistrationFormSchema = {
   team_fields: [],
   player_fields: [],
+  team_official_fields: [],
   team_documents: [],
   player_documents: [],
+  team_official_documents: [],
 };
 
 export const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -82,8 +86,10 @@ export function schemaOf(
   return {
     team_fields: raw.team_fields ?? [],
     player_fields: raw.player_fields ?? [],
+    team_official_fields: raw.team_official_fields ?? [],
     team_documents: raw.team_documents ?? [],
     player_documents: raw.player_documents ?? [],
+    team_official_documents: raw.team_official_documents ?? [],
   };
 }
 
@@ -96,7 +102,11 @@ export function schemaOf(
  * from the other side (see documentTypeError) — one end alone is not a rule.
  */
 export function hasDocuments(schema: RegistrationFormSchema): boolean {
-  return schema.team_documents.length > 0 || schema.player_documents.length > 0;
+  return (
+    schema.team_documents.length > 0 ||
+    schema.player_documents.length > 0 ||
+    schema.team_official_documents.length > 0
+  );
 }
 
 /** The `accept` attribute for a file input on this slot. */
@@ -157,6 +167,31 @@ export function hasIncompletePlayer(
       p.full_name.trim() !== "" &&
       missingFor(schema.player_fields, schema.player_documents, p.custom_fields, p.documents ?? [])
         .length > 0
+  );
+}
+
+/**
+ * Whether any official row is half-finished — a name typed, something required
+ * still missing. Mirrors hasIncompletePlayer exactly, for the bench instead of
+ * the roster.
+ */
+export function hasIncompleteOfficial(
+  schema: RegistrationFormSchema,
+  officials: {
+    full_name: string;
+    custom_fields?: CustomFieldAnswers;
+    documents?: DocumentRow[];
+  }[]
+): boolean {
+  return officials.some(
+    (o) =>
+      o.full_name.trim() !== "" &&
+      missingFor(
+        schema.team_official_fields,
+        schema.team_official_documents,
+        o.custom_fields,
+        o.documents ?? []
+      ).length > 0
   );
 }
 

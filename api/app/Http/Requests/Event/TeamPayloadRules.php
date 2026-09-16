@@ -72,6 +72,17 @@ class TeamPayloadRules
             'officials.*.full_name' => ['required', 'string', 'max:255'],
             'officials.*.role' => ['nullable', 'string', 'max:30'],
             'officials.*.photo_url' => ['nullable', 'string'],
+            // Answers to the official fields this event defined.
+            'officials.*.custom_fields' => ['nullable', 'array'],
+
+            // An official's documents, nested for the same reason a player's
+            // are: ownership comes from position in the payload, not an id
+            // that a new row doesn't have yet.
+            'officials.*.documents' => ['nullable', 'array', 'max:20'],
+            'officials.*.documents.*.id' => ['nullable', 'string'],
+            'officials.*.documents.*.file_url' => ['required', 'string'],
+            'officials.*.documents.*.file_name' => ['nullable', 'string', 'max:255'],
+            'officials.*.documents.*.document_type' => ['nullable', 'string', 'max:100'],
 
             // The team's own documents — a mandate letter, a club deed. A
             // player's KTP is not here; it is nested in their roster row.

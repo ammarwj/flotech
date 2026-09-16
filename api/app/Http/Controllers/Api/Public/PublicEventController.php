@@ -319,7 +319,7 @@ class PublicEventController extends Controller
             : 'Pendaftaran dibuat. Selesaikan pembayaran biaya pendaftaran untuk mengirim ke penyelenggara.';
 
         return ApiResponse::success([
-            'team' => new TeamResource($team->fresh()->load(['players.documents', 'officials', 'documents', 'event', 'category'])),
+            'team' => new TeamResource($team->fresh()->load(['players.documents', 'officials.documents', 'documents', 'event', 'category'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],

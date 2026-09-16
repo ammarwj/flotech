@@ -110,7 +110,7 @@ class Team extends Model
      */
     public function documents(): HasMany
     {
-        return $this->hasMany(RegistrationDocument::class)->whereNull('player_id');
+        return $this->hasMany(RegistrationDocument::class)->whereNull('player_id')->whereNull('official_id');
     }
 
     /**

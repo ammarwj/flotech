@@ -68,7 +68,22 @@ class RegistrationFormTest extends TestCase
             'player_documents' => [
                 ['key' => 'ktp', 'label' => 'KTP', 'required' => true, 'accept' => ['pdf', 'jpg', 'png']],
             ],
+            'team_official_fields' => [],
+            'team_official_documents' => [],
         ];
+    }
+
+    /** fullSchema() plus a required field and a required document on the bench. */
+    private function fullSchemaWithOfficials(): array
+    {
+        return array_merge($this->fullSchema(), [
+            'team_official_fields' => [
+                ['key' => 'no_lisensi', 'label' => 'No. Lisensi Pelatih', 'type' => 'short_text', 'required' => true, 'options' => []],
+            ],
+            'team_official_documents' => [
+                ['key' => 'ktp_pelatih', 'label' => 'KTP Pelatih', 'required' => true, 'accept' => ['pdf', 'jpg', 'png']],
+            ],
+        ]);
     }
 
     private function register(Event $event, User $manager, array $payload)
@@ -387,6 +402,7 @@ class RegistrationFormTest extends TestCase
         $this->actingAs($org->owner, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", [
                 'team_fields' => [], 'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
+                'team_official_fields' => [], 'team_official_documents' => [],
             ])
             ->assertOk();
 
@@ -401,6 +417,7 @@ class RegistrationFormTest extends TestCase
         $schema = [
             'team_fields' => [['key' => 'grup', 'label' => 'Grup', 'type' => 'select', 'required' => true, 'options' => []]],
             'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
+            'team_official_fields' => [], 'team_official_documents' => [],
         ];
 
         $this->actingAs($org->owner, 'api')
@@ -435,6 +452,7 @@ class RegistrationFormTest extends TestCase
         $this->actingAs($org->owner, 'api')->putJson($url, [
             'team_fields' => [$field('alamat'), $field('alamat')],
             'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
+            'team_official_fields' => [], 'team_official_documents' => [],
         ])->assertStatus(422)->assertJsonValidationErrors(['team_fields.1.key']);
 
         // A team address and a player address are different questions; scoping
@@ -443,6 +461,7 @@ class RegistrationFormTest extends TestCase
             'team_fields' => [$field('alamat')],
             'player_fields' => [$field('alamat')],
             'team_documents' => [], 'player_documents' => [],
+            'team_official_fields' => [], 'team_official_documents' => [],
         ])->assertOk();
     }
 
@@ -560,6 +579,115 @@ class RegistrationFormTest extends TestCase
         $this->assertStringNotContainsString('Jl. Rahasia 9', $body);
         $this->assertStringNotContainsString('3201999', $body);
         $this->assertStringNotContainsString('custom_fields', $body);
+    }
+
+    public function test_official_documents_are_separate_from_player_and_team_documents(): void
+    {
+        $event = $this->openEvent($this->fullSchemaWithOfficials());
+        $manager = User::factory()->create();
+
+        $teamId = $this->register($event, $manager, [
+            'players' => [[
+                'full_name' => 'Ammar',
+                'custom_fields' => ['no_ktp' => '3201'],
+                'documents' => [['file_url' => 'https://cdn/ktp.jpg', 'file_name' => 'ktp.jpg', 'document_type' => 'ktp']],
+            ]],
+            'officials' => [[
+                'full_name' => 'Pelatih A',
+                'custom_fields' => ['no_lisensi' => 'A123'],
+                'documents' => [['file_url' => 'https://cdn/o.jpg', 'file_name' => 'o.jpg', 'document_type' => 'ktp_pelatih']],
+            ]],
+            'documents' => [['file_url' => 'https://cdn/mandat.pdf', 'file_name' => 'mandat.pdf', 'document_type' => 'surat_mandat']],
+        ])->assertCreated()->json('data.team.id');
+
+        $team = \App\Models\Team::find($teamId);
+        $player = $team->players()->first();
+        $official = $team->officials()->first();
+
+        // Compared across all three scopes: a document landing in the wrong one
+        // (or in none) would still pass a count of the total.
+        $this->assertSame(['surat_mandat'], $team->documents()->pluck('document_type')->all());
+        $this->assertSame(['ktp'], $player->documents()->pluck('document_type')->all());
+        $this->assertSame(['ktp_pelatih'], $official->documents()->pluck('document_type')->all());
+        $this->assertSame(3, $team->allDocuments()->count());
+    }
+
+    public function test_typed_official_row_must_be_complete(): void
+    {
+        $event = $this->openEvent($this->fullSchemaWithOfficials());
+
+        // Complete row → in. Unlike a player row, an official row always
+        // carries a full_name (TeamPayloadRules requires it on every row sent),
+        // so there is no "left blank for later" case to mirror here.
+        $this->register($event, User::factory()->create(), [
+            'officials' => [[
+                'full_name' => 'Pelatih Lengkap',
+                'custom_fields' => ['no_lisensi' => 'A123'],
+                'documents' => [['file_url' => 'https://cdn/o.jpg', 'file_name' => 'o.jpg', 'document_type' => 'ktp_pelatih']],
+            ]],
+            'documents' => [['file_url' => 'https://cdn/m.pdf', 'file_name' => 'm.pdf', 'document_type' => 'surat_mandat']],
+        ])->assertCreated();
+
+        // Same event, an official's name without their papers → out.
+        $this->register($event, User::factory()->create(), [
+            'name' => 'Kurang',
+            'officials' => [['full_name' => 'Pelatih Kurang']],
+            'documents' => [['file_url' => 'https://cdn/m2.pdf', 'file_name' => 'm2.pdf', 'document_type' => 'surat_mandat']],
+        ])->assertStatus(422)->assertJsonValidationErrors(['officials.0.documents', 'officials.0.custom_fields.no_lisensi']);
+
+        // The count, not the status code: a row written and then rejected still
+        // returns 422, and the coach it refused would be sitting on the bench
+        // with nobody looking at it.
+        $this->assertDatabaseCount('team_officials', 1);
+        $this->assertDatabaseMissing('team_officials', ['full_name' => 'Pelatih Kurang']);
+        $this->assertDatabaseCount('teams', 1);
+    }
+
+    public function test_official_key_in_use_cannot_be_renamed_but_label_can(): void
+    {
+        $event = $this->openEvent($this->fullSchemaWithOfficials());
+        $org = $event->organization;
+
+        $this->register($event, User::factory()->create(), [
+            'officials' => [[
+                'full_name' => 'Pelatih A',
+                'custom_fields' => ['no_lisensi' => 'A123'],
+                'documents' => [['file_url' => 'https://cdn/o.jpg', 'file_name' => 'o.jpg', 'document_type' => 'ktp_pelatih']],
+            ]],
+            'documents' => [['file_url' => 'https://cdn/m.pdf', 'file_name' => 'm.pdf', 'document_type' => 'surat_mandat']],
+        ])->assertCreated();
+
+        $renamed = $this->fullSchemaWithOfficials();
+        $renamed['team_official_fields'][0]['key'] = 'no_lisensi_pelatih';
+
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", $renamed)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['team_official_fields']);
+
+        // The surviving answer, not just the status.
+        $official = $event->teams()->first()->officials()->first();
+        $this->assertSame(['no_lisensi' => 'A123'], $official->custom_fields);
+        $this->assertSame('no_lisensi', $event->fresh()->registration_form['team_official_fields'][0]['key']);
+
+        // Dropping a document slot that has uploads is the same refusal.
+        $withoutDoc = $this->fullSchemaWithOfficials();
+        $withoutDoc['team_official_documents'] = [];
+
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", $withoutDoc)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['team_official_documents']);
+
+        // Relabelling is free, and takes effect immediately.
+        $relabelled = $this->fullSchemaWithOfficials();
+        $relabelled['team_official_fields'][0]['label'] = 'Nomor Lisensi';
+
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", $relabelled)
+            ->assertOk()
+            ->assertJsonPath('data.team_official_fields.0.label', 'Nomor Lisensi')
+            ->assertJsonPath('data.team_official_fields.0.key', 'no_lisensi');
     }
 
     public function test_team_fields_become_export_columns(): void

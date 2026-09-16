@@ -832,6 +832,13 @@ export interface TeamOfficial {
   /** A key from the sport's official_roles. Null when the sport defines none. */
   role?: string | null;
   photo_url?: string | null;
+  /** Answers to the event's team_official_fields, keyed by field key. {} when none. */
+  custom_fields?: CustomFieldAnswers;
+  /**
+   * This official's own documents. Nested rather than a flat list keyed by
+   * official_id because a new official has no id yet when the form is assembled.
+   */
+  documents?: TeamDocument[];
 }
 
 /**

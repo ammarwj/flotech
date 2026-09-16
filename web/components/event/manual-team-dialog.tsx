@@ -19,6 +19,7 @@ import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import {
   EMPTY_SCHEMA,
+  hasIncompleteOfficial,
   hasIncompletePlayer,
   missingFor,
   type CustomFieldAnswers,
@@ -114,6 +115,8 @@ export function ManualTeamDialog({
       full_name: o.full_name,
       role: o.role ?? "",
       photo_url: o.photo_url ?? null,
+      custom_fields: o.custom_fields ?? {},
+      documents: o.documents ?? [],
     }))
   );
 
@@ -155,6 +158,8 @@ export function ManualTeamDialog({
           full_name: o.full_name,
           role: o.role || null,
           photo_url: o.photo_url,
+          custom_fields: o.custom_fields ?? {},
+          documents: o.documents ?? [],
         })),
     });
 
@@ -306,7 +311,13 @@ export function ManualTeamDialog({
               Pelatih &amp; ofisial{" "}
               <span className="font-normal text-muted-foreground">(opsional)</span>
             </Label>
-            <OfficialEditor officials={officials} onChange={setOfficials} sport={sport} />
+            <OfficialEditor
+              officials={officials}
+              onChange={setOfficials}
+              sport={sport}
+              schema={schema}
+              onBusyChange={setDocUploading}
+            />
           </div>
         </div>
 
@@ -328,6 +339,7 @@ export function ManualTeamDialog({
               !resolvedCategoryId ||
               teamMissing.length > 0 ||
               hasIncompletePlayer(schema, roster) ||
+              hasIncompleteOfficial(schema, officials) ||
               (isFixed ? !rosterReady : !info.name.trim())
             }
           >

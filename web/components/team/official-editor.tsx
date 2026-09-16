@@ -7,9 +7,18 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { compressToWebp } from "@/lib/image";
 import { nameInput } from "@/lib/name";
 import { uploadImage } from "@/lib/api/events";
+import {
+  EMPTY_SCHEMA,
+  missingFor,
+  type CustomFieldAnswers,
+  type DocumentRow,
+  type RegistrationFormSchema,
+} from "@/lib/registration-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { CustomFieldEditor } from "@/components/team/custom-field-editor";
+import { DocumentUploadFields } from "@/components/team/document-upload-field";
 
 export type OfficialRow = {
   id?: string;
@@ -17,13 +26,40 @@ export type OfficialRow = {
   /** A role_key from the sport's master list, "" when unset. */
   role: string;
   photo_url?: string | null;
+  /** Answers to the event's team_official_fields. */
+  custom_fields?: CustomFieldAnswers;
+  /** This official's own documents — nested here because a new row has no id yet. */
+  documents?: DocumentRow[];
   /** Render-only: local blob for instant preview. */
   photo_preview?: string;
   /** Render-only: upload in flight. */
   photo_uploading?: boolean;
 };
 
-export const emptyOfficial = (): OfficialRow => ({ full_name: "", role: "" });
+export const emptyOfficial = (): OfficialRow => ({
+  full_name: "",
+  role: "",
+  custom_fields: {},
+  documents: [],
+});
+
+/**
+ * Wraps an official row, boxed only when the event asks for more than the
+ * name. Copy of PlayerRowShell in roster-editor.tsx — see there for why.
+ */
+function OfficialRowShell({
+  bordered,
+  children,
+}: {
+  bordered: boolean;
+  children: React.ReactNode;
+}) {
+  return bordered ? (
+    <div className="rounded-xl border border-border p-3">{children}</div>
+  ) : (
+    <>{children}</>
+  );
+}
 
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
 function photoShown(o: OfficialRow): string | null {
@@ -46,12 +82,17 @@ export function OfficialEditor({
   officials,
   onChange,
   sport,
+  schema = EMPTY_SCHEMA,
+  onBusyChange,
   disabled,
 }: {
   officials: OfficialRow[];
   onChange: (officials: OfficialRow[]) => void;
   /** Sport slug — decides which roles may be picked. */
   sport?: string | null;
+  /** The event's registration form — drives the optional extras block below each row. */
+  schema?: RegistrationFormSchema;
+  onBusyChange?: (busy: boolean) => void;
   disabled?: boolean;
 }) {
   const { officialRolesFor } = useCatalog();
@@ -60,6 +101,11 @@ export function OfficialEditor({
   // has nothing to offer, and the API rejects any role on its bench — so the
   // column disappears rather than showing an empty dropdown.
   const roles = officialRolesFor(sport);
+
+  // Same call as RosterEditor: no extras defined means no border, no block.
+  const hasExtras =
+    schema.team_official_fields.length > 0 ||
+    schema.team_official_documents.length > 0;
 
   const set = (i: number, patch: Partial<OfficialRow>) =>
     onChange(officials.map((o, j) => (j === i ? { ...o, ...patch } : o)));
@@ -92,13 +138,19 @@ export function OfficialEditor({
     <div className="grid gap-2">
       {officials.map((o, i) => {
         const shown = photoShown(o);
+        const missing = o.full_name.trim()
+          ? missingFor(
+              schema.team_official_fields,
+              schema.team_official_documents,
+              o.custom_fields,
+              o.documents ?? [],
+            )
+          : [];
         // items-start for the same reason as RosterEditor: the captioned photo
         // column is taller than the controls beside it.
         return (
-          <div
-            key={o.id ?? `new-${i}`}
-            className="flex flex-wrap items-start gap-2"
-          >
+          <OfficialRowShell key={o.id ?? `new-${i}`} bordered={hasExtras}>
+          <div className="flex flex-wrap items-start gap-2">
             {/* Caption under the box, same as RosterEditor: it is what names the
                 icon for a sighted user. */}
             <div className="flex shrink-0 flex-col items-center gap-1">
@@ -197,6 +249,34 @@ export function OfficialEditor({
               </Button>
             )}
           </div>
+
+          {hasExtras && (
+            <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+              <CustomFieldEditor
+                fields={schema.team_official_fields}
+                value={o.custom_fields ?? {}}
+                onChange={(custom_fields) => set(i, { custom_fields })}
+                disabled={disabled}
+                idPrefix={`official-${i}`}
+              />
+              <div className="grid gap-3 sm:col-span-2">
+                <DocumentUploadFields
+                  slots={schema.team_official_documents}
+                  value={o.documents ?? []}
+                  onChange={(documents) => set(i, { documents })}
+                  onBusyChange={onBusyChange}
+                  disabled={disabled}
+                />
+                {missing.length > 0 && (
+                  <p className="text-xs text-destructive">
+                    Lengkapi dulu: {missing.join(", ")}. Ofisial yang datanya
+                    belum lengkap tidak akan tersimpan.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          </OfficialRowShell>
         );
       })}
 

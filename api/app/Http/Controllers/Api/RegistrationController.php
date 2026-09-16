@@ -38,7 +38,7 @@ class RegistrationController extends Controller
     {
         $query = $this->event($request, $event)
             ->teams()
-            ->with(['players.documents', 'officials', 'documents', 'category'])
+            ->with(['players.documents', 'officials.documents', 'documents', 'category'])
             ->latest('registered_at');
 
         // Optional server-side filters. The manual-match team picker uses these to
@@ -130,7 +130,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($team->fresh()->load(['players.documents', 'officials', 'documents', 'category'])),
+            new TeamResource($team->fresh()->load(['players.documents', 'officials.documents', 'documents', 'category'])),
             'Tim berhasil ditambahkan.',
             201,
         );
@@ -178,7 +178,7 @@ class RegistrationController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($teamModel->fresh()->load(['players.documents', 'officials', 'documents', 'category'])),
+            new TeamResource($teamModel->fresh()->load(['players.documents', 'officials.documents', 'documents', 'category'])),
             'Data tim diperbarui',
         );
     }
@@ -248,7 +248,7 @@ class RegistrationController extends Controller
             $this->announceStatus($teamModel, $validated['status']);
         }
 
-        return ApiResponse::success(new TeamResource($teamModel->load(['players.documents', 'officials', 'documents'])), 'Status pendaftaran diperbarui');
+        return ApiResponse::success(new TeamResource($teamModel->load(['players.documents', 'officials.documents', 'documents'])), 'Status pendaftaran diperbarui');
     }
 
     /**

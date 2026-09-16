@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\PurgeMediaJob;
 use App\Models\Player;
 use App\Models\Team;
+use App\Models\TeamOfficial;
 use App\Support\RegistrationForm;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
@@ -60,7 +61,7 @@ class TeamRosterService
             $keepIds[] = $player->id;
 
             if (array_key_exists('documents', $row)) {
-                $errors += $this->syncDocumentRows($team, $row['documents'] ?? [], $player, "players.{$i}.documents");
+                $errors += $this->syncDocumentRows($team, $row['documents'] ?? [], $player, null, "players.{$i}.documents");
             }
 
             // After the sync, never before: the documents that make this row
@@ -212,16 +213,24 @@ class TeamRosterService
     {
         $this->assertRolesExist($team, $officials);
 
+        $form = RegistrationForm::forEvent($team->event);
         $keepIds = [];
+        $errors = [];
 
-        foreach ($officials as $order => $row) {
+        foreach ($officials as $i => $row) {
             $attrs = [
                 'full_name' => $row['full_name'],
                 'role' => $row['role'] ?? null,
                 'photo_url' => $row['photo_url'] ?? null,
                 // The order they were typed in is the order they are shown.
-                'sort_order' => $order,
+                'sort_order' => $i,
             ];
+
+            // Absent means "not sent by this client", which must leave whatever
+            // is stored alone; an empty array means "cleared".
+            if (array_key_exists('custom_fields', $row)) {
+                $attrs['custom_fields'] = $this->cleanAnswers($form->officialFields, $row['custom_fields']);
+            }
 
             $existing = ! empty($row['id'])
                 ? $team->officials()->whereKey($row['id'])->first()
@@ -229,15 +238,57 @@ class TeamRosterService
 
             if ($existing) {
                 $existing->update($attrs);
-                $keepIds[] = $existing->id;
+                $official = $existing;
             } else {
-                $keepIds[] = $team->officials()->create($attrs)->id;
+                $official = $team->officials()->create($attrs);
             }
+
+            $keepIds[] = $official->id;
+
+            if (array_key_exists('documents', $row)) {
+                $errors += $this->syncDocumentRows($team, $row['documents'] ?? [], null, $official, "officials.{$i}.documents");
+            }
+
+            // Every official row already carries a full_name (TeamPayloadRules
+            // requires it), unlike a player row, which may be left blank for
+            // later — so this checks every row, not just the named ones.
+            $errors += $this->officialRowErrors($form, $official, $row, $i);
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
 
         $stale = $team->officials()->whereKeyNot($keepIds)->pluck('photo_url')->all();
         $team->officials()->whereKeyNot($keepIds)->delete();
         $this->purgePruned($stale, $team->officials()->pluck('photo_url')->all());
+    }
+
+    /**
+     * Is this official row complete enough to keep? Mirrors rowErrors() for
+     * players; checked after the sync so documents already on file (rows
+     * re-sent by id, without their answers) are not mistaken for missing ones.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, string>
+     */
+    private function officialRowErrors(RegistrationForm $form, TeamOfficial $official, array $row, int $i): array
+    {
+        $errors = $this->answerErrors(
+            $form->officialFields,
+            $row['custom_fields'] ?? $official->custom_fields ?? [],
+            "officials.{$i}.custom_fields",
+        );
+
+        $uploaded = $official->documents()->pluck('document_type')->filter()->all();
+
+        foreach ($form->officialDocuments as $doc) {
+            if ($doc['required'] && ! in_array($doc['key'], $uploaded, true)) {
+                $errors["officials.{$i}.documents"] = "Dokumen \"{$doc['label']}\" wajib diunggah untuk {$official->full_name}.";
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -280,7 +331,7 @@ class TeamRosterService
      */
     public function syncDocuments(Team $team, array $documents): void
     {
-        $errors = $this->syncDocumentRows($team, $documents, null, 'documents');
+        $errors = $this->syncDocumentRows($team, $documents, null, null, 'documents');
 
         $form = RegistrationForm::forEvent($team->event);
         $uploaded = $team->documents()->pluck('document_type')->filter()->all();
@@ -297,8 +348,8 @@ class TeamRosterService
     }
 
     /**
-     * Sync one scope of a team's documents: the team's own ($player null) or a
-     * single player's.
+     * Sync one scope of a team's documents: the team's own (both null), a
+     * single player's, or a single official's.
      *
      * Scoping the *pruning* is the load-bearing part. This used to sweep every
      * row the team had; called once per player it would delete the team's
@@ -309,23 +360,26 @@ class TeamRosterService
      * which quietly made document_type write-once: an organizer who filed a KTP
      * under the wrong slot had no way to correct it.
      *
-     * Errors are returned rather than thrown because syncPlayers() collects them
-     * across the whole roster — one 422 listing every incomplete row beats the
-     * participant discovering them one save at a time.
+     * Errors are returned rather than thrown because syncPlayers()/syncOfficials()
+     * collect them across the whole roster — one 422 listing every incomplete
+     * row beats the participant discovering them one save at a time.
      *
      * @param  array<int, array<string, mixed>>  $documents
      * @return array<string, string>
      */
-    private function syncDocumentRows(Team $team, array $documents, ?Player $player, string $errorKey): array
+    private function syncDocumentRows(Team $team, array $documents, ?Player $player, ?TeamOfficial $official, string $errorKey): array
     {
         $form = RegistrationForm::forEvent($team->event);
-        $allowed = array_column($form->documentsFor($player ? 'player' : 'team'), 'key');
+        $scopeKind = $player ? 'player' : ($official ? 'official' : 'team');
+        $allowed = array_column($form->documentsFor($scopeKind), 'key');
 
         // Rebuilt on each use rather than held: the same query is run three
         // times below and an Eloquent builder is not reusable after execution.
-        $scope = $player
-            ? fn () => $team->allDocuments()->where('player_id', $player->id)
-            : fn () => $team->allDocuments()->whereNull('player_id');
+        $scope = match (true) {
+            $player !== null => fn () => $team->allDocuments()->where('player_id', $player->id),
+            $official !== null => fn () => $team->allDocuments()->where('official_id', $official->id),
+            default => fn () => $team->allDocuments()->whereNull('player_id')->whereNull('official_id'),
+        };
 
         $keepIds = [];
         $errors = [];
@@ -341,6 +395,7 @@ class TeamRosterService
 
             $attrs = [
                 'player_id' => $player?->id,
+                'official_id' => $official?->id,
                 'file_url' => $row['file_url'],
                 'file_name' => $row['file_name'] ?? null,
                 'document_type' => $type,

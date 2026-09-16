@@ -7,11 +7,11 @@ use App\Models\Event;
 /**
  * The shape of one event's registration form, as the organizer defined it.
  *
- * Four lists, read from `events.registration_form`: extra fields on the team,
- * extra fields on each player, documents the team must upload, documents each
- * player must upload. An event that defines none of them gets a form that looks
- * exactly like it did before this feature existed — and, more importantly, one
- * that shows no upload UI at all rather than an empty box.
+ * Six lists, read from `events.registration_form`: extra fields on the team,
+ * on each player, on each official, and documents the team, each player, and
+ * each official must upload. An event that defines none of them gets a form
+ * that looks exactly like it did before this feature existed — and, more
+ * importantly, one that shows no upload UI at all rather than an empty box.
  *
  * The value object exists for the same reason DisciplineRules does: several
  * callers need to agree on the shape of a JSON blob, and a normalizer they all
@@ -26,20 +26,31 @@ final class RegistrationForm
     /** File kinds a document slot may accept. */
     public const ACCEPTS = ['pdf', 'jpg', 'png'];
 
-    /** The four lists, in the order the builder UI shows them. */
-    public const SECTIONS = ['team_fields', 'player_fields', 'team_documents', 'player_documents'];
+    /** The six lists, in the order the builder UI shows them. */
+    public const SECTIONS = [
+        'team_fields',
+        'player_fields',
+        'team_official_fields',
+        'team_documents',
+        'player_documents',
+        'team_official_documents',
+    ];
 
     /**
      * @param  list<array<string, mixed>>  $teamFields
      * @param  list<array<string, mixed>>  $playerFields
+     * @param  list<array<string, mixed>>  $officialFields
      * @param  list<array<string, mixed>>  $teamDocuments
      * @param  list<array<string, mixed>>  $playerDocuments
+     * @param  list<array<string, mixed>>  $officialDocuments
      */
     private function __construct(
         public readonly array $teamFields,
         public readonly array $playerFields,
+        public readonly array $officialFields,
         public readonly array $teamDocuments,
         public readonly array $playerDocuments,
+        public readonly array $officialDocuments,
     ) {}
 
     public static function forEvent(?Event $event): self
@@ -57,8 +68,10 @@ final class RegistrationForm
         return new self(
             teamFields: self::cleanFields($raw['team_fields'] ?? []),
             playerFields: self::cleanFields($raw['player_fields'] ?? []),
+            officialFields: self::cleanFields($raw['team_official_fields'] ?? []),
             teamDocuments: self::cleanDocuments($raw['team_documents'] ?? []),
             playerDocuments: self::cleanDocuments($raw['player_documents'] ?? []),
+            officialDocuments: self::cleanDocuments($raw['team_official_documents'] ?? []),
         );
     }
 
@@ -70,16 +83,18 @@ final class RegistrationForm
     {
         return $this->teamFields === []
             && $this->playerFields === []
+            && $this->officialFields === []
             && $this->teamDocuments === []
-            && $this->playerDocuments === [];
+            && $this->playerDocuments === []
+            && $this->officialDocuments === [];
     }
 
     /**
      * The stored shape, for the API resources.
      *
-     * Always all four keys, even when empty: the client renders each section
+     * Always all six keys, even when empty: the client renders each section
      * from its list, and a missing key would have to be defended against in
-     * four places instead of none.
+     * six places instead of none.
      *
      * @return array<string, mixed>
      */
@@ -88,8 +103,10 @@ final class RegistrationForm
         return [
             'team_fields' => $this->teamFields,
             'player_fields' => $this->playerFields,
+            'team_official_fields' => $this->officialFields,
             'team_documents' => $this->teamDocuments,
             'player_documents' => $this->playerDocuments,
+            'team_official_documents' => $this->officialDocuments,
         ];
     }
 
@@ -98,7 +115,11 @@ final class RegistrationForm
      */
     public function fieldsFor(string $section): array
     {
-        return $section === 'player' ? $this->playerFields : $this->teamFields;
+        return match ($section) {
+            'player' => $this->playerFields,
+            'official' => $this->officialFields,
+            default => $this->teamFields,
+        };
     }
 
     /**
@@ -106,16 +127,20 @@ final class RegistrationForm
      */
     public function documentsFor(string $section): array
     {
-        return $section === 'player' ? $this->playerDocuments : $this->teamDocuments;
+        return match ($section) {
+            'player' => $this->playerDocuments,
+            'official' => $this->officialDocuments,
+            default => $this->teamDocuments,
+        };
     }
 
     /**
-     * Every document key this event knows about, both scopes.
+     * Every document key this event knows about, all three scopes.
      *
-     * The two lists are checked separately when enforcing "did you upload the
-     * required ones", but a document's *type* is validated against this: a team
-     * uploading a slot defined for players is a client bug, not a security
-     * question, and one list keeps that check to a single lookup.
+     * The lists are checked separately when enforcing "did you upload the
+     * required ones", but a document's *type* is validated against this: a
+     * team uploading a slot defined for players is a client bug, not a
+     * security question, and one list keeps that check to a single lookup.
      *
      * @return list<string>
      */
@@ -124,6 +149,7 @@ final class RegistrationForm
         return [
             ...array_column($this->teamDocuments, 'key'),
             ...array_column($this->playerDocuments, 'key'),
+            ...array_column($this->officialDocuments, 'key'),
         ];
     }
 
@@ -134,7 +160,7 @@ final class RegistrationForm
      */
     public function document(string $key): ?array
     {
-        foreach ([...$this->teamDocuments, ...$this->playerDocuments] as $doc) {
+        foreach ([...$this->teamDocuments, ...$this->playerDocuments, ...$this->officialDocuments] as $doc) {
             if ($doc['key'] === $key) {
                 return $doc;
             }
@@ -157,7 +183,7 @@ final class RegistrationForm
     {
         $rules = [];
 
-        foreach (['team_fields', 'player_fields'] as $section) {
+        foreach (['team_fields', 'player_fields', 'team_official_fields'] as $section) {
             $rules[$section] = ['present', 'array', 'max:30'];
             $rules[$section.'.*.key'] = ['required', 'string', 'max:50', 'regex:/^[a-z0-9_]+$/'];
             $rules[$section.'.*.label'] = ['required', 'string', 'max:100'];
@@ -167,7 +193,7 @@ final class RegistrationForm
             $rules[$section.'.*.options.*'] = ['required', 'string', 'max:100'];
         }
 
-        foreach (['team_documents', 'player_documents'] as $section) {
+        foreach (['team_documents', 'player_documents', 'team_official_documents'] as $section) {
             $rules[$section] = ['present', 'array', 'max:20'];
             $rules[$section.'.*.key'] = ['required', 'string', 'max:50', 'regex:/^[a-z0-9_]+$/'];
             $rules[$section.'.*.label'] = ['required', 'string', 'max:100'];

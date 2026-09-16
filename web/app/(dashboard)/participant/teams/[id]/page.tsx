@@ -20,6 +20,7 @@ import { ParticipantDocumentButtons } from "@/components/payment/document-button
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import {
+  hasIncompleteOfficial,
   hasIncompletePlayer,
   missingFor,
   schemaOf,
@@ -94,6 +95,8 @@ export default function ManageTeamPage() {
         full_name: o.full_name,
         role: o.role ?? "",
         photo_url: o.photo_url ?? null,
+        custom_fields: o.custom_fields ?? {},
+        documents: o.documents ?? [],
       }))
     );
     // Documents predating this feature carry no type. Once the event defines
@@ -146,6 +149,8 @@ export default function ManageTeamPage() {
             full_name: o.full_name,
             role: o.role || null,
             photo_url: o.photo_url,
+            custom_fields: o.custom_fields ?? {},
+            documents: o.documents ?? [],
           })),
         documents: docs,
       };
@@ -364,6 +369,8 @@ export default function ManageTeamPage() {
               officials={officials}
               onChange={setOfficials}
               sport={team.event?.sport_type}
+              schema={schema}
+              onBusyChange={setUploading}
               disabled={!editable}
             />
           </CardContent>
@@ -427,7 +434,8 @@ export default function ManageTeamPage() {
                 save.isPending ||
                 uploading ||
                 teamMissing.length > 0 ||
-                hasIncompletePlayer(schema, players)
+                hasIncompletePlayer(schema, players) ||
+                hasIncompleteOfficial(schema, officials)
               }
             >
               {save.isPending ? "Menyimpan…" : "Simpan perubahan"}

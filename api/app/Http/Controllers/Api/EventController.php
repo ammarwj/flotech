@@ -18,6 +18,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\Player;
 use App\Models\RegistrationDocument;
+use App\Models\TeamOfficial;
 use App\Services\Catalog;
 use App\Services\MediaCleanupService;
 use App\Services\PlanGate;
@@ -601,10 +602,14 @@ class EventController extends Controller
                 ->flatMap(fn ($f) => array_keys(is_array($f) ? $f : []))->unique(),
             'player_fields' => Player::whereIn('team_id', $teamIds)->pluck('custom_fields')
                 ->flatMap(fn ($f) => array_keys(is_array($f) ? $f : []))->unique(),
+            'team_official_fields' => TeamOfficial::whereIn('team_id', $teamIds)->pluck('custom_fields')
+                ->flatMap(fn ($f) => array_keys(is_array($f) ? $f : []))->unique(),
             'team_documents' => RegistrationDocument::whereIn('team_id', $teamIds)
-                ->whereNull('player_id')->pluck('document_type')->filter()->unique(),
+                ->whereNull('player_id')->whereNull('official_id')->pluck('document_type')->filter()->unique(),
             'player_documents' => RegistrationDocument::whereIn('team_id', $teamIds)
                 ->whereNotNull('player_id')->pluck('document_type')->filter()->unique(),
+            'team_official_documents' => RegistrationDocument::whereIn('team_id', $teamIds)
+                ->whereNotNull('official_id')->pluck('document_type')->filter()->unique(),
         ];
 
         $errors = [];

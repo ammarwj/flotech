@@ -25,6 +25,7 @@ import {
   type RegisterTeamPayload,
 } from "@/lib/api/events";
 import {
+  hasIncompleteOfficial,
   hasIncompletePlayer,
   missingFor,
   schemaOf,
@@ -173,6 +174,8 @@ function RegisterTeamPage() {
             full_name: o.full_name,
             role: o.role || null,
             photo_url: o.photo_url,
+            custom_fields: o.custom_fields ?? {},
+            documents: o.documents ?? [],
           })),
         documents: docs,
         payment_channel: requiresChannel ? channel! : undefined,
@@ -506,6 +509,8 @@ function RegisterTeamPage() {
             </CardTitle>
             <CardDescription>
               Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Tim Saya.
+              {(schema.team_official_fields.length > 0 || schema.team_official_documents.length > 0) &&
+                " Setiap ofisial yang dimasukkan wajib dilengkapi data dan berkasnya."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -513,6 +518,8 @@ function RegisterTeamPage() {
               officials={officials}
               onChange={setOfficials}
               sport={event?.sport_type}
+              schema={schema}
+              onBusyChange={setUploading}
             />
           </CardContent>
         </Card>
@@ -569,9 +576,10 @@ function RegisterTeamPage() {
               uploading ||
               logoUploading ||
               teamMissing.length > 0 ||
-              // A named-but-incomplete player is rejected wholesale by the API,
-              // so stop it here rather than lose the form to a 422.
+              // A named-but-incomplete player/official is rejected wholesale by
+              // the API, so stop it here rather than lose the form to a 422.
               hasIncompletePlayer(schema, players) ||
+              hasIncompleteOfficial(schema, officials) ||
               (isFixed && !fixedRoster(players, rosterSize).every((p) => p.full_name.trim()))
             }
           >

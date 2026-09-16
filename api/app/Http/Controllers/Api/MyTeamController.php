@@ -30,7 +30,7 @@ class MyTeamController extends Controller
     public function index(): JsonResponse
     {
         $teams = $this->scope()
-            ->with(['event', 'category', 'players.documents', 'officials', 'documents'])
+            ->with(['event', 'category', 'players.documents', 'officials.documents', 'documents'])
             ->latest('registered_at')
             ->get();
 
@@ -42,7 +42,7 @@ class MyTeamController extends Controller
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'category', 'players.documents', 'officials', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with(['event', 'category', 'players.documents', 'officials.documents', 'documents'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -94,7 +94,7 @@ class MyTeamController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'Data tim diperbarui',
         );
     }
@@ -129,7 +129,7 @@ class MyTeamController extends Controller
         $payment = $this->registration->startPayment($model, $request->string('payment_channel')->toString() ?: null);
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
+            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -154,7 +154,7 @@ class MyTeamController extends Controller
         $this->registration->submitProof($model, $data['payment_proof_url']);
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials', 'documents'])),
+            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
     }

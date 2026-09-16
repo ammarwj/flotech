@@ -13,6 +13,7 @@ class RegistrationDocument extends Model
     protected $fillable = [
         'team_id',
         'player_id',
+        'official_id',
         'document_type',
         'file_url',
         'file_name',
@@ -42,5 +43,11 @@ class RegistrationDocument extends Model
     public function player(): BelongsTo
     {
         return $this->belongsTo(Player::class);
+    }
+
+    /** Null unless this belongs to a bench entry (a coach's KTP). */
+    public function official(): BelongsTo
+    {
+        return $this->belongsTo(TeamOfficial::class, 'official_id');
     }
 }

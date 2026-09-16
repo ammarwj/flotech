@@ -77,6 +77,15 @@ class TeamResource extends JsonResource
                 'full_name' => $o->full_name,
                 'role' => $o->role,
                 'photo_url' => $o->photo_url,
+                'custom_fields' => (object) ($o->custom_fields ?? []),
+                'documents' => $o->relationLoaded('documents')
+                    ? $o->documents->map(fn ($d) => [
+                        'id' => $d->id,
+                        'document_type' => $d->document_type,
+                        'file_name' => $d->file_name,
+                        'file_url' => $d->file_url,
+                    ])
+                    : [],
             ])),
             'documents' => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($d) => [
                 'id' => $d->id,
