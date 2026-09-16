@@ -1362,6 +1362,63 @@ export interface CertificateRecipients {
   players: CertificateRecipientPlayer[];
 }
 
+// ---- ID cards ----
+
+/** A placeable field key, e.g. "photo" or "name". Catalogued by the API. */
+export type IdCardFieldKey = string;
+
+export interface IdCardFieldDef {
+  key: IdCardFieldKey;
+  label: string;
+}
+
+/**
+ * One field placed on a card. Two shapes share this type, the way they share one
+ * array in the JSON column, and the API refuses any mixture of the two:
+ *
+ * - text (every key but `photo`) — needs `size`, must not carry `w`/`h`/`fit`/
+ *   `radius`. `x` is the point the text aligns *to*, and `size` is
+ *   **millimetres**, not points: the card itself is in mm, so "a 5mm name"
+ *   survives swapping CR80 for A6 and can be checked with a ruler.
+ * - photo (`key: "photo"`) — needs `w`/`h`, must not carry `size`. Here `x`/`y`
+ *   are the box's **top-left corner**, not an anchor: a box you resize from a
+ *   corner has to stay pinned to one.
+ */
+export interface IdCardField {
+  key: IdCardFieldKey;
+  /** Percent of card width. Text: the align point. Photo: the box's left edge. */
+  x: number;
+  /** Percent of card height. Text: the baseline block's top. Photo: the box's top edge. */
+  y: number;
+  /** Text only — millimetres of cap height. */
+  size?: number;
+  color?: string;
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  uppercase?: boolean;
+  /** Text only — wrap width as a percent of card width. */
+  wrap?: number;
+  /** Photo only — box width as a percent of card width. */
+  w?: number;
+  /** Photo only — box height as a percent of card height. */
+  h?: number;
+  fit?: "cover" | "contain";
+  /** Photo only — 0 square, 50 circle. Percent of the box's shorter side. */
+  radius?: number;
+}
+
+export interface IdCardTemplate {
+  id: string;
+  organization_id: string;
+  name: string;
+  background_url: string;
+  /** Millimetres. Free-form; the presets in the picker are a UI affordance only. */
+  width_mm: number;
+  height_mm: number;
+  fields: IdCardField[];
+  created_at: string;
+}
+
 /** What the public QR lands on: proof the document is real. */
 export interface CertificateVerification {
   certificate_number: string;

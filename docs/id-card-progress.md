@@ -20,7 +20,7 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 |---|---|---|
 | 1 | Personel (wasit & staf) | ✅ selesai |
 | 2 | Key gerbang `id_card_generator` | ✅ selesai |
-| 3 | Template + editor drag-drop | 🚧 berjalan |
+| 3 | Template + editor drag-drop | ✅ selesai |
 | 4 | Renderer + batch + ZIP | ⬜ |
 | 5 | `id-cards:prune` | ⬜ |
 
@@ -89,13 +89,32 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 
 ## Fase 3 — Template
 
-- [ ] `api/config/id_card.php`, migrasi + model `IdCardTemplate` (mm di-cast **float**, bukan
-      `decimal:2` yang mengembalikan string)
-- [ ] `Store`/`UpdateIdCardTemplateRequest` dengan `after()`: foto wajib `w`/`h` & menolak
-      `size`, teks kebalikannya
-- [ ] `IdCardTemplateController` + 5 rute, `canvas-drag.ts`, tiga komponen `id-card/`, tiga
-      halaman, entri sidebar (docblock "seven entries" → delapan), tipe
-- [ ] Test `IdCardTemplateTest`
+- [x] `api/config/id_card.php`, migrasi + model `IdCardTemplate` (mm di-cast **float**, bukan
+      `decimal:2` yang mengembalikan string). Docblock config mencatat kenapa `qr` ditolak
+      (tidak ada baris kartu, jadi tidak ada tujuan yang bisa dipindai) dan kenapa anchor foto
+      beda dari anchor teks
+- [x] `Store`/`UpdateIdCardTemplateRequest` dengan `after()`: foto wajib `w`/`h` & menolak
+      `size`, teks kebalikannya. Aturan bersamanya di `IdCardTemplateRules` supaya pasangan
+      store/update tidak bisa menyimpang
+- [x] `IdCardTemplateController` + 5 rute. **Tanpa `withCount()`** kembaran sertifikat: tidak
+      ada tabel kartu terbit. `destroy()` sengaja **ungated** — org yang paketnya habis tetap
+      harus bisa membersihkan template yang tidak lagi bisa dipakainya
+- [x] `canvas-drag.ts` — hanya separuh yang bebas geometri (listener di `window`, bukan elemen,
+      atau drag mati begitu pointer melewatinya; `pointercancel` ditangani). Sistem koordinat
+      tiap editor **tetap terpisah**: aturan satu-sumber berlaku untuk hal yang harus selalu
+      sepakat, dan kedua editor ini justru sengaja berbeda
+- [x] Tiga komponen `id-card/` (`card-size-picker`, `template-editor`, `template-form`). Form
+      memakai `ImageUploadField`, bukan `<input type="file">` mentah seperti form sertifikat —
+      itu melewatkan guard 5 MB dan `compressToWebp`
+- [x] Tiga halaman `organizer/id-cards/` + entri sidebar (docblock "seven entries" → **delapan**),
+      tipe di `web/types/api.ts`
+- [x] Test `IdCardTemplateTest` (3 kasus) — **15 lulus, 78 assertion** pada filter
+      `IdCard|EventPersonnel|MediaCleanup`. `test_card_size_round_trips_in_millimetres`
+      meng-assert `85.6` sebagai float tapi `54`/`105`/`148` sebagai **int**: float bulat
+      di-encode JSON jadi `54` dan kembali sebagai int. Cast `decimal:2` tetap tertangkap —
+      ia mengirim string `"54.00"`
+- [x] Verifikasi web: `bunx tsc --noEmit` bersih, `bun run build` sukses, `bun run lint` tetap di
+      baseline 2 error (keduanya berkas lama)
 
 ## Fase 4 — Renderer + batch (tidak boleh dipecah)
 

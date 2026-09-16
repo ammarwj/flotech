@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\EventPersonnelController;
 use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\ExportController;
+use App\Http\Controllers\Api\IdCardTemplateController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\OrganizationController;
@@ -367,6 +368,15 @@ Route::prefix('v1')->group(function () {
             // above: an operator already sees every player's photo.
             Route::get('events/{event}/personnel', [EventPersonnelController::class, 'index']);
             Route::put('events/{event}/personnel', [EventPersonnelController::class, 'sync']);
+
+            // ID cards. Templates are org-scoped rows, so their CRUD asks
+            // orgAllows('id_card_generator') — printing a particular event's
+            // cards stays event-keyed and lives on its own routes.
+            Route::get('id-card-fields', [IdCardTemplateController::class, 'fields']);
+            Route::get('id-card-templates', [IdCardTemplateController::class, 'index']);
+            Route::post('id-card-templates', [IdCardTemplateController::class, 'store']);
+            Route::patch('id-card-templates/{template}', [IdCardTemplateController::class, 'update']);
+            Route::delete('id-card-templates/{template}', [IdCardTemplateController::class, 'destroy']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

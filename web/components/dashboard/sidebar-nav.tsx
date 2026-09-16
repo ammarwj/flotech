@@ -10,6 +10,7 @@ import {
   Compass,
   Ticket,
   Award,
+  IdCard,
   ChevronDown,
   Settings,
   Settings2,
@@ -71,7 +72,7 @@ export type NavSection = {
 /**
  * Organizer navigation.
  *
- * One unlabelled section: seven entries don't need headings, and this keeps
+ * One unlabelled section: eight entries don't need headings, and this keeps
  * `useNav()` returning a single shape so no renderer branches on role.
  *
  * Jadwal & klasemen are deliberately absent: they only exist per event, and live
@@ -88,6 +89,9 @@ export const ORGANIZER_NAV: NavSection[] = [
       { href: "/organizer/tickets", label: "Tiket", icon: Ticket, mobile: true },
       { href: "/organizer/wallet", label: "Dompet", icon: Wallet, mobile: true },
       { href: "/organizer/certificates", label: "Sertifikat", icon: Award },
+      // No `mobile: true`: the bottom bar already has its five slots taken, and
+      // a sixth would be dropped silently rather than shown.
+      { href: "/organizer/id-cards", label: "ID Card", icon: IdCard },
       { href: "/organizer/billing", label: "Pembelian Paket", icon: CreditCard },
       { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
     ],

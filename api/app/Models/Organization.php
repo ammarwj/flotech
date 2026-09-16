@@ -120,6 +120,11 @@ class Organization extends Model
         return $this->hasMany(CertificateTemplate::class);
     }
 
+    public function idCardTemplates(): HasMany
+    {
+        return $this->hasMany(IdCardTemplate::class);
+    }
+
     /** Daily public page traffic across every event of this organization. */
     public function viewDaily(): HasMany
     {
