@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, ClipboardList, MapPin, ShieldCheck, Trophy } from "lucide-react";
 
@@ -33,18 +35,41 @@ function dateRange(start: string | null, end: string | null) {
 /**
  * Where a referee or match staff lands.
  *
- * No redirect when there is exactly one assignment, even though that is the
- * common case: the crew of a weekend tournament would then have no page that
- * ever shows them what they are assigned to, and the one event they do have
- * would look like the whole application rather than one job. The card is one
- * click and it says who they are on this event.
+ * Exactly one assignment — the common case for a weekend tournament — goes
+ * straight through to that event. `replace`, not `push`: the list this skips is
+ * not a step the crew came from, so leaving it in the history would make Back
+ * bounce off it forever.
+ *
+ * The role this account holds ("Wasit Utama", "Staf") is the one thing the
+ * skipped card said, so the event page has to keep saying it — it reads
+ * `assignment.role_display` off the same payload for its header, which is why
+ * the redirect costs nothing here.
+ *
+ * Nothing renders during the redirect: the list would flash for a frame and
+ * then be replaced, which reads as a misclick.
  */
 export default function OfficiatingPage() {
+  const router = useRouter();
   const query = useQuery({
     queryKey: ["officiating-events"],
     queryFn: getOfficiatingEvents,
   });
   const events = query.data;
+  const only = events?.length === 1 ? events[0] : null;
+
+  useEffect(() => {
+    if (only) router.replace(`/officiating/events/${only.event_id}`);
+  }, [only, router]);
+
+  if (only) {
+    return (
+      <div className="grid gap-3">
+        {[0, 1].map((i) => (
+          <Skeleton key={i} className="h-[92px] w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div>

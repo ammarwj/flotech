@@ -134,9 +134,14 @@ migrasi dulu → payload `"wasit"` dari frontend lama yang ditolak.
 cabang di bawah `/organizations/{org}/...`), `officiating/page.tsx` (daftar penugasan),
 `officiating/events/[id]/page.tsx` (jadwal). Tiga catatan yang perlu dibawa ke fase berikutnya:
 
-- **Tidak ada redirect saat penugasannya cuma satu**, menyimpang dari rencana. Kru turnamen
-  akhir pekan hampir selalu punya tepat satu, dan dengan redirect mereka tak pernah punya
-  halaman yang menyebut mereka ditugaskan sebagai apa. Kartunya satu klik dan memuat perannya.
+- **Redirect saat penugasannya cuma satu** — sesuai rencana. Sempat ditulis tanpa redirect
+  dengan alasan kru tak akan pernah punya halaman yang menyebut mereka ditugaskan sebagai apa;
+  alasan itu gugur karena halaman event **sudah** menyebutnya (`assignment.role_display`,
+  "Kamu bertugas sebagai … di event ini"), jadi yang dilewati memang tidak membawa apa-apa.
+  `router.replace`, bukan `push`: daftar yang dilewati bukan langkah yang didatangi kru, dan
+  meninggalkannya di history membuat tombol Back memantul di situ selamanya. Selama redirect
+  yang dirender skeleton, bukan daftarnya — daftar yang berkedip satu frame lalu diganti
+  terbaca sebagai salah klik.
 - **`CrewMatchCard` ditulis lokal, bukan memakai `PublicMatchCard`.** Kartu publik seluruhnya
   bergaya dari `app/(public)/event-shell.css` yang **tidak dimuat shell dashboard**
   (`globals.css:1188` sudah menyatakannya), ia sebuah `<button>` yang butuh `onClick`, dan
