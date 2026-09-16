@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\EventPersonnelController;
 use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\ExportController;
+use App\Http\Controllers\Api\IdCardController;
 use App\Http\Controllers\Api\IdCardTemplateController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
@@ -377,6 +378,14 @@ Route::prefix('v1')->group(function () {
             Route::post('id-card-templates', [IdCardTemplateController::class, 'store']);
             Route::patch('id-card-templates/{template}', [IdCardTemplateController::class, 'update']);
             Route::delete('id-card-templates/{template}', [IdCardTemplateController::class, 'destroy']);
+
+            // Printing. Gated on the *event's* plan, unlike the template rows
+            // above. Status and download are ungated but ownership-checked —
+            // see IdCardController::ensureOwned().
+            Route::get('events/{event}/id-card-recipients', [IdCardController::class, 'recipients']);
+            Route::post('events/{event}/id-cards', [IdCardController::class, 'generate']);
+            Route::get('id-card-batches/{batch}', [IdCardController::class, 'status']);
+            Route::get('id-card-batches/{batch}/download', [IdCardController::class, 'download']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

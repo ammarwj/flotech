@@ -21,7 +21,7 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 | 1 | Personel (wasit & staf) | ✅ selesai |
 | 2 | Key gerbang `id_card_generator` | ✅ selesai |
 | 3 | Template + editor drag-drop | ✅ selesai |
-| 4 | Renderer + batch + ZIP | ⬜ |
+| 4 | Renderer + batch + ZIP | ✅ selesai |
 | 5 | `id-cards:prune` | ⬜ |
 
 ---
@@ -118,12 +118,53 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 
 ## Fase 4 — Renderer + batch (tidak boleh dipecah)
 
-- [ ] Dua TTF di `api/resources/fonts/` **berikut lisensinya** dari upstream — salinan di
-      `vendor/dompdf/` tidak membawa berkas lisensi dan `vendor/` di-gitignore
-- [ ] `IdCardService`, `GenerateIdCardsJob`, request, `IdCardController` (4 metode), 4 rute,
-      halaman generate + polling
-- [ ] `config/horizon.php` memory 128 → 384
-- [ ] Test `IdCardRenderTest`, `IdCardGenerateTest`
+- [x] `DejaVuSans.ttf` + `DejaVuSans-Bold.ttf` di `api/resources/fonts/` **berikut
+      `LICENSE-DejaVu.txt`** dari upstream — salinan di `vendor/dompdf/` tidak membawa berkas
+      lisensi dan `vendor/` di-gitignore
+- [x] `Catalog::officialRoleLabel(?string $sport, ?string $key)` — label peran ofisial tim
+      dari katalog cabang, `null` untuk key yang tidak dikenal **dan** untuk ofisial tanpa
+      peran; "Ofisial" dipasang di pemanggil, bukan di helper
+- [x] `IdCardService` — `recipients()` meratakan tiga kolam jadi satu bentuk, `background()`
+      di-decode **sekali per batch** lalu di-`clone` per kartu, `render()` → PNG,
+      `zip()` → key objek. Tiga fakta Intervention v4 yang **dikoreksi dengan menjalankan**,
+      bukan dengan membaca: pabriknya `createImage()` (`create()` tidak ada),
+      `colorAt()` (`pickColor()` tidak ada), dan vertical align `'center'` — enum `Alignment`
+      tidak punya `middle`, dan `Font::setAlignmentVertical()` memakai `Alignment::from()`
+      telanjang sehingga alias fuzzy di `Alignment::create()` tidak berlaku untuk font
+- [x] **Fallback disk, dan ini bukan kenyamanan dev.** Disk `r2` dikonfigurasi
+      `throw => false, report => false`, jadi tanpa kredensial `put()` **no-op tanpa suara**
+      dan unduhan 404 atas objek yang tak pernah ada. `zip()` bercabang di `config('r2.key')`
+      (pola `UploadController`), dan satu-satunya yang memutuskan disknya adalah
+      `IdCardService::storage()` — `download()` membaca lewat sana, bukan `Storage::disk('r2')`
+      langsung, karena dua pembaca aturan yang sama akan menyimpang dan selisihnya berupa
+      404 atas berkas yang ada. `fetchBytes()` menelusuri **dua** base (R2 publik dan
+      `public`), pasangan yang sama dengan `MediaCleanupService::keyFor()`
+- [x] `GenerateIdCardsJob` (`$timeout = 900`, `$tries = 1`), `GenerateIdCardsRequest`,
+      `IdCardController` (4 metode), 4 rute. `status()`/`download()` **ungated** tapi wajib
+      memeriksa kepemilikan — batch id UUID di cache bersama, tanpa itu ia jadi bearer token;
+      404, bukan 403, karena keberadaan sebuah id pun bukan hal yang boleh dipelajari orang asing
+- [x] `config/horizon.php` memory 128 → 384
+- [x] `deploy.md` — `CACHE_STORE=redis` & `QUEUE_CONNECTION=redis` masuk daftar env wajib,
+      berikut gotcha-nya: `file`/`array` lokal per container, jadi `worker` menulis status batch
+      ke cache-nya sendiri dan `api` membaca cache-nya sendiri **tanpa satu pun error** —
+      halaman generate mentok "queued" selamanya walau zip-nya benar-benar jadi. Satu baris
+      troubleshooting juga
+- [x] `web/lib/api/id-cards.ts` (`getIdCardRecipients`, `generateIdCards`, `getIdCardBatch`,
+      `downloadIdCardBatch`) + tipe `IdCardRecipient`/`IdCardBatch`. Unduhan lewat
+      `apiClient` `responseType: "blob"` + `downloadBlob()` — token di memori, `<a href>` polos
+      akan 401
+- [x] `organizer/id-cards/generate/page.tsx` — polling `["id-card-batch", orgId, batchId]` yang
+      **berhenti di `done` DAN `failed`**: batch gagal sama finalnya dengan batch selesai, dan
+      memoll keduanya selamanya membuat tab yang dibiarkan terbuka menghantam API tanpa henti.
+      Gate dibaca dari **event yang dipilih**, bukan sekali di atas halaman — entitlement milik
+      event, jadi mengganti pilihan bisa mengubah jawabannya. Mengganti event/template
+      mengosongkan batch di layar: ia dirender dari pasangan yang lama
+- [x] Test `IdCardRenderTest` (3 kasus, 8 assertion) + `IdCardGenerateTest` (4 kasus,
+      19 assertion). Ukuran PNG diverifikasi **dengan dijalankan**: CR80 → 1011×638,
+      A6 → 1240×1748 pada DPI 300
+- [x] Verifikasi: `pint --dirty` bersih, **suite penuh 583 lulus / 3585 assertion** (1 skip
+      lama), `bunx tsc --noEmit` bersih, `bun run build` sukses, `bun run lint` tetap di
+      baseline 2 error (keduanya berkas lama)
 
 ## Fase 5 — Kebersihan
 
@@ -140,8 +181,10 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 2. `horizon.memory = 384` tebakan dari ukuran frame
 3. `$timeout` job mengalahkan `timeout` supervisor — terdokumentasi, belum ditelusuri di
    vendor tree ini
-4. Lisensi font (lihat Fase 4)
-5. Rutin sudut membulat GD dibaca, belum dijalankan
-6. `Catalog::officialRoleLabel()` belum ada — tambahkan atau petakan inline
+4. ~~Lisensi font~~ — **selesai**: DejaVu diambil dari upstream berikut `LICENSE-DejaVu.txt`
+5. **Rutin sudut membulat GD** masih dibaca, belum diuji: kedua test render memakai
+   `radius => 0`, jadi jalurnya cuma dilewati kompilernya. Uji manual dengan `radius: 50`
+   (lingkaran) sebelum mempercayainya di kartu sungguhan
+6. ~~`Catalog::officialRoleLabel()` belum ada~~ — **selesai**, ditambahkan di Fase 4
 7. `cover()` pada pasfoto 3:4 ke kotak 4:5 memotong ubun-ubun; `contain` katup keluarnya
 8. Round-trip `decimal(6,2)` ↔ float JS untuk `85.6`

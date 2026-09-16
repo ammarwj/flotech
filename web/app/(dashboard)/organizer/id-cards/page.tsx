@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowUpRight, Building2, IdCard, LayoutTemplate, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Building2,
+  IdCard,
+  LayoutTemplate,
+  Plus,
+  Printer,
+  Trash2,
+} from "lucide-react";
 
 import { deleteIdCardTemplate, getIdCardTemplates } from "@/lib/api/id-cards";
 import { getEvents } from "@/lib/api/events";
@@ -103,12 +111,20 @@ export default function IdCardsPage() {
         title="ID Card"
         description={DESCRIPTION}
         actions={
-          <Button asChild>
-            <Link href="/organizer/id-cards/templates/new">
-              <Plus className="h-4 w-4" />
-              Template baru
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/organizer/id-cards/generate">
+                <Printer className="h-4 w-4" />
+                Cetak kartu
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/organizer/id-cards/templates/new">
+                <Plus className="h-4 w-4" />
+                Template baru
+              </Link>
+            </Button>
+          </>
         }
       />
 

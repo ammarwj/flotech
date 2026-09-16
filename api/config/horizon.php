@@ -205,8 +205,14 @@ return [
             'maxProcesses' => 1,
             'maxTime' => 0,
             'maxJobs' => 0,
-            'memory' => 128,
+            // 384, not the framework default 128: GenerateIdCardsJob decodes a
+            // 300 DPI card frame (~2.6 MB raw for CR80, ~6.5 MB for A6) plus
+            // the photo being placed on it, and 128 MB restarts the worker
+            // mid-batch. Estimated from frame size — watch the restart rate
+            // after the first real batch.
+            'memory' => 384,
             'tries' => 1,
+            // Per-job $timeout wins over this: GenerateIdCardsJob sets 900.
             'timeout' => 60,
             'nice' => 0,
         ],

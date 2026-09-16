@@ -208,6 +208,30 @@ class Catalog
         return array_column(self::officialRoles($slug), 'key');
     }
 
+    /**
+     * The human label behind a stored role key, or null when there is none —
+     * the sport has no catalogue, the official carries no role, or the key was
+     * renamed out from under an old row.
+     *
+     * Null rather than the raw key: the key is a slug the organizer never typed
+     * ("head_coach"), and printing it on an ID card looks like a bug. Callers
+     * decide what an unlabelled official is called.
+     */
+    public static function officialRoleLabel(?string $slug, ?string $key): ?string
+    {
+        if ($key === null || $key === '') {
+            return null;
+        }
+
+        foreach (self::officialRoles($slug) as $role) {
+            if ($role['key'] === $key) {
+                return $role['label'];
+            }
+        }
+
+        return null;
+    }
+
     public static function isSetBased(?string $slug): bool
     {
         return (self::sport($slug)['scoring'] ?? 'goal') === 'set';

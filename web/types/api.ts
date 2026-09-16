@@ -1419,6 +1419,41 @@ export interface IdCardTemplate {
   created_at: string;
 }
 
+/**
+ * One person who can be handed a card.
+ *
+ * Three tables feed this — players, team officials, event personnel — flattened
+ * by IdCardService::recipients() so nothing downstream has to know which. The
+ * `type`/`id` pair is what a generate request sends back to pick a subset;
+ * `photo_url` is null across all three pools, which is what the initials tile
+ * exists for.
+ */
+export interface IdCardRecipient {
+  type: "player" | "official" | "personnel";
+  id: string;
+  name: string;
+  role_label: string;
+  team_name: string;
+  photo_url: string | null;
+}
+
+/**
+ * A rendering batch, polled until it settles.
+ *
+ * Not a row: the batch lives in the shared cache for a day and then is gone, the
+ * same lifetime as the zip it points at. `done`/`total` drive the progress bar;
+ * `filename` is only informational, since the download endpoint sends its own
+ * Content-Disposition.
+ */
+export interface IdCardBatch {
+  batch_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  total: number;
+  done: number;
+  filename: string | null;
+  error: string | null;
+}
+
 /** What the public QR lands on: proof the document is real. */
 export interface CertificateVerification {
   certificate_number: string;

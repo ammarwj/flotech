@@ -150,6 +150,10 @@ REDIS_CLIENT=predis
 REDIS_HOST=redis
 REDIS_PASSWORD=null
 
+# Antrean & cache wajib store yang dibagi lintas container (lihat gotcha)
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
+
 # R2, Midtrans, Resend, dsb.
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
@@ -185,6 +189,19 @@ TELESCOPE_ENABLED=false     # jangan pernah true di produksi
 >   di Dockerfile — biarkan `phpredis` maka setiap request Redis error.
 > - **`REDIS_PASSWORD=null`.** Service `redis` di compose tidak memasang password,
 >   jadi jangan set nilai lain (yang di `.env` root tidak dipakai redis).
+> - **`CACHE_STORE=redis` wajib, dan ini bukan soal kecepatan.** Status batch
+>   generator ID card hidup di cache (`id-cards:batch:{uuid}`): container `worker`
+>   yang menulisnya, container `api` yang dibacakan poller frontend. `file` dan
+>   `array` masing-masing lokal per container — `file` menulis ke
+>   `storage/framework/cache` milik container itu sendiri (tidak ada volume bersama
+>   antara `api` dan `worker`), `array` hilang begitu request selesai. Dengan
+>   keduanya tidak ada yang error: job jalan sampai selesai, zip-nya benar-benar
+>   ada di R2, tapi `GET id-card-batches/{batch}` di `api` tidak pernah melihat
+>   entri itu — halaman generate mentok di "queued" selamanya dan tombol unduhnya
+>   tidak pernah menyala. `QUEUE_CONNECTION=redis` punya alasan yang sama dari sisi
+>   sebaliknya: `sync` membuat job dirender **di dalam** request `api`, yang mati
+>   di timeout 60 detik nginx (`php artisan serve` satu proses — seluruh API ikut
+>   berhenti selama itu).
 > - **`MAIL_MAILER=resend`** (bawaan example `log` — email cuma masuk file log).
 
 ### 3c. Isi `web/.env.production`
@@ -548,6 +565,7 @@ docker compose exec nginx nginx -s reload
 | Email tak terkirim | `MAIL_MAILER` masih `log`; set `resend` + `RESEND_API_KEY`. |
 | Pembayaran tak pernah lunas | Notification URL Midtrans belum diarahkan ke `/api/v1/webhooks/midtrans` (langkah 8). |
 | Reload halaman selalu balik ke `/login` | `SESSION_DOMAIN` masih `null` → cookie refresh host-only di subdomain API. Set `.floevent.id`, `docker compose up -d api worker scheduler`, `php artisan optimize`, lalu login ulang sekali. |
+| Generate ID card mentok "Menyiapkan…" walau worker sukses | `CACHE_STORE` bukan `redis`. `worker` menulis status batch ke cache-nya sendiri, `api` membaca cache-nya sendiri, dan tak satu pun error. Set `redis`, `docker compose up -d api worker scheduler`. |
 
 ---
 
