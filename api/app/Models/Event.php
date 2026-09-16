@@ -124,6 +124,12 @@ class Event extends Model
         return $this->hasMany(GameMatch::class);
     }
 
+    /** Referees and match staff. Not on any team — see EventPersonnel. */
+    public function personnel(): HasMany
+    {
+        return $this->hasMany(EventPersonnel::class)->orderBy('sort_order')->orderBy('created_at');
+    }
+
     public function photos(): HasMany
     {
         return $this->hasMany(EventPhoto::class)->orderBy('sort_order')->orderBy('created_at');

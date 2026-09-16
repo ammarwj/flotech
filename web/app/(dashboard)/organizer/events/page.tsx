@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3 } from "lucide-react";
+import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3, ShieldCheck } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
@@ -126,9 +126,11 @@ export default function EventsPage() {
                   </div>
                 </div>
               </div>
-              {/* Six nowrap buttons are ~620px; the card has ~288px on a phone.
-                  Full width first so they wrap inside the card instead of
-                  stretching it past the viewport. */}
+              {/* Eight nowrap buttons are ~800px; the card has ~288px on a
+                  phone, and the widest single button ("Pendaftaran") is ~120px,
+                  so every one of them still fits on a line of its own. Full
+                  width first so they wrap inside the card instead of stretching
+                  it past the viewport. */}
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 {ev.status !== "draft" && org?.slug && (
                   <Button asChild size="sm" variant="outline">
@@ -148,6 +150,14 @@ export default function EventsPage() {
                   <Link href={`/organizer/events/${ev.id}/schedule`}>
                     <CalendarClock className="h-4 w-4" />
                     Jadwal
+                  </Link>
+                </Button>
+                {/* Next to Jadwal, not next to Pendaftaran: these are the
+                    people who run the matches, not people who entered them. */}
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/personnel`}>
+                    <ShieldCheck className="h-4 w-4" />
+                    Petugas
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline">

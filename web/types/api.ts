@@ -1261,6 +1261,37 @@ export interface PlatformSettingsPayload {
   orgs_without_bank_account: number;
 }
 
+// ---- Event personnel (referees & match staff) ----
+
+/** Coarse bucket. The job title lives in `role_label`. */
+export type EventPersonnelKind = "wasit" | "staf";
+
+export interface EventPersonnel {
+  id: string;
+  event_id: string;
+  full_name: string;
+  kind: EventPersonnelKind;
+  /** The raw column — null when the organizer left it blank. Bind forms here. */
+  role_label: string | null;
+  /**
+   * What a card prints: `role_label`, or "Wasit"/"Staf" when it is empty.
+   * Read-only — binding a form to this writes the fallback into a column that
+   * was deliberately left empty.
+   */
+  role_display: string;
+  photo_url: string | null;
+  sort_order: number;
+}
+
+/** A row on the way in. No `id` means create; omitting a row deletes it. */
+export interface EventPersonnelInput {
+  id?: string;
+  full_name: string;
+  kind: EventPersonnelKind;
+  role_label?: string | null;
+  photo_url?: string | null;
+}
+
 // ---- Certificates ----
 
 /** A placeable field key, e.g. "recipient_name" or "qr". Catalogued by the API. */

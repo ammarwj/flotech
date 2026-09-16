@@ -124,6 +124,16 @@ class MediaCleanupTest extends TestCase
         $document = $this->file('uploads/ktp.pdf');
         $team->documents()->create(['file_url' => $document, 'file_name' => 'ktp.pdf']);
 
+        // A referee hangs off the event, not off a team — so teamUrls() never
+        // sees this one and eventUrls() has to collect it itself.
+        $personnelPhoto = $this->file('personnel/wasit.webp');
+        $event->personnel()->create([
+            'full_name' => 'Wasit Utama',
+            'kind' => 'wasit',
+            'photo_url' => $personnelPhoto,
+            'sort_order' => 0,
+        ]);
+
         $ticketCategory = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000]);
         $orderProof = $this->file('payment-proofs/order.webp');
         TicketOrder::create([
@@ -184,7 +194,7 @@ class MediaCleanupTest extends TestCase
 
         $this->commitDeferredJobs();
 
-        foreach ([$banner, $photo, $sponsorLogo, $teamLogo, $teamProof, $playerPhoto, $officialPhoto, $document, $orderProof] as $url) {
+        foreach ([$banner, $photo, $sponsorLogo, $teamLogo, $teamProof, $playerPhoto, $officialPhoto, $personnelPhoto, $document, $orderProof] as $url) {
             Storage::disk('public')->assertMissing($this->keyOf($url));
         }
         Storage::disk('public')->assertMissing($pdfKey);

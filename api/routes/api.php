@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
+use App\Http\Controllers\Api\EventPersonnelController;
 use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\MatchController;
@@ -360,6 +361,12 @@ Route::prefix('v1')->group(function () {
             Route::get('certificates/{certificate}/download', [CertificateController::class, 'download']);
             Route::post('certificates/{certificate}/send', [CertificateController::class, 'send']);
             Route::delete('certificates/{certificate}', [CertificateController::class, 'destroy']);
+
+            // Referees and match staff. Ungated on purpose — see the docblock on
+            // EventPersonnelController. Plain `tenant`, like the roster routes
+            // above: an operator already sees every player's photo.
+            Route::get('events/{event}/personnel', [EventPersonnelController::class, 'index']);
+            Route::put('events/{event}/personnel', [EventPersonnelController::class, 'sync']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

@@ -116,6 +116,9 @@ class MediaCleanupService
             ...$event->photos()->pluck('photo_url'),
             ...$event->sponsors()->pluck('logo_url'),
             ...$event->ticketOrders()->pluck('payment_proof_url'),
+            // Referees and match staff. They hang off `event_id` like the rest
+            // here, not off a team, so teamUrls() below never sees them.
+            ...$event->personnel()->pluck('photo_url'),
             ...Certificate::where('event_id', $event->id)->pluck('pdf_key'),
             ...$this->teamUrls($event->teams()->pluck('id')->all()),
         ];
