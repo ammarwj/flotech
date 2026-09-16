@@ -10,6 +10,7 @@ import {
   Compass,
   Ticket,
   Award,
+  ClipboardList,
   IdCard,
   ChevronDown,
   Settings,
@@ -115,6 +116,23 @@ export const PARTICIPANT_NAV: NavSection[] = [
 ];
 
 /**
+ * Match crew navigation — referees and match staff.
+ *
+ * One entry, and deliberately so. A task account's whole world is the events it
+ * was put on, and every fixture it can reach hangs off one of them
+ * (/officiating/events/[id]); there is no cross-event list of matches a crew
+ * member could act on, for the same reason the organizer menu has no global
+ * Jadwal. A second row would have to invent one.
+ */
+export const OFFICIATING_NAV: NavSection[] = [
+  {
+    id: "officiating",
+    label: null,
+    items: [{ href: "/officiating", label: "Penugasan", icon: ClipboardList, mobile: true }],
+  },
+];
+
+/**
  * SaaS super-admin navigation — the only one long enough to need headings.
  *
  * Grouped by domain and ordered by how often a group is opened: the queues that
@@ -211,11 +229,21 @@ function useNav(): NavSection[] {
   const role = useAuthStore((s) => s.user?.role);
   const mode = useDashboardMode();
 
+  // Before the role check, unlike the other two branches: `officiating` is
+  // derived from the pathname, so it is only ever true for someone standing on
+  // that surface — and a super_admin who opened it wants the menu that belongs
+  // to the page, not the platform menu with no way back to the fixtures.
+  if (mode === "officiating") return OFFICIATING_NAV;
   if (role === "super_admin") return ADMIN_NAV;
   return mode === "participant" ? PARTICIPANT_NAV : ORGANIZER_NAV;
 }
 
 function isActive(pathname: string, href: string) {
+  // Overview rows only, and only because they are prefixes of every sibling in
+  // their own menu — without this they stay lit on every sub-route. /officiating
+  // is deliberately *not* here: it has no siblings to swallow, so it keeps the
+  // prefix rule and stays lit while the crew is inside an event, which is where
+  // they spend the whole day.
   if (href === "/organizer" || href === "/admin") return pathname === href;
   return pathname === href || pathname.startsWith(href + "/");
 }

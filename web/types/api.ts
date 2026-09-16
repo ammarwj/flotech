@@ -14,9 +14,40 @@ export interface AuthUser {
   avatar_url: string | null;
   role: "super_admin" | "user";
   /** Which dashboard the next login opens in. */
-  default_mode: "organizer" | "participant";
+  default_mode: "organizer" | "participant" | "officiating";
   is_verified: boolean;
+  /**
+   * True while the account still holds a password somebody else chose for it —
+   * what the officiating invite issues. The shell renders nothing but the
+   * change-password takeover until it clears, and the server refuses the duty
+   * surface regardless of what the shell does.
+   */
+  must_change_password: boolean;
   email_verified_at: string | null;
+  /**
+   * Events this account is crew on. Unlike the other relation-backed fields the
+   * API can send, this one arrives on *every* auth response — it is what tells
+   * the shell a referee is a referee. A task account owns no organization and
+   * manages no team, so without it the app sees an empty account and lands them
+   * on the organizer dashboard.
+   */
+  officiating?: OfficiatingAssignment[];
+  /**
+   * Derived server-side from what the account has done (owns/belongs to an
+   * organization = organizer, registered a team = participant) — not from
+   * `default_mode`, which is only the last hat worn in the switcher. Empty for
+   * an account that has done neither, which is what a task account provisioned
+   * from a personnel row looks like; that is how ModeSwitcher tells crew-only
+   * accounts from a referee who also manages a team. Optional because the admin
+   * user list is the other caller and pages through hundreds of rows.
+   */
+  account_types?: AccountType[];
+}
+
+export interface OfficiatingAssignment {
+  event_id: string;
+  event_name: string;
+  kind: EventPersonnelKind;
 }
 
 export interface AuthTokenResponse {
@@ -1270,8 +1301,14 @@ export interface PlatformSettingsPayload {
 
 // ---- Event personnel (referees & match staff) ----
 
-/** Coarse bucket. The job title lives in `role_label`. */
-export type EventPersonnelKind = "wasit" | "staf";
+/**
+ * Coarse bucket. The job title lives in `role_label`.
+ *
+ * English because the same two values are the authorization boundary the
+ * officiating routes branch on — one vocabulary across PHP, routes and
+ * TypeScript, with nothing to map. The labels shown to humans stay Indonesian.
+ */
+export type EventPersonnelKind = "referee" | "staff";
 
 export interface EventPersonnel {
   id: string;
@@ -1286,6 +1323,14 @@ export interface EventPersonnel {
    * was deliberately left empty.
    */
   role_display: string;
+  /** What the organizer typed. Blank means this person gets no login. */
+  email: string | null;
+  /**
+   * Whether an account was actually provisioned for that address. Derived from
+   * `user_id`, which the API never publishes: an address is what somebody typed,
+   * an account is what they can prove.
+   */
+  has_account: boolean;
   photo_url: string | null;
   sort_order: number;
 }
@@ -1295,6 +1340,7 @@ export interface EventPersonnelInput {
   id?: string;
   full_name: string;
   kind: EventPersonnelKind;
+  email?: string | null;
   role_label?: string | null;
   photo_url?: string | null;
 }

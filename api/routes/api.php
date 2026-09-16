@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\IdCardController;
 use App\Http\Controllers\Api\IdCardTemplateController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
+use App\Http\Controllers\Api\OfficiatingController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\PlanOrderController;
@@ -218,6 +219,31 @@ Route::prefix('v1')->group(function () {
         // The manager's own billing documents for the registration fee.
         Route::get('my-teams/{team}/invoice', [MyTeamController::class, 'invoice']);
         Route::get('my-teams/{team}/receipt', [MyTeamController::class, 'receipt']);
+
+        // ---- Officiating: referees and match staff ----
+        // Deliberately a sibling of organizations/{organization}, not a branch
+        // inside it. A task account holds no organization_members row, so
+        // `tenant` would refuse it — and that refusal is the feature: the whole
+        // organizer surface (wallet, billing, deleting the event) is closed to
+        // the crew structurally rather than by anyone remembering to hide it.
+        //
+        // `password.rotated` stacks here and nowhere near auth/*: these accounts
+        // are mailed a default password, and this is the group it must stop
+        // opening. The endpoints that fix the situation live outside this group.
+        Route::middleware('password.rotated')->group(function () {
+            // Outside the event prefix: the landing page has no event id yet.
+            Route::get('officiating/events', [OfficiatingController::class, 'index']);
+
+            Route::middleware('event.personnel')->prefix('officiating/events/{event}')->group(function () {
+                Route::get('/', [OfficiatingController::class, 'show']);
+                Route::get('categories/{category}/matches', [OfficiatingController::class, 'matches']);
+
+                // The role-gated halves go here: `event.staff` for the score and
+                // stat writes (phase 4), `event.referee` for lineup approval
+                // (phase 6). Both stack *after* event.personnel, which is what
+                // puts the row they read on the request.
+            });
+        });
 
         Route::middleware('tenant')->prefix('organizations/{organization}')->group(function () {
             Route::get('/', [OrganizationController::class, 'show']);

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Event;
 use App\Models\Team;
 
 /**
@@ -38,5 +39,11 @@ class MailLinks
     public static function wallet(): string
     {
         return self::base().'/organizer/wallet';
+    }
+
+    /** Where a referee or match staff lands for the event they were assigned. */
+    public static function officiating(Event $event): string
+    {
+        return self::base().'/officiating/events/'.$event->id;
     }
 }

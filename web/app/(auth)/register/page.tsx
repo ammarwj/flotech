@@ -14,7 +14,7 @@ import {
   DASHBOARD_MODES,
   MODE_HOME,
   MODE_SHORT_LABEL,
-  type DashboardMode,
+  type ChoosableMode,
 } from "@/lib/hooks/use-dashboard-mode";
 import { safeNext } from "@/lib/next-param";
 import { phoneInput } from "@/lib/phone";
@@ -46,8 +46,12 @@ const schema = fields.refine((d) => d.password === d.password_confirmation, {
 
 type FormValues = z.infer<typeof schema>;
 
-/** Register-page copy for each hat; the names themselves live in MODE_SHORT_LABEL. */
-const MODE_PITCH: Record<DashboardMode, { icon: typeof Trophy; blurb: string }> = {
+/**
+ * Register-page copy for each hat; the names themselves live in
+ * MODE_SHORT_LABEL. Keyed by ChoosableMode, not DashboardMode: nobody signs up
+ * as crew — an organizer puts them there — so there is no pitch to write.
+ */
+const MODE_PITCH: Record<ChoosableMode, { icon: typeof Trophy; blurb: string }> = {
   organizer: { icon: Trophy, blurb: "Bikin & kelola turnamen" },
   participant: { icon: Users, blurb: "Daftarkan tim ke event" },
 };
@@ -63,7 +67,7 @@ function RegisterForm() {
   // The one thing that decides what the whole app looks like to them. Only the
   // public team-registration page links here with ?next=, so that arrival is
   // unambiguously a participant and asking again would be pure friction.
-  const [mode, setMode] = useState<DashboardMode>(next ? "participant" : "organizer");
+  const [mode, setMode] = useState<ChoosableMode>(next ? "participant" : "organizer");
 
   const {
     register,

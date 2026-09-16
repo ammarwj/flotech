@@ -2,11 +2,15 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { toast } from "sonner";
 import { BadgeCheck, KeyRound, ShieldAlert, UserRound } from "lucide-react";
 
 import { changePassword } from "@/lib/api/auth";
+import {
+  passwordFields as fields,
+  passwordSchema as schema,
+  type PasswordFormValues as FormValues,
+} from "@/lib/password";
 import { parseApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -16,29 +20,6 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
-
-// Mirrors ChangePasswordRequest: Password::min(8)->letters()->numbers().
-const fields = z.object({
-  current_password: z.string().min(1, "Password saat ini wajib diisi"),
-  password: z
-    .string()
-    .min(8, "Minimal 8 karakter")
-    .regex(/\p{L}/u, "Harus mengandung minimal satu huruf")
-    .regex(/\d/, "Harus mengandung minimal satu angka"),
-  password_confirmation: z.string(),
-});
-
-const schema = fields
-  .refine((d) => d.password === d.password_confirmation, {
-    message: "Konfirmasi password tidak cocok",
-    path: ["password_confirmation"],
-  })
-  .refine((d) => d.password !== d.current_password, {
-    message: "Password baru harus berbeda dari password saat ini",
-    path: ["password"],
-  });
-
-type FormValues = z.infer<typeof schema>;
 
 export default function AccountPage() {
   const user = useAuthStore((s) => s.user);

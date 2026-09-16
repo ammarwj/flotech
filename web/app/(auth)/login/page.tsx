@@ -54,6 +54,18 @@ function LoginForm() {
         return;
       }
 
+      // Before every other branch, because the ones below can land outside the
+      // shell that carries the gate: an account created by the officiating
+      // invite owns no organization, so the organizer branch would send it to
+      // /onboarding — which is its own route group, with no AuthGate and so no
+      // takeover. /officiating is inside (dashboard), so the gate fires there —
+      // and it is also where they belong once the password is changed, so the
+      // takeover dissolves onto the right page instead of a settings screen.
+      if (user.must_change_password) {
+        router.push("/officiating");
+        return;
+      }
+
       if (user.role === "super_admin") {
         router.push("/admin");
         return;

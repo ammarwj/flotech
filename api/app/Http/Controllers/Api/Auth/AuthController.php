@@ -93,7 +93,41 @@ class AuthController extends Controller
 
     public function me(): JsonResponse
     {
-        return ApiResponse::success(new UserResource(auth('api')->user()));
+        /** @var User $user */
+        $user = auth('api')->user();
+
+        return ApiResponse::success(new UserResource($this->withAuth($user)));
+    }
+
+    /**
+     * Loads what every auth response owes the shell before it can choose a
+     * landing page.
+     *
+     * `personnelAssignments` is why this exists: a task account owns no
+     * organization and manages no team, so without it the web app sees an
+     * account with nothing in it and drops a referee into the organizer
+     * dashboard — or worse, into onboarding, which is outside the shell that
+     * carries the password gate. "Not loaded" and "has no assignments" are the
+     * same absence, so it has to be loaded on every response the client learns
+     * its identity from, not just on me().
+     *
+     * `loadExists` on the other three is the second half of the same question:
+     * they are what `account_types` is derived from, and the shell asks that to
+     * tell a crew-only account (plain "Area Petugas" label) from a referee who
+     * also manages a team — they really do have two hats, and keep the mode
+     * switcher. Existence, not rows: this response prints none of them, `teams`
+     * is wide (payment snapshots, proof uploads) and one manager can hold many,
+     * and loading them would also start publishing `managed_teams` &c. here,
+     * which is the admin screen's payload, not the shell's. All three land in
+     * one statement as subqueries, and `accountTypes()` reads either shape.
+     *
+     * Two extra queries, said out loud.
+     */
+    protected function withAuth(User $user): User
+    {
+        return $user
+            ->load('personnelAssignments.event')
+            ->loadExists(['ownedOrganizations', 'organizationMemberships', 'managedTeams']);
     }
 
     /**
@@ -127,6 +161,13 @@ class AuthController extends Controller
             'password' => $request->string('password'),
             // Any "remember me" cookie was minted against the old password.
             'remember_token' => Str::random(60),
+            // Clears the officiating invite's forced rotation. No separate
+            // endpoint for it: the rule that makes the rotation real is
+            // ChangePasswordRequest's `different:current_password`, which only
+            // holds on this path. A "set my first password" route would have to
+            // drop `current_password` and with it that rule, leaving the
+            // mailed default re-settable.
+            'must_change_password' => false,
         ])->save();
 
         $others = $this->auth->revokeAllFor($user, $request->cookie(self::REFRESH_COOKIE));
@@ -148,7 +189,7 @@ class AuthController extends Controller
             'access_token' => $tokens['access_token'],
             'token_type' => 'bearer',
             'expires_in' => $tokens['expires_in'],
-            'user' => new UserResource($user),
+            'user' => new UserResource($this->withAuth($user)),
         ], $message, $status)->withCookie($this->makeRefreshCookie($tokens['refresh_token']));
     }
 

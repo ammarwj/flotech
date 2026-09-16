@@ -19,6 +19,15 @@ class EventPersonnelResource extends JsonResource
             'id' => $this->id,
             'event_id' => $this->event_id,
             'full_name' => $this->full_name,
+            // Raw, for the same reason as role_label below: the editor binds to
+            // what was typed, and an empty field has to stay empty.
+            'email' => $this->email,
+            // Whether a login exists for that address, which is a different
+            // question — an address can be typed, saved, and still belong to
+            // nobody if the row predates provisioning. `user_id` itself is
+            // deliberately not published: the organizer has no use for another
+            // account's id, and every route that authorizes reads it server-side.
+            'has_account' => $this->user_id !== null,
             'kind' => $this->kind,
             // The raw column, so the editor can show an empty field as empty.
             'role_label' => $this->role_label,

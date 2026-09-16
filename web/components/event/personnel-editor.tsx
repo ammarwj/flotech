@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Loader2, Plus, User, X } from "lucide-react";
+import { ImagePlus, Loader2, Plus, ShieldCheck, User, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { compressToWebp } from "@/lib/image";
@@ -17,22 +17,28 @@ export type PersonnelRow = {
   kind: EventPersonnelKind;
   /** Free text — "Wasit Utama", "Panitia Lapangan". "" means "no title". */
   role_label: string;
+  /** "" means this person gets no login at all. */
+  email: string;
   photo_url?: string | null;
+  /** Render-only: an account exists for that address. Server-derived. */
+  has_account?: boolean;
   /** Render-only: local blob for instant preview. */
   photo_preview?: string;
   /** Render-only: upload in flight. */
   photo_uploading?: boolean;
 };
 
-export const emptyPersonnel = (kind: EventPersonnelKind = "wasit"): PersonnelRow => ({
+export const emptyPersonnel = (kind: EventPersonnelKind = "referee"): PersonnelRow => ({
   full_name: "",
   kind,
   role_label: "",
+  email: "",
 });
 
+/** Stored values are English; what the organizer reads stays Indonesian. */
 const KIND_OPTIONS: { value: EventPersonnelKind; label: string }[] = [
-  { value: "wasit", label: "Wasit" },
-  { value: "staf", label: "Staf" },
+  { value: "referee", label: "Wasit" },
+  { value: "staff", label: "Staf" },
 ];
 
 /** The photo to render for a row: local blob first, else a stored http(s) URL. */
@@ -51,6 +57,10 @@ function photoShown(p: PersonnelRow): string | null {
  * property of the sport; "Panitia Lapangan" is what this particular committee
  * decided to call its people, and no master list would be right for the next
  * event. Left empty, the card falls back to the kind's label.
+ *
+ * The email column is the one control here that does something on save: an
+ * address turns the row into a login and mails the invitation. Left blank the
+ * person stays exactly what they were before — a name to print on a card.
  */
 export function PersonnelEditor({
   personnel,
@@ -185,13 +195,34 @@ export function PersonnelEditor({
               className="w-44 shrink-0"
               // The placeholder is the fallback the card would print, so an
               // empty field reads as the title it inherits rather than blank.
-              placeholder={p.kind === "wasit" ? "Wasit" : "Staf"}
+              placeholder={p.kind === "referee" ? "Wasit" : "Staf"}
               aria-label={`Jabatan petugas ${i + 1}`}
               maxLength={60}
               value={p.role_label}
               disabled={disabled}
               onChange={(e) => set(i, { role_label: e.target.value })}
             />
+            <div className="flex w-56 shrink-0 flex-col gap-1">
+              <Input
+                type="email"
+                // Not marked "opsional" the way a nice-to-have field would be:
+                // this is the only thing on the row that decides whether the
+                // person can log in, so the placeholder says what filling it
+                // does rather than that it may be skipped.
+                placeholder="Email untuk akses login"
+                aria-label={`Email petugas ${i + 1}`}
+                maxLength={255}
+                value={p.email}
+                disabled={disabled}
+                onChange={(e) => set(i, { email: e.target.value })}
+              />
+              {p.has_account && (
+                <span className="inline-flex items-center gap-1 text-[0.625rem] leading-none text-[var(--success)]">
+                  <ShieldCheck className="h-3 w-3" />
+                  Akun aktif
+                </span>
+              )}
+            </div>
             {!disabled && (
               <Button
                 type="button"
@@ -214,7 +245,7 @@ export function PersonnelEditor({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onChange([...personnel, emptyPersonnel("wasit")])}
+            onClick={() => onChange([...personnel, emptyPersonnel("referee")])}
           >
             <Plus className="h-4 w-4" />
             Wasit
@@ -223,7 +254,7 @@ export function PersonnelEditor({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onChange([...personnel, emptyPersonnel("staf")])}
+            onClick={() => onChange([...personnel, emptyPersonnel("staff")])}
           >
             <Plus className="h-4 w-4" />
             Staf

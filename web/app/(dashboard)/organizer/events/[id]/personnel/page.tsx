@@ -32,6 +32,8 @@ function toRow(p: EventPersonnel): PersonnelRow {
     full_name: p.full_name,
     kind: p.kind,
     role_label: p.role_label ?? "",
+    email: p.email ?? "",
+    has_account: p.has_account,
     photo_url: p.photo_url,
   };
 }
@@ -77,6 +79,11 @@ export default function EventPersonnelPage() {
           full_name: r.full_name.trim(),
           kind: r.kind,
           role_label: r.role_label.trim() || null,
+          // Null, not "": the server reads a blank address as "no login" and
+          // unlinks whatever account the row had. An empty string would fail
+          // the `email` rule and 422 the whole save over a row nobody meant to
+          // give access to.
+          email: r.email.trim() || null,
           photo_url: r.photo_url ?? null,
         })),
       ),
@@ -119,7 +126,7 @@ export default function EventPersonnelPage() {
         <SectionHeader
           icon={ShieldCheck}
           title="Wasit & Staf"
-          description="Foto dan jabatan dipakai saat mencetak ID card. Jabatan boleh dikosongkan — kartunya akan tertulis “Wasit” atau “Staf”."
+          description="Foto dan jabatan dipakai saat mencetak ID card. Jabatan boleh dikosongkan — kartunya akan tertulis “Wasit” atau “Staf”. Isi email untuk memberi akses login: undangan berisi password sementara dikirim ke alamat itu saat disimpan."
         />
         <CardContent className="grid gap-4">
           <PersonnelEditor personnel={rows} onChange={setDraft} />

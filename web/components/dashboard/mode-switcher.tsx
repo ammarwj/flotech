@@ -22,7 +22,10 @@ import { useAuthStore } from "@/stores/auth-store";
  * Picking a mode also makes it the default the next login opens in: the hat you
  * wore last is the one you want tomorrow, so there is nothing extra to set.
  *
- * Super admins have a single surface and get a plain label instead.
+ * Two kinds of account have a single surface and get a plain label instead:
+ * super admins, and referees or match staff whose only reason to be here is the
+ * event they were assigned to. For the second one the buttons would be worse
+ * than useless — both would lead somewhere the API answers 403.
  */
 export function ModeSwitcher({
   onSelect,
@@ -36,6 +39,7 @@ export function ModeSwitcher({
 } = {}) {
   const router = useRouter();
   const role = useAuthStore((s) => s.user?.role);
+  const user = useAuthStore((s) => s.user);
   const setDefaultMode = useAuthStore((s) => s.setDefaultMode);
   const mode = useDashboardMode();
 
@@ -43,6 +47,19 @@ export function ModeSwitcher({
     return (
       <span className="hidden text-sm font-medium text-muted-foreground md:inline">
         Admin Platform
+      </span>
+    );
+  }
+
+  // Crew and nothing else. `account_types` is derived from organizations and
+  // managed teams, so it is empty exactly when this account has neither — which
+  // is what a task account provisioned from a personnel row looks like. A
+  // referee who also manages a team keeps the switcher; they really do have two
+  // hats.
+  if ((user?.officiating?.length ?? 0) > 0 && (user?.account_types?.length ?? 0) === 0) {
+    return (
+      <span className="hidden text-sm font-medium text-muted-foreground md:inline">
+        {MODE_LABEL.officiating}
       </span>
     );
   }

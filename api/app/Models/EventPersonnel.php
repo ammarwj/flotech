@@ -20,8 +20,12 @@ class EventPersonnel extends Model
      */
     protected $table = 'event_personnel';
 
-    /** The two kinds the organizer asked for: wasit (referee), staf (crew). */
-    public const KINDS = ['wasit', 'staf'];
+    /**
+     * The two kinds the organizer asked for. English because this is also the
+     * authorization boundary the officiating middleware branches on — one
+     * vocabulary across PHP, routes and TypeScript, with nothing to map.
+     */
+    public const KINDS = ['referee', 'staff'];
 
     /**
      * Shown on a card when the organizer left role_label empty. Not a default
@@ -30,13 +34,15 @@ class EventPersonnel extends Model
      * whose title genuinely is "Wasit".
      */
     public const KIND_LABELS = [
-        'wasit' => 'Wasit',
-        'staf' => 'Staf',
+        'referee' => 'Wasit',
+        'staff' => 'Staf',
     ];
 
     protected $fillable = [
         'event_id',
         'full_name',
+        'email',
+        'user_id',
         'kind',
         'role_label',
         'photo_url',
@@ -61,5 +67,16 @@ class EventPersonnel extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    /**
+     * The login this row was provisioned. Null means the organizer typed no
+     * email, or typed one and the row predates provisioning — either way, no
+     * access. Authorization reads this and never `email`: an address is what
+     * somebody typed, an account is what they can prove.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

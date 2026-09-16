@@ -34,6 +34,11 @@ class SyncEventPersonnelRequest extends FormRequest
             'personnel' => ['present', 'array', 'max:200'],
             'personnel.*.id' => ['nullable', 'string'],
             'personnel.*.full_name' => ['required', 'string', 'max:255'],
+            // Nullable because a crew member who never logs in is still a name
+            // on an ID card — the feature this table was built for. `email`
+            // validation is not cosmetic here: this address is what an account
+            // gets provisioned against, so a typo mails a stranger a password.
+            'personnel.*.email' => ['nullable', 'email', 'max:255'],
             'personnel.*.kind' => ['required', Rule::in(EventPersonnel::KINDS)],
             'personnel.*.role_label' => ['nullable', 'string', 'max:60'],
             'personnel.*.photo_url' => ['nullable', 'string'],

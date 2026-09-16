@@ -31,7 +31,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('event_id')->constrained('events')->cascadeOnDelete();
             $table->string('full_name');
-            // wasit|staf. Coarse on purpose: this is what "select all referees"
+            // referee|staff. Coarse on purpose: this is what "select all referees"
             // filters on, while role_label carries the actual job title.
             $table->string('kind', 20);
             $table->string('role_label', 60)->nullable();

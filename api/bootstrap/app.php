@@ -5,8 +5,12 @@ use App\Exceptions\PaymentException;
 use App\Exceptions\PlanFeatureException;
 use App\Exceptions\WalletException;
 use App\Http\Middleware\DynamicCors;
+use App\Http\Middleware\EnsureEventReferee;
+use App\Http\Middleware\EnsureEventStaff;
 use App\Http\Middleware\EnsureOrgAdmin;
+use App\Http\Middleware\EnsurePasswordRotated;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EventPersonnelScope;
 use App\Http\Middleware\TenantScope;
 use App\Http\Middleware\TrackLastSeen;
 use App\Support\ApiResponse;
@@ -57,6 +61,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'track.seen' => TrackLastSeen::class,
             'tenant' => TenantScope::class,
             'org.admin' => EnsureOrgAdmin::class,
+            // Stacked on duty surfaces only — see EnsurePasswordRotated for why
+            // registering it globally would seal the key inside the lock.
+            'password.rotated' => EnsurePasswordRotated::class,
+            // The officiating tier. `event.personnel` is the door (it resolves
+            // the event and proves crew membership); the two role aliases
+            // narrow it, and are stacked after it, never instead of it.
+            'event.personnel' => EventPersonnelScope::class,
+            'event.staff' => EnsureEventStaff::class,
+            'event.referee' => EnsureEventReferee::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

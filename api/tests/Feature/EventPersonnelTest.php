@@ -74,9 +74,9 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['full_name' => 'Wasit A', 'kind' => 'wasit', 'role_label' => 'Wasit Utama'],
-                    ['full_name' => 'Wasit B', 'kind' => 'wasit'],
-                    ['full_name' => 'Staf C', 'kind' => 'staf', 'role_label' => 'Panitia Lapangan'],
+                    ['full_name' => 'Wasit A', 'kind' => 'referee', 'role_label' => 'Wasit Utama'],
+                    ['full_name' => 'Wasit B', 'kind' => 'referee'],
+                    ['full_name' => 'Staf C', 'kind' => 'staff', 'role_label' => 'Panitia Lapangan'],
                 ],
             ])
             ->assertOk()
@@ -87,8 +87,8 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['id' => $a->id, 'full_name' => 'Wasit A Direvisi', 'kind' => 'wasit', 'role_label' => 'Wasit Utama'],
-                    ['id' => $c->id, 'full_name' => 'Staf C', 'kind' => 'staf', 'role_label' => 'Panitia Lapangan'],
+                    ['id' => $a->id, 'full_name' => 'Wasit A Direvisi', 'kind' => 'referee', 'role_label' => 'Wasit Utama'],
+                    ['id' => $c->id, 'full_name' => 'Staf C', 'kind' => 'staff', 'role_label' => 'Panitia Lapangan'],
                 ],
             ])
             ->assertOk()
@@ -124,8 +124,8 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['full_name' => 'Wasit A', 'kind' => 'wasit'],
-                    ['full_name' => 'Staf B', 'kind' => 'staf'],
+                    ['full_name' => 'Wasit A', 'kind' => 'referee'],
+                    ['full_name' => 'Staf B', 'kind' => 'staff'],
                 ],
             ])
             ->assertOk();
@@ -148,8 +148,8 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['full_name' => 'Wasit A', 'kind' => 'wasit', 'photo_url' => $dropped],
-                    ['full_name' => 'Wasit B', 'kind' => 'wasit', 'photo_url' => $kept],
+                    ['full_name' => 'Wasit A', 'kind' => 'referee', 'photo_url' => $dropped],
+                    ['full_name' => 'Wasit B', 'kind' => 'referee', 'photo_url' => $kept],
                 ],
             ])
             ->assertOk();
@@ -159,7 +159,7 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['id' => $keep->id, 'full_name' => 'Wasit B', 'kind' => 'wasit', 'photo_url' => $kept],
+                    ['id' => $keep->id, 'full_name' => 'Wasit B', 'kind' => 'referee', 'photo_url' => $kept],
                 ],
             ])
             ->assertOk();
@@ -180,8 +180,8 @@ class EventPersonnelTest extends TestCase
         $this->actingAs($user, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/personnel", [
                 'personnel' => [
-                    ['full_name' => 'Wasit A', 'kind' => 'wasit'],
-                    ['full_name' => 'Staf B', 'kind' => 'staf', 'role_label' => 'Panitia Lapangan'],
+                    ['full_name' => 'Wasit A', 'kind' => 'referee'],
+                    ['full_name' => 'Staf B', 'kind' => 'staff', 'role_label' => 'Panitia Lapangan'],
                 ],
             ])
             ->assertOk()
@@ -203,7 +203,7 @@ class EventPersonnelTest extends TestCase
         $org = $this->org($owner);
         $event = $this->event($org);
 
-        $event->personnel()->create(['full_name' => 'Wasit A', 'kind' => 'wasit', 'sort_order' => 0]);
+        $event->personnel()->create(['full_name' => 'Wasit A', 'kind' => 'referee', 'sort_order' => 0]);
 
         $intruder = User::factory()->create();
         $otherOrg = $this->org($intruder);
@@ -233,5 +233,28 @@ class EventPersonnelTest extends TestCase
             ->assertJsonValidationErrors('personnel.0.kind');
 
         $this->assertSame(0, $event->personnel()->count());
+    }
+
+    public function test_the_old_indonesian_kinds_are_refused_and_the_english_ones_accepted(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->event($org);
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/personnel";
+
+        // The pair is the point. A stale frontend still sending 'wasit' must be
+        // refused loudly rather than storing a value no middleware recognises —
+        // and asserting only the 422 would pass just as well if the rule had
+        // been tightened to refuse everything.
+        $this->actingAs($user, 'api')
+            ->putJson($url, ['personnel' => [['full_name' => 'Wasit A', 'kind' => 'wasit']]])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('personnel.0.kind');
+
+        $this->actingAs($user, 'api')
+            ->putJson($url, ['personnel' => [['full_name' => 'Wasit A', 'kind' => 'referee']]])
+            ->assertOk()
+            // The stored vocabulary changed; the printed one did not.
+            ->assertJsonPath('data.0.role_display', 'Wasit');
     }
 }

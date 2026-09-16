@@ -14,6 +14,7 @@ import {
 import { refreshAccessToken } from "@/lib/api/client";
 import { impersonateAdminUser } from "@/lib/api/admin";
 import { me as fetchMe } from "@/lib/api/auth";
+import { ForcePasswordGate } from "@/components/auth/force-password-gate";
 
 /**
  * Guards the authenticated app shell. Because the access token lives in memory
@@ -25,6 +26,7 @@ import { me as fetchMe } from "@/lib/api/auth";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const startImpersonation = useAuthStore((s) => s.startImpersonation);
@@ -114,6 +116,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
+  // An account created by the officiating invite still holds the password it
+  // was mailed. Rendered *instead of* children, so no URL under (dashboard)
+  // routes around it.
+  //
+  // Guarded on `user` being loaded, not just on the flag: `ready` flips when
+  // the token lands, a tick before me() resolves, so `user` is briefly null and
+  // `user?.must_change_password` is briefly falsy for everyone. Rendering
+  // children in that gap is what already happens today, and the server's
+  // password.rotated is the fence that actually holds.
+  if (user?.must_change_password) return <ForcePasswordGate />;
 
   return <>{children}</>;
 }

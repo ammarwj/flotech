@@ -45,4 +45,16 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    /**
+     * An account holding a password it did not choose — what the officiating
+     * invite produces. A state rather than an attribute in the test body,
+     * because the column is deliberately not fillable.
+     */
+    public function mustChangePassword(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'must_change_password' => true,
+        ]);
+    }
 }

@@ -129,7 +129,7 @@ class MediaCleanupTest extends TestCase
         $personnelPhoto = $this->file('personnel/wasit.webp');
         $event->personnel()->create([
             'full_name' => 'Wasit Utama',
-            'kind' => 'wasit',
+            'kind' => 'referee',
             'photo_url' => $personnelPhoto,
             'sort_order' => 0,
         ]);
