@@ -4,6 +4,7 @@ import { MatchStatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { MatchConfirmBar } from "./match-confirm-bar";
 import { MatchDisciplineNotice } from "./match-discipline-notice";
+import { MatchLineupSheetButton } from "./match-lineup-sheet-button";
 import { MatchStatusActions } from "./match-status-actions";
 import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
@@ -64,6 +65,15 @@ export function MatchCardHeader({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          {/*
+            Only once both sides are known. That is not the print gate — the
+            referee's approval is checked on the server and nowhere else — it is
+            the fixture not existing yet: an empty bracket slot has no teams to
+            list, so there is no sheet to ask for.
+          */}
+          {match.home_team_id && match.away_team_id && (
+            <MatchLineupSheetButton orgId={orgId} matchId={match.id} />
+          )}
           {/* Renders nothing until the match is finished with a scoreline. */}
           <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
           <MatchStatusActions orgId={orgId} eventId={eventId} match={match} knockout={knockout} />

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EventPersonnel;
 use App\Models\GameMatch;
 use App\Models\MatchLineup;
 use App\Models\Player;
@@ -161,6 +162,78 @@ class LineupService
         ]);
 
         return $lineup->refresh();
+    }
+
+    /**
+     * The referee accepts the sheet. From here nobody edits it again.
+     *
+     * `reviewed_by` names an EventPersonnel row, not a user: the person signing
+     * is signing as the referee of this event, and the same human refereeing a
+     * second tournament is a second row. It is also what keeps the reference
+     * valid after the account is unlinked — deleting a personnel row is what
+     * ends the assignment, and `nullOnDelete` then says so honestly.
+     *
+     * @throws ValidationException
+     */
+    public function approve(MatchLineup $lineup, EventPersonnel $by): MatchLineup
+    {
+        $this->assertSubmitted($lineup);
+
+        $lineup->update([
+            'status' => 'approved',
+            'reviewed_at' => Carbon::now(),
+            'reviewed_by' => $by->id,
+            'note' => null,
+        ]);
+
+        return $lineup->refresh();
+    }
+
+    /**
+     * The referee sends it back, with a reason.
+     *
+     * The reason is required by the controller's rules and kept here: a refusal
+     * without one leaves the manager guessing at what to change, and the editor
+     * already has a place to print it above the form.
+     *
+     * @throws ValidationException
+     */
+    public function reject(MatchLineup $lineup, EventPersonnel $by, string $note): MatchLineup
+    {
+        $this->assertSubmitted($lineup);
+
+        $lineup->update([
+            'status' => 'rejected',
+            'reviewed_at' => Carbon::now(),
+            'reviewed_by' => $by->id,
+            'note' => $note,
+        ]);
+
+        return $lineup->refresh();
+    }
+
+    /**
+     * Both verdicts start from `submitted` and nowhere else.
+     *
+     * A draft has not been handed in, so there is nothing to answer. An approved
+     * sheet is deliberately terminal: the print gate downstream reads
+     * `approved`, and a route that could take it back would also reopen editing
+     * on a sheet that may already be printed and on the table. A referee who
+     * approved in error is the organizer's problem, not a cancel button.
+     *
+     * @throws ValidationException
+     */
+    protected function assertSubmitted(MatchLineup $lineup): void
+    {
+        if ($lineup->status === 'submitted') {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'status' => $lineup->status === 'approved'
+                ? 'Susunan pemain sudah disetujui dan tidak bisa diubah lagi.'
+                : 'Susunan pemain belum dikirim manajer, jadi belum bisa di-acc.',
+        ]);
     }
 
     /**

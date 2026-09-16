@@ -551,6 +551,21 @@ export interface MatchLineup {
   officials?: MatchLineupOfficial[];
 }
 
+/**
+ * Both sheets of one fixture, as the referee reviews them.
+ *
+ * A side is null when that manager has never opened the editor — the row is
+ * created on read, so there is nothing to answer yet. That is not a fifth
+ * status, and the screen has to be able to say which team it is still waiting
+ * for rather than showing an empty approved-looking card.
+ */
+export interface MatchLineupsData {
+  match: Match;
+  event: { id: string; timezone: string | null; sport_type: string | null };
+  home: MatchLineup | null;
+  away: MatchLineup | null;
+}
+
 /** A fixture as the manager's list shows it: the match, plus their own sheet. */
 export interface MyTeamMatch extends Match {
   /** Null until the manager first opens the editor — the row is created on read. */

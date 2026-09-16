@@ -1,15 +1,19 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, Goal } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { CalendarClock, ClipboardCheck, Goal, Printer } from "lucide-react";
+import { toast } from "sonner";
 
 import {
+  downloadOfficiatingLineupSheet,
   getOfficiatingDiscipline,
   getOfficiatingEvent,
   getOfficiatingMatches,
 } from "@/lib/api/officiating";
+import { parseApiError } from "@/lib/api/errors";
 import { officiatingResultGateway, officiatingStatsGateway } from "@/lib/match-doors";
 import { isSetBased, tracksDiscipline } from "@/lib/scoring";
 import {
@@ -110,6 +114,9 @@ function OfficiatingEventView() {
   const matches = matchesQuery.data ?? [];
   // Staff fill in the score sheet; referees read it. Both see the same schedule.
   const canScore = assignment?.kind === "staff";
+  // The other half of the same branch. Presentation only, exactly like
+  // `canScore`: `event.referee` answers 403 to staff whatever this renders.
+  const canReview = assignment?.kind === "referee";
   const setBased = isSetBased(event);
   // A tie is scored partai by partai, and MatchResultService refuses a typed
   // scoreline for these categories outright (422). The card says so instead of
@@ -241,6 +248,7 @@ function OfficiatingEventView() {
                         phase={phaseOf(m)}
                         eventId={eventId}
                         canScore={canScore}
+                        canReview={canReview}
                         setBased={setBased}
                         knockout={knockout || m.stage === "knockout" || isDecider(m)}
                         rubberTie={rubberTie}
@@ -302,15 +310,17 @@ function Crest({ name, logoUrl }: { name: string; logoUrl: string | null | undef
  * door on the server; a second copy of them on this screen is how the two doors
  * start refusing different things.
  *
- * `canScore` is the whole of the role branch: a referee gets the card with no
- * controls. That is presentation, not enforcement — `event.staff` answers 403
- * to a referee whatever this component renders.
+ * `canScore`/`canReview` are the whole of the role branch: each half of the crew
+ * gets the other's controls left out. That is presentation, not enforcement —
+ * `event.staff` and `event.referee` each answer 403 to the other role whatever
+ * this component renders.
  */
 function CrewMatchCard({
   match: m,
   phase,
   eventId,
   canScore,
+  canReview,
   setBased,
   knockout,
   rubberTie,
@@ -323,6 +333,8 @@ function CrewMatchCard({
   eventId: string;
   /** Staff record results; referees read them. */
   canScore: boolean;
+  /** Referees sign off the team sheets; staff read them. */
+  canReview: boolean;
   setBased: boolean;
   /** A tie that must produce a winner — level scores go to penalties. */
   knockout: boolean;
@@ -334,6 +346,15 @@ function CrewMatchCard({
 }) {
   const tz = useEventTimezone();
   const [showStats, setShowStats] = useState(false);
+
+  // A mutation rather than a query: it writes nothing, but it is fired by a
+  // click and its whole result is a file plus, on a refusal, a message — the
+  // shape useQuery is worst at.
+  const sheet = useMutation({
+    mutationFn: () => downloadOfficiatingLineupSheet(eventId, m.id),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengunduh susunan pemain.").message),
+  });
   const time = timeOf(m.scheduled_at, tz);
   const live = m.status === "ongoing";
   const hasScore = m.home_score !== null && m.away_score !== null;
@@ -407,6 +428,10 @@ function CrewMatchCard({
   // read-only shape the referee sees.
   const playable = !!m.home_team_id && !!m.away_team_id && m.status !== "cancelled";
   const scoring = canScore && playable;
+  // A team sheet is handed in by a manager of a seated team, so a bracket slot
+  // whose opponent is still TBD has nothing to review yet — the same gate the
+  // scoring branch uses, for the same reason.
+  const reviewing = canReview && playable;
 
   return (
     <Card className={cn("p-4", m.status === "cancelled" && "opacity-60")}>
@@ -463,6 +488,42 @@ function CrewMatchCard({
       {bans.length > 0 && (
         <div className="mt-2">
           <MatchDisciplineNotice bans={bans} sport={sport} rules={disciplineRules} />
+        </div>
+      )}
+
+      {/* The event id rides in the query string because every officiating
+          endpoint is scoped by event — the personnel row that proves this
+          account may be here at all is per-event, and the match route has no
+          other way to say which one. */}
+      {reviewing && (
+        <div className="mt-3 flex justify-end border-t border-border pt-3">
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/officiating/matches/${m.id}?event=${eventId}`}>
+              <ClipboardCheck className="h-4 w-4" />
+              Susunan pemain
+            </Link>
+          </Button>
+        </div>
+      )}
+
+      {/* The print gate is the server's alone: it refuses (422) until the
+          referee has signed off both sides, and the message it refuses with is
+          the only thing that says which half is missing. Mirroring that rule
+          here — hiding or disabling the button — would be a second reader of it,
+          and the two would disagree the first time a sheet was approved in
+          another tab. So the button is always offered, and the refusal is the
+          answer. */}
+      {scoring && (
+        <div className="mt-3 flex justify-end border-t border-border pt-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => sheet.mutate()}
+            disabled={sheet.isPending}
+          >
+            <Printer className="h-4 w-4" />
+            {sheet.isPending ? "Menyiapkan…" : "Cetak susunan pemain"}
+          </Button>
         </div>
       )}
 

@@ -30,8 +30,8 @@ harus sudah ditegakkan sebelum email pertama terkirim.
 | 3 | Akun tugas: `email`/`user_id`, undangan, middleware, shell `/officiating` | ✅ selesai |
 | 4 | Permukaan staff: skor + statistik | ✅ selesai |
 | 5 | Tabel lineup + submit manajer | ✅ selesai |
-| 6 | Acc wasit | ⬜ belum |
-| 7 | Lembar susunan pemain (PDF) + gerbang cetak | ⬜ belum |
+| 6 | Acc wasit | ✅ selesai |
+| 7 | Lembar susunan pemain (PDF) + gerbang cetak | ✅ selesai |
 
 ---
 
@@ -267,24 +267,89 @@ kontrak invalidasinya, dan `MatchStatsEditor`/`SetScoreEditor` berganti prop dar
 
 ## Fase 6 — Acc wasit
 
-- [ ] `LineupApprovalController` di belakang `event.referee`
-- [ ] `reject` wajib beralasan (`note` required) — penolakan tanpa alasan membuat manajer menebak
-- [ ] Transisi selain dari `submitted` → 422; `approved` tidak bisa di-`reject` lagi
-- [ ] Bandingkan `approve` dari `submitted` (200) vs dari `draft` (422)
+- [x] `LineupApprovalController` di belakang `event.referee` — `index` mengembalikan **kedua**
+      lembar satu laga, yang belum ada sebagai `null` alih-alih dibuatkan baris kosong: manajer
+      yang belum membuka editor belum mengirim lembar kosong, dan layar wasit harus bisa
+      menyebut yang mana yang masih ditunggu
+- [x] `LineupService::approve()` / `reject()` — verdict-nya di service, bukan controller.
+      Gerbang cetak fase 7 membaca `approved`, jadi satu-satunya penulis kolom itu harus satu
+- [x] `reviewed_by` menunjuk **`event_personnel`**, bukan `users` — yang tanda tangan menandatangani
+      sebagai wasit event ini, dan manusia yang sama di turnamen lain adalah baris lain
+- [x] `reject` wajib beralasan (`note` required, `max:500`)
+- [x] `assertSubmitted()` — transisi selain dari `submitted` → 422, dengan **dua pesan berbeda**:
+      "belum dikirim manajer" vs "sudah disetujui dan tidak bisa diubah lagi". Satu pesan untuk
+      dua keadaan membuat wasit yang salah klik menyangka sistemnya rusak
+- [x] `approve` menull-kan `note` — alasan penolakan lama yang tertinggal di lembar yang
+      akhirnya disetujui terbaca oleh manajer sebagai penolakan yang masih berlaku
+- [x] `tests/Feature/LineupApprovalTest.php` — 5 kasus, semuanya berpasangan: `submitted` (200)
+      vs `draft` (422) di request yang sama; reject yang mengembalikan `editable: true` vs
+      approve yang menolak reject berikutnya; staff (403) vs referee (200) di dua rute yang
+      sama; lembar event tetangga (404)
+
+**Frontend fase 6** — `officiating/matches/[id]/page.tsx`, dua kartu tim bersisian dengan
+tombol Setujui / Tolak + textarea alasan.
+
+- **Tidak ada un-approve di UI karena tidak ada di API.** Tombolnya hilang begitu statusnya
+  `approved`; menampilkannya lalu menerima 422 adalah menawarkan aksi yang tidak ada.
+- **Textarea alasan muncul di tempat, bukan di dialog.** Alasannya akan dibaca manajer apa
+  adanya, jadi wasit harus melihat apa yang ia tulis bersama daftar pemain yang membuatnya
+  menolak — dialog menutupi persis layar yang jadi bahan pertimbangannya.
 
 ---
 
 ## Fase 7 — Lembar susunan pemain
 
-- [ ] `resources/views/pdf/lineup-sheet.blade.php` — **pass pertama**, user akan
-      menggantinya. Tabel untuk layout, tanpa flexbox/grid, `DejaVu Sans`
-- [ ] Isi: header event/kategori/jam/lapangan; dua tim bersisian; starter dipisah dari
-      cadangan dengan sub-judul (bukan warna saja); ofisial bangku; tiga baris tanda tangan
-- [ ] Gerbang: **422 kecuali kedua lineup `approved`** — permintaan user yang paling literal
-- [ ] Rute kembar organizer di bawah `tenant`; satu controller, gerbangnya jangan disalin
-- [ ] Unduhan frontend **wajib** lewat `apiClient` `responseType: "blob"` — token in-memory,
-      `<a href>` polos akan 401
-- [ ] Bandingkan satu tim di-acc (422) vs kedua tim di-acc (200)
+- [x] `resources/views/pdf/lineup-sheet.blade.php` — **pass pertama**, user akan menggantinya.
+      Tabel untuk layout, tanpa flexbox/grid, `DejaVu Sans`
+- [x] Isi: header event/kategori/babak/jam/lapangan; dua tim bersisian sebagai dua sel satu
+      baris; starter dipisah dari cadangan dengan **baris sub-judul**, bukan warna — fotokopi
+      hitam-putih adalah bentuk paling umum lembar ini di lapangan, dan warna yang pertama
+      hilang di sana; ofisial bangku dengan label peran dari `Catalog::officialRoleLabel()`;
+      tiga baris tanda tangan
+- [x] **Baris tanda tangan membawa peran, bukan nama.** Yang tanda tangan di meja IP belum tentu
+      orang yang namanya tercatat di sistem; mencetak namanya membuat lembar itu mengklaim
+      sesuatu yang tidak diketahuinya
+- [x] Pemisahan starter/cadangan dihitung **di PHP**, bukan `@if` di dalam dua loop bersarang —
+      templatenya memang akan ditulis ulang user, dan itu justru bagian yang tidak akan selamat
+- [x] `?? 'Ofisial'` sebagai fallback label: `Catalog::officialRoleLabel()` sengaja mengembalikan
+      null untuk key kosong/tak dikenal ("Callers decide what an unlabelled official is called"),
+      dan kolom Jabatan yang kosong terbaca sebagai bug
+- [x] Gerbang: **422 kecuali kedua lineup `approved`** — permintaan user yang paling literal
+      (*"di acc wasit kemudian baru bisa di print meja IP"*). Menolak atas **kedua** lembar, bukan
+      yang sedang dilihat: lembar adalah dokumen sebuah laga, dan separuhnya bukan versi
+      ringannya
+- [x] Rute kembar organizer di bawah `tenant`; **satu controller, satu gerbang**. `match()`
+      bercabang atas attribute mana yang ditinggalkan middleware (`event` vs `organization`),
+      bukan atas nama rute — itu yang menjaga invarian "tidak ada attribute `organization` di
+      request officiating" tetap utuh
+- [x] Rute organizer di luar `org.admin`, alasan yang sama dengan pembacaan disiplin: operator
+      yang menjalankan meja justru yang paling butuh
+- [x] Unduhan frontend lewat `apiClient` `responseType: "blob"` + `lib/download.ts` di **dua**
+      permukaan: `downloadOfficiatingLineupSheet()` (staff) dan `downloadLineupSheet()` (organizer)
+- [x] `tests/Feature/LineupSheetTest.php` — 4 kasus / 55 assertion: nol di-acc (422) → satu
+      di-acc (422) → keduanya (200) dalam satu test; pintu organizer diuji berpasangan yang sama;
+      wasit yang meng-acc kedua lembar tetap 403 di pintu staff; laga event tetangga 404
+
+**Penyimpangan yang dicatat.**
+
+- **`unpackBlobError()` di `lib/download.ts`.** `responseType: "blob"` berlaku untuk response
+  error juga, jadi 422-nya tiba sebagai `Blob` dan `parseApiError()` melewatinya ke fallback
+  generik. Di sini penolakannya **adalah** fiturnya — "Susunan pemain kedua tim harus disetujui
+  wasit dulu" satu-satunya kalimat yang menyebut apa yang kurang, dan menelannya menyisakan
+  tombol yang gagal dengan "coba lagi" berapa kali pun ditekan. Ditulis di `lib/download.ts`,
+  bukan lokal di satu lib API, karena kedua unduhan memakainya.
+- **Tombol cetak tidak pernah disembunyikan atau di-disable atas status acc.** Mematikannya di
+  klien sampai kedua lembar `approved` menjadikan klien pembaca kedua aturan server, dan
+  keduanya akan berselisih pertama kali sebuah lembar di-acc di tab lain. Tombolnya selalu
+  ditawarkan; 422-nya yang menjawab.
+- **Yang dicek klien cuma "kedua tim sudah ada"** (`MatchCardHeader`). Itu bukan gerbang cetak —
+  itu fixture-nya belum ada: slot bracket kosong tidak punya tim untuk didaftar, jadi tidak ada
+  lembar untuk diminta.
+- **Sisi organizer lewat `MatchCardHeader`, bukan `MatchCard`.** Alasan yang sudah tertulis di
+  docblock header itu sendiri: `MatchCard` punya enam cabang render, dan hal semacam ini ditulis
+  sekali. `Pdf::loadView()->download()` mengembalikan `Response` biasa berisi byte-nya, **bukan**
+  `StreamedResponse` — `streamedContent()` melempar di sana, dan itu yang menjatuhkan dua test
+  di run pertama.
 
 ---
 

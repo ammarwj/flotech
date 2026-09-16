@@ -32,6 +32,8 @@ use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\IdCardController;
 use App\Http\Controllers\Api\IdCardTemplateController;
+use App\Http\Controllers\Api\LineupApprovalController;
+use App\Http\Controllers\Api\LineupSheetController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\MyTeamMatchController;
@@ -259,9 +261,22 @@ Route::prefix('v1')->group(function () {
                     Route::get('matches/{match}/stats', [OfficiatingMatchController::class, 'matchStats']);
                     Route::put('matches/{match}/stats', [OfficiatingMatchController::class, 'saveMatchStats']);
                     Route::patch('matches/{match}', [OfficiatingMatchController::class, 'updateResult']);
+                    // The sheet for the IP table. Refuses until the referee has
+                    // signed off *both* sides; the organizer's twin below is the
+                    // same action, so the gate is written once.
+                    Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
                 });
 
-                // `event.referee` for lineup approval arrives in phase 6.
+                // The referee's half. Same stacking, same reason: `event.personnel`
+                // above put the row this one reads on the request.
+                Route::middleware('event.referee')->group(function () {
+                    Route::get('matches/{match}/lineups', [LineupApprovalController::class, 'index']);
+                    // Addressed by lineup, not by match+team: the two sheets of a
+                    // fixture are answered one at a time, and the id is what says
+                    // which one. Scoped back to this event inside the controller.
+                    Route::post('lineups/{lineup}/approve', [LineupApprovalController::class, 'approve']);
+                    Route::post('lineups/{lineup}/reject', [LineupApprovalController::class, 'reject']);
+                });
             });
         });
 
@@ -379,6 +394,13 @@ Route::prefix('v1')->group(function () {
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
+            // Twin of the staff route under `officiating/…`: one controller, one
+            // gate. The panitia prints the same sheet the crew does, and a second
+            // copy of "both sides approved" is how one of the two doors starts
+            // handing out sheets the referee never signed. Outside `org.admin`
+            // for the same reason the discipline read is — the operator running
+            // the table is exactly who needs it.
+            Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
 
             // Partai of a squad tie (badminton beregu & co). The tie's scoreline
             // is rolled up from these, never posted to matches/{match} directly.

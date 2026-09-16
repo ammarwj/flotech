@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 import type { MatchResultPayload, MatchStatEntry } from "./matches";
 import type {
   ApiEnvelope,
@@ -6,6 +7,8 @@ import type {
   EventCategory,
   EventPersonnelKind,
   Match,
+  MatchLineup,
+  MatchLineupsData,
   MatchStatsData,
   SportEvent,
 } from "@/types/api";
@@ -137,6 +140,79 @@ export async function saveOfficiatingMatchStats(
   const { data } = await apiClient.put<ApiEnvelope<null>>(
     `/officiating/events/${eventId}/matches/${matchId}/stats`,
     { stats },
+  );
+  return data.data;
+}
+
+/**
+ * The sheet for the IP table.
+ *
+ * Refuses (422) until the referee has signed off **both** sides — the gate lives
+ * on the server and is not mirrored here: a client that decided for itself when
+ * printing is allowed would be a second reader of the same rule, and the two
+ * would disagree the first time a sheet was approved in another tab.
+ *
+ * Through apiClient with `responseType: "blob"`, never a plain `<a href>`: the
+ * access token lives in memory, so a direct link to the API would 401. Same rule
+ * as the exports and the billing documents.
+ */
+export async function downloadOfficiatingLineupSheet(
+  eventId: string,
+  matchId: string,
+): Promise<void> {
+  try {
+    const response = await apiClient.get<Blob>(
+      `/officiating/events/${eventId}/matches/${matchId}/lineup-sheet`,
+      { responseType: "blob" },
+    );
+
+    downloadBlob(
+      response.data,
+      fileNameFromDisposition(response.headers["content-disposition"], "susunan-pemain.pdf"),
+    );
+  } catch (err) {
+    // The refusal is the feature here: without this the 422 arrives as a Blob
+    // and its message — which half is still unapproved — is lost.
+    throw await unpackBlobError(err);
+  }
+}
+
+// ---- Referee: approving the team sheets ----
+
+export async function getMatchLineups(
+  eventId: string,
+  matchId: string,
+): Promise<MatchLineupsData> {
+  const { data } = await apiClient.get<ApiEnvelope<MatchLineupsData>>(
+    `/officiating/events/${eventId}/matches/${matchId}/lineups`,
+  );
+  return data.data;
+}
+
+/**
+ * Accept one team's sheet. There is no way back: the print gate reads
+ * `approved`, so an un-approve would also reopen editing on a sheet that may
+ * already be on the table.
+ */
+export async function approveLineup(
+  eventId: string,
+  lineupId: string,
+): Promise<MatchLineup> {
+  const { data } = await apiClient.post<ApiEnvelope<MatchLineup>>(
+    `/officiating/events/${eventId}/lineups/${lineupId}/approve`,
+  );
+  return data.data;
+}
+
+/** Hand it back with the reason the manager has to answer — required. */
+export async function rejectLineup(
+  eventId: string,
+  lineupId: string,
+  note: string,
+): Promise<MatchLineup> {
+  const { data } = await apiClient.post<ApiEnvelope<MatchLineup>>(
+    `/officiating/events/${eventId}/lineups/${lineupId}/reject`,
+    { note },
   );
   return data.data;
 }

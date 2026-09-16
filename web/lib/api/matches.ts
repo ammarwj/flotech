@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 import type {
   ApiEnvelope,
   Discipline,
@@ -428,6 +429,34 @@ export async function saveMatchStats(
     { stats }
   );
   return data.data;
+}
+
+/**
+ * The team sheet for the IP table — the organizer's twin of the staff route.
+ *
+ * Same controller, same gate: it refuses (422) until the referee has signed off
+ * both sides. The panitia's door is not a way around that, and no copy of the
+ * rule lives on this side.
+ *
+ * Through apiClient with `responseType: "blob"`, never a plain `<a href>`: the
+ * access token lives in memory. `unpackBlobError` is what keeps the refusal
+ * readable — a blob error body would otherwise reach `parseApiError()` as
+ * nothing at all.
+ */
+export async function downloadLineupSheet(orgId: string, matchId: string): Promise<void> {
+  try {
+    const response = await apiClient.get<Blob>(
+      `/organizations/${orgId}/matches/${matchId}/lineup-sheet`,
+      { responseType: "blob" }
+    );
+
+    downloadBlob(
+      response.data,
+      fileNameFromDisposition(response.headers["content-disposition"], "susunan-pemain.pdf")
+    );
+  } catch (err) {
+    throw await unpackBlobError(err);
+  }
 }
 
 // ---- Public ----
