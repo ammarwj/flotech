@@ -22,7 +22,7 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 | 2 | Key gerbang `id_card_generator` | ✅ selesai |
 | 3 | Template + editor drag-drop | ✅ selesai |
 | 4 | Renderer + batch + ZIP | ✅ selesai |
-| 5 | `id-cards:prune` | ⬜ |
+| 5 | `id-cards:prune` | ✅ selesai |
 
 ---
 
@@ -168,7 +168,21 @@ semua kartu diunduh sekaligus sebagai satu `.zip` berisi 1 PNG per orang.
 
 ## Fase 5 — Kebersihan
 
-- [ ] `id-cards:prune` + jadwal di `routes/console.php`
+- [x] **Prefix zip dipindah `id-cards/` → `id-card-batches/`** (`IdCardService::BATCH_PREFIX`).
+      Ini ditemukan saat menulis perintahnya, bukan direncanakan: latar template diunggah ke
+      `id-cards/` juga (`template-form.tsx` mengirim `folder="id-cards"`), jadi sapuan "hapus yang
+      lebih tua dari 24 jam di bawah `id-cards/`" akan menghapus setiap desain kartu yang umurnya
+      lewat sehari. Pengecekan ekstensi `.zip` saja terlalu tipis untuk dipasang di depan loop hapus
+- [x] `PruneIdCardBatches` (`id-cards:prune {--hours=}`) — cutoff default membaca
+      `GenerateIdCardsJob::TTL_HOURS`, bukan angka sendiri: entri cache yang menamai key itu
+      kedaluwarsa di jam yang sama, jadi objek yang lebih tua sudah tidak bisa diunduh siapa pun.
+      Disknya lewat `IdCardService::storage()`, bukan `Storage::disk('r2')` — alasan yang sama
+      dengan `download()`: dua pembaca aturan yang sama akan menyapu bucket yang salah
+- [x] Jadwal `dailyAt('02:20')` di `routes/console.php`, di sebelah `views:prune`
+- [x] Test `PruneIdCardBatchesTest` (2 kasus) — yang kedua ada khusus untuk jebakan prefix:
+      latar template umur 500 jam **selamat** sementara zip umur 500 jam hilang. Yang pertama
+      membandingkan zip 30 jam (hilang) dengan zip 2 jam (bertahan)
+- [x] Verifikasi: `pint --dirty` bersih, **suite penuh 585 lulus / 3591 assertion**
 
 ---
 

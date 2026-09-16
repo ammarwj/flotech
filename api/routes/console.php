@@ -27,6 +27,11 @@ Schedule::command('plan-orders:remind-idle')->dailyAt('09:00')->withoutOverlappi
 // feeds (event_view_daily) is kept forever.
 Schedule::command('views:prune')->dailyAt('02:00')->withoutOverlapping();
 
+// ID card zips are the one generated file no row points at — the batch that
+// named the key expires out of the cache after a day. Nothing else will ever
+// find them, so without this the bucket keeps one zip per generate forever.
+Schedule::command('id-cards:prune')->dailyAt('02:20')->withoutOverlapping();
+
 // Custom domains: retry activations whose DNS was not ready yet, and repair the
 // generated nginx config. Every minute because an admin who just pointed an A
 // record is waiting on it; a single query when there is nothing to do.

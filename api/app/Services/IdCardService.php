@@ -30,6 +30,17 @@ use ZipArchive;
  */
 class IdCardService
 {
+    /**
+     * Where finished batch zips live.
+     *
+     * Deliberately *not* `id-cards/`: that prefix is where the template-form
+     * uploads card backgrounds (`folder="id-cards"` → `UploadController`), and
+     * those are permanent org assets. `id-cards:prune` deletes everything old
+     * under this prefix, so it has to be a prefix nothing else writes to — an
+     * extension check alone is a one-typo-deep guard in front of a delete loop.
+     */
+    public const BATCH_PREFIX = 'id-card-batches';
+
     public function __construct(protected R2StorageService $r2) {}
 
     /**
@@ -201,7 +212,7 @@ class IdCardService
 
         $zip->close();
 
-        $key = 'id-cards/'.Str::uuid()->toString().'.zip';
+        $key = self::BATCH_PREFIX.'/'.Str::uuid()->toString().'.zip';
         $contents = (string) file_get_contents($path);
 
         // The same branch UploadController takes, and it is not optional here:
