@@ -15,6 +15,7 @@ use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
 use App\Services\KnockoutPlanService;
 use App\Services\MatchResultService;
+use App\Services\MatchStatService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
@@ -22,7 +23,6 @@ use App\Support\ApiResponse;
 use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
 use App\Support\KnockoutPlan;
-use App\Support\MatchScoring;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,6 +43,7 @@ class MatchController extends Controller
         protected MatchResultService $results,
         protected KnockoutPlanService $plans,
         protected DisciplineService $discipline,
+        protected MatchStatService $statSheet,
     ) {}
 
     /**
@@ -736,59 +737,25 @@ class MatchController extends Controller
      */
     public function matchStats(Request $request, string $organization, string $match): JsonResponse
     {
-        $matchModel = $this->match($request, $match)->load(['homeTeam.players', 'awayTeam.players', 'stats']);
-
-        // player_id => { stat_key => value }
-        $current = $matchModel->stats
-            ->groupBy('player_id')
-            ->map(fn ($rows) => $rows->mapWithKeys(fn ($s) => [$s->stat_key => $s->value]));
-
-        return ApiResponse::success([
-            'columns' => Catalog::statColumns($matchModel->event->sport_type),
-            'home_team' => $this->teamRoster($matchModel->homeTeam),
-            'away_team' => $this->teamRoster($matchModel->awayTeam),
-            'stats' => $current,
-        ]);
+        return ApiResponse::success($this->statSheet->snapshot($this->match($request, $match)));
     }
 
     /**
      * Replace the player stats for a match.
+     *
+     * The body of this used to live here; it moved to MatchStatService when a
+     * second door started writing the same rows (the match staff's officiating
+     * surface). What is left is the tenant lookup — the one thing that is this
+     * controller's and cannot be the service's.
      */
     public function saveMatchStats(Request $request, string $organization, string $match): JsonResponse
     {
-        $matchModel = $this->match($request, $match)->load(['homeTeam.players', 'awayTeam.players']);
-        $allowedKeys = Catalog::statKeys($matchModel->event->sport_type);
+        $matchModel = $this->match($request, $match);
 
-        $validated = $request->validate([
-            'stats' => ['present', 'array'],
-            'stats.*.player_id' => ['required', 'uuid'],
-            'stats.*.stat_key' => ['required', 'string', Rule::in($allowedKeys)],
-            'stats.*.value' => ['required', 'integer', 'min:0', 'max:999'],
-        ]);
+        $validated = $request->validate($this->statSheet->rules($matchModel));
 
-        // player_id => team_id, restricted to the two teams on the pitch.
-        $roster = collect([$matchModel->homeTeam, $matchModel->awayTeam])
-            ->filter()
-            ->flatMap(fn ($team) => $team->players->map(fn ($p) => ['player_id' => $p->id, 'team_id' => $team->id]))
-            ->keyBy('player_id');
-
-        if ($error = $this->assistError($matchModel, $validated['stats'], $roster)) {
+        if ($error = $this->statSheet->replace($matchModel, $validated['stats'])) {
             return ApiResponse::error($error, ['assists' => [$error]], 422);
-        }
-
-        $matchModel->stats()->delete();
-
-        foreach ($validated['stats'] as $entry) {
-            if ($entry['value'] < 1 || ! $roster->has($entry['player_id'])) {
-                continue;
-            }
-
-            $matchModel->stats()->create([
-                'team_id' => $roster[$entry['player_id']]['team_id'],
-                'player_id' => $entry['player_id'],
-                'stat_key' => $entry['stat_key'],
-                'value' => $entry['value'],
-            ]);
         }
 
         return ApiResponse::success(null, 'Statistik pemain disimpan');
@@ -800,93 +767,13 @@ class MatchController extends Controller
     public function updateResult(Request $request, string $organization, string $match): JsonResponse
     {
         $matchModel = $this->match($request, $match);
-        $eventModel = $matchModel->event;
 
-        // A squad tie has no scoreline of its own — it is the count of partai
-        // won. Accepting one here would let a hand-typed 3-0 sit on top of
-        // partai that say otherwise, and the next partai edit would overwrite it.
-        if ($matchModel->category->usesRubbers()) {
-            return ApiResponse::error(
-                'Skor pertandingan beregu diisi per partai.',
-                ['rubbers' => ['Isi skor lewat daftar partai.']],
-                422,
-            );
-        }
-
-        $base = $request->validate([
-            'status' => ['required', Rule::in(['scheduled', 'ongoing', 'finished', 'cancelled'])],
-            'scheduled_at' => ['nullable', 'date'],
-            'venue' => ['nullable', 'string', 'max:255'],
-        ]);
-
-        $finished = $base['status'] === 'finished';
-        $setBased = $eventModel->isSetBased();
-
-        if ($setBased) {
-            $data = $request->validate([
-                'sets' => [$finished ? 'required' : 'nullable', 'array', 'max:7'],
-                'sets.*.home' => ['required', 'integer', 'min:0', 'max:99'],
-                'sets.*.away' => ['required', 'integer', 'min:0', 'max:99'],
-            ]);
-
-            $sets = $data['sets'] ?? null;
-            $won = $sets ? MatchScoring::setsWon($sets) : ['home' => null, 'away' => null];
-
-            if ($finished && empty($sets)) {
-                return ApiResponse::error('Isi skor minimal satu set untuk menyelesaikan pertandingan.', [
-                    'sets' => ['Skor set wajib diisi.'],
-                ], 422);
-            }
-
-            $payload = [...$base, 'sets' => $sets, 'home_score' => $won['home'], 'away_score' => $won['away']];
-        } else {
-            $data = $request->validate([
-                'home_score' => ['nullable', 'integer', 'min:0', 'max:999'],
-                'away_score' => ['nullable', 'integer', 'min:0', 'max:999'],
-            ]);
-
-            if ($finished && ($data['home_score'] === null || $data['away_score'] === null)) {
-                return ApiResponse::error('Skor kedua tim wajib diisi untuk menyelesaikan pertandingan.', [
-                    'home_score' => ['Skor wajib diisi.'],
-                ], 422);
-            }
-
-            $payload = [...$base, 'home_score' => $data['home_score'], 'away_score' => $data['away_score'], 'sets' => null];
-        }
-
-        $shootout = $request->validate([
-            'home_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
-            'away_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
-        ]);
-
-        $level = $payload['home_score'] !== null && $payload['home_score'] === $payload['away_score'];
-        $mustDecide = $this->mustProduceWinner($matchModel);
-
-        // A tie that owes a winner and ended level is settled on penalties;
-        // anything else has no shootout at all.
-        if ($finished && $mustDecide && $level) {
-            $home = $shootout['home_penalty'] ?? null;
-            $away = $shootout['away_penalty'] ?? null;
-
-            if ($home === null || $away === null) {
-                return ApiResponse::error('Skor imbang — isi hasil adu penalti untuk menentukan pemenang.', [
-                    'home_penalty' => ['Skor adu penalti wajib diisi.'],
-                ], 422);
-            }
-
-            if ($home === $away) {
-                return ApiResponse::error('Adu penalti tidak boleh berakhir imbang — tentukan pemenangnya.', [
-                    'home_penalty' => ['Harus ada pemenang.'],
-                ], 422);
-            }
-
-            $payload['home_penalty'] = $home;
-            $payload['away_penalty'] = $away;
-        } else {
-            // Decided in normal time (or a group game): drop any stale shootout.
-            $payload['home_penalty'] = null;
-            $payload['away_penalty'] = null;
-        }
+        // Validation, the rubber refusal and the shootout rules all moved into
+        // MatchResultService when the match staff got a door of their own; what
+        // is left here is the one question this controller answers differently,
+        // right below.
+        $payload = $this->results->payloadFrom($request, $matchModel);
+        $finished = $payload['status'] === 'finished';
 
         // Whoever runs the organization signs off by the act of saving; an
         // operator only records, and their result waits for someone who does.
@@ -1271,53 +1158,6 @@ class MatchController extends Controller
     }
 
     /**
-     * A goal carries at most one assist, so a side can never register more
-     * assists than it scored. The scoreline is the source of truth when the
-     * match is finished; otherwise the recorded scorers are.
-     *
-     * @param  array<int, array{player_id: string, stat_key: string, value: int}>  $stats
-     * @param  \Illuminate\Support\Collection<string, array{player_id: string, team_id: string}>  $roster
-     * @return string|null the error message, or null when the stats are sound
-     */
-    protected function assistError(GameMatch $match, array $stats, $roster): ?string
-    {
-        $sport = $match->event->sport_type;
-        $goalKey = Catalog::statKeyForRole($sport, 'goal');
-        $assistKey = Catalog::statKeyForRole($sport, 'assist');
-
-        if ($goalKey === null || $assistKey === null) {
-            return null; // sport doesn't track both
-        }
-
-        // team_id => [goals, assists]
-        $totals = [];
-        foreach ($stats as $entry) {
-            if (! $roster->has($entry['player_id'])) {
-                continue;
-            }
-
-            $teamId = $roster[$entry['player_id']]['team_id'];
-            $totals[$teamId][$entry['stat_key']] = ($totals[$teamId][$entry['stat_key']] ?? 0) + $entry['value'];
-        }
-
-        $scores = [
-            $match->home_team_id => $match->home_score,
-            $match->away_team_id => $match->away_score,
-        ];
-
-        foreach ($totals as $teamId => $tally) {
-            $assists = $tally[$assistKey] ?? 0;
-            $goals = $match->isFinished() ? (int) ($scores[$teamId] ?? 0) : ($tally[$goalKey] ?? 0);
-
-            if ($assists > $goals) {
-                return "Assist ({$assists}) tidak boleh lebih banyak dari gol tim ({$goals}) — satu gol maksimal satu assist.";
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * The checks on a manual seeding payload that validation rules can't state:
      * `Rule::in` can't see across slots, and `distinct` can't reach two sibling
      * keys of one row.
@@ -1394,27 +1234,6 @@ class MatchController extends Controller
             ->orderBy('round')
             ->orderBy('order')
             ->get();
-    }
-
-    /**
-     * @param  Team|null  $team
-     * @return array<string, mixed>|null
-     */
-    protected function teamRoster($team): ?array
-    {
-        if (! $team) {
-            return null;
-        }
-
-        return [
-            'id' => $team->id,
-            'name' => $team->name,
-            'players' => $team->players->map(fn ($p) => [
-                'id' => $p->id,
-                'full_name' => $p->full_name,
-                'jersey_number' => $p->jersey_number,
-            ])->values(),
-        ];
     }
 
     protected function org(Request $request): Organization

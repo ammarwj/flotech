@@ -125,6 +125,18 @@ class GameMatch extends Model
         return $this->hasMany(PlayerMatchStat::class, 'match_id');
     }
 
+    /**
+     * The team sheets handed in for this fixture — at most two, one per side.
+     *
+     * A pre-kickoff submission, not a record of who took the field: a named
+     * substitute may never come on. Nothing that counts appearances or serves
+     * bans may read this.
+     */
+    public function lineups(): HasMany
+    {
+        return $this->hasMany(MatchLineup::class, 'match_id');
+    }
+
     public function isFinished(): bool
     {
         return $this->status === 'finished'

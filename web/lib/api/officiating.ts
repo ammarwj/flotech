@@ -1,9 +1,12 @@
 import { apiClient } from "./client";
+import type { MatchResultPayload, MatchStatEntry } from "./matches";
 import type {
   ApiEnvelope,
+  Discipline,
   EventCategory,
   EventPersonnelKind,
   Match,
+  MatchStatsData,
   SportEvent,
 } from "@/types/api";
 
@@ -69,6 +72,71 @@ export async function getOfficiatingMatches(
 ): Promise<Match[]> {
   const { data } = await apiClient.get<ApiEnvelope<Match[]>>(
     `/officiating/events/${eventId}/categories/${categoryId}/matches`,
+  );
+  return data.data;
+}
+
+/**
+ * Card tallies and playing bans, byte for byte what the organizer and the
+ * public read — the same service answers all three. A crew-only tally would be
+ * a third chance for the warning on a fixture card to disagree with the table
+ * under it, which is the one thing this payload exists to prevent.
+ */
+export async function getOfficiatingDiscipline(
+  eventId: string,
+  categoryId: string,
+): Promise<Discipline> {
+  const { data } = await apiClient.get<ApiEnvelope<Discipline>>(
+    `/officiating/events/${eventId}/categories/${categoryId}/discipline`,
+  );
+  return data.data;
+}
+
+// ---- Staff: the score sheet ----
+//
+// The three below are the organizer's own endpoints reached through the crew's
+// door, so they take the same payload types rather than parallel copies of
+// them: the shapes are validated by one service on the server, and two client
+// types for one contract is how they stop matching.
+
+/**
+ * Record a result. **Never confirms it** — a task account holds no
+ * organization_members row, so the server passes `$autoConfirm = false`
+ * unconditionally here and the scoreline waits for an org admin to sign off.
+ * That is not a client concern, but it is why the staff card says "menunggu
+ * konfirmasi" where the organizer's says "Tersimpan".
+ */
+export async function updateOfficiatingResult(
+  eventId: string,
+  matchId: string,
+  payload: MatchResultPayload,
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/officiating/events/${eventId}/matches/${matchId}`,
+    payload,
+  );
+  return data.data;
+}
+
+export async function getOfficiatingMatchStats(
+  eventId: string,
+  matchId: string,
+): Promise<MatchStatsData> {
+  const { data } = await apiClient.get<ApiEnvelope<MatchStatsData>>(
+    `/officiating/events/${eventId}/matches/${matchId}/stats`,
+  );
+  return data.data;
+}
+
+/** Full replace, same as the organizer's: anything left out is deleted. */
+export async function saveOfficiatingMatchStats(
+  eventId: string,
+  matchId: string,
+  stats: MatchStatEntry[],
+): Promise<null> {
+  const { data } = await apiClient.put<ApiEnvelope<null>>(
+    `/officiating/events/${eventId}/matches/${matchId}/stats`,
+    { stats },
   );
   return data.data;
 }

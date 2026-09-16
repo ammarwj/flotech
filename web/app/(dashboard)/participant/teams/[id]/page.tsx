@@ -4,7 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Loader2, CreditCard, LogOut, Users, UserCog, FileText } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  CreditCard,
+  FileText,
+  Loader2,
+  LogOut,
+  UserCog,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -272,6 +281,28 @@ export default function ManageTeamPage() {
               hasInvoice={!!team.invoice_number}
               hasReceipt={!!team.receipt_number}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Only once the organizer has approved them: a pending team has no
+          fixtures to hand a sheet in for, and a link to an empty list reads as
+          a broken page rather than as "not yet". */}
+      {team.status === "approved" && (
+        <Card className="mb-6">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
+            <div>
+              <p className="font-semibold">Jadwal &amp; susunan pemain</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Susun pemain inti, cadangan, dan ofisial tiap laga, lalu kirim ke wasit.
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link href={`/participant/teams/${team.id}/matches`}>
+                <CalendarDays className="h-4 w-4" />
+                Buka jadwal
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -5,22 +5,25 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { updateMatchResult } from "@/lib/api/matches";
 import { parseApiError } from "@/lib/api/errors";
+import type { MatchResultGateway } from "@/lib/match-doors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Match } from "@/types/api";
 
 type SetInput = { home: string; away: string };
 
-/** Set-by-set result editor for racket / volleyball matches. */
+/**
+ * Set-by-set result editor for racket / volleyball matches.
+ *
+ * Mounted by the organizer's schedule and the match staff's, and told which of
+ * the two doors it writes through — see {@link MatchResultGateway}.
+ */
 export function SetScoreEditor({
-  orgId,
-  eventId,
+  gateway,
   match,
 }: {
-  orgId: string;
-  eventId: string;
+  gateway: MatchResultGateway;
   match: Match;
 }) {
   const qc = useQueryClient();
@@ -43,12 +46,12 @@ export function SetScoreEditor({
 
   const save = useMutation({
     mutationFn: (status: "ongoing" | "finished") =>
-      updateMatchResult(orgId, match.id, { status, sets: clean }),
+      gateway.save({ status, sets: clean }),
     onSuccess: () => {
       toast.success("Skor disimpan");
-      qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
+      for (const key of gateway.invalidate) {
+        qc.invalidateQueries({ queryKey: key });
+      }
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan skor.").message),
   });

@@ -34,7 +34,9 @@ use App\Http\Controllers\Api\IdCardController;
 use App\Http\Controllers\Api\IdCardTemplateController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MyTeamController;
+use App\Http\Controllers\Api\MyTeamMatchController;
 use App\Http\Controllers\Api\OfficiatingController;
+use App\Http\Controllers\Api\OfficiatingMatchController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\PlanOrderController;
@@ -220,6 +222,15 @@ Route::prefix('v1')->group(function () {
         Route::get('my-teams/{team}/invoice', [MyTeamController::class, 'invoice']);
         Route::get('my-teams/{team}/receipt', [MyTeamController::class, 'receipt']);
 
+        // The manager's team sheet, handed to the referee before kick-off.
+        // Same tier and same `scope()` as the rest of my-teams/*: a manager is an
+        // ordinary participant account, and managedTeams() is the only thing that
+        // proves the team is theirs.
+        Route::get('my-teams/{team}/matches', [MyTeamMatchController::class, 'index']);
+        Route::get('my-teams/{team}/matches/{match}/lineup', [MyTeamMatchController::class, 'lineup']);
+        Route::put('my-teams/{team}/matches/{match}/lineup', [MyTeamMatchController::class, 'saveLineup']);
+        Route::post('my-teams/{team}/matches/{match}/lineup/submit', [MyTeamMatchController::class, 'submitLineup']);
+
         // ---- Officiating: referees and match staff ----
         // Deliberately a sibling of organizations/{organization}, not a branch
         // inside it. A task account holds no organization_members row, so
@@ -237,11 +248,20 @@ Route::prefix('v1')->group(function () {
             Route::middleware('event.personnel')->prefix('officiating/events/{event}')->group(function () {
                 Route::get('/', [OfficiatingController::class, 'show']);
                 Route::get('categories/{category}/matches', [OfficiatingController::class, 'matches']);
+                // Read by both halves of the crew: staff type the cards, the
+                // referee has to know who may not take the field. Same payload
+                // as the organizer's and the public one, same service.
+                Route::get('categories/{category}/discipline', [OfficiatingController::class, 'discipline']);
 
-                // The role-gated halves go here: `event.staff` for the score and
-                // stat writes (phase 4), `event.referee` for lineup approval
-                // (phase 6). Both stack *after* event.personnel, which is what
-                // puts the row they read on the request.
+                // The role-gated halves stack *after* event.personnel, which is
+                // what puts the row they read on the request.
+                Route::middleware('event.staff')->group(function () {
+                    Route::get('matches/{match}/stats', [OfficiatingMatchController::class, 'matchStats']);
+                    Route::put('matches/{match}/stats', [OfficiatingMatchController::class, 'saveMatchStats']);
+                    Route::patch('matches/{match}', [OfficiatingMatchController::class, 'updateResult']);
+                });
+
+                // `event.referee` for lineup approval arrives in phase 6.
             });
         });
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\DomainException;
+use App\Exceptions\MatchResultException;
 use App\Exceptions\PaymentException;
 use App\Exceptions\PlanFeatureException;
 use App\Exceptions\WalletException;
@@ -97,6 +98,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (PlanFeatureException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (MatchResultException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }

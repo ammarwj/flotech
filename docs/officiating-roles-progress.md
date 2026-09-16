@@ -28,8 +28,8 @@ harus sudah ditegakkan sebelum email pertama terkirim.
 | 1 | Rename `kind` → `referee`/`staff` | ✅ selesai |
 | 2 | `must_change_password` + rotasi paksa | ✅ selesai |
 | 3 | Akun tugas: `email`/`user_id`, undangan, middleware, shell `/officiating` | ✅ selesai |
-| 4 | Permukaan staff: skor + statistik | ⬜ belum |
-| 5 | Tabel lineup + submit manajer | ⬜ belum |
+| 4 | Permukaan staff: skor + statistik | ✅ selesai |
+| 5 | Tabel lineup + submit manajer | ✅ selesai |
 | 6 | Acc wasit | ⬜ belum |
 | 7 | Lembar susunan pemain (PDF) + gerbang cetak | ⬜ belum |
 
@@ -158,26 +158,110 @@ cabang di bawah `/organizations/{org}/...`), `officiating/page.tsx` (daftar penu
 
 ## Fase 4 — Staff: skor & statistik
 
-- [ ] Ekstrak badan `MatchController::saveMatchStats()` ke `MatchStatService::replace()` —
-      dua pintu yang menulis hal yang sama akan menyimpang
-- [ ] `updateResult()` staff selalu `$autoConfirm = false` — aturan operator yang sudah ada,
-      apa adanya: yang mencatat bukan yang meratifikasi
-- [ ] Kartu tetap dikenali dari `sport_stats.role`, tidak pernah dari `stat_key`
-- [ ] Penulis kelima kontrak invalidasi `["discipline", …]` lahir di sini — ikuti keynya
-- [ ] Bandingkan simpan staff vs admin pada laga sama: `confirmed_at` null vs terisi
+- [x] Ekstrak badan `MatchController::saveMatchStats()` ke `MatchStatService::replace()` —
+      dua pintu yang menulis hal yang sama akan menyimpang. Ikut pindah: `snapshot()`,
+      `rules()`, `teamRoster()`. Ketiganya adalah **pembacaan** dari tally yang sama, dan
+      membiarkannya di controller berarti pintu officiating menyusun ulang bentuk payload
+      yang sudah dibentuk di tempat lain — dua pembaca satu tabel, bentuk bug yang sama
+      dengan dua pembaca `stage`
+- [x] `updateResult()` staff selalu `$autoConfirm = false` — aturan operator yang sudah ada,
+      apa adanya: yang mencatat bukan yang meratifikasi. Toast-nya menyebutkannya
+      (`'Hasil disimpan — menunggu konfirmasi admin'`), karena "tersimpan" tanpa embel-embel
+      terbaca sebagai "masuk klasemen"
+- [x] `MatchResultException` + `payloadFrom()` — `MatchResultService::apply()` sudah menolak
+      kategori ber-partai (422 `['rubbers' => …]`), dan kedua pintu sekarang melempar lewat
+      satu jalur alih-alih masing-masing menyusun response-nya sendiri
+- [x] Kartu tetap dikenali dari `sport_stats.role`, tidak pernah dari `stat_key` — kolomnya
+      datang dari `Catalog::statColumns()` lewat `MatchStatService`, jadi permukaan baru ini
+      tidak punya daftar hardcode untuk disimpangkan
+- [x] Penulis kelima kontrak invalidasi `["discipline", …]` lahir di sini — keynya
+      `["officiating-discipline", eventId, catId]`, **tanpa org id**, karena akun tugas tidak
+      punya organisasi. Bentuk key yang berbeda itulah yang membuat key organizer yang nyasar
+      tidak mungkin cocok
+- [x] Bandingkan simpan staff vs admin pada laga sama: `confirmed_at` null vs terisi —
+      `OfficiatingMatchTest`, 4 kasus / 30 assertion; sapuan penuh 606 hijau
+
+**Frontend fase 4** — editornya **tidak disalin**. `web/lib/match-doors.ts` lahir di sini:
+empat factory gateway (`organizerStatsGateway`, `organizerResultGateway`,
+`officiatingStatsGateway`, `officiatingResultGateway`) yang membawa fungsi endpoint **dan**
+kontrak invalidasinya, dan `MatchStatsEditor`/`SetScoreEditor` berganti prop dari
+`{orgId, eventId, match}` jadi `{gateway, match}`. Ini cerminan klien dari alasan
+`MatchResultService`/`MatchStatService` ada sama sekali.
+
+- **`GoalScoreEditor` diekstrak** dari baris skor inline di `MatchCard` organizer. Layak
+  dilakukan demi adu penaltinya saja: *"knockout imbang wajib penalti"* ditegakkan server di
+  kedua pintu, dan salinan kedua kondisi itu di klien adalah layar yang menawarkan simpan
+  yang pasti ditolak API — atau lebih buruk, yang diam-diam membuang skor penaltinya dan
+  mendudukkan tim yang salah di babak berikutnya.
+- **`canScore` cuma presentasi.** Wasit mendapat kartu tanpa kontrol, tapi yang menegakkan
+  tetap `event.staff` yang menjawab 403 apa pun yang dirender komponen ini.
+- **Kategori ber-partai jatuh ke teks, bukan form.** `MatchResultService` menolaknya 422 dan
+  tidak ada rute partai di tier officiating; menampilkan field-nya berarti menawarkan simpan
+  yang tidak pernah bisa berhasil.
+- **Laga `cancelled` dan slot ber-TBD juga read-only** — tidak ada yang bisa dicatat dari
+  laga yang tidak dimainkan, dan itu keadaan yang sama yang dilihat wasit.
 
 ---
 
 ## Fase 5 — Lineup per-laga per-tim
 
-- [ ] `match_lineups` (`unique(['match_id','team_id'])`), `match_lineup_players`,
+- [x] `match_lineups` (`unique(['match_id','team_id'])`), `match_lineup_players`,
       `match_lineup_officials` — **tiga tabel**, bukan satu dengan kolom diskriminator
       nullable: kolom nullable itu persis cara invarian "ofisial bukan pemain" bocor kembali
-- [ ] `LineupService::sync()` kontrak full-list yang sama dengan `TeamRosterService`
-- [ ] Terkunci saat `submitted`/`approved` — itu yang membuat acc berarti sesuatu
-- [ ] Rute `my-teams/{team}/matches/...` lewat `scope()` yang sudah ada
-- [ ] `DisciplineService:33` diperbarui satu baris: lineup kini ada, **sengaja tidak dibaca**
+- [x] `LineupService::sync()` kontrak full-list yang sama dengan `TeamRosterService`
+- [x] Terkunci saat `submitted`/`approved` — itu yang membuat acc berarti sesuatu
+- [x] Rute `my-teams/{team}/matches/...` lewat `scope()` yang sudah ada
+- [x] `DisciplineService:33` diperbarui satu baris: lineup kini ada, **sengaja tidak dibaca**
       di sini (lineup adalah pengajuan sebelum kick-off, bukan catatan siapa yang turun)
+- [x] `tests/Feature/MatchLineupTest.php` — 8 kasus / 87 assertion; sapuan penuh **618 hijau
+      (3803 assertion)**, +8 dari baseline 610 yaitu tepat berkas baru ini
+
+**Penyimpangan yang dicatat.**
+
+- **`LineupService::sync()` mencari baris yang sudah ada lewat kunci naturalnya, bukan cuma
+  `id`.** Ini bukan ikat pinggang-dan-bretel, ini perbaikan 500 sungguhan yang ditemukan
+  testnya: `unique(lineup_id, player_id)` membuat **pemain itulah identitas barisnya**, dan
+  editor yang menyusun ulang daftarnya dari roster — yang adalah bentuk di kawat dari
+  memindahkan orang dari bangku ke sebelas awal — mengirim pemain yang sama tanpa `id` dan
+  menabrak index itu. Cabang `id` tetap yang pertama dibaca dan tetap load-bearing; fallback
+  cuma menutup jalur tanpa id. Punya testnya sendiri
+  (`test_the_same_player_sent_back_without_a_row_id_moves_instead_of_colliding`) yang
+  membandingkan simpan **dengan** id lalu **tanpa** id, dan mengunci
+  `assertDatabaseCount('match_lineup_players', 1)` — assert "200" saja akan lolos walau
+  barisnya berlipat.
+- **`MyTeamMatchController` menerbitkan `sport_type` + `timezone` di `team`.** Keduanya bukan
+  hiasan: label peran ofisial datang dari katalog cabang (jangan pernah di-hardcode), dan
+  `lib/match-dates.ts` menyatakan tz sebagai parameter **wajib** justru supaya pemanggil yang
+  lupa gagal dikompilasi alih-alih diam-diam kembali ke jam pembaca. Satu payload, bukan
+  request kedua ke `my-teams/{team}`.
+- **Scene test dibangun dari endpoint sungguhan ujung ke ujung** — daftar publik (itu yang
+  mengisi `manager_user_id`), acc organizer (fixture hanya boleh memasangkan tim `approved`),
+  lalu pembuatan fixture. `OfficiatingMatchTest::scene()` tidak bisa dipakai ulang: jalur
+  registrasi sisi organizer **tidak** menyetel `manager_user_id`, dan justru kolom itulah yang
+  seluruh fase ini bersandar padanya.
+
+**Frontend fase 5** — `lib/api/team-matches.ts`, `components/team/lineup-editor.tsx`,
+`participant/teams/[id]/matches/page.tsx` + `.../[matchId]/lineup/page.tsx`, dan
+`LineupStatusBadge` di `components/shared/status-badge.tsx`.
+
+- **Tidak ada kolom starter/cadangan yang bisa di-drag.** Rencana menyebut "dua kolom"; yang
+  ditulis adalah satu daftar roster dengan tiga tombol per baris. Alasannya ada di kontrak
+  full-list: pemain yang **tidak dikirim** akan dihapus, jadi "Tidak dibawa" harus bisa
+  diucapkan, bukan disimpulkan dari tidak-mengklik-apa-pun. `components/ui/` juga tidak punya
+  `checkbox.tsx`, jadi tidak ada komponen pilih-ganda yang bisa dipinjam.
+- **Roster dikirim utuh, tidak disaring ke yang belum dinamai.** Sudah ditulis di docblock
+  `payload()` sisi server: daftar yang menyusut selagi manajer bekerja adalah daftar yang tak
+  bisa ia kembalikan orangnya.
+- **Tombol "Kirim ke wasit" menyimpan dulu baru submit.** Tombolnya berbunyi kirim; mengirim
+  lembar yang terakhir *tersimpan* alih-alih yang sedang dilihat adalah janji yang dilanggar
+  tanpa error.
+- **`editable` selalu dibaca dari server, tidak pernah diturunkan dari `status`.** Alasan yang
+  sama dengan `effective_payment_method`: dua pembaca aturan yang sama akan berselisih, dan
+  selisihnya tak terlihat.
+- **Tautan "Buka jadwal" di halaman tim hanya untuk tim `approved`.** Tim `pending` belum punya
+  fixture apa pun, dan tautan ke daftar kosong terbaca sebagai halaman rusak, bukan "belum".
+- `LineupStatusBadge` merender `status_display` dari server dan cuma memutuskan warnanya —
+  peta label di sisi klien akan jadi salinan kedua dari copy yang sudah punya satu pemilik.
 
 ---
 

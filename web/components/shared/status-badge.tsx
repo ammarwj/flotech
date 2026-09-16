@@ -10,6 +10,8 @@ import {
 import type {
   EventStatus,
   Match,
+  MatchLineup,
+  MatchLineupStatus,
   PlanOrderStatus,
   TeamStatus,
   TicketOrderStatus,
@@ -85,6 +87,29 @@ export function MatchStatusBadge({ match }: { match: Match }) {
   }
 
   return <Badge variant="neutral">Terjadwal</Badge>;
+}
+
+const LINEUP_VARIANT: Record<MatchLineupStatus, Variant> = {
+  draft: "neutral",
+  submitted: "warning",
+  approved: "success",
+  rejected: "danger",
+};
+
+/**
+ * A team sheet's state in one chip.
+ *
+ * It takes the whole lineup rather than a bare status because the wording is
+ * `status_display`, which the server publishes — the same reason `editable` is
+ * published rather than derived. Only the colour is decided here, and a label
+ * map on this side would be a second copy of copy that has one owner.
+ */
+export function LineupStatusBadge({ lineup }: { lineup: MatchLineup }) {
+  return (
+    <Badge variant={LINEUP_VARIANT[lineup.status]} dot={lineup.status === "submitted"}>
+      {lineup.status_display}
+    </Badge>
+  );
 }
 
 const WITHDRAWAL_VARIANT: Record<WithdrawalStatus, Variant> = {

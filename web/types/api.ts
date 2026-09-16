@@ -500,6 +500,77 @@ export interface MatchRubber {
   status: "scheduled" | "finished" | "walkover";
 }
 
+/**
+ * The team sheet a manager hands in before kick-off, and the referee signs off.
+ *
+ * `draft` and `rejected` are the editable pair — a sheet sent back is meant to
+ * be fixed and sent again. Never derive that from `status` on a screen; the
+ * server publishes `editable` precisely so three surfaces cannot disagree about
+ * what the fourth status means.
+ */
+export type MatchLineupStatus = "draft" | "submitted" | "approved" | "rejected";
+
+/** Named on the sheet, and on which side of the line the sheet prints them. */
+export interface MatchLineupPlayer {
+  /** Row id of the sheet entry — not the player's. */
+  id: string;
+  player_id: string;
+  role: "starter" | "substitute";
+  sort_order: number;
+  /** Flattened in from the roster row, never stored on the sheet. */
+  full_name: string | null;
+  jersey_number: string | null;
+  position: string | null;
+}
+
+export interface MatchLineupOfficial {
+  id: string;
+  team_official_id: string;
+  sort_order: number;
+  full_name: string | null;
+  role: string | null;
+  /** Resolved from the sport's catalogue — an admin may rename a role. */
+  role_display: string;
+}
+
+export interface MatchLineup {
+  id: string;
+  match_id: string;
+  team_id: string;
+  team_name: string | null;
+  status: MatchLineupStatus;
+  status_display: string;
+  /** What the manager may still do, answered by the server. */
+  editable: boolean;
+  /** Why the referee sent it back. Null on every other status. */
+  note: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by?: string | null;
+  players?: MatchLineupPlayer[];
+  officials?: MatchLineupOfficial[];
+}
+
+/** A fixture as the manager's list shows it: the match, plus their own sheet. */
+export interface MyTeamMatch extends Match {
+  /** Null until the manager first opens the editor — the row is created on read. */
+  lineup: MatchLineup | null;
+}
+
+/** One pick in the editor's pool — the team's roster, sent whole. */
+export interface LineupRosterPlayer {
+  id: string;
+  full_name: string;
+  jersey_number: string | null;
+  position: string | null;
+}
+
+export interface LineupRosterOfficial {
+  id: string;
+  full_name: string;
+  role: string | null;
+}
+
 /** A place in the knockout bracket, e.g. "Juara Grup A" — and who holds it now. */
 export interface KnockoutSlot {
   /**

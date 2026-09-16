@@ -2,7 +2,11 @@
 
 namespace App\Services;
 
+use App\Exceptions\MatchResultException;
 use App\Models\GameMatch;
+use App\Support\MatchScoring;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Writing a result and everything that follows from it.
@@ -17,6 +21,111 @@ use App\Models\GameMatch;
 class MatchResultService
 {
     public function __construct(protected ScheduleService $schedule) {}
+
+    /**
+     * Validate a posted scoreline and turn it into the columns to write.
+     *
+     * Every refusal in here is raised as a MatchResultException rather than
+     * returned as a response, which is the whole reason it can live in a
+     * service: the organizer's door and the match staff's door then refuse the
+     * same payload with the same words, instead of one of them growing a
+     * slightly different message that only its own users ever read.
+     *
+     * What it deliberately does *not* decide is whether the result is
+     * confirmed. That is a question about who is asking, and the two callers
+     * answer it differently — see the `$confirm` argument of apply().
+     *
+     * @return array<string, mixed> columns for apply()
+     *
+     * @throws MatchResultException
+     */
+    public function payloadFrom(Request $request, GameMatch $match): array
+    {
+        // A squad tie has no scoreline of its own — it is the count of partai
+        // won. Accepting one here would let a hand-typed 3-0 sit on top of
+        // partai that say otherwise, and the next partai edit would overwrite it.
+        if ($match->category->usesRubbers()) {
+            throw new MatchResultException(
+                'Skor pertandingan beregu diisi per partai.',
+                ['rubbers' => ['Isi skor lewat daftar partai.']],
+            );
+        }
+
+        $base = $request->validate([
+            'status' => ['required', Rule::in(['scheduled', 'ongoing', 'finished', 'cancelled'])],
+            'scheduled_at' => ['nullable', 'date'],
+            'venue' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $finished = $base['status'] === 'finished';
+
+        if ($match->event->isSetBased()) {
+            $data = $request->validate([
+                'sets' => [$finished ? 'required' : 'nullable', 'array', 'max:7'],
+                'sets.*.home' => ['required', 'integer', 'min:0', 'max:99'],
+                'sets.*.away' => ['required', 'integer', 'min:0', 'max:99'],
+            ]);
+
+            $sets = $data['sets'] ?? null;
+            $won = $sets ? MatchScoring::setsWon($sets) : ['home' => null, 'away' => null];
+
+            if ($finished && empty($sets)) {
+                throw new MatchResultException('Isi skor minimal satu set untuk menyelesaikan pertandingan.', [
+                    'sets' => ['Skor set wajib diisi.'],
+                ]);
+            }
+
+            $payload = [...$base, 'sets' => $sets, 'home_score' => $won['home'], 'away_score' => $won['away']];
+        } else {
+            $data = $request->validate([
+                'home_score' => ['nullable', 'integer', 'min:0', 'max:999'],
+                'away_score' => ['nullable', 'integer', 'min:0', 'max:999'],
+            ]);
+
+            if ($finished && ($data['home_score'] === null || $data['away_score'] === null)) {
+                throw new MatchResultException('Skor kedua tim wajib diisi untuk menyelesaikan pertandingan.', [
+                    'home_score' => ['Skor wajib diisi.'],
+                ]);
+            }
+
+            $payload = [...$base, 'home_score' => $data['home_score'], 'away_score' => $data['away_score'], 'sets' => null];
+        }
+
+        $shootout = $request->validate([
+            'home_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'away_penalty' => ['nullable', 'integer', 'min:0', 'max:99'],
+        ]);
+
+        $level = $payload['home_score'] !== null && $payload['home_score'] === $payload['away_score'];
+
+        // A tie that owes a winner and ended level is settled on penalties;
+        // anything else has no shootout at all.
+        if ($finished && $level && $this->mustProduceWinner($match)) {
+            $home = $shootout['home_penalty'] ?? null;
+            $away = $shootout['away_penalty'] ?? null;
+
+            if ($home === null || $away === null) {
+                throw new MatchResultException('Skor imbang — isi hasil adu penalti untuk menentukan pemenang.', [
+                    'home_penalty' => ['Skor adu penalti wajib diisi.'],
+                ]);
+            }
+
+            if ($home === $away) {
+                throw new MatchResultException('Adu penalti tidak boleh berakhir imbang — tentukan pemenangnya.', [
+                    'home_penalty' => ['Harus ada pemenang.'],
+                ]);
+            }
+
+            $payload['home_penalty'] = $home;
+            $payload['away_penalty'] = $away;
+        } else {
+            // Decided in normal time (or a group game): drop any stale shootout.
+            $payload['home_penalty'] = null;
+            $payload['away_penalty'] = null;
+        }
+
+        return $payload;
+    }
 
     /**
      * Save a scoreline and settle the bracket around it.

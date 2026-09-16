@@ -30,10 +30,13 @@ use Illuminate\Support\Facades\DB;
  *   would have produced: recording one incident twice is what an organizer
  *   actually types, and banning them for two matches over it is the error that
  *   would be noticed.
- * - Nothing records who actually took the field — goal sports have no lineup
- *   input — so a ban is assumed to have been served by the team's next official
- *   fixture. An organizer who fields the player anyway gets a warning, not a
- *   correction.
+ * - Nothing records who actually took the field, so a ban is assumed to have been
+ *   served by the team's next official fixture. `match_lineups` now exists and is
+ *   deliberately not read here: it is a sheet submitted before kick-off, and a
+ *   named substitute may never come on — reading it would claim a ban was served
+ *   by someone who sat and watched. An organizer who fields a banned player
+ *   anyway gets a warning, not a correction. Wiring appearances up is separate
+ *   work and needs a record of who played, which nothing writes yet.
  */
 class DisciplineService
 {

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { getMatchStats, saveMatchStats, type MatchStatEntry } from "@/lib/api/matches";
+import type { MatchStatEntry } from "@/lib/api/matches";
+import type { MatchStatsGateway } from "@/lib/match-doors";
 import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,23 +19,23 @@ import type { Match, MatchRoster, StatColumn } from "@/types/api";
  * squad shows how many of its goals are already accounted for, and a mismatch is
  * called out. It's a warning, not a block — an own goal legitimately leaves a
  * goal with no scorer on that side.
+ *
+ * Two surfaces mount it — the organizer's schedule and the match staff's — so it
+ * knows nothing about which one it is on beyond the gateway handed to it.
  */
 export function MatchStatsEditor({
-  orgId,
-  eventId,
-  matchId,
+  gateway,
   match,
 }: {
-  orgId: string;
-  eventId: string;
-  matchId: string;
+  /** Which door this editor writes through — see {@link MatchStatsGateway}. */
+  gateway: MatchStatsGateway;
   /** The fixture being edited; enables the goals-vs-score cross-check. */
   match?: Match;
 }) {
   const qc = useQueryClient();
   const statsQuery = useQuery({
-    queryKey: ["match-stats", orgId, matchId],
-    queryFn: () => getMatchStats(orgId, matchId),
+    queryKey: gateway.queryKey,
+    queryFn: () => gateway.load(),
   });
 
   // Edits override the fetched tally; key = `${playerId}:${statKey}`.
@@ -60,13 +61,16 @@ export function MatchStatsEditor({
           if (v > 0) entries.push({ player_id: p.id, stat_key: c.key, value: v });
         }
       }
-      return saveMatchStats(orgId, matchId, entries);
+      return gateway.save(entries);
     },
     onSuccess: () => {
       toast.success("Statistik disimpan");
-      qc.invalidateQueries({ queryKey: ["leaderboard", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["match-stats", orgId, matchId] });
+      // Prefixes, not whole keys: the discipline query carries a category id
+      // this editor never sees, and a card that just wrote a yellow must not
+      // keep showing the ban list from before it.
+      for (const key of gateway.invalidate) {
+        qc.invalidateQueries({ queryKey: key });
+      }
       setEdits({});
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan statistik.").message),

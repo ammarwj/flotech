@@ -31,7 +31,6 @@ import {
   generateKnockout,
   shuffleBracket,
   deleteKnockout,
-  updateMatchResult,
   updateMatchTeams,
   createMatch,
   deleteMatch,
@@ -72,7 +71,6 @@ import {
 import { isExportEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUrlState } from "@/lib/hooks/use-url-state";
@@ -89,6 +87,8 @@ import { DoubleBracketView } from "@/components/event/double-bracket-view";
 import { LeaderboardTable } from "@/components/event/leaderboard-table";
 import { DisciplineTable } from "@/components/event/discipline-table";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
+import { GoalScoreEditor } from "@/components/event/goal-score-editor";
+import { organizerResultGateway, organizerStatsGateway } from "@/lib/match-doors";
 import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { RubberScoreEditor } from "@/components/event/rubber-score-editor";
@@ -1030,40 +1030,7 @@ function MatchCard({
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const [home, setHome] = useState(match.home_score?.toString() ?? "");
-  const [away, setAway] = useState(match.away_score?.toString() ?? "");
-  const [homePen, setHomePen] = useState(match.home_penalty?.toString() ?? "");
-  const [awayPen, setAwayPen] = useState(match.away_penalty?.toString() ?? "");
   const [showGoals, setShowGoals] = useState(false);
-
-  // A level knockout tie is settled on penalties, so the shootout fields appear
-  // exactly when they're needed.
-  const level = home !== "" && home === away;
-  const needsPenalties = knockout && level;
-
-  // A running score and a final one go through the same door, and the status
-  // travels with the click rather than being hardcoded: saving mid-match used to
-  // stamp `finished`, which killed the LIVE badge and — for an org admin, whose
-  // save auto-confirms — seated a "winner" in the next round off a half-time
-  // scoreline.
-  const save = useMutation({
-    mutationFn: (status: "ongoing" | "finished") =>
-      updateMatchResult(orgId, match.id, {
-        home_score: home === "" ? null : Number(home),
-        away_score: away === "" ? null : Number(away),
-        home_penalty: needsPenalties && homePen !== "" ? Number(homePen) : null,
-        away_penalty: needsPenalties && awayPen !== "" ? Number(awayPen) : null,
-        status,
-      }),
-    onSuccess: (_, status) => {
-      toast.success(status === "finished" ? "Hasil disimpan" : "Skor disimpan");
-      qc.invalidateQueries({ queryKey: ["matches", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["standings", orgId, eventId] });
-      qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
-    },
-    onError: (err) =>
-      toast.error(parseApiError(err, "Gagal menyimpan hasil.").message),
-  });
 
   const del = useMutation({
     mutationFn: () => deleteMatch(orgId, match.id),
@@ -1234,7 +1201,10 @@ function MatchCard({
           <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
         </div>
         <div className="mt-3 border-t border-border pt-3">
-          <SetScoreEditor orgId={orgId} eventId={eventId} match={match} />
+          <SetScoreEditor
+            gateway={organizerResultGateway(orgId, eventId, match.id)}
+            match={match}
+          />
         </div>
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1252,9 +1222,7 @@ function MatchCard({
           </div>
           {showGoals && (
             <MatchStatsEditor
-              orgId={orgId}
-              eventId={eventId}
-              matchId={match.id}
+              gateway={organizerStatsGateway(orgId, eventId, match.id)}
               match={match}
             />
           )}
@@ -1262,23 +1230,6 @@ function MatchCard({
       </Card>
     );
   }
-
-  const dirty =
-    home !== (match.home_score?.toString() ?? "") ||
-    away !== (match.away_score?.toString() ?? "") ||
-    homePen !== (match.home_penalty?.toString() ?? "") ||
-    awayPen !== (match.away_penalty?.toString() ?? "");
-  const penaltiesOk =
-    !needsPenalties ||
-    (homePen !== "" && awayPen !== "" && homePen !== awayPen);
-  const canSave = home !== "" && away !== "" && dirty && penaltiesOk;
-  // A live match splits the one button in two, and the two ask different things.
-  // Saving a running score wants nothing but a change — half a scoreline is the
-  // whole point. Finishing wants a complete one, but *not* a change: an
-  // organizer who already saved the final score as ongoing still has to be able
-  // to end the match.
-  const live = match.status === "ongoing";
-  const canFinish = home !== "" && away !== "" && penaltiesOk;
 
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
@@ -1296,116 +1247,30 @@ function MatchCard({
       <div className="mt-3">
         <MatchScheduleEditor orgId={orgId} eventId={eventId} match={match} courts={courts} />
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3">
-        <span className="flex-1 truncate text-right text-sm font-semibold">
-          {match.home_team.name}
-        </span>
-        <Input
-          type="number"
-          min={0}
-          value={home}
-          onChange={(e) => setHome(e.target.value)}
-          className="h-9 w-14 text-center"
-          aria-label={`Skor ${match.home_team.name}`}
-        />
-        <span className="text-xs text-muted-foreground">vs</span>
-        <Input
-          type="number"
-          min={0}
-          value={away}
-          onChange={(e) => setAway(e.target.value)}
-          className="h-9 w-14 text-center"
-          aria-label={`Skor ${match.away_team.name}`}
-        />
-        <span className="flex-1 truncate text-sm font-semibold">
-          {match.away_team.name}
-        </span>
-        {/* The actions travel as one block. Left loose in the wrapping row they
-            break up one at a time, so a phone gets "Simpan" stranded on a line
-            by itself while the scoreline keeps the other two. */}
-        <div className="ml-auto flex items-center gap-3">
-          {removeBtn}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowGoals((v) => !v)}
-            aria-label="Statistik pemain"
-            title="Statistik pemain"
-          >
-            <Goal className="h-4 w-4" />
-          </Button>
-          {live ? (
+      <div className="mt-3 border-t border-border pt-3">
+        <GoalScoreEditor
+          gateway={organizerResultGateway(orgId, eventId, match.id)}
+          match={match}
+          knockout={knockout}
+          actions={
             <>
+              {removeBtn}
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!dirty || save.isPending}
-                onClick={() => save.mutate("ongoing")}
+                onClick={() => setShowGoals((v) => !v)}
+                aria-label="Statistik pemain"
+                title="Statistik pemain"
               >
-                {save.isPending ? "…" : "Simpan"}
-              </Button>
-              <Button
-                size="sm"
-                variant={canFinish ? "default" : "outline"}
-                disabled={!canFinish || save.isPending}
-                onClick={() => save.mutate("finished")}
-              >
-                Selesaikan
+                <Goal className="h-4 w-4" />
               </Button>
             </>
-          ) : (
-            <Button
-              size="sm"
-              variant={canSave ? "default" : "outline"}
-              disabled={!canSave || save.isPending}
-              onClick={() => save.mutate("finished")}
-            >
-              {save.isPending
-                ? "…"
-                : match.status === "finished" && !dirty
-                  ? "Tersimpan"
-                  : "Simpan"}
-            </Button>
-          )}
-        </div>
+          }
+        />
       </div>
-
-      {needsPenalties && (
-        <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-border bg-[var(--surface-2)] px-3 py-2">
-          <span className="text-xs font-semibold text-muted-foreground">
-            Adu penalti
-          </span>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              value={homePen}
-              onChange={(e) => setHomePen(e.target.value)}
-              className="h-8 w-12 text-center"
-              aria-label={`Penalti ${match.home_team.name}`}
-            />
-            <span className="text-xs text-muted-foreground">–</span>
-            <Input
-              type="number"
-              min={0}
-              value={awayPen}
-              onChange={(e) => setAwayPen(e.target.value)}
-              className="h-8 w-12 text-center"
-              aria-label={`Penalti ${match.away_team.name}`}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {penaltiesOk
-              ? "Pemenang adu penalti yang lolos ke babak berikutnya."
-              : "Skor imbang — isi hasil penalti, tidak boleh sama."}
-          </p>
-        </div>
-      )}
       {showGoals && (
         <MatchStatsEditor
-          orgId={orgId}
-          eventId={eventId}
-          matchId={match.id}
+          gateway={organizerStatsGateway(orgId, eventId, match.id)}
           match={match}
         />
       )}

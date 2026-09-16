@@ -8,6 +8,7 @@ use App\Http\Resources\EventResource;
 use App\Http\Resources\MatchResource;
 use App\Models\Event;
 use App\Models\EventPersonnel;
+use App\Services\DisciplineService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,8 @@ use Illuminate\Http\Request;
  */
 class OfficiatingController extends Controller
 {
+    public function __construct(protected DisciplineService $discipline) {}
+
     /**
      * The events this account is crew on. The landing page needs it before any
      * event id is known, so it is the one route here outside the event prefix —
@@ -107,6 +110,21 @@ class OfficiatingController extends Controller
             ->get();
 
         return ApiResponse::success(MatchResource::collection($matches));
+    }
+
+    /**
+     * Card tallies and who they keep off the pitch, for a whole category.
+     *
+     * The identical payload MatchController::discipline() and
+     * PublicEventController::discipline() return, from the same service — a
+     * third reader that computed its own tally would be a third chance for the
+     * warning on a fixture card to disagree with the table underneath it.
+     */
+    public function discipline(Request $request, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->event($request)->categories()->findOrFail($category);
+
+        return ApiResponse::success($this->discipline->forCategory($categoryModel));
     }
 
     protected function event(Request $request): Event
