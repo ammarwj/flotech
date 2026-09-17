@@ -185,10 +185,14 @@ export class Api {
 
     const checkout = await this.request.post(`${API_URL}/organizations/${orgId}/plan-orders/checkout`, {
       headers: this.auth(token),
-      data: { plan_id: await this.planId(plan) },
+      // A channel is required exactly when the bill goes out on the gateway
+      // rail for a non-zero amount, which is every plan this fixture buys. It
+      // also picks the fee the buyer pays on top, and that is why gross_amount
+      // below cannot be the plan price.
+      data: { plan_id: await this.planId(plan), payment_channel: "va" },
     });
     const result = await this.unwrap<{
-      plan_order: { id: string; amount: number; midtrans_order_id: string | null };
+      plan_order: { id: string; gross_amount: number; midtrans_order_id: string | null };
     }>(checkout, `Checkout paket ${plan}`);
 
     const order = result.plan_order;
@@ -196,8 +200,11 @@ export class Api {
       throw new Error("Checkout tidak menghasilkan order id Midtrans — gateway sedang mati?");
     }
 
-    // Midtrans sends gross_amount with two decimals.
-    const gross = order.amount.toFixed(2);
+    // What Midtrans was actually asked to charge — plan price plus the gateway
+    // and service fees. Signing the plan price alone produces a signature the
+    // webhook rejects 403, because Midtrans echoes back the gross it billed.
+    // The API rounds it to whole rupiah before handing it over.
+    const gross = Math.round(order.gross_amount).toFixed(2);
     const statusCode = "200";
     const signature = createHash("sha512")
       .update(order.midtrans_order_id + statusCode + gross + serverKey)
@@ -232,14 +239,16 @@ export class Api {
     const list = await this.request.get(`${API_URL}/organizations/${orgId}/plan-orders`, {
       headers: this.auth(token),
     });
-    const orders = await this.unwrap<Array<{ id: string; amount: number; midtrans_order_id: string | null }>>(
+    const orders = await this.unwrap<Array<{ id: string; gross_amount: number; midtrans_order_id: string | null }>>(
       list,
       "Ambil daftar order paket",
     );
     const order = orders.find((o) => o.id === orderId);
     if (!order?.midtrans_order_id) throw new Error(`Order ${orderId} tidak punya order id Midtrans.`);
 
-    const gross = order.amount.toFixed(2);
+    // The billed total, fees included — see grantCredit(). `amount` is the plan
+    // price alone and signs a notification the webhook refuses.
+    const gross = Math.round(order.gross_amount).toFixed(2);
     const signature = createHash("sha512")
       .update(order.midtrans_order_id + "200" + gross + serverKey)
       .digest("hex");
@@ -332,6 +341,19 @@ export class Api {
     event: Event,
     managerToken: string,
     name = unique("Tim"),
+    /**
+     * Override the two default players.
+     *
+     * The defaults are deliberately the same in every team, which is fine while
+     * a spec only ever names the team — but a screen that labels its inputs per
+     * player ("Gol Pemain Satu") then has two of every label on a fixture, and
+     * the locator matches both sides. Specs that type against a roster pass
+     * their own names.
+     */
+    players: Array<{ full_name: string; jersey_number?: string }> = [
+      { full_name: "Pemain Satu", jersey_number: "7" },
+      { full_name: "Pemain Dua", jersey_number: "9" },
+    ],
   ): Promise<Team> {
     const res = await this.request.post(`${API_URL}/public/events/${orgSlug}/${event.slug}/register`, {
       headers: this.auth(managerToken),
@@ -341,10 +363,7 @@ export class Api {
         name,
         contact_name: "Kontak E2E",
         contact_phone: "081234567890",
-        players: [
-          { full_name: "Pemain Satu", jersey_number: "7" },
-          { full_name: "Pemain Dua", jersey_number: "9" },
-        ],
+        players,
       },
     });
 
@@ -402,6 +421,151 @@ export class Api {
       },
     });
     return this.unwrap<Team>(res, `Tambah tim manual ${name}`);
+  }
+
+  /**
+   * The bench, added by the manager themselves.
+   *
+   * `officials` alone, no `players` key: the update guards each list with
+   * `array_key_exists`, so an omitted roster is left alone while an empty array
+   * would wipe it. That is also why this cannot be folded into `registerTeam` —
+   * the public form takes a bench too, but sending one there would make every
+   * team in the suite carry a coach it never asked for.
+   */
+  async addTeamOfficials(
+    managerToken: string,
+    teamId: string,
+    officials: Array<{ full_name: string; role?: string }>,
+  ): Promise<void> {
+    const res = await this.request.patch(`${API_URL}/my-teams/${teamId}`, {
+      headers: this.auth(managerToken),
+      data: { officials },
+    });
+    await this.unwrap(res, `Tambah ofisial tim ${teamId}`);
+  }
+
+  /** The manager's own fixture list — where a lineup is reached from. */
+  async teamMatches(
+    managerToken: string,
+    teamId: string,
+  ): Promise<Array<{ id: string; home_team_id: string | null; away_team_id: string | null }>> {
+    const res = await this.request.get(`${API_URL}/my-teams/${teamId}/matches`, {
+      headers: this.auth(managerToken),
+    });
+    const data = await this.unwrap<{
+      matches: Array<{ id: string; home_team_id: string | null; away_team_id: string | null }>;
+    }>(res, `Jadwal tim ${teamId}`);
+    return data.matches;
+  }
+
+  // ---- Officiating crew (petugas pertandingan) ----
+
+  /**
+   * The event's referees and match staff — the full list, as the editor sends it.
+   *
+   * An `email` on a row is what turns that person into a login: the sync creates
+   * the account, mails the invitation naming the default password, and flags it
+   * for rotation. Rows without one stay what they were, a name to print on an ID
+   * card. Full-list contract like every other sync here: whatever is left out is
+   * deleted.
+   */
+  async syncPersonnel(
+    token: string,
+    orgId: string,
+    eventId: string,
+    personnel: Array<{ full_name: string; kind: "referee" | "staff"; email?: string; role_label?: string }>,
+  ): Promise<Array<{ id: string; full_name: string; kind: string; email: string | null; has_account: boolean }>> {
+    const res = await this.request.put(`${API_URL}/organizations/${orgId}/events/${eventId}/personnel`, {
+      headers: this.auth(token),
+      data: {
+        personnel: personnel.map((p) => ({
+          full_name: p.full_name,
+          kind: p.kind,
+          // Null, not "": a blank address is how a row says "no login at all",
+          // and an empty string simply fails the `email` rule.
+          email: p.email ?? null,
+          role_label: p.role_label ?? null,
+        })),
+      },
+    });
+    return this.unwrap(res, "Simpan petugas pertandingan");
+  }
+
+  /**
+   * The password every invited crew account is born with — stated in the
+   * invitation mail itself (EventPersonnelService::DEFAULT_PASSWORD).
+   *
+   * The mail goes to Mailtrap over SMTP from a queued notification, so its body
+   * is not readable from here. Signing in with this is the assertion that stands
+   * in for opening the inbox: the account exists and holds exactly the password
+   * the email promises.
+   */
+  static readonly CREW_PASSWORD = "welcomefloevent1";
+
+  /** League fixtures for the category. An empty body is a valid generate. */
+  async generateSchedule(token: string, orgId: string, event: Event): Promise<number> {
+    const res = await this.request.post(
+      `${API_URL}/organizations/${orgId}/events/${event.id}/categories/${event.categories[0].id}/schedule`,
+      { headers: this.auth(token), data: {} },
+    );
+    const matches = await this.unwrap<Array<{ id: string }>>(res, "Generate jadwal");
+    return matches.length;
+  }
+
+  /**
+   * One team's sheet, filed and sent for approval — by name, not by id.
+   *
+   * The ids live in the lineup payload's own `roster`/`officials` pools, so the
+   * caller would otherwise have to fetch and index them itself before it could
+   * say anything as simple as "Yoga starts". Names are what the spec already
+   * knows: it chose them when it registered the team.
+   *
+   * Here rather than in the spec because the second team in a fixture never
+   * needs a browser — what a lineup screen does is proven once, on the side the
+   * test actually drives, and the other side only has to exist and be
+   * approvable.
+   */
+  async submitLineup(
+    managerToken: string,
+    teamId: string,
+    matchId: string,
+    sheet: { starters?: string[]; substitutes?: string[]; officials?: string[] },
+  ): Promise<void> {
+    const url = `${API_URL}/my-teams/${teamId}/matches/${matchId}/lineup`;
+
+    const current = await this.request.get(url, { headers: this.auth(managerToken) });
+    const data = await this.unwrap<{
+      roster: Array<{ id: string; full_name: string }>;
+      officials: Array<{ id: string; full_name: string }>;
+    }>(current, `Ambil susunan pemain tim ${teamId}`);
+
+    const idOf = (pool: Array<{ id: string; full_name: string }>, name: string, what: string) => {
+      const row = pool.find((p) => p.full_name === name);
+      if (!row) throw new Error(`${what} "${name}" tidak ada di tim ${teamId}`);
+      return row.id;
+    };
+
+    const players = [
+      ...(sheet.starters ?? []).map((n) => ({ player_id: idOf(data.roster, n, "Pemain"), role: "starter" })),
+      ...(sheet.substitutes ?? []).map((n) => ({
+        player_id: idOf(data.roster, n, "Pemain"),
+        role: "substitute",
+      })),
+    ];
+
+    const saved = await this.request.put(url, {
+      headers: this.auth(managerToken),
+      data: {
+        players,
+        officials: (sheet.officials ?? []).map((n) => ({
+          team_official_id: idOf(data.officials, n, "Ofisial"),
+        })),
+      },
+    });
+    await this.unwrap(saved, `Simpan susunan pemain tim ${teamId}`);
+
+    const sent = await this.request.post(`${url}/submit`, { headers: this.auth(managerToken) });
+    await this.unwrap(sent, `Kirim susunan pemain tim ${teamId}`);
   }
 
   // ---- Landing content ----
