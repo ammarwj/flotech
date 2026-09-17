@@ -7,7 +7,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Shirt, Undo2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
-import { approveLineup, getMatchLineups, rejectLineup } from "@/lib/api/officiating";
+import {
+  approveLineup,
+  getMatchLineups,
+  rejectLineup,
+} from "@/lib/api/officiating";
 import { parseApiError } from "@/lib/api/errors";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
 import { PageHeader } from "@/components/shared/page-header";
@@ -70,7 +74,9 @@ function OfficiatingMatchView() {
       <div className="py-16 text-center">
         <p className="text-muted-foreground">Pertandingan tidak ditemukan.</p>
         <Button asChild variant="outline" className="mt-4">
-          <Link href={eventId ? `/officiating/events/${eventId}` : "/officiating"}>
+          <Link
+            href={eventId ? `/officiating/events/${eventId}` : "/officiating"}
+          >
             Kembali
           </Link>
         </Button>
@@ -94,8 +100,8 @@ function OfficiatingMatchView() {
       />
 
       <p className="mb-6 rounded-md border border-border bg-[var(--bg-soft)] px-4 py-3 text-sm text-muted-foreground">
-        Setiap tim di-acc sendiri-sendiri. Susunan yang sudah disetujui tidak bisa
-        diubah lagi — baik olehmu maupun oleh manajer tim.
+        Setiap tim di-acc sendiri-sendiri. Susunan yang sudah disetujui tidak
+        bisa diubah lagi — baik olehmu maupun oleh manajer tim.
       </p>
 
       {/* grid-cols-1 is load-bearing on phones, same as the schedule: an
@@ -150,7 +156,9 @@ function TeamSheetCard({
   const [noteError, setNoteError] = useState<string | null>(null);
 
   const refresh = () =>
-    qc.invalidateQueries({ queryKey: ["officiating-lineups", eventId, matchId] });
+    qc.invalidateQueries({
+      queryKey: ["officiating-lineups", eventId, matchId],
+    });
 
   const approve = useMutation({
     mutationFn: () => approveLineup(eventId, lineup!.id),
@@ -158,7 +166,8 @@ function TeamSheetCard({
       toast.success(`Susunan pemain ${teamName} disetujui.`);
       refresh();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menyetujui susunan.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menyetujui susunan.").message),
   });
 
   const reject = useMutation({
@@ -180,7 +189,9 @@ function TeamSheetCard({
   });
 
   const starters = (lineup?.players ?? []).filter((p) => p.role === "starter");
-  const substitutes = (lineup?.players ?? []).filter((p) => p.role === "substitute");
+  const substitutes = (lineup?.players ?? []).filter(
+    (p) => p.role === "substitute",
+  );
   const busy = approve.isPending || reject.isPending;
 
   return (
@@ -230,7 +241,9 @@ function TeamSheetCard({
                       key={official.id}
                       className="flex items-center justify-between gap-3 text-sm"
                     >
-                      <span className="truncate font-medium">{official.full_name}</span>
+                      <span className="truncate font-medium">
+                        {official.full_name}
+                      </span>
                       {/* role_display is resolved by the server from the sport's
                           catalogue — an admin may rename a role, and no screen
                           keeps a second copy of those labels. */}
@@ -265,7 +278,9 @@ function TeamSheetCard({
                       disabled={busy}
                     />
                     {noteError && (
-                      <p className="text-sm text-[var(--danger)]">{noteError}</p>
+                      <p className="text-sm text-[var(--danger)]">
+                        {noteError}
+                      </p>
                     )}
                     <div className="flex flex-wrap justify-end gap-2">
                       <Button
@@ -283,7 +298,9 @@ function TeamSheetCard({
                         onClick={() => reject.mutate()}
                         disabled={busy || note.trim() === ""}
                       >
-                        {reject.isPending ? "Mengirim…" : "Kembalikan ke manajer"}
+                        {reject.isPending
+                          ? "Mengirim…"
+                          : "Kembalikan ke manajer"}
                       </Button>
                     </div>
                   </div>
@@ -305,13 +322,6 @@ function TeamSheetCard({
                 )}
               </div>
             )}
-
-            {lineup.status === "approved" && (
-              <p className="border-t border-border pt-4 text-sm text-muted-foreground">
-                Sudah kamu setujui. Tidak ada jalan kembali — kalau ini keliru,
-                hubungi panitia event.
-              </p>
-            )}
           </>
         )}
       </CardContent>
@@ -331,7 +341,9 @@ function PlayerList({
     <section className="grid gap-2">
       <h3 className="inline-flex items-center gap-2 text-sm font-semibold">
         <Shirt className="h-4 w-4" /> {title}
-        <span className="font-normal text-muted-foreground">({rows.length})</span>
+        <span className="font-normal text-muted-foreground">
+          ({rows.length})
+        </span>
       </h3>
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tidak ada.</p>
@@ -345,9 +357,13 @@ function PlayerList({
               >
                 {row.jersey_number || "–"}
               </span>
-              <span className="min-w-0 flex-1 truncate font-medium">{row.full_name}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {row.full_name}
+              </span>
               {row.position && (
-                <span className="shrink-0 text-muted-foreground">{row.position}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  {row.position}
+                </span>
               )}
             </li>
           ))}
