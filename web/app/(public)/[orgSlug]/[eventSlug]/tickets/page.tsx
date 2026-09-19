@@ -8,6 +8,7 @@ import { ChevronLeft, Ticket, Check, Minus, Plus, Loader2 } from "lucide-react";
 
 import { getPublicTicketCategories, purchaseTickets } from "@/lib/api/tickets";
 import { getPublicEvent } from "@/lib/api/events";
+import { getPaymentChannels } from "@/lib/api/payments";
 import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,18 @@ export default function BuyTicketsPage() {
   );
   const total = (selectedCat?.price ?? 0) * quantity;
   const requiresChannel = Boolean(eventQuery.data?.requires_payment_channel) && total > 0;
+
+  // Same query key ChannelPicker uses internally, so react-query dedupes the
+  // fetch — this just reads the cache to know the fee-inclusive total once a
+  // channel is picked. `total` alone is the ticket price only and omits the
+  // platform's flat service fee, so it understated what the buyer pays.
+  const channelsQuery = useQuery({
+    queryKey: ["payment-channels", total, "participant"],
+    queryFn: () => getPaymentChannels(total, "participant"),
+    enabled: requiresChannel,
+  });
+  const selectedBreakdown = channelsQuery.data?.find((c) => c.channel === channel) ?? null;
+  const payableTotal = requiresChannel ? (selectedBreakdown?.total ?? total) : total;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -264,7 +277,7 @@ export default function BuyTicketsPage() {
               <div className="flex items-center justify-between border-t border-border pt-4">
                 <span className="text-sm text-muted-foreground">Total</span>
                 <span className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                  {total > 0 ? rupiah(total) : "Gratis"}
+                  {payableTotal > 0 ? rupiah(payableTotal) : "Gratis"}
                 </span>
               </div>
 

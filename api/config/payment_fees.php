@@ -25,6 +25,12 @@ return [
             'fee_type' => 'flat', // flat|percent
             'fee_value' => 4000,
             'tax_percent' => 11,
+            // Overridable per channel from /admin/settings (see
+            // App\Services\PlatformSettings::definitions()) — turning
+            // fee_enabled off zeroes tax_enabled's base with it, since tax is
+            // a percentage of the fee. Other channels are untouched.
+            'fee_enabled' => true,
+            'tax_enabled' => true,
             'midtrans_payments' => ['bca_va', 'bni_va', 'bri_va', 'permata_va', 'other_va', 'echannel'],
         ],
         'ewallet' => [
@@ -33,6 +39,8 @@ return [
             'fee_type' => 'percent',
             'fee_value' => 0.7,
             'tax_percent' => 11,
+            'fee_enabled' => true,
+            'tax_enabled' => true,
             'midtrans_payments' => ['gopay', 'shopeepay', 'qris'],
         ],
         'retail' => [
@@ -41,6 +49,8 @@ return [
             'fee_type' => 'flat',
             'fee_value' => 5000,
             'tax_percent' => 11,
+            'fee_enabled' => true,
+            'tax_enabled' => true,
             'midtrans_payments' => ['indomaret', 'alfamart'],
         ],
     ],

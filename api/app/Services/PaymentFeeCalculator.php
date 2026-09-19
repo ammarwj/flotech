@@ -17,10 +17,10 @@ use App\Exceptions\PaymentException;
 class PaymentFeeCalculator
 {
     /** Participant paying an organizer: tickets and registration fees. */
-    public const AUDIENCE_PARTICIPANT = 'service_fee_percent';
+    public const AUDIENCE_PARTICIPANT = 'service_fee_amount';
 
     /** Organizer paying the platform: event plan purchases and upgrades. */
-    public const AUDIENCE_ORGANIZER = 'plan_service_fee_percent';
+    public const AUDIENCE_ORGANIZER = 'plan_service_fee_amount';
 
     /**
      * Breakdown for one channel. Throws when the channel is unknown or has
@@ -65,12 +65,18 @@ class PaymentFeeCalculator
      */
     private function compute(string $key, array $config, float $amount, string $audience): array
     {
-        $base = $config['fee_type'] === 'percent'
-            ? $amount * $config['fee_value'] / 100
-            : (float) $config['fee_value'];
-        $tax = $base * $config['tax_percent'] / 100;
+        // Per-channel switches (/admin/settings) sit on top of the per-channel
+        // config — keyed by $key so VA and e-wallet toggle independently.
+        // Gateway fee off means there is no base left to tax, so PPN goes
+        // with it automatically rather than needing its own branch.
+        $base = ! PlatformSettings::get("gateway_fee_enabled_{$key}") ? 0.0 : (
+            $config['fee_type'] === 'percent'
+                ? $amount * $config['fee_value'] / 100
+                : (float) $config['fee_value']
+        );
+        $tax = PlatformSettings::get("ppn_enabled_{$key}") ? $base * $config['tax_percent'] / 100 : 0.0;
         $gatewayFee = $base + $tax;
-        $serviceFee = $amount * PlatformSettings::get($audience) / 100;
+        $serviceFee = PlatformSettings::get($audience);
 
         return [
             'channel' => $key,

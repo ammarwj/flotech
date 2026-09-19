@@ -157,7 +157,7 @@ class PlanOrderBillingTest extends TestCase
      */
     public function test_billing_mail_totals_the_fees_the_same_way_the_pdf_does(): void
     {
-        PlatformSettings::put(['plan_service_fee_percent' => 1.5], null);
+        PlatformSettings::put(['plan_service_fee_amount' => 1500], null);
         PlatformSettings::flush();
 
         $user = User::factory()->create();
@@ -356,8 +356,8 @@ class PlanOrderBillingTest extends TestCase
         // for participants buying tickets. Both are set, differently, so
         // reading the wrong one shows up as a wrong number.
         PlatformSettings::put([
-            'service_fee_percent' => 9,
-            'plan_service_fee_percent' => 1.5,
+            'service_fee_amount' => 9000,
+            'plan_service_fee_amount' => 1500,
         ], null);
         PlatformSettings::flush();
 
@@ -378,7 +378,7 @@ class PlanOrderBillingTest extends TestCase
             (float) $viaGateway->gateway_tax,
             'gateway_tax is a part of gateway_fee, not an amount on top of it',
         );
-        $this->assertEqualsWithDelta(399000 * 1.5 / 100, $viaGateway->service_fee, 0.001);
+        $this->assertEqualsWithDelta(1500.0, $viaGateway->service_fee, 0.001);
         $this->assertEqualsWithDelta(
             399000 + $viaGateway->gateway_fee + $viaGateway->service_fee,
             $viaGateway->gross_amount,

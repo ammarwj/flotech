@@ -19,7 +19,7 @@ class PaymentFeeCalculatorTest extends TestCase
 
     public function test_flat_channel_adds_flat_fee_plus_its_tax(): void
     {
-        PlatformSettings::put(['service_fee_percent' => 0], null);
+        PlatformSettings::put(['service_fee_amount' => 0], null);
         PlatformSettings::flush();
 
         $breakdown = app(PaymentFeeCalculator::class)->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
@@ -32,7 +32,7 @@ class PaymentFeeCalculatorTest extends TestCase
 
     public function test_percent_channel_taxes_the_percentage_not_the_price(): void
     {
-        PlatformSettings::put(['service_fee_percent' => 0], null);
+        PlatformSettings::put(['service_fee_amount' => 0], null);
         PlatformSettings::flush();
 
         $breakdown = app(PaymentFeeCalculator::class)->forChannel('ewallet', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
@@ -42,16 +42,69 @@ class PaymentFeeCalculatorTest extends TestCase
         $this->assertEqualsWithDelta(100_777.0, $breakdown['total'], 0.0001);
     }
 
-    public function test_service_fee_is_separate_from_gateway_fee_and_stacks_on_top(): void
+    public function test_service_fee_is_a_flat_amount_regardless_of_price(): void
     {
-        PlatformSettings::put(['service_fee_percent' => 1.5], null);
+        PlatformSettings::put(['service_fee_amount' => 1500], null);
+        PlatformSettings::flush();
+
+        $small = app(PaymentFeeCalculator::class)->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+        $large = app(PaymentFeeCalculator::class)->forChannel('va', 5_000_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+
+        $this->assertEqualsWithDelta(4440.0, $small['gateway_fee'], 0.0001);
+        $this->assertEqualsWithDelta(1500.0, $small['service_fee'], 0.0001);
+        $this->assertEqualsWithDelta(105_940.0, $small['total'], 0.0001);
+
+        // Same flat fee no matter the price — that's the point of it being flat.
+        $this->assertEqualsWithDelta(1500.0, $large['service_fee'], 0.0001);
+    }
+
+    public function test_gateway_fee_toggle_off_zeroes_fee_and_tax_together(): void
+    {
+        PlatformSettings::put(['gateway_fee_enabled_va' => false], null);
         PlatformSettings::flush();
 
         $breakdown = app(PaymentFeeCalculator::class)->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
 
-        $this->assertEqualsWithDelta(4440.0, $breakdown['gateway_fee'], 0.0001);
-        $this->assertEqualsWithDelta(1500.0, $breakdown['service_fee'], 0.0001);
-        $this->assertEqualsWithDelta(105_940.0, $breakdown['total'], 0.0001);
+        $this->assertSame(0.0, $breakdown['gateway_fee_base']);
+        $this->assertSame(0.0, $breakdown['gateway_tax']);
+        $this->assertSame(0.0, $breakdown['gateway_fee']);
+    }
+
+    public function test_ppn_toggle_off_zeroes_tax_but_keeps_the_gateway_fee(): void
+    {
+        PlatformSettings::put(['ppn_enabled_va' => false], null);
+        PlatformSettings::flush();
+
+        $breakdown = app(PaymentFeeCalculator::class)->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+
+        $this->assertEqualsWithDelta(4000.0, $breakdown['gateway_fee_base'], 0.0001);
+        $this->assertSame(0.0, $breakdown['gateway_tax']);
+        $this->assertEqualsWithDelta(4000.0, $breakdown['gateway_fee'], 0.0001);
+    }
+
+    /**
+     * The user's own example: VA off must not touch e-wallet. Comparing
+     * against a fresh (no-override) e-wallet breakdown is what proves the
+     * toggle is scoped per channel — asserting "VA is zero" alone would still
+     * pass if the switch were secretly global again.
+     */
+    public function test_channel_toggles_are_independent_of_each_other(): void
+    {
+        $baseline = app(PaymentFeeCalculator::class)->forChannel('ewallet', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+
+        PlatformSettings::put([
+            'gateway_fee_enabled_va' => false,
+            'ppn_enabled_va' => false,
+        ], null);
+        PlatformSettings::flush();
+
+        $va = app(PaymentFeeCalculator::class)->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+        $ewallet = app(PaymentFeeCalculator::class)->forChannel('ewallet', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+
+        $this->assertSame(0.0, $va['gateway_fee']);
+        $this->assertEqualsWithDelta($baseline['gateway_fee'], $ewallet['gateway_fee'], 0.0001);
+        $this->assertEqualsWithDelta($baseline['gateway_fee_base'], $ewallet['gateway_fee_base'], 0.0001);
+        $this->assertEqualsWithDelta($baseline['gateway_tax'], $ewallet['gateway_tax'], 0.0001);
     }
 
     /**
@@ -88,8 +141,8 @@ class PaymentFeeCalculatorTest extends TestCase
     public function test_each_audience_reads_its_own_platform_margin(): void
     {
         PlatformSettings::put([
-            'service_fee_percent' => 2,
-            'plan_service_fee_percent' => 5,
+            'service_fee_amount' => 2000,
+            'plan_service_fee_amount' => 5000,
         ], null);
         PlatformSettings::flush();
 
@@ -136,7 +189,7 @@ class PaymentFeeCalculatorTest extends TestCase
 
     public function test_no_rounding_anywhere_in_the_chain(): void
     {
-        PlatformSettings::put(['service_fee_percent' => 1.3333], null);
+        PlatformSettings::put(['service_fee_amount' => 1333.33], null);
         PlatformSettings::flush();
 
         $breakdown = app(PaymentFeeCalculator::class)->forChannel('ewallet', 33_333, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
@@ -144,10 +197,10 @@ class PaymentFeeCalculatorTest extends TestCase
         // A price/percent combo picked to produce a long decimal tail; a
         // round() slipped in anywhere collapses it to a clean number.
         $expectedGateway = (33_333 * 0.007) * 1.11;
-        $expectedService = 33_333 * 1.3333 / 100;
 
         $this->assertEqualsWithDelta($expectedGateway, $breakdown['gateway_fee'], 1e-9);
-        $this->assertEqualsWithDelta($expectedService, $breakdown['service_fee'], 1e-9);
+        // Flat amount, stored as-is: still not a whole number if configured that way.
+        $this->assertEqualsWithDelta(1333.33, $breakdown['service_fee'], 1e-9);
         // A round() slipped in anywhere would collapse this to whole cents.
         $this->assertNotEquals($breakdown['gateway_fee'] * 100, round($breakdown['gateway_fee'] * 100));
     }

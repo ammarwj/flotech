@@ -26,6 +26,13 @@ class TicketOrderResource extends JsonResource
             'unit_price' => (float) $this->unit_price,
             'total_price' => (float) $this->total_price,
             'platform_fee' => (float) $this->platform_fee,
+            // What the buyer is actually charged, on top of total_price — see
+            // TicketOrder::getGrossAmountAttribute(). Zero for manual-transfer
+            // orders, which never carry a gateway/service fee.
+            'gateway_fee' => (float) $this->gateway_fee,
+            'gateway_tax' => (float) $this->gateway_tax,
+            'service_fee' => (float) $this->service_fee,
+            'gross_amount' => (float) $this->gross_amount,
             // Null on a free order, which never had a bill to document. The
             // client shows a download button per number rather than guessing
             // from payment status.

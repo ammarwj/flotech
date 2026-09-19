@@ -1174,6 +1174,11 @@ export interface TicketOrder extends ManualPaymentFields {
   unit_price: number;
   total_price: number;
   platform_fee: number;
+  /** What the buyer is actually charged, on top of total_price. Zero for manual transfer. */
+  gateway_fee: number;
+  gateway_tax: number;
+  service_fee: number;
+  gross_amount: number;
   /** Null on a free order — no bill, so no document to download. */
   invoice_number: string | null;
   receipt_number: string | null;

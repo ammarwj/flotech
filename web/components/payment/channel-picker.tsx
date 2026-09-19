@@ -84,10 +84,14 @@ export function ChannelPicker({
               <dd className="tabular-nums">{rupiah(selected.service_fee)}</dd>
             </div>
           )}
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">Biaya {selected.label}</dt>
-            <dd className="tabular-nums">{rupiah(selected.gateway_fee_base)}</dd>
-          </div>
+          {/* A channel's gateway fee can be toggled off in /admin/settings —
+              saying "Biaya QRIS Rp 0" is worse than saying nothing. */}
+          {selected.gateway_fee_base > 0 && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Biaya {selected.label}</dt>
+              <dd className="tabular-nums">{rupiah(selected.gateway_fee_base)}</dd>
+            </div>
+          )}
           {/* A channel may well be untaxed — saying "PPN Rp 0" is worse than
               saying nothing. */}
           {selected.gateway_tax > 0 && (

@@ -30,14 +30,19 @@ class PlatformSettings
      * the API both enforce. `min`/`max` are meaningless for `bool` and absent
      * there — anything reading bounds must tolerate null.
      *
+     * Static only — the per-channel gateway-fee/PPN toggles below are not here
+     * because they cannot be: `config('payment_fees.channels')` is read at
+     * runtime, and a PHP `const` must be a compile-time literal. See
+     * definitions() for the merged set.
+     *
      * @var array<string, array{config: string, type: string, min?: float, max?: float, label: string, description?: string}>
      */
-    public const DEFINITIONS = [
+    private const BASE_DEFINITIONS = [
         'payment_gateway_enabled' => [
             'config' => 'payments.gateway_enabled',
             'type' => 'bool',
             'label' => 'Payment gateway aktif',
-            'description' => 'Matikan saat Midtrans bermasalah. Semua event dipaksa ke transfer manual ke rekening organizer sendiri — pilihan metode pembayaran di tiap event diabaikan selama ini mati, dan platform tidak memotong fee dari pembayaran itu.',
+            'description' => 'Matikan saat Midtrans bermasalah — semua event dipaksa ke transfer manual sampai dinyalakan lagi.',
         ],
         'wallet_minimum_withdrawal' => [
             'config' => 'wallet.minimum_withdrawal',
@@ -66,23 +71,58 @@ class PlatformSettings
         // one can be zero while the other is not. PaymentFeeCalculator takes
         // the key as an argument rather than picking it, so a call site that
         // forgets to say which one it is cannot silently inherit the other.
-        'service_fee_percent' => [
-            'config' => 'payments.service_fee_percent',
-            'type' => 'percent',
+        // Flat rupiah, not a percentage — a fixed cost per transaction rather
+        // than one that scales with the ticket/plan price.
+        'service_fee_amount' => [
+            'config' => 'payments.service_fee_amount',
+            'type' => 'money',
             'min' => 0,
-            'max' => 100,
-            'label' => 'Fee platform ke peserta (%)',
-            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Ditambahkan ke tagihan peserta di atas fee gateway.',
+            'max' => 100_000,
+            'label' => 'Fee platform ke peserta (Rp)',
+            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Nominal tetap per transaksi, ditambahkan ke tagihan peserta di atas fee gateway.',
         ],
-        'plan_service_fee_percent' => [
-            'config' => 'payments.plan_service_fee_percent',
-            'type' => 'percent',
+        'plan_service_fee_amount' => [
+            'config' => 'payments.plan_service_fee_amount',
+            'type' => 'money',
             'min' => 0,
-            'max' => 100,
-            'label' => 'Fee platform ke organizer (%)',
-            'description' => 'Margin platform pada pembelian paket event oleh organizer. Ditambahkan ke tagihan organizer di atas fee gateway.',
+            'max' => 100_000,
+            'label' => 'Fee platform ke organizer (Rp)',
+            'description' => 'Margin platform pada pembelian paket event oleh organizer. Nominal tetap per transaksi, ditambahkan ke tagihan organizer di atas fee gateway.',
         ],
     ];
+
+    /**
+     * BASE_DEFINITIONS plus one gateway-fee/PPN toggle pair per payment
+     * channel (`va`, `ewallet`, `retail`, …) — e.g. `gateway_fee_enabled_va`.
+     * Channels are independent: turning VA's fee off leaves e-wallet
+     * untouched. Underscore, not a dot — Laravel's Validator reads a dotted
+     * rule key as a nested-array path, so a flat payload key like
+     * `gateway_fee_enabled.va` would silently fail to validate and the
+     * toggle would never persist.
+     *
+     * @return array<string, array{config: string, type: string, min?: float, max?: float, label: string, description?: string}>
+     */
+    public static function definitions(): array
+    {
+        $definitions = self::BASE_DEFINITIONS;
+
+        foreach (config('payment_fees.channels') as $key => $channel) {
+            $definitions["gateway_fee_enabled_{$key}"] = [
+                'config' => "payment_fees.channels.{$key}.fee_enabled",
+                'type' => 'bool',
+                'label' => "Biaya payment gateway aktif — {$channel['label']}",
+                'description' => "Matikan untuk menggratiskan biaya gateway (flat/persen) khusus channel {$channel['label']}. PPN-nya otomatis ikut nol karena dihitung dari biaya ini. Channel lain tidak terpengaruh.",
+            ];
+            $definitions["ppn_enabled_{$key}"] = [
+                'config' => "payment_fees.channels.{$key}.tax_enabled",
+                'type' => 'bool',
+                'label' => "PPN aktif — {$channel['label']}",
+                'description' => "Matikan untuk menggratiskan PPN atas biaya gateway channel {$channel['label']}. Biaya gateway-nya sendiri tidak terpengaruh.",
+            ];
+        }
+
+        return $definitions;
+    }
 
     /** @var array<string, string>|null in-request memo */
     private static ?array $memo = null;
@@ -102,14 +142,14 @@ class PlatformSettings
 
         return self::$memo = Cache::rememberForever(
             self::KEY,
-            fn () => PlatformSetting::pluck('value', 'key')->all(),
+            fn() => PlatformSetting::pluck('value', 'key')->all(),
         );
     }
 
     /** Effective value: the stored override, else the config default. */
     public static function get(string $key): float|int|bool
     {
-        $definition = self::DEFINITIONS[$key] ?? null;
+        $definition = self::definitions()[$key] ?? null;
         if (! $definition) {
             throw new \InvalidArgumentException("Setting tidak dikenal: {$key}");
         }
@@ -166,7 +206,7 @@ class PlatformSettings
     public static function put(array $values, ?User $actor = null): void
     {
         foreach ($values as $key => $value) {
-            $definition = self::DEFINITIONS[$key] ?? null;
+            $definition = self::definitions()[$key] ?? null;
             if (! $definition) {
                 continue;
             }
@@ -191,7 +231,7 @@ class PlatformSettings
     {
         $out = [];
 
-        foreach (self::DEFINITIONS as $key => $definition) {
+        foreach (self::definitions() as $key => $definition) {
             $out[$key] = [
                 'key' => $key,
                 'label' => $definition['label'],

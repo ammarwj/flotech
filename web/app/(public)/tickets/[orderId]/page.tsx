@@ -129,7 +129,14 @@ export default function ETicketPage() {
         <div className="mt-4 grid gap-1.5 border-t border-border pt-4 text-sm">
           <Row label="Kategori" value={order.category?.name ?? "-"} />
           <Row label="Jumlah" value={`${order.quantity} tiket`} />
-          <Row label="Total" value={order.total_price > 0 ? rupiah(order.total_price) : "Gratis"} />
+          {order.total_price > 0 && <Row label="Harga tiket" value={rupiah(order.total_price)} />}
+          {order.gateway_fee + order.service_fee > 0 && (
+            <Row label="Biaya layanan" value={rupiah(order.gateway_fee + order.service_fee)} />
+          )}
+          <Row
+            label="Total"
+            value={order.gross_amount > 0 ? rupiah(order.gross_amount) : "Gratis"}
+          />
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Status</span>
             <Badge variant={paid ? "success" : "warning"}>

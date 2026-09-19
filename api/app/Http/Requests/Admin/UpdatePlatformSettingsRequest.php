@@ -6,7 +6,7 @@ use App\Services\PlatformSettings;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Bounds come from PlatformSettings::DEFINITIONS so the API and the admin UI
+ * Bounds come from PlatformSettings::definitions() so the API and the admin UI
  * can never disagree about what a legal payout rule is. A fat-fingered admin
  * fee of Rp 5.000.000 must not be storable.
  */
@@ -24,7 +24,7 @@ class UpdatePlatformSettingsRequest extends FormRequest
     {
         $rules = [];
 
-        foreach (PlatformSettings::DEFINITIONS as $key => $definition) {
+        foreach (PlatformSettings::definitions() as $key => $definition) {
             // Bounds don't apply to a switch — only money/int carry min/max.
             if ($definition['type'] === 'bool') {
                 $rules[$key] = ['sometimes', 'boolean'];
@@ -50,7 +50,7 @@ class UpdatePlatformSettingsRequest extends FormRequest
     {
         return array_map(
             fn (array $d) => strtolower($d['label']),
-            PlatformSettings::DEFINITIONS,
+            PlatformSettings::definitions(),
         );
     }
 }
