@@ -108,8 +108,8 @@ export function ChannelPicker({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Setiap pembelian dapat menghasilkan poin dari penyedia pembayaran. Kami tidak
-        menganjurkan penggunaan poin tersebut karena termasuk riba.
+        Poin dari penyedia pembayaran tidak boleh digunakan, dan PayLater dilarang —
+        keduanya termasuk riba.
       </p>
     </div>
   );

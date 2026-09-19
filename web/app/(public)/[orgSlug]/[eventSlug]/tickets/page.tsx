@@ -10,6 +10,7 @@ import { getPublicTicketCategories, purchaseTickets } from "@/lib/api/tickets";
 import { getPublicEvent } from "@/lib/api/events";
 import { getPaymentChannels } from "@/lib/api/payments";
 import { parseApiError } from "@/lib/api/errors";
+import { phoneInput } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -259,8 +260,9 @@ export default function BuyTicketsPage() {
                 <Label htmlFor="b-phone">No. HP (opsional)</Label>
                 <Input
                   id="b-phone"
+                  inputMode="tel"
                   value={buyer.phone}
-                  onChange={(e) => setBuyer((b) => ({ ...b, phone: e.target.value }))}
+                  onChange={(e) => setBuyer((b) => ({ ...b, phone: phoneInput(e.target.value) }))}
                   placeholder="08xxxxxxxxxx"
                 />
               </div>
@@ -274,12 +276,18 @@ export default function BuyTicketsPage() {
                 />
               )}
 
-              <div className="flex items-center justify-between border-t border-border pt-4">
-                <span className="text-sm text-muted-foreground">Total</span>
-                <span className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-                  {payableTotal > 0 ? rupiah(payableTotal) : "Gratis"}
-                </span>
-              </div>
+              {/* ChannelPicker already ends in its own "Total bayar" line once a
+                  channel is picked — this row would just repeat it. Only shown
+                  when there's no channel breakdown to fall back on (free ticket,
+                  or a rail that skips the picker). */}
+              {!requiresChannel && (
+                <div className="flex items-center justify-between border-t border-border pt-4">
+                  <span className="text-sm text-muted-foreground">Total</span>
+                  <span className="text-xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+                    {payableTotal > 0 ? rupiah(payableTotal) : "Gratis"}
+                  </span>
+                </div>
+              )}
 
               {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
 
