@@ -83,6 +83,15 @@ class TeamRosterRowImport implements ToCollection
         $keys = RegistrationTemplateColumns::keys($this->category);
         $isFixed = $this->category->rosterSize() !== null;
 
+        if (! $this->headerMatches($rows->first())) {
+            $this->errors[] = [
+                'row' => 1,
+                'message' => 'Format template tidak sesuai kategori ini (kemungkinan file lama). Unduh ulang template lalu isi ulang tanpa mengubah kolomnya.',
+            ];
+
+            return;
+        }
+
         foreach ($rows as $i => $row) {
             if ($i === 0) {
                 continue; // header row
@@ -126,9 +135,38 @@ class TeamRosterRowImport implements ToCollection
                     'message' => "Baris {$excelRow}: ".implode(' ', $e->validator->errors()->all()),
                 ];
             } catch (Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Gagal impor baris pendaftaran', [
+                    'event_id' => $this->event->id,
+                    'category_id' => $this->category->id,
+                    'row' => $excelRow,
+                    'error' => $e->getMessage(),
+                ]);
                 $this->errors[] = ['row' => $excelRow, 'message' => "Baris {$excelRow}: gagal disimpan."];
             }
         }
+    }
+
+    /**
+     * The column layout is read by index, not by header name (see
+     * RegistrationTemplateColumns), so a file whose columns don't match this
+     * category's current template — an old download from before the column
+     * count changed, or one with columns manually removed — would otherwise
+     * get silently zipped against the wrong keys. That already happened: a
+     * 16-column file (1 player slot before officials) fed through the
+     * current 103-column team template put an official's name and role into
+     * what the code read as player 2's name/jersey, corrupting the insert
+     * instead of failing loudly. Comparing the header row up front turns
+     * that into one clear, actionable error instead of a DB-level crash.
+     */
+    private function headerMatches(?SupportCollection $headerRow): bool
+    {
+        $expected = RegistrationTemplateColumns::headings($this->category);
+        $actual = array_map(
+            fn ($v) => trim((string) $v),
+            $headerRow?->all() ?? [],
+        );
+
+        return array_slice($actual, 0, count($expected)) === $expected;
     }
 
     /**
