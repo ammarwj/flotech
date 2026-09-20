@@ -106,7 +106,10 @@ class LineupSheetController extends Controller
             ->map(fn ($row) => [
                 'number' => $row->player?->jersey_number,
                 'name' => $row->player?->full_name ?? '—',
-                'position' => $row->player?->position,
+                // Same reason officialRoleLabel() is used below instead of the
+                // raw column: the printed sheet is for the referee and IP desk,
+                // not for people who know the catalog's internal keys.
+                'position' => Catalog::positionLabel($sport, $row->player?->position) ?? $row->player?->position,
             ])
             ->values();
 

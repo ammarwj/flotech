@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type { AdminEvent, ApiEnvelope, Paginated } from "@/types/api";
+import { downloadBlob, fileNameFromDisposition } from "@/lib/download";
 
 /**
  * Daftar event lintas-organisasi milik super admin, plus kendali custom domain.
@@ -58,4 +59,19 @@ export async function releaseAdminEventDomain(eventId: string): Promise<AdminEve
     `/admin/events/${eventId}/domain`
   );
   return data.data;
+}
+
+/**
+ * Album pemain seluruh tim yang disetujui di event ini, satu PDF. Berbeda
+ * dari fungsi lain di file ini: blob download (pola downloadExport()), bukan
+ * JSON — admin tidak punya drill-down per tim jadi cuma varian event-wide.
+ */
+export async function downloadAdminEventAlbum(eventId: string): Promise<void> {
+  const response = await apiClient.get<Blob>(`/admin/events/${eventId}/album`, {
+    responseType: "blob",
+  });
+
+  const fileName = fileNameFromDisposition(response.headers["content-disposition"], "album.pdf");
+
+  downloadBlob(response.data, fileName);
 }

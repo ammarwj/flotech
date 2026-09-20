@@ -53,6 +53,7 @@ use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
+use App\Http\Controllers\Api\TeamAlbumController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
 use App\Http\Controllers\Api\UploadController;
@@ -223,6 +224,8 @@ Route::prefix('v1')->group(function () {
         // The manager's own billing documents for the registration fee.
         Route::get('my-teams/{team}/invoice', [MyTeamController::class, 'invoice']);
         Route::get('my-teams/{team}/receipt', [MyTeamController::class, 'receipt']);
+        // Same printable player album the organizer can print, scoped by session.
+        Route::get('my-teams/{team}/album', [MyTeamController::class, 'album']);
 
         // The manager's team sheet, handed to the referee before kick-off.
         // Same tier and same `scope()` as the rest of my-teams/*: a manager is an
@@ -345,6 +348,12 @@ Route::prefix('v1')->group(function () {
             // is at my-teams/{team}/invoice, scoped by their session instead.
             Route::get('events/{event}/registrations/{team}/invoice', [RegistrationController::class, 'invoice']);
             Route::get('events/{event}/registrations/{team}/receipt', [RegistrationController::class, 'receipt']);
+
+            // Printable player album. Plain `tenant`, no plan gate — see
+            // TeamAlbumController's docblock, same reasoning as personnel/
+            // referees just below.
+            Route::get('events/{event}/registrations/album', [TeamAlbumController::class, 'event']);
+            Route::get('events/{event}/registrations/{team}/album', [TeamAlbumController::class, 'team']);
 
             // Photo albums & sponsor logos.
             Route::get('events/{event}/photos', [EventMediaController::class, 'photos']);
@@ -506,6 +515,9 @@ Route::prefix('v1')->group(function () {
             // Domains are super-admin only: activating one spends Let's Encrypt
             // quota shared by the whole platform.
             Route::get('events', [AdminEventController::class, 'index']);
+            // Support/oversight: print every approved team's album for an
+            // event without needing organizer access.
+            Route::get('events/{event}/album', [AdminEventController::class, 'album']);
             Route::put('events/{event}/domain', [AdminEventController::class, 'updateDomain']);
             Route::post('events/{event}/domain/activate', [AdminEventController::class, 'activateDomain']);
             Route::delete('events/{event}/domain', [AdminEventController::class, 'destroyDomain']);

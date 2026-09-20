@@ -1,6 +1,8 @@
 import { apiClient } from "./client";
 import type {
   ApiEnvelope,
+  DisciplineRules,
+  LineupBan,
   LineupRosterOfficial,
   LineupRosterPlayer,
   Match,
@@ -53,6 +55,21 @@ export interface TeamLineupData {
   team: TeamMatchRef;
   match: Match;
   lineup: MatchLineup;
+  /**
+   * Who this team may not field here. Already filtered server-side to this team
+   * and this fixture, and to bans still owed — see `LineupBan`.
+   *
+   * It travels with the sheet so the editor can grey those players out before
+   * the manager picks them, rather than only catching the 422 afterwards:
+   * proactive as well as reactive, the shape every plan gate takes.
+   */
+  bans: LineupBan[];
+  /**
+   * The rules in force, for naming the reason. `null` for a sport with no card
+   * stat at all — the editor's signal to render nothing about discipline, not a
+   * reason to fall back to defaults.
+   */
+  discipline_rules: DisciplineRules | null;
   roster: LineupRosterPlayer[];
   officials: LineupRosterOfficial[];
 }

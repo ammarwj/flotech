@@ -37,6 +37,8 @@ class SportSeeder extends Seeder
             ['role_key' => 'team_manager', 'label' => 'Manajer Tim'],
             ['role_key' => 'physio', 'label' => 'Fisioterapis'],
             ['role_key' => 'official', 'label' => 'Ofisial'],
+            ['role_key' => 'medic', 'label' => 'Medis'],
+            ['role_key' => 'admin', 'label' => 'Admin'],
         ];
 
         // The key is what a roster stores; the label is only what it's shown as.

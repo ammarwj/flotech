@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarDays, Globe, Link2Off, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CalendarDays, Globe, Link2Off, Printer, ShieldCheck, TriangleAlert } from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
 import {
@@ -11,6 +11,7 @@ import {
   setAdminEventDomain,
   activateAdminEventDomain,
   releaseAdminEventDomain,
+  downloadAdminEventAlbum,
 } from "@/lib/api/admin-events";
 import { parseApiError } from "@/lib/api/errors";
 import { EVENT_STATUS_LABELS } from "@/lib/labels";
@@ -245,7 +246,19 @@ function EventDomainCard({
   onRelease: () => void;
 }) {
   const [value, setValue] = useState(event.custom_domain ?? "");
+  const [printing, setPrinting] = useState(false);
   const badge = DOMAIN_BADGE[event.domain_status];
+
+  async function printAlbum() {
+    setPrinting(true);
+    try {
+      await downloadAdminEventAlbum(event.id);
+    } catch {
+      toast.error("Gagal mencetak album. Coba lagi.");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   // Draf tidak bisa dipasangi domain: halamannya belum publik, jadi domainnya
   // akan resolve ke 404 — dan sertifikatnya membakar kuota untuk halaman yang
@@ -313,6 +326,10 @@ function EventDomainCard({
               Cabut
             </Button>
           )}
+          <Button size="sm" variant="outline" disabled={printing} onClick={printAlbum}>
+            <Printer className="h-4 w-4" />
+            Cetak Album
+          </Button>
         </div>
       </div>
 

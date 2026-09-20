@@ -189,6 +189,26 @@ class Catalog
     }
 
     /**
+     * The human label behind a stored position key, or null when there is
+     * none — same reasoning as officialRoleLabel(): the key is a slug nobody
+     * typed, so printing it raw looks like a bug. Callers decide the fallback.
+     */
+    public static function positionLabel(?string $slug, ?string $key): ?string
+    {
+        if ($key === null || $key === '') {
+            return null;
+        }
+
+        foreach (self::positions($slug) as $position) {
+            if ($position['key'] === $key) {
+                return $position['label'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The roles a team official of this sport can hold. Empty for an unknown
      * sport and for one the admin hasn't given any — an official may still be
      * named there, they just carry no role, the same way a position works.

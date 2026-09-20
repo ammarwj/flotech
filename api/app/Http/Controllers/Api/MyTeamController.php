@@ -9,6 +9,7 @@ use App\Http\Resources\TeamResource;
 use App\Models\Team;
 use App\Services\ParticipantDocumentService;
 use App\Services\RegistrationService;
+use App\Services\TeamAlbumService;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class MyTeamController extends Controller
         protected RegistrationService $registration,
         protected TeamRosterService $roster,
         protected ParticipantDocumentService $documents,
+        protected TeamAlbumService $albums,
     ) {}
 
     /**
@@ -189,6 +191,19 @@ class MyTeamController extends Controller
         }
 
         return $this->documents->receipt($model);
+    }
+
+    /**
+     * The manager's own printable player album — same PDF as the organizer's
+     * album for this team, just scoped by session instead of `tenant`/`org.admin`.
+     */
+    public function album(string $team): Response
+    {
+        $model = $this->scope()->with(['event', 'players', 'officials'])->findOrFail($team);
+
+        return $this->albums
+            ->build($model->event, collect([$model]))
+            ->download('album-'.str_replace('/', '-', $model->name).'.pdf');
     }
 
     protected function isEditable(Team $team): bool

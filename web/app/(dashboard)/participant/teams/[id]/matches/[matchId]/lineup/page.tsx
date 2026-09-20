@@ -14,6 +14,8 @@ import {
   type SaveLineupPayload,
 } from "@/lib/api/team-matches";
 import { parseApiError } from "@/lib/api/errors";
+import { useCatalog } from "@/lib/hooks/use-catalog";
+import { banReasonLabel } from "@/lib/scoring";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
 import {
   LineupEditor,
@@ -38,6 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function TeamLineupPage() {
   const params = useParams<{ id: string; matchId: string }>();
   const qc = useQueryClient();
+  const { sport } = useCatalog();
 
   const query = useQuery({
     queryKey: ["team-lineup", params.id, params.matchId],
@@ -48,6 +51,7 @@ export default function TeamLineupPage() {
   const lineup = data?.lineup;
   const editable = lineup?.editable ?? false;
   const tz = data?.team.timezone ?? "Asia/Jakarta";
+  const bans = data?.bans ?? [];
 
   const [selection, setSelection] = useState<LineupSelection>({});
   const [chosenOfficials, setChosenOfficials] = useState<string[]>([]);
@@ -55,13 +59,25 @@ export default function TeamLineupPage() {
   // Seed from the stored sheet. Players it does not name are left out of the
   // map, which the editor reads as "Tidak dibawa" — the same third state the
   // full-list contract means on the way back.
+  //
+  // Suspended players are dropped on the way in, and `payload()` drops them on
+  // the way out. Without both the manager is stuck: a draft saved before the
+  // cards were confirmed still names them, every save comes back 422, and the
+  // one control that could take them off the sheet is the toggle this ban just
+  // disabled.
+  //
+  // Keyed on `data` rather than on `bans`, which is a fresh array every render
+  // and would re-seed — throwing away whatever the manager had just picked.
   useEffect(() => {
-    if (!lineup) return;
+    if (!data) return;
+    const banned = new Set(data.bans.map((ban) => ban.player_id));
     const next: LineupSelection = {};
-    for (const row of lineup.players ?? []) next[row.player_id] = row.role;
+    for (const row of data.lineup.players ?? []) {
+      if (!banned.has(row.player_id)) next[row.player_id] = row.role;
+    }
     setSelection(next);
-    setChosenOfficials((lineup.officials ?? []).map((row) => row.team_official_id));
-  }, [lineup]);
+    setChosenOfficials((data.lineup.officials ?? []).map((row) => row.team_official_id));
+  }, [data]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["team-lineup", params.id, params.matchId] });
@@ -79,9 +95,14 @@ export default function TeamLineupPage() {
     const officialRow = (officialId: string) =>
       (lineup?.officials ?? []).find((row) => row.team_official_id === officialId);
 
+    // Suspended players never go out, whatever the selection map still holds —
+    // the server refuses them, and a request it is certain to reject is not one
+    // worth sending. The seeding effect is the other half of this.
+    const banned = new Set(bans.map((ban) => ban.player_id));
+
     return {
       players: (data?.roster ?? [])
-        .filter((player) => selection[player.id])
+        .filter((player) => selection[player.id] && !banned.has(player.id))
         .map((player) => ({
           id: playerRow(player.id)?.id ?? null,
           player_id: player.id,
@@ -174,6 +195,36 @@ export default function TeamLineupPage() {
         </Card>
       )}
 
+      {/* Said once at the top as well as on each row: a manager opening a sheet
+          of twenty should not have to scroll it to find out why the squad they
+          planned will not go in. */}
+      {bans.length > 0 && (
+        <Card className="mb-6 border-[color-mix(in_srgb,var(--danger)_40%,transparent)]">
+          <CardContent className="flex items-start gap-3 p-5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]">
+              <TriangleAlert className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="font-semibold">
+                {bans.length} pemain tidak bisa dimainkan di laga ini
+              </h3>
+              <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
+                {bans.map((ban) => (
+                  <li key={ban.player_id}>
+                    <span className="font-medium text-foreground">
+                      {ban.player_name}
+                      {ban.jersey_number && ` (#${ban.jersey_number})`}
+                    </span>{" "}
+                    — {banReasonLabel(ban.reason, sport(data.team.sport_type), data.discipline_rules)}
+                    {ban.bans_remaining > 1 && `, sisa ${ban.bans_remaining} laga`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!editable && (
         <p className="mb-6 rounded-md border border-border bg-[var(--bg-soft)] px-4 py-3 text-sm text-muted-foreground">
           {lineup.status === "approved"
@@ -199,6 +250,8 @@ export default function TeamLineupPage() {
             onSelectionChange={setSelection}
             onOfficialsChange={setChosenOfficials}
             sport={data.team.sport_type}
+            bans={data.bans}
+            rules={data.discipline_rules}
             disabled={!editable || busy}
           />
         </CardContent>

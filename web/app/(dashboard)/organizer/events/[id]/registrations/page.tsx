@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Search,
   FileSpreadsheet,
+  Printer,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
@@ -32,6 +33,7 @@ import {
   type RegisterTeamPayload,
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
+import { downloadEventAlbum, downloadTeamAlbum } from "@/lib/api/team-album";
 import { rupiah } from "@/lib/labels";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
@@ -90,6 +92,7 @@ export default function RegistrationsPage() {
   const [manual, setManual] = useState<Team | "new" | null>(null);
   const [manualErrors, setManualErrors] = useState<Record<string, string>>({});
   const [importOpen, setImportOpen] = useState(false);
+  const [printingAll, setPrintingAll] = useState(false);
 
   const query = useQuery({
     queryKey: ["registrations", orgId, eventId],
@@ -139,6 +142,19 @@ export default function RegistrationsPage() {
   const teams = query.data;
   // Header stats describe the whole event, so they ignore both search and filter.
   const pendingCount = teams?.filter((t) => t.status === "pending").length ?? 0;
+  const approvedCount = teams?.filter((t) => t.status === "approved").length ?? 0;
+
+  async function printAll() {
+    if (!orgId) return;
+    setPrintingAll(true);
+    try {
+      await downloadEventAlbum(orgId, eventId);
+    } catch {
+      toast.error("Gagal mencetak album. Coba lagi.");
+    } finally {
+      setPrintingAll(false);
+    }
+  }
 
   // Search runs before the status filter, so the chip counts describe what
   // clicking each chip would actually show. Counting the unsearched list would
@@ -182,6 +198,14 @@ export default function RegistrationsPage() {
         backLabel="Daftar event"
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={printAll}
+              disabled={!orgId || approvedCount === 0 || printingAll}
+            >
+              <Printer className="h-4 w-4" />
+              Cetak Semua Tim
+            </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!orgId}>
               <FileSpreadsheet className="h-4 w-4" />
               Import Excel
@@ -350,11 +374,23 @@ function RegistrationCard({
   // rather than a column of dashes.
   const squadFields = usesSquadFields(sportDef(sport));
   const [open, setOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const logo = team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null;
   const paid = team.payment_amount > 0;
   const players = team.players ?? [];
   const officials = team.officials ?? [];
   const docs = team.documents ?? [];
+
+  async function printAlbum() {
+    setPrinting(true);
+    try {
+      await downloadTeamAlbum(orgId, eventId, team.id);
+    } catch {
+      toast.error("Gagal mencetak album. Coba lagi.");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -413,6 +449,16 @@ function RegistrationCard({
           </div>
         </button>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={printAlbum}
+            disabled={printing || players.length === 0}
+            aria-label={`Cetak album ${team.name}`}
+          >
+            <Printer className="h-4 w-4" />
+            Cetak Album
+          </Button>
           <Button size="sm" variant="outline" onClick={onEdit} aria-label={`Ubah tim ${team.name}`}>
             <Pencil className="h-4 w-4" />
             Ubah

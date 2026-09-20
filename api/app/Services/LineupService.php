@@ -28,6 +28,14 @@ use Illuminate\Validation\ValidationException;
  * positions, not a count. Ownership, duplicates and an upper bound are checked;
  * how many is eleven is left to the referee, which is what the approval step is
  * for. A known gap, stated rather than overlooked.
+ *
+ * Suspensions are read here, and the direction of that read is the whole of why
+ * it is allowed. DisciplineService's own docblock says `match_lineups` is
+ * deliberately not read *there* — a sheet is handed in before kick-off and a
+ * named substitute may never come on, so reading it would claim a ban was served
+ * by somebody who sat and watched. This reverses the arrow rather than breaking
+ * that rule: the sheet asks the bans, the bans never ask the sheet, and how a ban
+ * is discharged is still "the team's next official fixture".
  */
 class LineupService
 {
@@ -35,6 +43,8 @@ class LineupService
     public const MAX_PLAYERS = 40;
 
     public const MAX_OFFICIALS = 20;
+
+    public function __construct(protected DisciplineService $discipline) {}
 
     /**
      * The one row for this team in this fixture, created on first read.
@@ -65,6 +75,7 @@ class LineupService
 
         $this->assertEditable($lineup);
         $this->assertPlayersOwned($team, $players);
+        $this->assertNoBannedPlayers($match, $team, array_column($players, 'player_id'));
         $this->assertOfficialsOwned($team, $officials);
 
         $keepIds = [];
@@ -148,6 +159,17 @@ class LineupService
                 'players' => 'Isi minimal satu pemain inti sebelum mengirim ke wasit.',
             ]);
         }
+
+        // Asked again, of the stored rows rather than of a payload — and not a
+        // duplicate of the check in sync(). A draft saved last week passed that
+        // one against the cards known at the time; the fixture that issued the
+        // ban may only have been confirmed since. The sheet being handed in is
+        // the one that has to be legal now.
+        $this->assertNoBannedPlayers(
+            $lineup->match,
+            $lineup->team,
+            $lineup->players()->pluck('player_id')->all(),
+        );
 
         $lineup->update([
             'status' => 'submitted',
@@ -291,6 +313,95 @@ class LineupService
                 'players' => 'Pemain harus berasal dari tim yang bertanding.',
             ]);
         }
+    }
+
+    /**
+     * The bans this team carries into this fixture, as the editor draws them.
+     *
+     * Filtered to one team and one fixture here rather than in the browser: the
+     * manager has no reason to be handed the opponent's suspensions, and a
+     * client-side filter is one a second client would have to reimplement.
+     *
+     * Three things are easy to get wrong reading DisciplineService's payload, and
+     * all three are handled here so no caller repeats them:
+     *  - `matches` is a stdClass — cast before indexing (it is cast there so an
+     *    empty map is `{}` in JSON rather than `[]`).
+     *  - `status: 'served'` entries are history, recorded against fixtures
+     *    already played. Only 'upcoming' refuses anybody.
+     *  - `bans_remaining` counts the fixture the entry appears on, so it is not
+     *    "what is left after this one".
+     *
+     * @return array{bans: list<array<string, mixed>>, rules: array<string, mixed>|null}
+     */
+    public function bansFor(GameMatch $match, Team $team): array
+    {
+        $payload = $this->disciplineFor($match);
+
+        if (! $payload['enabled']) {
+            return ['bans' => [], 'rules' => null];
+        }
+
+        $bans = collect(((array) $payload['matches'])[$match->id] ?? [])
+            ->filter(fn (array $ban) => $ban['status'] === 'upcoming' && $ban['team_id'] === $team->id)
+            ->values()
+            ->all();
+
+        return ['bans' => $bans, 'rules' => $payload['rules']];
+    }
+
+    /**
+     * Nobody named on the sheet is serving a ban in this fixture.
+     *
+     * Named out loud in the message: "ada pemain terskors" sends the manager back
+     * to a roster of twenty to work out which one, and the editor's own panel is
+     * built from the same list.
+     *
+     * @param  array<int, string>  $playerIds
+     *
+     * @throws ValidationException
+     */
+    protected function assertNoBannedPlayers(GameMatch $match, Team $team, array $playerIds): void
+    {
+        if ($playerIds === []) {
+            return;
+        }
+
+        $names = collect($this->bansFor($match, $team)['bans'])
+            ->filter(fn (array $ban) => in_array($ban['player_id'], $playerIds, true))
+            ->pluck('player_name')
+            ->unique()
+            ->values();
+
+        if ($names->isEmpty()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'players' => $names->count() === 1
+                ? "{$names->first()} sedang menjalani larangan bermain dan tidak bisa dimainkan di laga ini."
+                : $names->join(', ', ' dan ').' sedang menjalani larangan bermain dan tidak bisa dimainkan di laga ini.',
+        ]);
+    }
+
+    /**
+     * Asked fresh every time, and deliberately not memoised on this instance.
+     *
+     * A per-category memo was written here first, on the reasoning that
+     * forCategory() sweeps the whole category and sync() plus submit() in one
+     * request would run it twice. It is wrong, and quietly: Laravel keeps the
+     * resolved controller — and the services injected into it — alive across
+     * requests, so the memo outlived the request that filled it. An organizer
+     * correcting three yellows down to one got a sheet still refusing the
+     * player, over cards no longer in the database. That is precisely the bug
+     * DisciplineService's docblock says it derives suspensions to avoid; a memo
+     * with a lifetime it does not control is a stored ban under another name.
+     * Two queries and an O(n) pass is what it costs to always be right.
+     *
+     * @return array{enabled: bool, rules: array<string, mixed>|null, players: array<int, array<string, mixed>>, matches: object}
+     */
+    protected function disciplineFor(GameMatch $match): array
+    {
+        return $this->discipline->forCategory($match->category);
     }
 
     /**

@@ -84,6 +84,31 @@ class MyTeamTest extends TestCase
         $this->assertDatabaseCount('players', 2);
     }
 
+    public function test_manager_can_print_own_teams_album(): void
+    {
+        $user = User::factory()->create();
+        $event = $this->openEvent();
+        $teamId = $this->register($event, $user);
+
+        $response = $this->actingAs($user, 'api')
+            ->get("/api/v1/my-teams/{$teamId}/album");
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
+    }
+
+    public function test_manager_cannot_print_another_managers_team_album(): void
+    {
+        $owner = User::factory()->create();
+        $stranger = User::factory()->create();
+        $event = $this->openEvent();
+        $teamId = $this->register($event, $owner);
+
+        $this->actingAs($stranger, 'api')
+            ->get("/api/v1/my-teams/{$teamId}/album")
+            ->assertStatus(404);
+    }
+
     public function test_participant_can_withdraw_team(): void
     {
         $user = User::factory()->create();

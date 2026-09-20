@@ -145,10 +145,20 @@ class MyTeamMatchController extends Controller
         $lineup->load(['players.player', 'officials.official', 'reviewer']);
         $lineup->setRelation('team', $team);
 
+        // Who this team may not field here, and the rulebook that names the
+        // reason. Sent with the sheet rather than fetched separately so the
+        // editor can grey those players out before the manager picks them —
+        // proactive as well as reactive, the same shape the plan gates take.
+        // `rules` is null for a sport without cards, which is the editor's
+        // signal to render nothing at all.
+        $discipline = $this->lineups->bansFor($match, $team);
+
         return [
             'team' => $this->teamRef($team),
             'match' => new MatchResource($match->load(['homeTeam', 'awayTeam'])),
             'lineup' => new MatchLineupResource($lineup),
+            'bans' => $discipline['bans'],
+            'discipline_rules' => $discipline['rules'],
             // The pool the sheet is drawn from. Sent whole rather than filtered to
             // what is not yet named: a manager moving a player between starters
             // and the bench is the common edit, and a list that shrinks as they

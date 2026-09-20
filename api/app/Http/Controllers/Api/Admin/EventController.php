@@ -7,10 +7,12 @@ use App\Http\Requests\Admin\UpdateEventDomainRequest;
 use App\Http\Resources\AdminEventResource;
 use App\Models\Event;
 use App\Services\DomainService;
+use App\Services\TeamAlbumService;
 use App\Support\ApiResponse;
 use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Super-admin view across every organization's events, and the custom domain
@@ -23,7 +25,7 @@ use Illuminate\Http\Request;
  */
 class EventController extends Controller
 {
-    public function __construct(protected DomainService $domains) {}
+    public function __construct(protected DomainService $domains, protected TeamAlbumService $albums) {}
 
     /** Paginated, searchable list across all organizations. */
     public function index(Request $request): JsonResponse
@@ -112,5 +114,27 @@ class EventController extends Controller
         $event->load(['organization:id,name,slug', 'plan']);
 
         return ApiResponse::success(new AdminEventResource($event), 'Domain dicabut dan sertifikatnya dihapus.');
+    }
+
+    /**
+     * Every approved team's album for this event, one PDF. Support/oversight
+     * tool — the admin UI has no per-team drill-down, so unlike the organizer
+     * route this only ever renders the whole event.
+     */
+    public function album(Event $event): Response|JsonResponse
+    {
+        $teams = $event->teams()
+            ->where('status', 'approved')
+            ->with(['players', 'officials'])
+            ->orderBy('name')
+            ->get();
+
+        if ($teams->isEmpty()) {
+            return ApiResponse::error('Belum ada tim yang disetujui untuk event ini.', null, 404);
+        }
+
+        return $this->albums
+            ->build($event, $teams)
+            ->download('album-'.str_replace('/', '-', $event->slug).'.pdf');
     }
 }

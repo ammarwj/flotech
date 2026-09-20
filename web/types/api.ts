@@ -862,6 +862,26 @@ export interface DisciplineBan {
   status: BanStatus;
 }
 
+/**
+ * A ban as the manager's team sheet receives it: their own team, this fixture,
+ * still to be sat out.
+ *
+ * A subset of `DisciplineBan` rather than an alias of it, because the server has
+ * already answered the two questions that shape it — `team_id`/`team_name` are
+ * this team by construction (a manager has no reason to read the opponent's
+ * suspensions), and `status` is always "upcoming" (a served ban is history, and
+ * history refuses nobody). Aliasing the wider type would invite an editor to
+ * filter on fields it can no longer tell apart.
+ */
+export interface LineupBan {
+  player_id: string;
+  player_name: string;
+  jersey_number: string | null;
+  reason: BanReason;
+  /** Fixtures still owed, counting this one. */
+  bans_remaining: number;
+}
+
 /** A player's running card tally across the category. */
 export interface DisciplinePlayer {
   player_id: string;

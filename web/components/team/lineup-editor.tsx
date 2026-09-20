@@ -2,9 +2,16 @@
 
 import { Shirt, UserCog } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCatalog } from "@/lib/hooks/use-catalog";
-import type { LineupRosterOfficial, LineupRosterPlayer } from "@/types/api";
+import { banReasonLabel } from "@/lib/scoring";
+import type {
+  DisciplineRules,
+  LineupBan,
+  LineupRosterOfficial,
+  LineupRosterPlayer,
+} from "@/types/api";
 
 /**
  * The manager's team sheet: who starts, who is on the bench, and which officials
@@ -20,6 +27,12 @@ import type { LineupRosterOfficial, LineupRosterPlayer } from "@/types/api";
  * full-list contract means a player left out of the payload is deleted from the
  * sheet, so the row has to be able to say so out loud — otherwise a manager
  * removing somebody would be doing it by failing to click anything.
+ *
+ * A suspended player stays on the list, struck through with the reason beside
+ * them, rather than disappearing from it. Removing the row would leave the
+ * manager looking for a player who is simply gone and no explanation of why the
+ * squad shrank; the server refuses the name either way, and this is the half of
+ * that refusal they can read before pressing anything.
  */
 
 /** What the sheet says about one player. `null` = not on it at all. */
@@ -46,6 +59,8 @@ export function LineupEditor({
   onSelectionChange,
   onOfficialsChange,
   sport,
+  bans,
+  rules,
   disabled = false,
 }: {
   roster: LineupRosterPlayer[];
@@ -56,9 +71,21 @@ export function LineupEditor({
   onSelectionChange: (next: LineupSelection) => void;
   onOfficialsChange: (next: string[]) => void;
   sport?: string | null;
+  /**
+   * Who may not be fielded here. Required rather than defaulting to `[]`, for
+   * the reason already written for `PublicMatchCard`: a default would let a
+   * caller that forgot to pass them render an editor that blocks nobody, and
+   * pass review looking identical to one that works.
+   */
+  bans: LineupBan[];
+  /** The rules naming the reason; `null` for a sport without cards. */
+  rules: DisciplineRules | null;
   disabled?: boolean;
 }) {
-  const { officialRoleLabel } = useCatalog();
+  const { officialRoleLabel, sport: sportDef } = useCatalog();
+
+  // By player, so a row asks once rather than scanning the list per render.
+  const bannedBy = new Map(bans.map((ban) => [ban.player_id, ban]));
 
   const setRole = (playerId: string, role: LineupRole) => {
     onSelectionChange({ ...selection, [playerId]: role });
@@ -92,31 +119,65 @@ export function LineupEditor({
         )}
 
         <ul className="grid gap-2">
-          {roster.map((player) => (
-            <li
-              key={player.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-border p-3"
-            >
-              <span
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {player.jersey_number || "–"}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{player.full_name}</p>
-                {player.position && (
-                  <p className="text-sm text-muted-foreground">{player.position}</p>
+          {roster.map((player) => {
+            const ban = bannedBy.get(player.id);
+
+            return (
+              <li
+                key={player.id}
+                className={cn(
+                  "flex flex-wrap items-center gap-3 rounded-xl border p-3",
+                  ban
+                    ? "border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)]"
+                    : "border-border",
                 )}
-              </div>
-              <RoleToggle
-                value={selection[player.id] ?? null}
-                onChange={(role) => setRole(player.id, role)}
-                disabled={disabled}
-                name={player.full_name}
-              />
-            </li>
-          ))}
+              >
+                <span
+                  className={cn(
+                    "grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sm font-bold",
+                    ban
+                      ? "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]"
+                      : "bg-[var(--tint)] text-[var(--brand-600)]",
+                  )}
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {player.jersey_number || "–"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "truncate font-medium",
+                      ban && "text-muted-foreground line-through",
+                    )}
+                  >
+                    {player.full_name}
+                  </p>
+                  {ban ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                      <Badge variant="danger" dot>
+                        Larangan bermain
+                      </Badge>
+                      {/* Through the catalogue, never hardcoded: "kartu merah"
+                          and the threshold are the sport's own, and an admin may
+                          change either without a deploy. */}
+                      <span>{banReasonLabel(ban.reason, sportDef(sport), rules)}</span>
+                      {ban.bans_remaining > 1 && <span>· sisa {ban.bans_remaining} laga</span>}
+                    </p>
+                  ) : (
+                    player.position && (
+                      <p className="text-sm text-muted-foreground">{player.position}</p>
+                    )
+                  )}
+                </div>
+                <RoleToggle
+                  value={ban ? null : (selection[player.id] ?? null)}
+                  onChange={(role) => setRole(player.id, role)}
+                  disabled={disabled || Boolean(ban)}
+                  name={player.full_name}
+                />
+              </li>
+            );
+          })}
         </ul>
       </section>
 

@@ -22,11 +22,13 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useConfirm } from "@/components/shared/confirm-provider";
 
 const DESCRIPTION = "Cetak kartu identitas pemain, wasit, dan staf dari desainmu sendiri.";
 
 export default function IdCardsPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { orgId, hasNoOrg, isLoading: orgLoading } = useActiveOrg();
 
   const eventsQuery = useQuery({
@@ -175,7 +177,19 @@ export default function IdCardsPage() {
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/organizer/id-cards/templates/${tpl.id}`}>Edit</Link>
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove.mutate(tpl.id)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Hapus template ini?",
+                        description: `Template "${tpl.name}" akan dihapus permanen.`,
+                        confirmLabel: "Hapus template",
+                        tone: "danger",
+                      });
+                      if (ok) remove.mutate(tpl.id);
+                    }}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>

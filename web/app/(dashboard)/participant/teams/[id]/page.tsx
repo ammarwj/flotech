@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   LogOut,
+  Printer,
   UserCog,
   Users,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   payRegistration,
   type UpdateMyTeamPayload,
 } from "@/lib/api/events";
+import { downloadMyTeamAlbum } from "@/lib/api/team-album";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
@@ -195,6 +197,20 @@ export default function ManageTeamPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses pembayaran.").message),
   });
 
+  const [printingAlbum, setPrintingAlbum] = useState(false);
+
+  async function printAlbum() {
+    if (!team) return;
+    setPrintingAlbum(true);
+    try {
+      await downloadMyTeamAlbum(team.id);
+    } catch {
+      toast.error("Gagal mencetak album. Coba lagi.");
+    } finally {
+      setPrintingAlbum(false);
+    }
+  }
+
   if (query.isLoading) {
     return (
       <div className="grid gap-3">
@@ -225,12 +241,24 @@ export default function ManageTeamPage() {
         Kembali ke Tim Saya
       </Link>
 
-      <div className="mb-6 mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-          {team.name}
-        </h1>
-        <TeamStatusBadge status={team.status} />
-        {team.category && <Badge variant="neutral">{team.category.name}</Badge>}
+      <div className="mb-6 mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            {team.name}
+          </h1>
+          <TeamStatusBadge status={team.status} />
+          {team.category && <Badge variant="neutral">{team.category.name}</Badge>}
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={printAlbum}
+          disabled={printingAlbum || (team.players ?? []).length === 0}
+          aria-label={`Cetak album ${team.name}`}
+        >
+          {printingAlbum ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+          Cetak Album
+        </Button>
       </div>
       <p className="mb-6 text-sm text-muted-foreground">{team.event?.name}</p>
 
