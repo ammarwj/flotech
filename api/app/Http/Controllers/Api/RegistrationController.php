@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\RegistrationTemplateExportBundle;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\TeamResource;
+use App\Imports\TeamRosterImport;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Team;
@@ -20,6 +22,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -181,6 +184,56 @@ class RegistrationController extends Controller
             new TeamResource($teamModel->fresh()->load(['players.documents', 'officials.documents', 'documents', 'category'])),
             'Data tim diperbarui',
         );
+    }
+
+    /**
+     * The blank template for bulk-importing teams into one category.
+     *
+     * Shaped for that category alone (single/double/team) — the same reason
+     * import() below is scoped the same way. See RegistrationTemplateColumns.
+     */
+    public function importTemplate(Request $request, string $organization, string $event): Response
+    {
+        $eventModel = $this->event($request, $event);
+
+        $validated = $request->validate([
+            'category_id' => ['required', 'uuid'],
+        ]);
+
+        $category = $eventModel->categories()->findOrFail($validated['category_id']);
+
+        return Excel::download(
+            new RegistrationTemplateExportBundle($category),
+            "template-{$category->slug}.xlsx",
+        );
+    }
+
+    /**
+     * Bulk-create teams from a filled-in template, through the exact same
+     * write path as a single manual entry — see TeamRosterImport.
+     */
+    public function import(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        $validated = $request->validate([
+            'category_id' => ['required', 'uuid'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:5120'],
+        ]);
+
+        $category = $eventModel->categories()->findOrFail($validated['category_id']);
+
+        $import = new TeamRosterImport($eventModel, $category, $this->roster, $this->gate);
+        Excel::import($import, $request->file('file'));
+
+        if ($import->created() === 0 && $import->errors() === []) {
+            return ApiResponse::error('File kosong atau format tidak sesuai template.', null, 422);
+        }
+
+        return ApiResponse::success([
+            'created' => $import->created(),
+            'errors' => $import->errors(),
+        ], 'Import selesai diproses.');
     }
 
     /**

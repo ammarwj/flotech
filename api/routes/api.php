@@ -336,6 +336,10 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);
             Route::put('events/{event}/registrations/{team}', [RegistrationController::class, 'update']);
             Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
+            // Bulk offline registration: a per-category template, filled in and
+            // re-uploaded, creating teams through the same write path as store().
+            Route::get('events/{event}/registrations/import-template', [RegistrationController::class, 'importTemplate']);
+            Route::post('events/{event}/registrations/import', [RegistrationController::class, 'import']);
             // The registration fee's documents, from the organizer's side —
             // they issued them, so they can read them. The manager's own copy
             // is at my-teams/{team}/invoice, scoped by their session instead.

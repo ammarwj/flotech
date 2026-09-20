@@ -17,6 +17,7 @@ import {
   ExternalLink,
   CalendarClock,
   Search,
+  FileSpreadsheet,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
@@ -46,6 +47,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
+import { ImportTeamsDialog } from "@/components/event/import-teams-dialog";
 import {
   schemaOf,
   type CustomField,
@@ -87,6 +89,7 @@ export default function RegistrationsPage() {
   // null = closed, "new" = adding, a Team = editing that team.
   const [manual, setManual] = useState<Team | "new" | null>(null);
   const [manualErrors, setManualErrors] = useState<Record<string, string>>({});
+  const [importOpen, setImportOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["registrations", orgId, eventId],
@@ -178,10 +181,16 @@ export default function RegistrationsPage() {
         backHref="/organizer/events"
         backLabel="Daftar event"
         actions={
-          <Button onClick={() => setManual("new")} disabled={!orgId}>
-            <Plus className="h-4 w-4" />
-            Tambah Tim
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!orgId}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Import Excel
+            </Button>
+            <Button onClick={() => setManual("new")} disabled={!orgId}>
+              <Plus className="h-4 w-4" />
+              Tambah Tim
+            </Button>
+          </div>
         }
       />
 
@@ -300,6 +309,15 @@ export default function RegistrationsPage() {
           setManualErrors({});
         }}
         onSubmit={(payload) => saveManual.mutate(payload)}
+      />
+
+      <ImportTeamsDialog
+        open={importOpen}
+        categories={eventQuery.data?.categories ?? []}
+        orgId={orgId!}
+        eventId={eventId}
+        onClose={() => setImportOpen(false)}
+        onImported={() => qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] })}
       />
     </div>
   );
