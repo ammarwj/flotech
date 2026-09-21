@@ -4,6 +4,7 @@ import { apiClient } from "./client";
 import type {
   ApiEnvelope,
   BracketConfig,
+  EventDeposits,
   EventStatus,
   Paginated,
   ParticipantType,
@@ -103,6 +104,17 @@ export async function updateEvent(
 
 export async function deleteEvent(orgId: string, eventId: string): Promise<void> {
   await apiClient.delete(`/organizations/${orgId}/events/${eventId}`);
+}
+
+/**
+ * Security deposit balances, one row per team, derived server-side from the
+ * flat per-event jaminan minus accumulated card deductions.
+ */
+export async function getEventDeposits(orgId: string, eventId: string): Promise<EventDeposits> {
+  const { data } = await apiClient.get<ApiEnvelope<EventDeposits>>(
+    `/organizations/${orgId}/events/${eventId}/deposits`
+  );
+  return data.data;
 }
 
 /**

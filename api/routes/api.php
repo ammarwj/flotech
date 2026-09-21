@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
+use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\EventPersonnelController;
@@ -290,6 +291,12 @@ Route::prefix('v1')->group(function () {
             // `tenant` is enough — same call as the ticket report below.
             Route::get('view-stats', [EventViewStatController::class, 'organization']);
             Route::get('events/{event}/view-stats', [EventViewStatController::class, 'event']);
+
+            // Security deposit monitoring. Derived, read-only, and no money moves
+            // through the platform for it — same reasoning as the discipline read
+            // below: `tenant` alone is enough, the operator has as much reason to
+            // see it as the organizer.
+            Route::get('events/{event}/deposits', [DepositController::class, 'index']);
 
             // Billing. Like the wallet, this is money: `tenant` alone would let
             // an `operator` member switch the plan or read the invoices.

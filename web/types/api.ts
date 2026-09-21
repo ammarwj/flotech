@@ -830,6 +830,40 @@ export interface SportEvent {
  */
 export interface EventRulesConfig {
   discipline?: DisciplineRuleValues;
+  deposit?: DepositConfig;
+}
+
+/** Flat per-event jaminan settings. Absent/0 amount = feature off. */
+export interface DepositConfig {
+  amount?: number;
+  yellow_deduction?: number;
+  red_deduction?: number;
+}
+
+/** One team's deposit balance, derived server-side on every read. */
+export interface DepositTeam {
+  team_id: string;
+  team_name: string;
+  category_id: string;
+  category_name: string | null;
+  yellow_count: number;
+  red_count: number;
+  deduction: number;
+  balance: number;
+}
+
+/**
+ * Security deposit monitoring for one event, across every category in it.
+ *
+ * `enabled` is false whenever `amount` is 0 (never configured, or cleared),
+ * and `teams` is then empty.
+ */
+export interface EventDeposits {
+  enabled: boolean;
+  amount: number;
+  yellow_deduction: number;
+  red_deduction: number;
+  teams: DepositTeam[];
 }
 
 /**

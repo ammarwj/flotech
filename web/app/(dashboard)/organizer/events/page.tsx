@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3, ShieldCheck } from "lucide-react";
+import { Plus, Trophy, Users, Pencil, ClipboardList, ArrowUpRight, Eye, CalendarClock, Ticket, BadgeCheck, BarChart3, ShieldCheck, Wallet } from "lucide-react";
 
 import { getEvents } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
@@ -170,6 +170,15 @@ export default function EventsPage() {
                   <Link href={`/organizer/events/${ev.id}/stats`}>
                     <BarChart3 className="h-4 w-4" />
                     Statistik
+                  </Link>
+                </Button>
+                {/* Always shown, even with the deposit off: the page itself
+                    explains how to turn it on, so hiding the button would hide
+                    that the feature exists at all. */}
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/organizer/events/${ev.id}/deposits`}>
+                    <Wallet className="h-4 w-4" />
+                    Jaminan
                   </Link>
                 </Button>
                 {/* Always shown, not just while the gateway is off: manual

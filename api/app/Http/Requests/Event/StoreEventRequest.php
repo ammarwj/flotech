@@ -53,6 +53,12 @@ class StoreEventRequest extends FormRequest
             'rules_config' => ['sometimes', 'nullable', 'array'],
             'rules_config.discipline' => ['sometimes', 'nullable', 'array'],
             ...DisciplineRules::validationRules('rules_config.discipline.'),
+            // Security deposit: flat per event, no sport layer to fall back to,
+            // so an empty field just means 0 / feature off rather than "inherit".
+            'rules_config.deposit' => ['sometimes', 'nullable', 'array'],
+            'rules_config.deposit.amount' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'rules_config.deposit.yellow_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'rules_config.deposit.red_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
             // Format, bracket config, fee and team cap live on each category.
             ...EventCategoryRules::make('required'),
         ];

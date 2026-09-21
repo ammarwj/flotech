@@ -14,6 +14,7 @@ import {
   RectangleVertical,
   Trash2,
   Trophy,
+  Wallet,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -558,6 +559,16 @@ export function EventForm({
     };
   });
 
+  // Flat per event, no sport layer to inherit from — blank just means 0/off.
+  const [deposit, setDeposit] = useState(() => {
+    const dep = initial?.rules_config?.deposit;
+    return {
+      amount: dep?.amount ?? 0,
+      yellow_deduction: dep?.yellow_deduction ?? 0,
+      red_deduction: dep?.red_deduction ?? 0,
+    };
+  });
+
   // Each event runs one-or-more categories; a new event starts with one blank.
   const [categories, setCategories] = useState<CategoryDraft[]>(() =>
     initial?.categories?.length
@@ -766,12 +777,19 @@ export function EventForm({
       sport_type: sportValue,
       courts: cleanedCourts,
       categories: cleanedCategories,
-      // Only sent for a sport that books players. A saved rulebook on an event
-      // switched to a cardless sport stays where it is, dormant, and comes back
-      // if the sport does — silently deleting it would be a surprise.
-      ...(tracksDiscipline(selectedSport)
-        ? { rules_config: { discipline: cleanedDiscipline } }
-        : {}),
+      // One rules_config object for both namespaces — the backend merges per
+      // top-level key, so two separate payloads in one request would just
+      // have the second overwrite the first instead of merging with it.
+      rules_config: {
+        // Only sent for a sport that books players. A saved rulebook on an
+        // event switched to a cardless sport stays where it is, dormant, and
+        // comes back if the sport does — silently deleting it would be a
+        // surprise.
+        ...(tracksDiscipline(selectedSport)
+          ? { discipline: cleanedDiscipline }
+          : {}),
+        deposit,
+      },
     });
   };
 
@@ -1251,6 +1269,80 @@ export function EventForm({
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <SectionHeader
+              icon={Wallet}
+              title="Jaminan"
+              description="Uang jaminan flat per event, dipegang panitia sendiri di luar sistem. Terpotong otomatis sesuai kartu yang tercatat."
+            />
+            <CardContent className="grid gap-4">
+              <div className="grid items-end gap-4 sm:grid-cols-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="deposit-amount" className="font-semibold">
+                    Nominal Jaminan (Rp)
+                  </Label>
+                  <Input
+                    id="deposit-amount"
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={deposit.amount || ""}
+                    onChange={(e) =>
+                      setDeposit((d) => ({
+                        ...d,
+                        amount: Number(e.target.value) || 0,
+                      }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="deposit-yellow" className="font-semibold">
+                    Potongan Kartu Kuning (Rp)
+                  </Label>
+                  <Input
+                    id="deposit-yellow"
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={deposit.yellow_deduction || ""}
+                    onChange={(e) =>
+                      setDeposit((d) => ({
+                        ...d,
+                        yellow_deduction: Number(e.target.value) || 0,
+                      }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="deposit-red" className="font-semibold">
+                    Potongan Kartu Merah (Rp)
+                  </Label>
+                  <Input
+                    id="deposit-red"
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={deposit.red_deduction || ""}
+                    onChange={(e) =>
+                      setDeposit((d) => ({
+                        ...d,
+                        red_deduction: Number(e.target.value) || 0,
+                      }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <FieldHint>
+                Nominal jaminan 0 berarti fitur ini nonaktif untuk event ini. Saldo tiap tim
+                dipantau di halaman Jaminan dan tidak pernah diketik manual — selalu dihitung
+                ulang dari kartu kuning/merah yang tercatat di pertandingan resmi.
+              </FieldHint>
+            </CardContent>
+          </Card>
 
           <Card>
             <SectionHeader
