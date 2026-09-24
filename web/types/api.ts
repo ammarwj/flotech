@@ -1,4 +1,4 @@
-import type { CustomFieldAnswers, RegistrationFormSchema } from "@/lib/registration-form";
+import type { CustomFieldAnswers, PublicAnswer, RegistrationFormSchema } from "@/lib/registration-form";
 
 export interface ApiEnvelope<T> {
   success: boolean;
@@ -994,6 +994,25 @@ export interface Player {
 }
 
 /**
+ * A player as the public event page sees one.
+ *
+ * Separate from Player because `custom_fields` means something different on
+ * each side: the organizer's screens read a map of every answer to edit it,
+ * the public page gets a list of only the answers the organizer published,
+ * labels included. Same key, two shapes — so they are two types, and no
+ * component can be handed the wrong one without the compiler saying so.
+ */
+export interface PublicPlayer {
+  id?: string;
+  full_name: string;
+  jersey_number?: string | null;
+  position?: string | null;
+  photo_url?: string | null;
+  /** Published answers only. [] when the organizer marked none public. */
+  custom_fields?: PublicAnswer[];
+}
+
+/**
  * Someone on a team's bench — pelatih, manajer, ofisial. Not a Player: they
  * never appear in a lineup, a leaderboard, or a roster-size rule.
  */
@@ -1010,6 +1029,16 @@ export interface TeamOfficial {
    * official_id because a new official has no id yet when the form is assembled.
    */
   documents?: TeamDocument[];
+}
+
+/** An official as the public event page sees one — see PublicPlayer. */
+export interface PublicTeamOfficial {
+  id?: string;
+  full_name: string;
+  role?: string | null;
+  photo_url?: string | null;
+  /** Published answers only. [] when the organizer marked none public. */
+  custom_fields?: PublicAnswer[];
 }
 
 /**
@@ -1183,8 +1212,23 @@ export interface PublicTeam {
   id: string;
   name: string;
   logo_url: string | null;
-  players?: Player[] | null;
-  officials?: TeamOfficial[] | null;
+  /**
+   * The competition this squad entered. Already public — it is the slug the
+   * schedule, standings and leaderboard are addressed by — and it is what tells
+   * the roster dialog whether it is showing a squad, a pair or a lone player.
+   */
+  category?: {
+    id: string;
+    name: string;
+    slug: string;
+    participant_type: ParticipantType;
+  } | null;
+  /** Which group they were drawn into. Null outside a hybrid category. */
+  group_name?: string | null;
+  /** Published answers to this event's team_fields. [] when none are public. */
+  custom_fields?: PublicAnswer[];
+  players?: PublicPlayer[] | null;
+  officials?: PublicTeamOfficial[] | null;
 }
 
 // ---- Tickets & payment (Phase 3) ----

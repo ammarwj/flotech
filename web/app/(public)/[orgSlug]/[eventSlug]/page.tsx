@@ -179,6 +179,9 @@ function PublicEventView() {
     return (allTeams ?? []).filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
+        // Now that the card prints the category, it has to be searchable too —
+        // a term visible on screen that matches nothing reads as a broken box.
+        (t.category?.name.toLowerCase().includes(q) ?? false) ||
         (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q)) ||
         (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q)),
     );
@@ -570,7 +573,7 @@ function PublicEventView() {
                     <Input
                       value={teamSearch}
                       onChange={(e) => setTeamSearch(e.target.value)}
-                      placeholder="Cari tim atau pemain…"
+                      placeholder="Cari tim, pemain, atau kategori…"
                       className="pl-9 pr-9"
                       aria-label="Cari tim peserta"
                     />
@@ -627,6 +630,19 @@ function PublicEventView() {
                       <div className="match-team" style={{ gap: 0 }}>
                         <span className="truncate">{t.name}</span>
                       </div>
+                      {/* Which competition they entered — the one thing that
+                          tells two same-named squads apart in an event that
+                          runs several categories at once. */}
+                      {(t.category || t.group_name) && (
+                        <div
+                          className="mt-0.5 truncate text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {[t.category?.name, t.group_name && `Grup ${t.group_name}`]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      )}
                     </div>
                     <span className="pill shrink-0">
                       {t.players?.length ?? 0} pemain
@@ -652,6 +668,9 @@ function PublicEventView() {
         <TeamRosterDialog
           team={openTeam}
           sport={ev.sport_type}
+          orgSlug={params.orgSlug}
+          eventSlug={params.eventSlug}
+          playerStats={playerStats}
           onClose={() => setOpenTeam(null)}
         />
       )}

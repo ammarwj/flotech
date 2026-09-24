@@ -409,6 +409,40 @@ class RegistrationFormTest extends TestCase
         $this->assertSame([], $event->fresh()->registration_form['team_fields']);
     }
 
+    /**
+     * The publish flag survives the schema endpoint, and defaults to private
+     * when a client never sends it.
+     *
+     * Asserted as a pair in one request: a payload where only one of two fields
+     * carries the flag. Sending a single public field and finding it public
+     * would also pass if the normalizer stamped every row true.
+     */
+    public function test_the_public_flag_round_trips_and_defaults_to_private(): void
+    {
+        $org = $this->openEvent()->organization;
+        $event = $org->events()->first();
+
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", [
+                'team_fields' => [
+                    ['key' => 'asal', 'label' => 'Asal', 'type' => 'short_text', 'required' => false, 'is_public' => true, 'options' => []],
+                    // No is_public key at all — an older client, or the builder
+                    // before someone ticked the box.
+                    ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'short_text', 'required' => false, 'options' => []],
+                ],
+                'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
+                'team_official_fields' => [], 'team_official_documents' => [],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.team_fields.0.is_public', true)
+            ->assertJsonPath('data.team_fields.1.is_public', false);
+
+        $stored = $event->fresh()->registration_form['team_fields'];
+
+        $this->assertTrue($stored[0]['is_public']);
+        $this->assertFalse($stored[1]['is_public']);
+    }
+
     public function test_select_must_have_options_and_answers_must_match_them(): void
     {
         $org = $this->openEvent()->organization;
@@ -547,7 +581,6 @@ class RegistrationFormTest extends TestCase
     public function test_public_resource_carries_the_schema_but_no_answers(): void
     {
         $event = $this->openEvent($this->fullSchema());
-        $org = $event->organization;
 
         $this->register($event, User::factory()->create(), [
             'custom_fields' => ['alamat' => 'Jl. Rahasia 9'],
@@ -578,7 +611,15 @@ class RegistrationFormTest extends TestCase
         // them past a path assertion.
         $this->assertStringNotContainsString('Jl. Rahasia 9', $body);
         $this->assertStringNotContainsString('3201999', $body);
-        $this->assertStringNotContainsString('custom_fields', $body);
+
+        // The key itself is always there, holding the empty list this schema
+        // earns: none of its fields is marked public. Absent and empty are not
+        // the same thing — an absent key would also be produced by a resource
+        // that stopped publishing answers altogether, which would hide a
+        // regression in the opposite direction rather than prove this one.
+        $team = $payload['approved_teams'][0];
+        $this->assertSame([], $team['custom_fields']);
+        $this->assertSame([], $team['players'][0]['custom_fields']);
     }
 
     public function test_official_documents_are_separate_from_player_and_team_documents(): void

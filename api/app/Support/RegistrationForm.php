@@ -17,6 +17,13 @@ use App\Models\Event;
  * callers need to agree on the shape of a JSON blob, and a normalizer they all
  * go through is what stops them drifting. Everything here is read-only; the
  * writing side is EventController::syncRegistrationForm().
+ *
+ * A field also carries `is_public`, which decides whether the answers to it
+ * appear on the public event page. Documents deliberately have no such flag:
+ * they are uploaded files -- an ID card, a birth certificate -- and publishing
+ * one is a different class of decision from publishing a line of text the
+ * entrant typed. Adding it there would need its own thinking, not this one
+ * copied across.
  */
 final class RegistrationForm
 {
@@ -123,6 +130,51 @@ final class RegistrationForm
     }
 
     /**
+     * The answers a squad gave, trimmed to the fields the organizer marked
+     * public and paired with their labels, in the order the form asks them.
+     *
+     * Resolved here rather than by joining the schema on the client, and
+     * returned as a list rather than a map, for the same reason the roster
+     * itself is mapped field by field in PublicEventResource: a payload that
+     * carries every answer and trusts the reader to hide some is one leak away
+     * from a component that forgot to. What isn't published isn't sent.
+     *
+     * `section` is one of the words fieldsFor() understands: player, official,
+     * or anything else for the team.
+     *
+     * @param  array<string, mixed>|null  $answers
+     * @return list<array{key: string, label: string, value: string}>
+     */
+    public function publicAnswers(string $section, ?array $answers): array
+    {
+        $answers ??= [];
+        $out = [];
+
+        foreach ($this->fieldsFor($section) as $field) {
+            if (! ($field['is_public'] ?? false)) {
+                continue;
+            }
+
+            $value = $answers[$field['key']] ?? null;
+
+            // An unanswered optional field is nothing to show. A blank row
+            // under a label reads as missing data rather than as a question
+            // this entrant simply didn't have to answer.
+            if (! is_scalar($value) || trim((string) $value) === '') {
+                continue;
+            }
+
+            $out[] = [
+                'key' => $field['key'],
+                'label' => $field['label'],
+                'value' => trim((string) $value),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function documentsFor(string $section): array
@@ -189,6 +241,7 @@ final class RegistrationForm
             $rules[$section.'.*.label'] = ['required', 'string', 'max:100'];
             $rules[$section.'.*.type'] = ['required', 'string', 'in:'.implode(',', self::TYPES)];
             $rules[$section.'.*.required'] = ['nullable', 'boolean'];
+            $rules[$section.'.*.is_public'] = ['nullable', 'boolean'];
             $rules[$section.'.*.options'] = ['nullable', 'array', 'max:50'];
             $rules[$section.'.*.options.*'] = ['required', 'string', 'max:100'];
         }
@@ -235,6 +288,12 @@ final class RegistrationForm
                 'label' => (string) $row['label'],
                 'type' => $type,
                 'required' => (bool) ($row['required'] ?? false),
+                // Absent reads as private. The whole point of the flag is that
+                // an organizer opts a field *in*, so a schema saved before it
+                // existed -- or one sent by a client that has never heard of
+                // it -- must not start publishing answers people gave to a
+                // form that promised nothing of the sort.
+                'is_public' => (bool) ($row['is_public'] ?? false),
                 // Options only mean anything for a select; carrying them on the
                 // other types would let a stale list reappear if the organizer
                 // switched the type back.

@@ -20,6 +20,11 @@ class PublicEventResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // Read once for the whole payload: the roster maps every player and
+        // every official through it, and forEvent() would otherwise re-parse
+        // the same JSON column for each one.
+        $form = RegistrationForm::forEvent($this->resource);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -38,7 +43,7 @@ class PublicEventResource extends JsonResource
             // have to render itself. The answers given to it stay organizer-side
             // — see the roster below, trimmed for the same reason: an address or
             // an ID number is exactly the class of field this resource filters.
-            'registration_form' => RegistrationForm::forEvent($this->resource)->toArray(),
+            'registration_form' => $form->toArray(),
             'location_name' => $this->location_name,
             'location_address' => $this->location_address,
             'description' => $this->description,
@@ -74,6 +79,22 @@ class PublicEventResource extends JsonResource
                 'id' => $t->id,
                 'name' => $t->name,
                 'logo_url' => $t->logo_url,
+                // Which competition they entered, and — in a hybrid — which
+                // group they were drawn into. Both are already published by the
+                // schedule and the standings; carrying them here is what lets a
+                // roster say what it is a roster *of*.
+                'category' => $t->relationLoaded('category') && $t->category ? [
+                    'id' => $t->category->id,
+                    'name' => $t->category->name,
+                    'slug' => $t->category->slug,
+                    'participant_type' => $t->category->participant_type,
+                ] : null,
+                'group_name' => $t->group_name,
+                // Answers to the custom fields this event's organizer marked
+                // public, already paired with their labels — see
+                // RegistrationForm::publicAnswers(). Everything else they were
+                // asked stays organizer-side.
+                'custom_fields' => $form->publicAnswers('team', $t->custom_fields),
                 // Roster is public, but only the on-pitch fields — no birth dates
                 // or contact details.
                 'players' => $t->relationLoaded('players') ? $t->players->map(fn ($p) => [
@@ -82,6 +103,7 @@ class PublicEventResource extends JsonResource
                     'jersey_number' => $p->jersey_number,
                     'position' => $p->position,
                     'photo_url' => $p->photo_url,
+                    'custom_fields' => $form->publicAnswers('player', $p->custom_fields),
                 ])->values() : null,
                 // The bench is public for the same reason the roster is, and
                 // holds nothing private either — name, role, photo.
@@ -90,6 +112,7 @@ class PublicEventResource extends JsonResource
                     'full_name' => $o->full_name,
                     'role' => $o->role,
                     'photo_url' => $o->photo_url,
+                    'custom_fields' => $form->publicAnswers('official', $o->custom_fields),
                 ])->values() : null,
             ])),
         ];

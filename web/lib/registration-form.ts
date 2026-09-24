@@ -18,8 +18,30 @@ export interface CustomField {
   label: string;
   type: CustomFieldType;
   required: boolean;
+  /**
+   * Whether the answers show on the public event page — the squad list and the
+   * roster dialog. Optional on the wire so a schema saved before this existed
+   * still parses, and absent reads as private: publishing is opted into, never
+   * defaulted (the backend normalizes the same way).
+   */
+  is_public?: boolean;
   /** Only meaningful for `select`; [] everywhere else. */
   options: string[];
+}
+
+/**
+ * One published answer, already paired with its label by the API.
+ *
+ * The server sends only the fields it was told to publish, so there is nothing
+ * to filter here — see RegistrationForm::publicAnswers(). A payload carrying
+ * every answer and trusting the component to hide some is one render away from
+ * leaking, which is why the shape is a list of what is public rather than the
+ * raw `custom_fields` map the organizer's screens read.
+ */
+export interface PublicAnswer {
+  key: string;
+  label: string;
+  value: string;
 }
 
 export interface DocumentSlot {

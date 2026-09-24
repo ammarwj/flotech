@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, ListChecks, Plus, Trash2, Users } from "lucide-react";
+import { Eye, FileText, ListChecks, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -34,13 +34,19 @@ import { SectionHeader } from "@/components/event/section-header";
 
 /** Which of the six lists a row lives in. */
 type FieldSection = "team_fields" | "player_fields" | "team_official_fields";
-type DocSection = "team_documents" | "player_documents" | "team_official_documents";
+type DocSection =
+  | "team_documents"
+  | "player_documents"
+  | "team_official_documents";
 
 const EMPTY_FIELD: CustomField = {
   key: "",
   label: "",
   type: "short_text",
   required: false,
+  // New fields start private. An organizer adding "No. KTP" should have to say
+  // they want it on the public page, not remember to say they don't.
+  is_public: false,
   options: [],
 };
 
@@ -424,17 +430,33 @@ function FieldRows({
               </div>
             )}
 
-            <label className="flex w-fit items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-input"
-                checked={row.required}
-                onChange={(e) =>
-                  onChange(section, i, { required: e.target.checked })
-                }
-              />
-              Wajib diisi
-            </label>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <label className="flex w-fit items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={row.required}
+                  onChange={(e) =>
+                    onChange(section, i, { required: e.target.checked })
+                  }
+                />
+                Wajib diisi
+              </label>
+
+              <label className="flex w-fit items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={row.is_public ?? false}
+                  onChange={(e) =>
+                    onChange(section, i, { is_public: e.target.checked })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5">
+                  Tampilkan di halaman publik
+                </span>
+              </label>
+            </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>

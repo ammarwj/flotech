@@ -93,18 +93,44 @@ class PublicEventController extends Controller
             'organization',
             'categories',
             'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
-            // jersey_number is free text, so sort numerically when it looks like a
-            // number and push the rest (blank / "GK-2") to the bottom.
-            'teams.players' => fn ($q) => $q
-                ->orderByRaw("(jersey_number ~ '^[0-9]+$') desc")
-                ->orderByRaw("case when jersey_number ~ '^[0-9]+$' then jersey_number::int end asc")
-                ->orderBy('full_name'),
+            // Which competition the squad entered. Already public — it is the
+            // slug the schedule, the standings and the leaderboard are all
+            // addressed by — and it is what lets the roster dialog ask for this
+            // team's stats without a second lookup.
+            'teams.category',
+            'teams.players',
             'teams.officials',
             'sponsors',
             'photos',
         ]);
 
+        // Shirt order happens here rather than in the query. Sorting free text
+        // numerically needs a regex and a cast, both of which are spelled
+        // differently in every dialect -- the Postgres pair this used to carry
+        // made the whole endpoint unrunnable outside prod, so nothing about this
+        // payload had a test. A squad is a few dozen rows; PHP can afford it.
+        $event->teams->each(fn (Team $t) => $t->setRelation(
+            'players',
+            $t->players->sortBy([
+                fn ($a, $b) => $this->jerseyRank($a->jersey_number) <=> $this->jerseyRank($b->jersey_number),
+                fn ($a, $b) => strcmp($a->full_name, $b->full_name),
+            ])->values(),
+        ));
+
         return ApiResponse::success(new PublicEventResource($event));
+    }
+
+    /**
+     * Sort key for a shirt number: numbered players first in numeric order,
+     * then everyone whose number is blank or isn't one ("GK-2", "-").
+     *
+     * @return array{int, int}
+     */
+    protected function jerseyRank(?string $jersey): array
+    {
+        return ctype_digit((string) $jersey)
+            ? [0, (int) $jersey]
+            : [1, 0];
     }
 
     /**
