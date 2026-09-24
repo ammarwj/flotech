@@ -4,6 +4,7 @@ import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
 import { Countdown } from "@/components/event/countdown";
 import { RevealInit } from "@/components/landing/reveal-init";
 import { LogoMark } from "@/components/landing/icons";
+import { Logo } from "@/components/shared/logo";
 import "../../event-shell.css";
 
 export const metadata: Metadata = {
@@ -21,7 +22,13 @@ export default function EventPage() {
           <div className="ehero-top">
             <Link href="/" className="ehero-back">
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="M19 12H5m6-6-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M19 12H5m6-6-6 6 6 6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
               Didukung flo-event
             </Link>
@@ -34,29 +41,73 @@ export default function EventPage() {
                 <span className="ehero-badge sport">⚽ Sepak Bola</span>
                 <span className="ehero-badge">Format Liga + Playoff</span>
                 <span className="ehero-badge">
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22D3A7", display: "inline-block" }} /> Pendaftaran Dibuka
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: "#22D3A7",
+                      display: "inline-block",
+                    }}
+                  />{" "}
+                  Pendaftaran Dibuka
                 </span>
               </div>
               <h1>Jakarta Cup 2026</h1>
               <div className="ehero-info">
                 <span>
                   <svg viewBox="0 0 24 24" fill="none">
-                    <rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" strokeWidth="2" />
-                    <path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <rect
+                      x="3"
+                      y="4"
+                      width="18"
+                      height="17"
+                      rx="2"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M3 9h18M8 2v4M16 2v4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
                   </svg>
                   14–22 Juni 2026
                 </span>
                 <span>
                   <svg viewBox="0 0 24 24" fill="none">
-                    <path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-                    <circle cx="12" cy="10" r="2.5" stroke="currentColor" strokeWidth="2" />
+                    <path
+                      d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="10"
+                      r="2.5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
                   </svg>
                   GBK Soccer Field, Jakarta
                 </span>
                 <span>
                   <svg viewBox="0 0 24 24" fill="none">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                    <path
+                      d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      cx="9"
+                      cy="7"
+                      r="4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
                   </svg>
                   16 Tim
                 </span>
@@ -115,7 +166,16 @@ export default function EventPage() {
             <div className="esection-title">
               <h2>Jadwal Pertandingan</h2>
               <span className="pill">
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: "currentColor", display: "inline-block" }} /> Hari ini
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: "currentColor",
+                    display: "inline-block",
+                  }}
+                />{" "}
+                Hari ini
               </span>
             </div>
 
@@ -126,14 +186,28 @@ export default function EventPage() {
                 <span className="badge badge-live">
                   <span className="dot" /> LIVE
                 </span>
-                <small style={{ display: "block", marginTop: 4 }}>67&apos;</small>
+                <small style={{ display: "block", marginTop: 4 }}>
+                  67&apos;
+                </small>
               </div>
               <div className="match-teams">
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} /> Garuda FC <span className="sc">2</span>
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                    }}
+                  />{" "}
+                  Garuda FC <span className="sc">2</span>
                 </div>
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#DC2626,#991B1B)" }} /> Elang United <span className="sc">1</span>
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#DC2626,#991B1B)",
+                    }}
+                  />{" "}
+                  Elang United <span className="sc">1</span>
                 </div>
               </div>
               <div className="match-meta">
@@ -149,10 +223,22 @@ export default function EventPage() {
               </div>
               <div className="match-teams">
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#059669,#047857)" }} /> Rajawali
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#059669,#047857)",
+                    }}
+                  />{" "}
+                  Rajawali
                 </div>
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#D97706,#B45309)" }} /> Macan Kemayoran
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#D97706,#B45309)",
+                    }}
+                  />{" "}
+                  Macan Kemayoran
                 </div>
               </div>
               <div className="match-meta">
@@ -168,14 +254,32 @@ export default function EventPage() {
               </div>
               <div className="match-teams">
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#7C3AED,#5B21B6)" }} /> Naga Biru
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                    }}
+                  />{" "}
+                  Naga Biru
                 </div>
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#DB2777,#9D174D)" }} /> Banteng FC
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#DB2777,#9D174D)",
+                    }}
+                  />{" "}
+                  Banteng FC
                 </div>
               </div>
               <div className="match-meta">
-                <span className="badge" style={{ background: "var(--bg-soft)", color: "var(--text-muted)" }}>
+                <span
+                  className="badge"
+                  style={{
+                    background: "var(--bg-soft)",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   Terjadwal
                 </span>
                 <small>Grup B · Lap. B</small>
@@ -191,14 +295,32 @@ export default function EventPage() {
               </div>
               <div className="match-teams">
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#0EA5E9,#0369A1)" }} /> Hiu Laut
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#0EA5E9,#0369A1)",
+                    }}
+                  />{" "}
+                  Hiu Laut
                 </div>
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#65A30D,#3F6212)" }} /> Komodo FC
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#65A30D,#3F6212)",
+                    }}
+                  />{" "}
+                  Komodo FC
                 </div>
               </div>
               <div className="match-meta">
-                <span className="badge" style={{ background: "var(--bg-soft)", color: "var(--text-muted)" }}>
+                <span
+                  className="badge"
+                  style={{
+                    background: "var(--bg-soft)",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   Terjadwal
                 </span>
                 <small>Grup C · Lap. A</small>
@@ -212,14 +334,32 @@ export default function EventPage() {
               </div>
               <div className="match-teams">
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#E11D48,#9F1239)" }} /> Singa Api
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#E11D48,#9F1239)",
+                    }}
+                  />{" "}
+                  Singa Api
                 </div>
                 <div className="match-team">
-                  <span className="crest" style={{ background: "linear-gradient(135deg,#475569,#1E293B)" }} /> Badak Hitam
+                  <span
+                    className="crest"
+                    style={{
+                      background: "linear-gradient(135deg,#475569,#1E293B)",
+                    }}
+                  />{" "}
+                  Badak Hitam
                 </div>
               </div>
               <div className="match-meta">
-                <span className="badge" style={{ background: "var(--bg-soft)", color: "var(--text-muted)" }}>
+                <span
+                  className="badge"
+                  style={{
+                    background: "var(--bg-soft)",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   Terjadwal
                 </span>
                 <small>Grup C · Lap. B</small>
@@ -248,7 +388,13 @@ export default function EventPage() {
                   <td className="pos">1</td>
                   <td className="l">
                     <div className="tname">
-                      <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} /> Garuda FC
+                      <span
+                        className="crest"
+                        style={{
+                          background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                        }}
+                      />{" "}
+                      Garuda FC
                     </div>
                   </td>
                   <td>5</td>
@@ -262,7 +408,13 @@ export default function EventPage() {
                   <td className="pos">2</td>
                   <td className="l">
                     <div className="tname">
-                      <span className="crest" style={{ background: "linear-gradient(135deg,#059669,#047857)" }} /> Rajawali
+                      <span
+                        className="crest"
+                        style={{
+                          background: "linear-gradient(135deg,#059669,#047857)",
+                        }}
+                      />{" "}
+                      Rajawali
                     </div>
                   </td>
                   <td>5</td>
@@ -276,7 +428,13 @@ export default function EventPage() {
                   <td className="pos">3</td>
                   <td className="l">
                     <div className="tname">
-                      <span className="crest" style={{ background: "linear-gradient(135deg,#DC2626,#991B1B)" }} /> Elang United
+                      <span
+                        className="crest"
+                        style={{
+                          background: "linear-gradient(135deg,#DC2626,#991B1B)",
+                        }}
+                      />{" "}
+                      Elang United
                     </div>
                   </td>
                   <td>5</td>
@@ -290,7 +448,13 @@ export default function EventPage() {
                   <td className="pos">4</td>
                   <td className="l">
                     <div className="tname">
-                      <span className="crest" style={{ background: "linear-gradient(135deg,#D97706,#B45309)" }} /> Macan Kemayoran
+                      <span
+                        className="crest"
+                        style={{
+                          background: "linear-gradient(135deg,#D97706,#B45309)",
+                        }}
+                      />{" "}
+                      Macan Kemayoran
                     </div>
                   </td>
                   <td>5</td>
@@ -304,7 +468,13 @@ export default function EventPage() {
                   <td className="pos">5</td>
                   <td className="l">
                     <div className="tname">
-                      <span className="crest" style={{ background: "linear-gradient(135deg,#475569,#1E293B)" }} /> Badak Hitam
+                      <span
+                        className="crest"
+                        style={{
+                          background: "linear-gradient(135deg,#475569,#1E293B)",
+                        }}
+                      />{" "}
+                      Badak Hitam
                     </div>
                   </td>
                   <td>5</td>
@@ -318,7 +488,8 @@ export default function EventPage() {
             </table>
             <div className="stable-legend">
               <span>
-                <i style={{ background: "var(--success)" }} /> Lolos perempat final
+                <i style={{ background: "var(--success)" }} /> Lolos perempat
+                final
               </span>
               <span>
                 <i style={{ background: "var(--warning)" }} /> Babak playoff
@@ -337,48 +508,88 @@ export default function EventPage() {
                 <div className="rnd">Perempat Final</div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                      }}
+                    />
                     <span className="nm">Garuda FC</span>
                     <span className="sc">3</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#DB2777,#9D174D)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#DB2777,#9D174D)",
+                      }}
+                    />
                     <span className="nm">Banteng FC</span>
                     <span className="sc">1</span>
                   </div>
                 </div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#059669,#047857)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#059669,#047857)",
+                      }}
+                    />
                     <span className="nm">Rajawali</span>
                     <span className="sc">2</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#0EA5E9,#0369A1)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#0EA5E9,#0369A1)",
+                      }}
+                    />
                     <span className="nm">Hiu Laut</span>
                     <span className="sc">0</span>
                   </div>
                 </div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#7C3AED,#5B21B6)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                      }}
+                    />
                     <span className="nm">Naga Biru</span>
                     <span className="sc">2</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#65A30D,#3F6212)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#65A30D,#3F6212)",
+                      }}
+                    />
                     <span className="nm">Komodo FC</span>
                     <span className="sc">1</span>
                   </div>
                 </div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#E11D48,#9F1239)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#E11D48,#9F1239)",
+                      }}
+                    />
                     <span className="nm">Singa Api</span>
                     <span className="sc">4</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#D97706,#B45309)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#D97706,#B45309)",
+                      }}
+                    />
                     <span className="nm">Macan</span>
                     <span className="sc">2</span>
                   </div>
@@ -388,24 +599,44 @@ export default function EventPage() {
                 <div className="rnd">Semifinal</div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                      }}
+                    />
                     <span className="nm">Garuda FC</span>
                     <span className="sc">2</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#059669,#047857)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#059669,#047857)",
+                      }}
+                    />
                     <span className="nm">Rajawali</span>
                     <span className="sc">1</span>
                   </div>
                 </div>
                 <div className="ematch">
                   <div className="row win">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#7C3AED,#5B21B6)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                      }}
+                    />
                     <span className="nm">Naga Biru</span>
                     <span className="sc">3</span>
                   </div>
                   <div className="row out">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#E11D48,#9F1239)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#E11D48,#9F1239)",
+                      }}
+                    />
                     <span className="nm">Singa Api</span>
                     <span className="sc">2</span>
                   </div>
@@ -415,12 +646,22 @@ export default function EventPage() {
                 <div className="rnd">Final</div>
                 <div className="ematch">
                   <div className="row">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                      }}
+                    />
                     <span className="nm">Garuda FC</span>
                     <span className="sc">—</span>
                   </div>
                   <div className="row">
-                    <span className="crest" style={{ background: "linear-gradient(135deg,#7C3AED,#5B21B6)" }} />
+                    <span
+                      className="crest"
+                      style={{
+                        background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                      }}
+                    />
                     <span className="nm">Naga Biru</span>
                     <span className="sc">—</span>
                   </div>
@@ -446,7 +687,12 @@ export default function EventPage() {
               </h3>
               <div className="scorer">
                 <span className="rk">1</span>
-                <span className="av" style={{ background: "linear-gradient(135deg,#1E6FFF,#1558CC)" }}>
+                <span
+                  className="av"
+                  style={{
+                    background: "linear-gradient(135deg,#1E6FFF,#1558CC)",
+                  }}
+                >
                   BS
                 </span>
                 <span className="nm">
@@ -458,7 +704,12 @@ export default function EventPage() {
               </div>
               <div className="scorer">
                 <span className="rk">2</span>
-                <span className="av" style={{ background: "linear-gradient(135deg,#E11D48,#9F1239)" }}>
+                <span
+                  className="av"
+                  style={{
+                    background: "linear-gradient(135deg,#E11D48,#9F1239)",
+                  }}
+                >
                   RF
                 </span>
                 <span className="nm">
@@ -470,7 +721,12 @@ export default function EventPage() {
               </div>
               <div className="scorer">
                 <span className="rk">3</span>
-                <span className="av" style={{ background: "linear-gradient(135deg,#7C3AED,#5B21B6)" }}>
+                <span
+                  className="av"
+                  style={{
+                    background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                  }}
+                >
                   AP
                 </span>
                 <span className="nm">
@@ -516,7 +772,11 @@ export default function EventPage() {
                 </div>
                 <span className="amt">Rp 250rb</span>
               </div>
-              <a href="#" className="btn btn-primary btn-block" style={{ marginTop: 18 }}>
+              <a
+                href="#"
+                className="btn btn-primary btn-block"
+                style={{ marginTop: 18 }}
+              >
                 Beli Tiket Sekarang
               </a>
             </div>
@@ -525,8 +785,21 @@ export default function EventPage() {
             <div className="card scard reveal" data-delay="120">
               <h3>
                 <svg viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
-                  <path d="M8 12h8M8 8h8M8 16h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <rect
+                    x="3"
+                    y="3"
+                    width="18"
+                    height="18"
+                    rx="3"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M8 12h8M8 8h8M8 16h5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 Penyelenggara
               </h3>
@@ -546,11 +819,27 @@ export default function EventPage() {
                   <LogoMark width={22} height={22} />
                 </span>
                 <div>
-                  <b style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>Jakarta Sports EO</b>
-                  <small style={{ display: "block", color: "var(--text-muted)", fontSize: 13 }}>12 turnamen terselenggara</small>
+                  <b
+                    style={{ fontFamily: "var(--font-display)", fontSize: 15 }}
+                  >
+                    Jakarta Sports EO
+                  </b>
+                  <small
+                    style={{
+                      display: "block",
+                      color: "var(--text-muted)",
+                      fontSize: 13,
+                    }}
+                  >
+                    12 turnamen terselenggara
+                  </small>
                 </div>
               </div>
-              <a href="#" className="btn btn-secondary btn-block btn-sm" style={{ marginTop: 16 }}>
+              <a
+                href="#"
+                className="btn btn-secondary btn-block btn-sm"
+                style={{ marginTop: 16 }}
+              >
                 Hubungi Penyelenggara
               </a>
             </div>
@@ -583,7 +872,10 @@ export default function EventPage() {
         <div className="container" style={{ marginTop: 56 }} id="daftar">
           <div className="ereg reveal">
             <h2>Daftarkan timmu di Jakarta Cup 2026</h2>
-            <p>Kuota 16 tim — tersisa 3 slot. Lengkapi data tim, roster pemain, dan bayar biaya registrasi langsung online.</p>
+            <p>
+              Kuota 16 tim — tersisa 3 slot. Lengkapi data tim, roster pemain,
+              dan bayar biaya registrasi langsung online.
+            </p>
             <div className="ehero-cta">
               <a href="#" className="btn btn-primary btn-lg">
                 Daftar Tim — Rp 1,5jt
@@ -594,8 +886,20 @@ export default function EventPage() {
             </div>
             <div className="deadline">
               <svg viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-                <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M12 7v5l3 2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
               Pendaftaran ditutup 8 Juni 2026, 23:59 WIB
             </div>
@@ -604,15 +908,13 @@ export default function EventPage() {
       </main>
 
       {/* ===================== FOOTER ===================== */}
-      <footer className="footer">
+      <footer className="footer !py-7">
         <div className="container">
-          <div className="footer-bottom" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-            <Link href="/" className="logo">
-              <span className="logo-mark">
-                <LogoMark />
-              </span>
-              flo<span>-event</span>
-            </Link>
+          <div
+            className="footer-bottom"
+            style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+          >
+            <Logo href="/" />
             <span>Halaman event ini dibuat dengan flo-event · © 2026</span>
           </div>
         </div>

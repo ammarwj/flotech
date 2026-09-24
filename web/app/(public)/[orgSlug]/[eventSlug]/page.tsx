@@ -4,11 +4,31 @@ import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, ChevronRight, MapPin, Users, Wallet, Trophy, Building2, Ticket, Info, Network, CalendarClock, ListOrdered, Goal, Search, X } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  ChevronRight,
+  MapPin,
+  Users,
+  Wallet,
+  Trophy,
+  Building2,
+  Ticket,
+  Info,
+  Network,
+  CalendarClock,
+  ListOrdered,
+  Goal,
+  Search,
+  X,
+} from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
-import { PublicResults, type ResultsTab } from "@/components/event/public-results";
+import {
+  PublicResults,
+  type ResultsTab,
+} from "@/components/event/public-results";
 import { PublicAllSchedule } from "@/components/event/public-all-schedule";
 import { PillTabs } from "@/components/event/pill-tabs";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
@@ -16,19 +36,28 @@ import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
 import { TeamRosterDialog } from "@/components/event/team-roster-dialog";
 import { ViewBeacon } from "@/components/event/view-beacon";
 import { ThemeToggleButton } from "@/components/shared/theme-toggle-button";
+import { Logo } from "@/components/shared/logo";
 import { Input } from "@/components/ui/input";
 import { EVENT_STATUS_LABELS, rupiah } from "@/lib/labels";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { useEventBase } from "@/lib/event-base";
 import { useUrlState } from "@/lib/hooks/use-url-state";
-import { isKnockout as isKnockoutFormat, isHybrid as isHybridFormat, crestGradient } from "@/lib/bracket";
+import {
+  isKnockout as isKnockoutFormat,
+  isHybrid as isHybridFormat,
+  crestGradient,
+} from "@/lib/bracket";
 import { showsPlayerStats } from "@/lib/scoring";
 import type { EventStatus, PublicEvent, PublicTeam } from "@/types/api";
 import "../../event-shell.css";
 
 function fmtDate(d: string | null) {
   if (!d) return "";
-  return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(d).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function dateRange(a: string | null, b: string | null) {
@@ -39,7 +68,9 @@ function dateRange(a: string | null, b: string | null) {
 
 /** Event yang sudah mulai — atau sudah tidak akan mulai lagi. */
 function hasStarted(status: EventStatus) {
-  return status === "ongoing" || status === "finished" || status === "cancelled";
+  return (
+    status === "ongoing" || status === "finished" || status === "cancelled"
+  );
 }
 
 /**
@@ -47,7 +78,11 @@ function hasStarted(status: EventStatus) {
  * profil penyelenggara; kalau slug-nya tidak ada, kartunya tetap tampil tapi
  * sebagai teks biasa (tanpa hover state maupun chevron).
  */
-function OrganizerCard({ organization }: { organization: PublicEvent["organization"] }) {
+function OrganizerCard({
+  organization,
+}: {
+  organization: PublicEvent["organization"];
+}) {
   const body = (
     <>
       <span className="crest">
@@ -66,7 +101,8 @@ function OrganizerCard({ organization }: { organization: PublicEvent["organizati
     </>
   );
 
-  if (!organization.slug) return <div className="card scard org-card">{body}</div>;
+  if (!organization.slug)
+    return <div className="card scard org-card">{body}</div>;
 
   return (
     <Link href={`/${organization.slug}`} className="card scard org-card">
@@ -82,7 +118,14 @@ const ALL_CATEGORIES = "all";
 
 function PageLoading() {
   return (
-    <div className="container" style={{ paddingBlock: 96, textAlign: "center", color: "var(--text-muted)" }}>
+    <div
+      className="container"
+      style={{
+        paddingBlock: 96,
+        textAlign: "center",
+        color: "var(--text-muted)",
+      }}
+    >
       Memuat…
     </div>
   );
@@ -137,7 +180,7 @@ function PublicEventView() {
       (t) =>
         t.name.toLowerCase().includes(q) ||
         (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q)) ||
-        (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q))
+        (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q)),
     );
   }, [allTeams, teamSearch]);
 
@@ -145,10 +188,19 @@ function PublicEventView() {
 
   if (query.isError || !query.data) {
     return (
-      <div className="container" style={{ paddingBlock: 96, textAlign: "center" }}>
+      <div
+        className="container"
+        style={{ paddingBlock: 96, textAlign: "center" }}
+      >
         <h1 className="section-title">Event tidak ditemukan</h1>
-        <p className="section-sub">Periksa kembali tautannya atau event belum dipublikasikan.</p>
-        <Link href={homeUrl} className="btn btn-primary btn-lg" style={{ marginTop: 24 }}>
+        <p className="section-sub">
+          Periksa kembali tautannya atau event belum dipublikasikan.
+        </p>
+        <Link
+          href={homeUrl}
+          className="btn btn-primary btn-lg"
+          style={{ marginTop: 24 }}
+        >
           Ke beranda
         </Link>
       </div>
@@ -171,7 +223,9 @@ function PublicEventView() {
   // vanish the moment you picked a category that lacks one.
   const categoriesFor = (key: TabKey) =>
     key === "bracket"
-      ? categories.filter((c) => isKnockoutFormat(c.engine) || isHybridFormat(c.engine))
+      ? categories.filter(
+          (c) => isKnockoutFormat(c.engine) || isHybridFormat(c.engine),
+        )
       : key === "standings"
         ? categories.filter((c) => !isKnockoutFormat(c.engine))
         : categories;
@@ -182,7 +236,11 @@ function PublicEventView() {
     ["teams", "Tim Peserta", Users],
     ["schedule", "Jadwal", CalendarClock],
     ...(categoriesFor("standings").length > 0
-      ? ([["standings", "Klasemen", ListOrdered]] as [TabKey, string, typeof Info][])
+      ? ([["standings", "Klasemen", ListOrdered]] as [
+          TabKey,
+          string,
+          typeof Info,
+        ][])
       : []),
     ...(categoriesFor("bracket").length > 0
       ? ([["bracket", "Bracket", Network]] as [TabKey, string, typeof Info][])
@@ -201,9 +259,12 @@ function PublicEventView() {
   const tabCategories = categoriesFor(activeTab);
   // On "Semua" the URL holds no real category, so the last one clicked stands in
   // for it on the tabs that can't show a combined view.
-  const wantedSlug = categoryParam === ALL_CATEGORIES ? lastCategorySlug : categoryParam;
+  const wantedSlug =
+    categoryParam === ALL_CATEGORIES ? lastCategorySlug : categoryParam;
   const selectedCategory =
-    tabCategories.find((c) => c.slug === wantedSlug) ?? tabCategories[0] ?? null;
+    tabCategories.find((c) => c.slug === wantedSlug) ??
+    tabCategories[0] ??
+    null;
   // Preselect the viewed category on the registration form.
   // Selalu ke domain utama: pendaftaran butuh sesi, dan refresh cookie terikat
   // `.floevent.id` sehingga tidak akan pernah terkirim ke domain organizer.
@@ -213,12 +274,16 @@ function PublicEventView() {
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll =
-    categoryParam === ALL_CATEGORIES && activeTab === "schedule" && categories.length > 1;
+    categoryParam === ALL_CATEGORIES &&
+    activeTab === "schedule" &&
+    categories.length > 1;
   // "Pendaftaran ditutup" hanya berarti sesuatu selama eventnya belum mulai.
   // Begitu berlangsung/selesai/batal, statusnya sudah tampil di badge hero dan
   // pill itu cuma jadi tombol mati di bawah judul.
-  const showRegistrationClosed = !ev.registration_is_open && !hasStarted(ev.status);
-  const showHeroCta = ev.registration_is_open || showRegistrationClosed || ev.tickets_on_sale;
+  const showRegistrationClosed =
+    !ev.registration_is_open && !hasStarted(ev.status);
+  const showHeroCta =
+    ev.registration_is_open || showRegistrationClosed || ev.tickets_on_sale;
 
   return (
     // Kickoff times render in the venue's zone, so every visitor reads the same
@@ -247,7 +312,10 @@ function PublicEventView() {
           <div className="ehero-grid">
             <div>
               <div className="ehero-badges">
-                <span className="ehero-badge sport" style={{ color: sportColor }}>
+                <span
+                  className="ehero-badge sport"
+                  style={{ color: sportColor }}
+                >
                   {sportLabel(ev.sport_type)}
                 </span>
                 <span className="ehero-badge">
@@ -259,11 +327,15 @@ function PublicEventView() {
                       width: 7,
                       height: 7,
                       borderRadius: "50%",
-                      background: ev.registration_is_open ? "#22D3A7" : "rgba(255,255,255,0.6)",
+                      background: ev.registration_is_open
+                        ? "#22D3A7"
+                        : "rgba(255,255,255,0.6)",
                       display: "inline-block",
                     }}
                   />
-                  {ev.registration_is_open ? "Pendaftaran Dibuka" : EVENT_STATUS_LABELS[ev.status]}
+                  {ev.registration_is_open
+                    ? "Pendaftaran Dibuka"
+                    : EVENT_STATUS_LABELS[ev.status]}
                 </span>
               </div>
 
@@ -291,17 +363,26 @@ function PublicEventView() {
               {showHeroCta && (
                 <div className="ehero-cta">
                   {ev.registration_is_open && (
-                    <Link href={registerHref} className="btn btn-primary btn-lg">
+                    <Link
+                      href={registerHref}
+                      className="btn btn-primary btn-lg"
+                    >
                       Daftar Tim Sekarang
                     </Link>
                   )}
                   {showRegistrationClosed && (
-                    <span className="ehero-badge" style={{ height: 44, paddingInline: 20 }}>
+                    <span
+                      className="ehero-badge"
+                      style={{ height: 44, paddingInline: 20 }}
+                    >
                       Pendaftaran ditutup
                     </span>
                   )}
                   {ev.tickets_on_sale && (
-                    <Link href={`${base}/tickets`} className="btn btn-secondary btn-lg">
+                    <Link
+                      href={`${base}/tickets`}
+                      className="btn btn-secondary btn-lg"
+                    >
                       Beli Tiket
                     </Link>
                   )}
@@ -319,7 +400,9 @@ function PublicEventView() {
             items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
             activeKey={activeTab}
             // Info adalah default, jadi ia tidak perlu ditulis ke URL.
-            onSelect={(key) => setParams({ tab: key === "info" ? undefined : key })}
+            onSelect={(key) =>
+              setParams({ tab: key === "info" ? undefined : key })
+            }
           />
         </div>
       </section>
@@ -351,7 +434,10 @@ function PublicEventView() {
                     Tentang Event
                   </h2>
                 </div>
-                <p className="section-sub" style={{ whiteSpace: "pre-line", margin: 0 }}>
+                <p
+                  className="section-sub"
+                  style={{ whiteSpace: "pre-line", margin: 0 }}
+                >
                   {ev.description || "Belum ada deskripsi untuk event ini."}
                 </p>
 
@@ -379,7 +465,9 @@ function PublicEventView() {
                         <small>{formatLabel(c.tournament_format)}</small>
                       </div>
                       <span className="amt" style={{ fontSize: 14 }}>
-                        {c.registration_fee > 0 ? rupiah(c.registration_fee) : "Gratis"}
+                        {c.registration_fee > 0
+                          ? rupiah(c.registration_fee)
+                          : "Gratis"}
                       </span>
                     </div>
                   ))}
@@ -395,16 +483,32 @@ function PublicEventView() {
                     </h3>
                     {ev.registration_is_open ? (
                       <>
-                        <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
-                          Pendaftaran tim sedang dibuka. Amankan slot timmu sekarang.
+                        <p
+                          style={{
+                            fontSize: 14,
+                            color: "var(--text-muted)",
+                            marginBottom: 16,
+                          }}
+                        >
+                          Pendaftaran tim sedang dibuka. Amankan slot timmu
+                          sekarang.
                         </p>
-                        <Link href={registerHref} className="btn btn-primary btn-block">
+                        <Link
+                          href={registerHref}
+                          className="btn btn-primary btn-block"
+                        >
                           <Trophy className="h-4 w-4" />
                           Daftar Tim
                         </Link>
                       </>
                     ) : (
-                      <p style={{ fontSize: 14, color: "var(--text-muted)", margin: 0 }}>
+                      <p
+                        style={{
+                          fontSize: 14,
+                          color: "var(--text-muted)",
+                          margin: 0,
+                        }}
+                      >
                         Pendaftaran untuk event ini sedang ditutup.
                       </p>
                     )}
@@ -417,10 +521,20 @@ function PublicEventView() {
                       <Ticket />
                       Tiket Penonton
                     </h3>
-                    <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 16 }}>
-                      Tiket digital tersedia. Beli sekarang dan masuk dengan QR Code.
+                    <p
+                      style={{
+                        fontSize: 14,
+                        color: "var(--text-muted)",
+                        marginBottom: 16,
+                      }}
+                    >
+                      Tiket digital tersedia. Beli sekarang dan masuk dengan QR
+                      Code.
                     </p>
-                    <Link href={`${base}/tickets`} className="btn btn-primary btn-block">
+                    <Link
+                      href={`${base}/tickets`}
+                      className="btn btn-primary btn-block"
+                    >
                       <Ticket className="h-4 w-4" />
                       Beli Tiket
                     </Link>
@@ -447,7 +561,9 @@ function PublicEventView() {
                       over the ml-auto. The count follows the search so it never
                       promises more teams than the grid below actually shows. */}
                   <span className="pill ml-0!">
-                    {teamSearch.trim() ? `${shownTeams.length} dari ${allTeams.length} tim` : `${allTeams.length} tim`}
+                    {teamSearch.trim()
+                      ? `${shownTeams.length} dari ${allTeams.length} tim`
+                      : `${allTeams.length} tim`}
                   </span>
                   <div className="relative w-full sm:ml-auto sm:w-64">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -489,23 +605,39 @@ function PublicEventView() {
                         src={t.logo_url}
                         alt={t.name}
                         className="object-cover"
-                        style={{ width: 40, height: 40, borderRadius: 10, border: "1px solid var(--border)" }}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: "1px solid var(--border)",
+                        }}
                       />
                     ) : (
-                      <span className="crest" style={{ width: 40, height: 40, borderRadius: 10, background: crestGradient(t.name) }} />
+                      <span
+                        className="crest"
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          background: crestGradient(t.name),
+                        }}
+                      />
                     )}
                     <div className="min-w-0">
                       <div className="match-team" style={{ gap: 0 }}>
                         <span className="truncate">{t.name}</span>
                       </div>
                     </div>
-                    <span className="pill shrink-0">{t.players?.length ?? 0} pemain</span>
+                    <span className="pill shrink-0">
+                      {t.players?.length ?? 0} pemain
+                    </span>
                   </button>
                 ))}
               </div>
             ) : teamSearch.trim() ? (
               <p className="section-sub" style={{ margin: 0 }}>
-                Tidak ada tim atau pemain yang cocok dengan “{teamSearch.trim()}”.
+                Tidak ada tim atau pemain yang cocok dengan “{teamSearch.trim()}
+                ”.
               </p>
             ) : (
               <p className="section-sub" style={{ margin: 0 }}>
@@ -536,9 +668,14 @@ function PublicEventView() {
                     ...(activeTab === "schedule"
                       ? [{ key: ALL_CATEGORIES, label: "Semua" }]
                       : []),
-                    ...tabCategories.map((c) => ({ key: c.slug, label: c.name })),
+                    ...tabCategories.map((c) => ({
+                      key: c.slug,
+                      label: c.name,
+                    })),
                   ]}
-                  activeKey={isAll ? ALL_CATEGORIES : (selectedCategory?.slug ?? "")}
+                  activeKey={
+                    isAll ? ALL_CATEGORIES : (selectedCategory?.slug ?? "")
+                  }
                   onSelect={(key) => {
                     if (key !== ALL_CATEGORIES) setLastCategorySlug(key);
                     setParams({ category: key });
@@ -575,7 +712,13 @@ function PublicEventView() {
       {/* ===== SPONSORS & PARTNERS ===== */}
       {/* Lifted out of the Info tab so it shows on every tab, above the CTA. */}
       {ev.sponsors && ev.sponsors.length > 0 && (
-        <section className="section" style={{ paddingTop: 0, paddingBottom: ev.registration_is_open ? 48 : undefined }}>
+        <section
+          className="section"
+          style={{
+            paddingTop: 0,
+            paddingBottom: ev.registration_is_open ? 48 : undefined,
+          }}
+        >
           <div className="container">
             <SponsorStrip sponsors={ev.sponsors} />
           </div>
@@ -588,7 +731,10 @@ function PublicEventView() {
           <div className="container">
             <div className="ereg">
               <h2>Siap bertanding di {ev.name}?</h2>
-              <p>Daftarkan timmu, lengkapi data pemain, dan ikuti keseruan turnamennya.</p>
+              <p>
+                Daftarkan timmu, lengkapi data pemain, dan ikuti keseruan
+                turnamennya.
+              </p>
               <div className="ehero-cta">
                 <Link href={registerHref} className="btn btn-primary btn-lg">
                   Daftar Tim Sekarang
@@ -600,13 +746,14 @@ function PublicEventView() {
       )}
 
       {/* ===== FOOTER ===== */}
-      <footer className="footer">
+      <footer className="footer !py-7">
         <div className="container">
-          <div className="footer-bottom" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-            <Link href={homeUrl} className="logo">
-              flo<span>-event</span>
-            </Link>
-            <span>Halaman event ini dibuat dengan flo-event · © 2026</span>
+          <div
+            className="footer-bottom"
+            style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+          >
+            <Logo href={homeUrl} />
+            <span>Halaman event ini dibuat dengan floevent · © 2026</span>
           </div>
         </div>
       </footer>
