@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { MatchConfirmBar } from "./match-confirm-bar";
 import { MatchDisciplineNotice } from "./match-discipline-notice";
 import { MatchLineupSheetButton } from "./match-lineup-sheet-button";
+import { MatchReportButton } from "./match-report-button";
 import { MatchStatusActions } from "./match-status-actions";
 import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
@@ -74,6 +75,18 @@ export function MatchCardHeader({
           {match.home_team_id && match.away_team_id && (
             <MatchLineupSheetButton orgId={orgId} matchId={match.id} />
           )}
+          {/*
+            And once there is a result, the report of it. Not the print gate
+            either — the server refuses until the fixture is finished with a
+            scoreline — but the same kind of condition as the line above: an
+            unplayed fixture has nothing to report, so offering the button would
+            be offering a refusal.
+          */}
+          {match.status === "finished" &&
+            match.home_score !== null &&
+            match.away_score !== null && (
+              <MatchReportButton orgId={orgId} matchId={match.id} />
+            )}
           {/* Renders nothing until the match is finished with a scoreline. */}
           <MatchConfirmBar orgId={orgId} eventId={eventId} match={match} />
           <MatchStatusActions orgId={orgId} eventId={eventId} match={match} knockout={knockout} />

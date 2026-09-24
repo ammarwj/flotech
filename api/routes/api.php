@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\IdCardTemplateController;
 use App\Http\Controllers\Api\LineupApprovalController;
 use App\Http\Controllers\Api\LineupSheetController;
 use App\Http\Controllers\Api\MatchController;
+use App\Http\Controllers\Api\MatchReportController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\MyTeamMatchController;
 use App\Http\Controllers\Api\OfficiatingController;
@@ -269,6 +270,10 @@ Route::prefix('v1')->group(function () {
                     // signed off *both* sides; the organizer's twin below is the
                     // same action, so the gate is written once.
                     Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
+                    // The report filed once the fixture is over. Its twin on the
+                    // organizer's side below is the same action, so "selesai dan
+                    // ada skornya" is written once.
+                    Route::get('matches/{match}/report', [MatchReportController::class, 'download']);
                 });
 
                 // The referee's half. Same stacking, same reason: `event.personnel`
@@ -421,6 +426,10 @@ Route::prefix('v1')->group(function () {
             // for the same reason the discipline read is — the operator running
             // the table is exactly who needs it.
             Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
+            // Twin of the staff route, same controller, same gate. Outside
+            // `org.admin` for the reason the sheet and the discipline read are:
+            // the operator running the table is exactly who prints this.
+            Route::get('matches/{match}/report', [MatchReportController::class, 'download']);
 
             // Partai of a squad tie (badminton beregu & co). The tie's scoreline
             // is rolled up from these, never posted to matches/{match} directly.

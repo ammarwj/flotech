@@ -177,6 +177,36 @@ export async function downloadOfficiatingLineupSheet(
   }
 }
 
+/**
+ * Laporan pertandingan — the staff's twin of the organizer's route.
+ *
+ * One controller, one gate, and it is a different gate from the sheet above:
+ * that one waits for the referee's approval, this one waits for the result. The
+ * server refuses (422) until the fixture is finished with a scoreline, and that
+ * rule is not mirrored here for the reason already written above.
+ */
+export async function downloadOfficiatingMatchReport(
+  eventId: string,
+  matchId: string,
+): Promise<void> {
+  try {
+    const response = await apiClient.get<Blob>(
+      `/officiating/events/${eventId}/matches/${matchId}/report`,
+      { responseType: "blob" },
+    );
+
+    downloadBlob(
+      response.data,
+      fileNameFromDisposition(
+        response.headers["content-disposition"],
+        "laporan-pertandingan.pdf",
+      ),
+    );
+  } catch (err) {
+    throw await unpackBlobError(err);
+  }
+}
+
 // ---- Referee: approving the team sheets ----
 
 export async function getMatchLineups(

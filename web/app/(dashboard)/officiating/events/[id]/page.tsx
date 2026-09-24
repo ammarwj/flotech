@@ -4,11 +4,12 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CalendarClock, ClipboardCheck, Goal, Printer } from "lucide-react";
+import { CalendarClock, ClipboardCheck, FileText, Goal, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   downloadOfficiatingLineupSheet,
+  downloadOfficiatingMatchReport,
   getOfficiatingDiscipline,
   getOfficiatingEvent,
   getOfficiatingMatches,
@@ -355,6 +356,14 @@ function CrewMatchCard({
     onError: (err) =>
       toast.error(parseApiError(err, "Gagal mengunduh susunan pemain.").message),
   });
+  // The other document, on the other side of kickoff: the sheet above is signed
+  // before the match, this is filed after it. Its gate is the server's too, and
+  // a different one — finished with a scoreline, not approved by the referee.
+  const report = useMutation({
+    mutationFn: () => downloadOfficiatingMatchReport(eventId, m.id),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengunduh laporan pertandingan.").message),
+  });
   const time = timeOf(m.scheduled_at, tz);
   const live = m.status === "ongoing";
   const hasScore = m.home_score !== null && m.away_score !== null;
@@ -523,6 +532,26 @@ function CrewMatchCard({
           >
             <Printer className="h-4 w-4" />
             {sheet.isPending ? "Menyiapkan…" : "Cetak susunan pemain"}
+          </Button>
+        </div>
+      )}
+
+      {/* The report of a result, so it waits for one. That is not the server's
+          gate being mirrored — it refuses (422) on the same condition and says
+          why — it is `done` meaning there is nothing to report yet, the same
+          way the sheet button waits for both teams to be seated. Offered to
+          whoever may see the fixture: a referee who scored nothing still wants
+          the sheet they signed off. */}
+      {done && (
+        <div className="mt-3 flex justify-end border-t border-border pt-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => report.mutate()}
+            disabled={report.isPending}
+          >
+            <FileText className="h-4 w-4" />
+            {report.isPending ? "Menyiapkan…" : "Laporan pertandingan"}
           </Button>
         </div>
       )}

@@ -9,12 +9,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use Intervention\Image\Drivers\Gd\Driver as GdDriver;
-use Intervention\Image\Encoders\JpegEncoder;
-use Intervention\Image\ImageManager;
-use Throwable;
 
 /**
  * Renders the printable "player album" — one page per team, laid out as the
@@ -45,7 +40,7 @@ class TeamAlbumService
         'address' => ['alamat', 'address', 'domisili'],
     ];
 
-    public function __construct(protected R2StorageService $r2) {}
+    public function __construct(protected PdfImageService $images) {}
 
     /**
      * The dompdf builder for one or more teams' album. Each team after the
@@ -75,7 +70,7 @@ class TeamAlbumService
         // and both cost a fetch/re-encode — resolve them once per PDF, not
         // once per team.
         $shared = [
-            'organizer_logo' => $this->photoDataUri($event->organization?->logo_url),
+            'organizer_logo' => $this->images->dataUri($event->organization?->logo_url),
             'venue' => $this->venue($event),
             'sport_label' => Catalog::sport($event->sport_type)['name'] ?? null,
         ];
@@ -99,7 +94,7 @@ class TeamAlbumService
 
         return [
             'name' => $team->name,
-            'logo' => $this->photoDataUri($team->logo_url),
+            'logo' => $this->images->dataUri($team->logo_url),
             'organizer_logo' => $shared['organizer_logo'],
             'venue' => $shared['venue'],
             'category' => $team->category?->name,
@@ -112,7 +107,7 @@ class TeamAlbumService
                     $player->date_of_birth,
                 ),
                 'address' => $this->answer($form->playerFields, $player->custom_fields, 'address'),
-                'photo' => $this->photoDataUri($player->photo_url, 'photo'),
+                'photo' => $this->images->dataUri($player->photo_url, 'photo'),
             ])->all(),
             'officials' => $team->officials->map(fn ($official) => [
                 'name' => $official->full_name,
@@ -122,7 +117,7 @@ class TeamAlbumService
                     null,
                 ),
                 'address' => $this->answer($form->officialFields, $official->custom_fields, 'address'),
-                'photo' => $this->photoDataUri($official->photo_url, 'photo'),
+                'photo' => $this->images->dataUri($official->photo_url, 'photo'),
             ])->all(),
         ];
     }
@@ -184,73 +179,5 @@ class TeamAlbumService
         }
 
         return '';
-    }
-
-    /**
-     * A stored photo inlined as a small JPEG data-URI, or null when there is
-     * none / it can't be fetched. Re-encoded (not passed through) for two
-     * reasons, both copied from CertificateService::backgroundDataUri(): our
-     * uploads land as WebP and dompdf cannot draw WebP, and inlining spares
-     * dompdf a remote fetch per photo.
-     *
-     * Both shapes normalize the aspect ratio here rather than in CSS, because
-     * dompdf honours neither `object-fit` nor `max-height`: whatever ratio
-     * arrives is what gets stretched into the box in the stylesheet.
-     *
-     *  - `photo` crops to the 3x4 the sheet's photo box is drawn at, so a
-     *    square-ish selfie is trimmed instead of squashed.
-     *  - `logo` is padded onto a square canvas instead, since cropping a crest
-     *    would cut it. The padding is white, which is also what a transparent
-     *    PNG flattens to on the way into a JPEG, so it is invisible on the
-     *    page — and it is what lets the masthead keep a fixed height no matter
-     *    how tall or wide the uploaded logo is.
-     */
-    protected function photoDataUri(?string $url, string $shape = 'logo'): ?string
-    {
-        if (! $url) {
-            return null;
-        }
-
-        $bytes = $this->fetchBytes($url);
-
-        if ($bytes === null) {
-            return null;
-        }
-
-        try {
-            $image = (new ImageManager(new GdDriver))->decodeBinary($bytes);
-
-            $image = $shape === 'photo'
-                ? $image->cover(300, 400)
-                : $image->contain(400, 400, background: 'ffffff');
-
-            $jpeg = (string) $image->encode(new JpegEncoder(quality: 82));
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
-
-        return 'data:image/jpeg;base64,'.base64_encode($jpeg);
-    }
-
-    /** Copied from CertificateService::fetchBytes() — see that docblock. */
-    protected function fetchBytes(string $url): ?string
-    {
-        $publicBase = rtrim((string) config('r2.public_url'), '/');
-
-        try {
-            if ($publicBase !== '' && str_starts_with($url, $publicBase.'/')) {
-                return $this->r2->disk()->get(ltrim(Str::after($url, $publicBase), '/'));
-            }
-
-            $response = Http::timeout(15)->get($url);
-
-            return $response->successful() ? $response->body() : null;
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
     }
 }

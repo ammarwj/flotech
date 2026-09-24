@@ -459,6 +459,33 @@ export async function downloadLineupSheet(orgId: string, matchId: string): Promi
   }
 }
 
+/**
+ * Laporan pertandingan — the sheet filed once a fixture is over.
+ *
+ * A different gate from the team sheet above, and deliberately so: that one
+ * waits for the referee, this one waits for the result. The server refuses
+ * (422) until the match is finished with a scoreline, and — as everywhere else
+ * — the rule has no copy on this side.
+ *
+ * Through apiClient with `responseType: "blob"` for the reason written above:
+ * the access token lives in memory, so a plain `<a href>` would 401.
+ */
+export async function downloadMatchReport(orgId: string, matchId: string): Promise<void> {
+  try {
+    const response = await apiClient.get<Blob>(
+      `/organizations/${orgId}/matches/${matchId}/report`,
+      { responseType: "blob" }
+    );
+
+    downloadBlob(
+      response.data,
+      fileNameFromDisposition(response.headers["content-disposition"], "laporan-pertandingan.pdf")
+    );
+  } catch (err) {
+    throw await unpackBlobError(err);
+  }
+}
+
 // ---- Public ----
 
 export async function getPublicMatches(
