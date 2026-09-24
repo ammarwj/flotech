@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\Organization;
+use App\Models\Sport;
+use App\Models\SportPosition;
 use App\Models\User;
+use App\Services\Catalog;
 use App\Services\EventPersonnelService;
 use App\Services\MatchReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -248,15 +251,17 @@ class MatchReportTest extends TestCase
         $this->assertStringContainsString('Away FC', $html);
         $this->assertStringContainsString('Home Striker', $html);
         $this->assertStringContainsString('Away Keeper', $html);
-        // Positions and official roles print as their catalog labels, not keys.
-        $this->assertStringContainsString('Penyerang', $html);
+        // Official roles print as their catalog labels, not keys. Positions
+        // print as codes now, so their labels live in the legend — asserted in
+        // its own test below, where the code and its expansion are compared.
         $this->assertStringContainsString('Pelatih Kepala', $html);
         $this->assertStringNotContainsString('head_coach', $html);
+        $this->assertStringNotContainsString('forward', $html);
         // The venue falls back to the event's when the fixture has none.
         $this->assertStringContainsString('Lapangan Stamina', $html);
         // The blank cells the schema cannot answer are printed, not dropped:
         // that is the whole reason this sheet is worth handing to a panitia.
-        foreach (['Cuaca', 'Temperatur', 'Penonton', 'Warna kostum', 'Catatan wasit'] as $heading) {
+        foreach (['NP', 'Cuaca', 'Temperatur', 'Penonton', 'Warna kostum', 'Catatan wasit'] as $heading) {
             $this->assertStringContainsString($heading, $html);
         }
 
@@ -311,7 +316,7 @@ class MatchReportTest extends TestCase
         $this->assertStringContainsString('Lainnya', $after);
     }
 
-    public function test_a_shootout_prints_as_a_filled_period_row_and_a_normal_win_does_not(): void
+    public function test_the_penalty_row_is_filled_only_by_a_shootout_and_extra_time_never_is(): void
     {
         Notification::fake();
 
@@ -346,20 +351,69 @@ class MatchReportTest extends TestCase
         $plain = $service->html(GameMatch::findOrFail($scene['match']));
         $shootout = $service->html(GameMatch::findOrFail($decider));
 
-        // Both sheets carry the ruled half-time rows — a goal-based sport stores
-        // no half-time score, so they are printed empty for the panitia.
+        // Both sheets carry every row of the period table — a goal-based sport
+        // stores no half-time and no extra-time score, so those print empty and
+        // ruled for the panitia, which is what the paper form has too.
         foreach ([$plain, $shootout] as $html) {
-            $this->assertStringContainsString('Babak 1', $html);
-            $this->assertStringContainsString('Babak 2', $html);
+            foreach (['Babak 1', 'Babak 2', 'Extra Time', 'Penalty'] as $label) {
+                $this->assertStringContainsString($label, $html);
+            }
         }
 
-        // Only the one that went to penalties prints the row, and it prints the
-        // stored numbers. Asserting its presence alone would pass on a template
-        // that printed the heading for every match.
-        $this->assertStringContainsString('Adu penalti', $shootout);
-        $this->assertStringContainsString('>4<', $this->rowFor($shootout, 'Adu penalti'));
-        $this->assertStringContainsString('>3<', $this->rowFor($shootout, 'Adu penalti'));
-        $this->assertStringNotContainsString('Adu penalti', $plain);
+        // The rows are always there; what differs is whether they are filled.
+        // Asserting 4-3 on the shootout alone would stay green on a template
+        // that filled every row from the same place, so the pair is compared:
+        // Penalty carries the stored numbers, Extra Time stays a blank box on
+        // the very same sheet.
+        $penalty = $this->rowFor($shootout, 'Penalty');
+        $this->assertStringContainsString('>4<', $penalty);
+        $this->assertStringContainsString('>3<', $penalty);
+        $this->assertStringNotContainsString('>4<', $this->rowFor($shootout, 'Extra Time'));
+
+        // And a match that never went to penalties prints the row empty rather
+        // than inventing a number for it.
+        $this->assertStringNotContainsString('>4<', $this->rowFor($plain, 'Penalty'));
+        $this->assertStringNotContainsString('>3<', $this->rowFor($plain, 'Penalty'));
+    }
+
+    public function test_positions_print_as_codes_with_a_legend_and_fall_back_to_labels_when_the_codes_collide(): void
+    {
+        Notification::fake();
+
+        $scene = $this->scene();
+        $this->finish($scene);
+
+        $match = GameMatch::findOrFail($scene['match']);
+        $service = app(MatchReportService::class);
+
+        // Football's labels give distinct initials, so the POS column is a code
+        // and the legend under the squads expands it.
+        $coded = $service->html($match);
+
+        $this->assertStringContainsString('>P<', $this->rowFor($coded, 'Home Striker'));
+        $this->assertStringContainsString('P = Penyerang', $coded);
+        $this->assertStringContainsString('K = Kiper', $coded);
+        // Only the positions somebody actually plays. Bek Sayap is in the
+        // catalogue and in nobody's squad, so it has no business on the page.
+        $this->assertStringNotContainsString('Bek Sayap', $coded);
+
+        // Rename one label so two positions would derive the same letter. The
+        // map is abandoned wholesale rather than merging them: a POS column
+        // where K means two different things is worse than a wide one, because
+        // the reader cannot tell it happened.
+        $sport = Sport::where('slug', $scene['event']->sport_type)->firstOrFail();
+        SportPosition::where('sport_id', $sport->id)
+            ->where('position_key', 'forward')
+            ->update(['label' => 'Kedua']);
+        Catalog::flush();
+
+        $collided = $service->html($match->fresh());
+
+        $this->assertStringContainsString('Kedua', $this->rowFor($collided, 'Home Striker'));
+        $this->assertStringContainsString('Kiper', $this->rowFor($collided, 'Home Keeper'));
+        // No legend either — the rows carry full labels, so there is nothing
+        // left to expand.
+        $this->assertStringNotContainsString('K = ', $collided);
     }
 
     /** The table row a name sits in — everything between its `<tr>` and `</tr>`. */

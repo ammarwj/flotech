@@ -117,14 +117,18 @@ class MatchReportService
             'organizerLogo' => $this->images->dataUri($event->organization?->logo_url),
             'sportLabel' => Catalog::sport($sport)['name'] ?? null,
             'phase' => $this->phase($match),
-            'dateLabel' => $kickoff?->locale('id')->translatedFormat('l, d F Y') ?? 'Belum dijadwalkan',
-            // The zone's own abbreviation, not a hardcoded "WIB": an event in
+            // Date and kickoff in one cell, the way the form has them. The
+            // zone's own abbreviation, not a hardcoded "WIB": an event in
             // Makassar prints WITA, which is what the paper form carries too.
-            'kickoffLabel' => $kickoff ? $kickoff->format('H:i').' '.$kickoff->format('T') : null,
+            'scheduleLabel' => $kickoff
+                ? $kickoff->locale('id')->translatedFormat('d F Y').', '.$kickoff->format('H:i').' '.$kickoff->format('T')
+                : 'Belum dijadwalkan',
             'venue' => $match->venue ?: $event->location_name,
-            'durationLabel' => ($minutes = Catalog::sport($sport)['default_match_minutes'] ?? null)
-                ? $minutes.' menit'
-                : null,
+            // Just the number: the column reads "Durasi (menit)" and the two
+            // boxes beside it are the extra-time halves, so "90 menit ( ) ( )"
+            // wrapped to two lines and said "menit" about boxes that are not
+            // necessarily minutes of anything yet.
+            'durationLabel' => Catalog::sport($sport)['default_match_minutes'] ?? null,
             'periods' => $this->periods($match),
             'rubbers' => $this->rubbers($match),
             'columns' => $columns,
