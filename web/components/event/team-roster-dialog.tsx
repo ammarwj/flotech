@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Layers, UserCog, Users, X } from "lucide-react";
+import { Info, Layers, UserCog, Users, X } from "lucide-react";
 
 import { getPublicLeaderboard } from "@/lib/api/matches";
 import { crestGradient } from "@/lib/bracket";
@@ -28,6 +28,22 @@ function photoOf(url: string | null | undefined) {
   return url && /^https?:\/\//.test(url) ? url : null;
 }
 
+/**
+ * Everything published about one person, as the detail layer shows it.
+ *
+ * Assembled by the card that was clicked rather than at the two call sites, so
+ * the roster and the bench cannot drift on what a detail contains.
+ */
+type PersonDetail = {
+  name: string;
+  photo: string | null;
+  badge: string | null;
+  role: string | null;
+  answers: PublicAnswer[];
+  stats?: Record<string, number>;
+  columns: StatColumn[];
+};
+
 export function TeamRosterDialog({
   team,
   sport,
@@ -50,31 +66,31 @@ export function TeamRosterDialog({
   onClose: () => void;
 }) {
   const { positionLabel, officialRoleLabel, sport: sportDef } = useCatalog();
-  const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
+  const [detail, setDetail] = useState<PersonDetail | null>(null);
 
   // No shirt numbers in the racket family, so the slot in front of the name
   // holds the player's initial instead of a dash for every row.
   const squadFields = usesSquadFields(sportDef(sport));
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // The photo viewer sits on top of this dialog, so Escape peels the layers
-      // one at a time — otherwise enlarging a photo becomes a way to lose the
-      // roster behind it.
-      setZoom((z) => {
-        if (z) return null;
-        onClose();
-        return null;
-      });
-    };
-    document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Two layers, and Escape peels exactly one: the detail first, the roster
+      // only once nothing sits on top of it. Closing both would turn opening a
+      // player into a way to lose the squad behind them.
+      if (detail) setDetail(null);
+      else onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [detail, onClose]);
 
   const players = team.players ?? [];
   const officials = team.officials ?? [];
@@ -205,7 +221,7 @@ export function TeamRosterDialog({
                     stats={p.id ? statsById.get(p.id) : undefined}
                     columns={columns}
                     answers={p.custom_fields ?? []}
-                    onZoom={setZoom}
+                    onDetail={setDetail}
                   />
                 ))}
               </ul>
@@ -232,7 +248,7 @@ export function TeamRosterDialog({
                     role={o.role ? officialRoleLabel(sport, o.role) : null}
                     columns={[]}
                     answers={o.custom_fields ?? []}
-                    onZoom={setZoom}
+                    onDetail={setDetail}
                   />
                 ))}
               </ul>
@@ -241,36 +257,11 @@ export function TeamRosterDialog({
         </div>
       </div>
 
-      {zoom && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/85 p-4"
-          onClick={(e) => {
-            // Stops the backdrop underneath from closing the roster too: a
-            // click meant to dismiss the photo would otherwise dismiss both.
-            e.stopPropagation();
-            setZoom(null);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Foto ${zoom.name}`}
-        >
-          <button
-            onClick={() => setZoom(null)}
-            aria-label="Tutup foto"
-            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-md bg-white/10 text-white hover:bg-white/20"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoom.src}
-            alt={zoom.name}
-            className="max-h-[85vh] max-w-full rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <p className="mt-3 text-center text-sm text-white/80">{zoom.name}</p>
-        </div>
-      )}
+      {/* One person, in full: the photo at the size clicking it used to give,
+          with what was published about them beside it. A single layer, so
+          there is never a second modal to dismiss. */}
+      {detail && <PersonDetailSheet person={detail} onClose={() => setDetail(null)} />}
+
     </div>
   );
 }
@@ -291,7 +282,7 @@ function PersonCard({
   stats,
   columns,
   answers,
-  onZoom,
+  onDetail,
 }: {
   name: string;
   photo: string | null;
@@ -306,13 +297,23 @@ function PersonCard({
    * Answers to the registration fields the organizer marked public, already
    * filtered and labelled by the API. Nothing is decided here — an empty list
    * means this event publishes none, and that is the common case.
+   *
+   * Not rendered on the card: an answer can be an address, and a grid four
+   * cards wide has no room for one. The card offers a way in instead.
    */
   answers: PublicAnswer[];
-  onZoom: (photo: { src: string; name: string }) => void;
+  onDetail: (person: PersonDetail) => void;
 }) {
   // Only the stat kinds this player actually recorded — a row of zeroes says
   // nothing, and most of a roster has never been booked.
   const scored = columns.filter((c) => (stats?.[c.key] ?? 0) > 0);
+
+  const open = () => onDetail({ name, photo, badge, role, answers, stats, columns });
+
+  // Whether the detail layer would say anything the card does not. Both doors
+  // into it are gated on this one answer, so the photo and the button can
+  // never disagree about whether there is a detail to open.
+  const hasDetail = !!photo || answers.length > 0;
 
   const portrait = (
     <>
@@ -350,13 +351,15 @@ function PersonCard({
 
   return (
     <li className="overflow-hidden rounded-xl border border-border bg-[var(--surface)]">
-      {/* Only an uploaded photo is clickable: an initials tile has nothing to
-          enlarge, and a button around it would promise one. */}
-      {photo ? (
+      {/* Clickable when the detail would hold something this card does not
+          already show — a photo to enlarge, or a published answer. Someone
+          with neither gets a plain tile, because a button around it would
+          promise a layer repeating the two lines underneath it. */}
+      {hasDetail ? (
         <button
           type="button"
-          onClick={() => onZoom({ src: photo, name })}
-          aria-label={`Perbesar foto ${name}`}
+          onClick={open}
+          aria-label={`Lihat detail ${name}`}
           className="group relative block aspect-[3/4] w-full overflow-hidden bg-[var(--surface-2)]"
         >
           {portrait}
@@ -375,23 +378,18 @@ function PersonCard({
           {role ?? "—"}
         </p>
 
-        {/* Label above value, not "Label: value" on one line — an answer can be
-            an address, and a card this narrow would truncate it into nothing. */}
-        {answers.length > 0 && (
-          <dl className="mt-2 grid gap-1.5 border-t border-border pt-2">
-            {answers.map((a) => (
-              <div key={a.key}>
-                <dt
-                  className="truncate text-[11px] uppercase tracking-wide"
-                  style={{ color: "var(--text-muted)" }}
-                  title={a.label}
-                >
-                  {a.label}
-                </dt>
-                <dd className="break-words text-xs font-medium">{a.value}</dd>
-              </div>
-            ))}
-          </dl>
+        {/* The same layer the portrait opens — spelled out for anyone who
+            would not think to click a photo, and for keyboard users, who get
+            a labelled control rather than an image. */}
+        {hasDetail && (
+          <button
+            type="button"
+            onClick={open}
+            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-2 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--surface-2)]"
+          >
+            <Info className="h-3.5 w-3.5" />
+            Lihat detail
+          </button>
         )}
 
         {scored.length > 0 && (
@@ -428,5 +426,141 @@ function PersonCard({
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * One person in full: the portrait large, and every answer the organizer
+ * published, at the length it was actually written.
+ *
+ * This is also where an enlarged photo now lives. It used to be a third layer
+ * of its own, which meant clicking a face and pressing "Lihat detail" opened
+ * two different things stacked on the same roster — so the photo is simply
+ * shown big here, and there is one layer to dismiss instead of two.
+ *
+ * A layer rather than an expanding card, because the answers are what the grid
+ * has no room for: growing a cell reflows the three rows below it, and the
+ * stat pills would end up further from the photo the longer someone's address
+ * happens to be.
+ */
+function PersonDetailSheet({
+  person,
+  onClose,
+}: {
+  person: PersonDetail;
+  onClose: () => void;
+}) {
+  const { name, photo, badge, role, answers, stats, columns } = person;
+  const scored = columns.filter((c) => (stats?.[c.key] ?? 0) > 0);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Detail ${name}`}
+      // Stops the roster backdrop underneath from closing too: one click meant
+      // to dismiss this person would otherwise dismiss their squad as well.
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+      className="fixed inset-0 z-[55] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-[var(--surface)] shadow-xl sm:max-h-[85vh] sm:rounded-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border p-4">
+          <div className="min-w-0">
+            <h4 className="truncate text-base font-bold">{name}</h4>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {badge && <span className="pill tabular-nums">{badge}</span>}
+              {role && <span className="pill">{role}</span>}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Tutup detail"
+            className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-[var(--surface-2)] hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Photo beside the answers once there is width for both, stacked on a
+            phone. The portrait keeps its 3:4 rather than filling the panel:
+            these are the passport-style photos entrants upload, and a face
+            stretched to a wide box is worse than a small one. */}
+        <div className="overflow-y-auto p-4 sm:grid sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] sm:gap-5">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={photo}
+              alt={name}
+              className="mx-auto aspect-[3/4] w-48 rounded-xl border border-border object-cover sm:mx-0 sm:w-full"
+            />
+          ) : (
+            <span
+              className="mx-auto grid aspect-[3/4] w-48 place-items-center rounded-xl text-4xl font-extrabold text-white/90 sm:mx-0 sm:w-full"
+              style={{ background: crestGradient(name), fontFamily: "var(--font-display)" }}
+              aria-hidden
+            >
+              {initials(name)}
+            </span>
+          )}
+
+          <div className="mt-4 min-w-0 sm:mt-0">
+            {/* Label above value, not "Label: value" on one line — an answer
+                can run to a full address, and wrapping it under its own label
+                keeps the two readable as a pair. */}
+            <dl className="grid gap-3">
+              {answers.map((a) => (
+                <div key={a.key} className="rounded-lg border border-border bg-[var(--surface-2)] p-3">
+                  <dt
+                    className="text-[11px] uppercase tracking-wide"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    {a.label}
+                  </dt>
+                  <dd className="mt-0.5 break-words text-sm font-medium">{a.value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {scored.length > 0 && (
+              <div className="mt-4 border-t border-border pt-4">
+                <p
+                  className="mb-2 text-[11px] uppercase tracking-wide"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Statistik turnamen
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {scored.map((c) => {
+                    const v = stats![c.key];
+                    const icon = statIcon(c.key);
+                    return (
+                      <span key={c.key} className="pill" title={c.label} aria-label={`${v} ${c.label}`}>
+                        {v}
+                        {icon ? (
+                          <icon.Icon
+                            className="h-3.5 w-3.5 shrink-0"
+                            style={{ color: icon.color }}
+                            fill={icon.filled ? "currentColor" : "none"}
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          c.short
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
