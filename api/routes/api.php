@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\TeamAlbumController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
+use App\Http\Controllers\Api\TicketPosterController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
@@ -446,6 +447,12 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/ticket-categories', [TicketCategoryController::class, 'store']);
             Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
+            // Printable QR poster pointing at the public ticket shop — taped up
+            // at the venue. Plain `tenant`, no org.admin: it carries no buyer
+            // data and moves no money, and the operator at the gate is who
+            // reprints one that fell off. Gated on `qr_tickets` in the
+            // controller, like the category routes above.
+            Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
 
