@@ -209,12 +209,20 @@
 .sb-clock {
   display: flex;
   align-items: baseline;
+  margin-top: clamp(2px, 0.6vh, 10px);
   font-family: var(--font-display);
-  font-weight: 800;
+  /*
+   * Lebih ringan dan lebih redup daripada skor, dan itu yang paling penting di
+   * blok ini: dua angka tabular sebesar dan setebal skor, tepat di bawah skor,
+   * terbaca sebagai skor kedua. Skor tetap satu-satunya yang hitam penuh dan
+   * 800; jam turun satu tingkat, babak dua tingkat. Hierarkinya yang memberi
+   * tahu mana yang sedang dicari mata, bukan urutannya saja.
+   */
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.5rem, 4.6vw, 4.6rem);
+  font-size: clamp(1.2rem, 3.6vw, 3.6rem);
   line-height: 1;
-  letter-spacing: -0.01em;
+  color: var(--text-2);
 }
 
 .sb-colon {
@@ -404,7 +412,9 @@
     font-size: 0.95rem;
   }
 
+  /* Di ponsel skornya cuma 2.6rem, jadi jam yang 2.3rem akan berdiri hampir
+     sejajar dengannya — di sinilah "skor kedua" paling mudah terbaca. */
   .sb-clock {
-    font-size: 2.3rem;
+    font-size: 1.75rem;
   }
 }
