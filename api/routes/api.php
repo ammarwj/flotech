@@ -185,6 +185,10 @@ Route::prefix('v1')->group(function () {
         Route::get('categories/{categorySlug}/discipline', [PublicEventController::class, 'discipline']);
         // Player stats of a single fixture, for the match detail dialog.
         Route::get('matches/{match}/stats', [PublicEventController::class, 'matchStats']);
+        // One fixture on its own, for the scoreboard screen that polls it while
+        // it is being played. Below the stats route so the literal segment is
+        // never swallowed by the {match} placeholder.
+        Route::get('matches/{match}', [PublicEventController::class, 'match']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
         Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
     });

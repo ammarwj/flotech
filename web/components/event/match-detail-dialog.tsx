@@ -2,12 +2,13 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, X } from "lucide-react";
+import { MapPin, Monitor, X } from "lucide-react";
 
 import { getPublicMatchStats } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
 import { statIcon } from "@/lib/stat-icons";
+import { useEventBase } from "@/lib/event-base";
 import { useEventTimezone } from "./event-timezone";
 import { PublicStatusBadge } from "./public-status-badge";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export function MatchDetailDialog({
   onClose: () => void;
 }) {
   const tz = useEventTimezone();
+  const { base } = useEventBase();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -63,6 +65,7 @@ export function MatchDetailDialog({
   });
 
   const done = match.status === "finished" && match.home_score !== null && match.away_score !== null;
+  const live = match.status === "ongoing";
   const winner = done ? matchWinnerId(match) : null;
   const time = timeOf(match.scheduled_at, tz);
   const columns = query.data?.columns ?? [];
@@ -141,6 +144,38 @@ export function MatchDetailDialog({
             align="right"
           />
         </div>
+
+        {/* Papan skor, hanya selama pertandingannya berjalan.
+            Bukan karena halamannya menolak laga lain — ia melayani apa saja —
+            tapi karena gunanya cuma ada di sini: layar yang dipasang di monitor
+            atau proyektor di pinggir lapangan, menyegarkan sendiri sementara
+            skornya berubah. Menawarkannya pada fixture yang belum dimulai atau
+            sudah selesai berarti menjanjikan "lihat live" atas angka yang tidak
+            akan bergerak.
+
+            <a target="_blank"> asli, bukan window.open: klik tengah, "buka di
+            tab baru", dan drag ke layar kedua semuanya ikut — persis yang
+            dilakukan panitia yang memasang papan ini. Aman di dalam dialog
+            karena pembungkusnya sudah stopPropagation; PublicMatchCard tidak
+            bisa dapat tautan seperti ini sebab kartunya sendiri sebuah
+            <button>. */}
+        {live && (
+          <div className="border-b border-border p-4">
+            <a
+              href={`${base}/scoreboard/${match.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--surface-2)]"
+              style={{ color: "var(--brand-600)" }}
+            >
+              <Monitor className="h-4 w-4" />
+              Buka papan skor
+            </a>
+            <p className="mt-1.5 text-center text-xs" style={{ color: "var(--text-muted)" }}>
+              Tampilan layar penuh untuk monitor atau proyektor, skor diperbarui otomatis.
+            </p>
+          </div>
+        )}
 
         {/* A racket fixture with no partai has nothing under the scoreline, so
             the scrolling body is dropped rather than left as empty padding. */}

@@ -736,6 +736,25 @@ export interface PublicMatchStats {
 }
 
 /**
+ * One fixture on its own, as the scoreboard screen reads it.
+ *
+ * The heading data travels with the match rather than being fetched beside it:
+ * the screen is opened cold in a new tab from a link that carries nothing but a
+ * match id, so a second request for the event and category names would leave
+ * the board blank while it waited. `sport` is the same catalogue entry the
+ * event page hands its panels, so the screen names a scoreline the same way
+ * they do instead of keeping its own copy of the rule.
+ */
+export interface PublicScoreboard {
+  match: Match;
+  event_name: string;
+  category_name: string | null;
+  /** IANA zone the kickoff is printed in; null falls back to Asia/Jakarta. */
+  timezone: string | null;
+  sport: SportDef | null;
+}
+
+/**
  * One competition inside an event (U17, U19, Woman, …). Format, bracket config,
  * fee and team cap live here — an event may run several at once, each different.
  */

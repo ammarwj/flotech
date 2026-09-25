@@ -299,3 +299,27 @@ export function matchScoreText(m: Match): { main: string; detail?: string } {
   }
   return { main };
 }
+
+/**
+ * What the big number on a scoreboard is counting, or null when it needs no
+ * saying.
+ *
+ * A football scoreline is self-evident — nobody reads "2 – 1" and wonders. A
+ * badminton tie's "3 – 0" is not: it is partai won, not points, and a set
+ * sport's is sets won. On a screen across the hall, where the set detail
+ * underneath is too small to read, that caption is the only thing separating a
+ * 3-0 thrashing from a 3-0 tie that went to five games.
+ *
+ * Here rather than in the page for the reason every other label in this file is
+ * here: the same question gets asked again the next time a surface renders a
+ * scoreline, and two copies of it will disagree.
+ */
+export function scoreUnitLabel(
+  sport: SportDef | null | undefined,
+  match: Match,
+): string | null {
+  if (match.rubbers?.length) return "Partai dimenangkan";
+  if (sport?.scoring === "set") return "Set dimenangkan";
+
+  return null;
+}

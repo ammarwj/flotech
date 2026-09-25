@@ -48,6 +48,33 @@ test("/tickets ikut, /tickets/{id} tidak", async () => {
   expect(order.headers.get("location")).toBe("https://floevent.id/tickets/abc-123");
 });
 
+test("papan skor ikut ke custom domain, /scoreboard telanjang tidak", async () => {
+  // Dibandingkan, bukan diperiksa satu-satu: pola yang longgar akan menulis
+  // ulang `/scoreboard` telanjang jadi route yang parameternya kosong, dan
+  // halaman kosong itu jauh lebih sulit dibaca daripada pulang ke platform.
+  const board = await go("https://eventa.id/scoreboard/m-1");
+  const bare = await go("https://eventa.id/scoreboard");
+
+  expect(board.headers.get("x-middleware-rewrite")).toBe(
+    "https://eventa.id/jkt/cup/scoreboard/m-1",
+  );
+  expect(bare.status).toBe(301);
+  expect(bare.headers.get("location")).toBe("https://floevent.id/scoreboard");
+});
+
+test("papan skor di domain utama 301 ke custom domain dengan match id-nya", async () => {
+  // Perbandingannya dengan /tickets, karena keduanya lewat cabang yang sama dan
+  // yang dibuktikan di sini adalah suffix-nya ikut utuh: mengembalikan "/" saja
+  // tetap hijau untuk halaman event, lalu membuang layar ke beranda event.
+  const board = await go("https://floevent.id/jkt/cup/scoreboard/m-1");
+  const shop = await go("https://floevent.id/jkt/cup/tickets");
+
+  expect(board.status).toBe(301);
+  expect(board.headers.get("location")).toBe("https://eventa.id/scoreboard/m-1");
+  expect(shop.status).toBe(301);
+  expect(shop.headers.get("location")).toBe("https://eventa.id/tickets");
+});
+
 test("halaman event lama 301 ke custom domain — tapi /register tidak pernah", async () => {
   // Perbandingan inilah intinya. Assert redirect-nya saja akan tetap hijau walau
   // /register ikut terseret, dan itu berarti loop login: refresh cookie terikat

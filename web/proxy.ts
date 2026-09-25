@@ -88,6 +88,20 @@ async function domains(): Promise<DomainMap> {
   return inflight;
 }
 
+/**
+ * Id pertandingan dari `/scoreboard/{matchId}` di custom domain, atau null.
+ *
+ * Dicocokkan ketat — satu segmen, dan cuma karakter yang dipakai UUID — supaya
+ * cabang rewrite di bawah tidak menelan `/scoreboard` telanjang atau apa pun
+ * yang lebih dalam darinya; keduanya bukan halaman dan harus pulang ke platform
+ * seperti sisa path yang tidak dikenal.
+ */
+function scoreboardMatchId(path: string): string | null {
+  const match = /^\/scoreboard\/([A-Za-z0-9-]+)$/.exec(path);
+
+  return match ? match[1] : null;
+}
+
 export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").toLowerCase().split(":")[0];
   const path = request.nextUrl.pathname;
@@ -99,12 +113,20 @@ export async function proxy(request: NextRequest) {
   if (match) {
     const base = `/${match.org_slug}/${match.event_slug}`;
 
-    // Halaman event dan toko tiket adalah keseluruhan sebuah custom domain.
-    // Beli tiket tidak butuh login (hanya nama/email/telepon), itu sebabnya ia
-    // bisa ikut sementara pendaftaran tim tidak.
-    if (path === "/" || path === "/tickets") {
+    // Halaman event, toko tiket, dan papan skor adalah keseluruhan sebuah
+    // custom domain. Beli tiket tidak butuh login (hanya nama/email/telepon),
+    // itu sebabnya ia bisa ikut sementara pendaftaran tim tidak. Papan skor
+    // ikut karena alasan yang lebih kuat lagi: ia tidak punya sesi sama sekali
+    // — layar di pinggir lapangan yang cuma membaca satu pertandingan.
+    const scoreboard = scoreboardMatchId(path);
+
+    if (path === "/" || path === "/tickets" || scoreboard) {
       const url = request.nextUrl.clone();
-      url.pathname = path === "/" ? base : `${base}/tickets`;
+      url.pathname = scoreboard
+        ? `${base}/scoreboard/${scoreboard}`
+        : path === "/"
+          ? base
+          : `${base}/tickets`;
 
       headers.set(HOST_HEADER, host);
       // Header dipasang di `request`, bukan di response: `headers()` di server
@@ -122,14 +144,21 @@ export async function proxy(request: NextRequest) {
   // Di domain utama, event yang punya domain aktif disajikan dari sana.
   // `/register` tidak pernah dialihkan: di sanalah sesinya hidup.
   const segments = path.split("/").filter(Boolean);
-  if (segments.length === 2 || (segments.length === 3 && segments[2] === "tickets")) {
+  const own =
+    segments.length === 2 ||
+    (segments.length === 3 && segments[2] === "tickets") ||
+    (segments.length === 4 && segments[2] === "scoreboard");
+
+  if (own) {
     const [orgSlug, eventSlug] = segments;
     const domain = Object.keys(map).find(
       (name) => map[name].org_slug === orgSlug && map[name].event_slug === eventSlug,
     );
 
     if (domain) {
-      const suffix = segments.length === 3 ? "/tickets" : "/";
+      // Yang di belakang slug event, apa adanya: "" untuk halaman event,
+      // "/tickets", atau "/scoreboard/{matchId}".
+      const suffix = segments.length === 2 ? "/" : `/${segments.slice(2).join("/")}`;
       return NextResponse.redirect(`https://${domain}${suffix}${request.nextUrl.search}`, 301);
     }
   }

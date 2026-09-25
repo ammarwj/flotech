@@ -180,6 +180,48 @@ class PublicEventController extends Controller
     }
 
     /**
+     * One fixture on its own, for the scoreboard screen.
+     *
+     * A single match rather than the category's whole schedule because of how it
+     * is read: the scoreboard polls while a match is being played, and asking
+     * for every fixture of the category to render one of them would re-send the
+     * lot every few seconds — including the rosters a racket category eager
+     * loads. It also spares the page a `categorySlug` it would otherwise have to
+     * be told, when a match id is the only thing a scoreboard URL should carry.
+     *
+     * The event's sport and the category's name ride along for the same reason:
+     * the screen is opened cold in a new tab, so a second round trip for the
+     * heading would leave it blank while it waited.
+     */
+    public function match(string $orgSlug, string $eventSlug, string $matchId): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        $match = GameMatch::with(['homeTeam', 'awayTeam', 'rubbers', 'category'])->findOrFail($matchId);
+
+        // Same authorization as matchStats(), and for the same reason: the slug
+        // pair is the whole of it, so a match that belongs to another event must
+        // not be readable through this one's URL.
+        abort_if($match->event_id !== $event->id, 404);
+
+        // Partai name their lineups from the rosters, which are only loaded for
+        // a category that plays over them — the schedule endpoint draws the same
+        // line, and loading them for every fixture would pull two squads along
+        // for a sport that has no use for them.
+        if ($match->category?->usesRubbers()) {
+            $match->load(['homeTeam.players', 'awayTeam.players']);
+        }
+
+        return ApiResponse::success([
+            'match' => new MatchResource($match),
+            'event_name' => $event->name,
+            'category_name' => $match->category?->name,
+            'timezone' => $event->timezone,
+            'sport' => $event->sportDefinition(),
+        ]);
+    }
+
+    /**
      * Player stats recorded in one match, for the public match detail. Unlike
      * the organizer's editor payload this carries no rosters — only the players
      * who actually registered something, since nothing here is editable.

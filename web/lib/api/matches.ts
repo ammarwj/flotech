@@ -11,6 +11,7 @@ import type {
   MatchStatsData,
   MatchStatus,
   PublicMatchStats,
+  PublicScoreboard,
   Standing,
   Team,
 } from "@/types/api";
@@ -546,6 +547,26 @@ export async function getPublicMatchStats(
 ): Promise<PublicMatchStats> {
   const { data } = await apiClient.get<ApiEnvelope<PublicMatchStats>>(
     `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}/stats`
+  );
+  return data.data;
+}
+
+/**
+ * One fixture plus the names around it, for the scoreboard screen.
+ *
+ * A single match rather than getPublicMatches(): this is polled while a match
+ * is being played, and re-sending the category's whole schedule every few
+ * seconds to redraw one scoreline would carry the rosters a racket category
+ * eager loads along with it. It is also what lets a scoreboard URL carry a
+ * match id and nothing else.
+ */
+export async function getPublicScoreboard(
+  orgSlug: string,
+  eventSlug: string,
+  matchId: string
+): Promise<PublicScoreboard> {
+  const { data } = await apiClient.get<ApiEnvelope<PublicScoreboard>>(
+    `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}`
   );
   return data.data;
 }
