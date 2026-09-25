@@ -7,6 +7,7 @@ import type {
   EventCategory,
   EventPersonnelKind,
   Match,
+  MatchClockAction,
   MatchLineup,
   MatchLineupsData,
   MatchStatsData,
@@ -117,6 +118,26 @@ export async function updateOfficiatingResult(
   const { data } = await apiClient.patch<ApiEnvelope<Match>>(
     `/officiating/events/${eventId}/matches/${matchId}`,
     payload,
+  );
+  return data.data;
+}
+
+/**
+ * Jam pertandingan, pintu petugas — dan ini justru pintu utamanya: yang
+ * memegang stopwatch di pinggir lapangan hampir selalu akun petugas.
+ *
+ * Tidak seperti {@link updateOfficiatingResult}, tidak ada langkah "menunggu
+ * konfirmasi admin" di sini. Jam adalah presentasi, dan papan skor yang
+ * menunggu ratifikasi tidak ada gunanya bagi siapa pun.
+ */
+export async function updateOfficiatingClock(
+  eventId: string,
+  matchId: string,
+  action: MatchClockAction,
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/officiating/events/${eventId}/matches/${matchId}/clock`,
+    { action },
   );
   return data.data;
 }

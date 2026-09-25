@@ -9,9 +9,10 @@ import { getPublicScoreboard } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
 import { rubberLineup, scoreUnitLabel } from "@/lib/scoring";
 import { timeOf, tzLabel } from "@/lib/match-dates";
+import { clockParts, periodText, useMatchClock } from "@/lib/match-clock";
 import { PublicStatusBadge } from "@/components/event/public-status-badge";
 import { cn } from "@/lib/utils";
-import type { MatchRubber } from "@/types/api";
+import type { MatchClock, MatchRubber } from "@/types/api";
 import "../scoreboard.css";
 
 /**
@@ -30,11 +31,21 @@ import "../scoreboard.css";
  * salah justru di layar yang dipasang di venue.
  */
 export default function ScoreboardPage() {
-  const params = useParams<{ orgSlug: string; eventSlug: string; matchId: string }>();
+  const params = useParams<{
+    orgSlug: string;
+    eventSlug: string;
+    matchId: string;
+  }>();
 
   const query = useQuery({
-    queryKey: ["public-scoreboard", params.orgSlug, params.eventSlug, params.matchId],
-    queryFn: () => getPublicScoreboard(params.orgSlug, params.eventSlug, params.matchId),
+    queryKey: [
+      "public-scoreboard",
+      params.orgSlug,
+      params.eventSlug,
+      params.matchId,
+    ],
+    queryFn: () =>
+      getPublicScoreboard(params.orgSlug, params.eventSlug, params.matchId),
     retry: false,
     /**
      * Polling berhenti sendiri begitu pertandingan selesai atau dibatalkan.
@@ -66,7 +77,8 @@ export default function ScoreboardPage() {
       <div className="sb-state">
         <p>Pertandingan tidak ditemukan.</p>
         <p style={{ fontSize: "0.85rem" }}>
-          Tautan papan skor mungkin sudah tidak berlaku, atau jadwalnya telah diubah.
+          Tautan papan skor mungkin sudah tidak berlaku, atau jadwalnya telah
+          diubah.
         </p>
       </div>
     );
@@ -92,7 +104,9 @@ export default function ScoreboardPage() {
         <div className="sb-where">
           <span className="sb-event">{data.event_name}</span>
           <span className="sb-sub">
-            {data.category_name && <span className="pill">{data.category_name}</span>}
+            {data.category_name && (
+              <span className="pill">{data.category_name}</span>
+            )}
             <PublicStatusBadge status={match.status} />
             {time && (
               <span>
@@ -111,7 +125,10 @@ export default function ScoreboardPage() {
             title="Muat ulang skor"
           >
             <RefreshCw
-              className={cn("h-[1.1em] w-[1.1em]", query.isFetching && "animate-spin")}
+              className={cn(
+                "h-[1.1em] w-[1.1em]",
+                query.isFetching && "animate-spin",
+              )}
               aria-hidden="true"
             />
           </button>
@@ -127,7 +144,17 @@ export default function ScoreboardPage() {
             dimmed={!!winner && winner !== match.home_team_id}
           />
 
-          <div>
+          {/* Babak di atas skor, jam di bawahnya — satu kolom, bukan tiga
+              baris terpisah. Urutan itu urutan membacanya dari jauh: yang
+              dicari lebih dulu adalah skornya, dan dua angka di atas-bawah
+              membingkainya alih-alih bersaing dengannya.
+
+              Null untuk cabang berskor set dan tie beregu — papannya sudah
+              menampilkan set, dan "Babak 1" di sana salah. Tidak ada kontrol
+              jam di halaman ini: URL-nya dibagikan ke penonton. */}
+          <div className="sb-centre">
+            {match.clock && <PeriodLine clock={match.clock} />}
+
             <div className="sb-score">
               {showScore ? (
                 <>
@@ -145,6 +172,8 @@ export default function ScoreboardPage() {
                 Penalti {match.home_penalty}–{match.away_penalty}
               </div>
             )}
+
+            {match.clock && <ClockReadout clock={match.clock} />}
           </div>
 
           <Side
@@ -180,10 +209,60 @@ export default function ScoreboardPage() {
         )}
       </div>
 
-      <div className="sb-foot">
+      {/* <div className="sb-foot">
         <span>{data.event_name}</span>
-        {live && <span>· Skor diperbarui otomatis</span>}
-      </div>
+        {live}
+      </div> */}
+    </div>
+  );
+}
+
+/**
+ * "Babak 2", di atas skor.
+ *
+ * Tidak berdetak, jadi ia tidak butuh hook-nya — babak berganti beberapa kali
+ * semalam, bukan tiap detik, dan merendernya lewat `useMatchClock` akan
+ * menjadwalkan ulang komponen ini tiap kali jam bergerak tanpa satu piksel pun
+ * berubah.
+ */
+function PeriodLine({ clock }: { clock: MatchClock }) {
+  const period = periodText(clock);
+
+  if (!period) return null;
+
+  return <div className="sb-period">{period}</div>;
+}
+
+/**
+ * Jam, di bawah skor, berdetak lokal.
+ *
+ * Komponen tersendiri karena hook-nya tidak boleh dipanggil di halaman yang
+ * punya early-return, dan karena hanya cabang berskor lari yang punya jam —
+ * jadi ada laga yang tidak merendernya sama sekali.
+ *
+ * Yang membuatnya tetap benar di layar yang ditinggal semalaman: polling 10
+ * detik yang sudah ada tetap menjadi penyelaras ke server, sementara detak
+ * lokal hanya mengisi sembilan detik di antaranya. Menitnya diturunkan dari
+ * `server_time` di payload, bukan dari jam laptop venue — lihat
+ * `lib/match-clock.ts`.
+ *
+ * Menit dan detik dirender terpisah supaya titik duanya bisa berkedip saat jam
+ * berjalan. Itu bukan hiasan: dari tiga puluh meter mata tidak bisa melihat
+ * digit detik berganti, jadi kedipan itulah satu-satunya yang membedakan jam
+ * yang jalan dari jam yang berhenti di jarak papan ini sebenarnya dibaca.
+ * Badge LIVE di pojok atas terlalu kecil untuk menjawabnya.
+ */
+function ClockReadout({ clock }: { clock: MatchClock }) {
+  const { seconds } = useMatchClock(clock);
+  const parts = clockParts(seconds);
+
+  return (
+    <div className="sb-clock" data-running={clock.running}>
+      <span className="sb-clock-num">{parts.minutes}</span>
+      <span className="sb-colon" aria-hidden="true">
+        :
+      </span>
+      <span className="sb-clock-num">{parts.seconds}</span>
     </div>
   );
 }
@@ -203,7 +282,10 @@ function Side({
         // eslint-disable-next-line @next/next/no-img-element
         <img className="sb-crest" src={logoUrl} alt="" />
       ) : (
-        <span className="sb-crest" style={{ background: crestGradient(name) }} />
+        <span
+          className="sb-crest"
+          style={{ background: crestGradient(name) }}
+        />
       )}
       <span className="sb-name">{name}</span>
     </div>
@@ -226,7 +308,8 @@ function RubberRow({ rubber }: { rubber: MatchRubber }) {
       <span className="sb-rubber-label">
         {rubber.label}
         <small>
-          {rubberLineup(rubber.home_players)} vs {rubberLineup(rubber.away_players)}
+          {rubberLineup(rubber.home_players)} vs{" "}
+          {rubberLineup(rubber.away_players)}
         </small>
       </span>
       {played ? (

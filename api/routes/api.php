@@ -271,6 +271,10 @@ Route::prefix('v1')->group(function () {
                     Route::get('matches/{match}/stats', [OfficiatingMatchController::class, 'matchStats']);
                     Route::put('matches/{match}/stats', [OfficiatingMatchController::class, 'saveMatchStats']);
                     Route::patch('matches/{match}', [OfficiatingMatchController::class, 'updateResult']);
+                    // Jam pertandingan — `event.staff`, bukan `event.referee`:
+                    // yang memegang stopwatch adalah petugas yang juga mengetik
+                    // skor; wasit hanya mengesahkan hasilnya.
+                    Route::patch('matches/{match}/clock', [OfficiatingMatchController::class, 'updateClock']);
                     // The sheet for the IP table. Refuses until the referee has
                     // signed off *both* sides; the organizer's twin below is the
                     // same action, so the gate is written once.
@@ -421,6 +425,10 @@ Route::prefix('v1')->group(function () {
             // Scheduled / ongoing / cancelled. Finishing still goes through the
             // result endpoint, which is the only one that validates a scoreline.
             Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);
+            // Babak & jam papan skor. Kembarannya ada di grup `officiating`,
+            // satu service — presentasi, bukan hasil resmi, jadi ia tidak
+            // duduk di belakang `org.admin`.
+            Route::patch('matches/{match}/clock', [MatchController::class, 'updateClock']);
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);

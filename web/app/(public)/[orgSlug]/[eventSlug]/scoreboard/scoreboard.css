@@ -169,6 +169,93 @@
   color: var(--text-muted);
 }
 
+/**
+ * Kolom tengah: babak, skor, jam — satu tumpukan.
+ *
+ * Urutannya urutan membacanya dari jauh. Skor yang dicari lebih dulu duduk di
+ * tengah, dan dua angka yang lebih kecil membingkainya dari atas dan bawah
+ * alih-alih berebut perhatian di sampingnya.
+ */
+.sb-centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 0.8vh, 12px);
+}
+
+/* "Babak 2". Sengaja tidak di-uppercase dan tidak di-tracking: dua kata pendek
+   yang sudah terbaca, dan label yang dilebarkan di atas angka besar cuma
+   melebarkan kolomnya. */
+.sb-period {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.85rem, 1.7vw, 1.9rem);
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+/**
+ * Jam, di bawah skor.
+ *
+ * `tabular-nums` dengan alasan yang sama seperti `.sb-score`: angka
+ * proporsional menggeser seluruh baris tiap detik berganti, dan di layar
+ * proyektor pergeseran itu terbaca sebagai getaran. Lebarnya juga tetap saat
+ * menit melewati dua digit.
+ *
+ * Titik duanya diberi lebar tetap supaya mengedipkannya tidak menggeser
+ * apa-apa — `opacity` yang berganti di elemen yang ikut mengatur lebar baris
+ * adalah getaran yang justru hendak dihindari `tabular-nums`.
+ */
+.sb-clock {
+  display: flex;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.5rem, 4.6vw, 4.6rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.sb-colon {
+  display: inline-block;
+  width: 0.38em;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Jam berjalan: titik dua berkedip.
+ *
+ * Bahasa benda aslinya — tiap jam digital melakukannya — dan ia memikul
+ * informasi, bukan hiasan. Dari tiga puluh meter mata tidak bisa melihat digit
+ * detik berganti, jadi kedipan ini satu-satunya yang membedakan jam yang jalan
+ * dari jam yang berhenti pada jarak papan ini sebenarnya dibaca. */
+.sb-clock[data-running="true"] .sb-colon {
+  animation: sb-blink 1s steps(1, end) infinite;
+}
+
+@keyframes sb-blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+/* Jam yang dijeda diredupkan, bukan disembunyikan: papan yang kosong di menit
+   turun minum terbaca sebagai papan yang rusak. Titik duanya ikut diam — dua
+   keadaan, dua bacaan. */
+.sb-clock[data-running="false"] {
+  color: var(--text-muted);
+}
+
+/* Kedipan adalah gerak yang tidak dipicu siapa pun, jadi ia termasuk yang
+   dimatikan `prefers-reduced-motion`. Yang hilang cuma penanda jarak jauh;
+   menitnya tetap berjalan dan tetap terbaca dari dekat. */
+@media (prefers-reduced-motion: reduce) {
+  .sb-clock[data-running="true"] .sb-colon {
+    animation: none;
+  }
+}
+
 /* Skor set, sebaris di bawah papan — kolom per set, bukan teks berjalan. */
 .sb-sets {
   display: flex;
@@ -305,5 +392,19 @@
 
   .sb-score {
     justify-content: center;
+  }
+
+  /* Tumpukan tengahnya sudah tegak, jadi di ponsel ia cuma perlu dirapatkan —
+     papan yang berdiri tidak boleh kehilangan jamnya di balik chrome browser. */
+  .sb-centre {
+    gap: 4px;
+  }
+
+  .sb-period {
+    font-size: 0.95rem;
+  }
+
+  .sb-clock {
+    font-size: 2.3rem;
   }
 }

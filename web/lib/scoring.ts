@@ -122,6 +122,23 @@ export function tracksDiscipline(sport: CardBearing | null | undefined): boolean
 }
 
 /**
+ * Whether this sport is played against a running clock, and so whether "Babak 2
+ * · 67:14" means anything for it.
+ *
+ * Read from `scoring` rather than a list of slugs, the mirror of
+ * `MatchClockRules::enabled`: a running-score sport an admin adds tomorrow gets
+ * the clock without a deploy, and a set sport never lights up by mistake — its
+ * scoreboard already shows sets, and "Babak 1" above them is simply wrong.
+ *
+ * A squad tie is refused a layer further in (each partai has its own clock, so a
+ * single number over the tie points at nothing) — that is the category's shape,
+ * not the sport's, and `Match.clock` arrives null for it.
+ */
+export function tracksClock(sport: Pick<SportDef, "scoring"> | null | undefined): boolean {
+  return sport?.scoring === "goal";
+}
+
+/**
  * Why a player is sitting out, in words the organizer uses — "kartu merah",
  * "2 kartu kuning (dikeluarkan)", "akumulasi 3 kartu kuning". The card's name
  * comes from the sport's own label, and the numbers from the rules in force for

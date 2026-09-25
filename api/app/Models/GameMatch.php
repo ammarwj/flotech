@@ -40,6 +40,11 @@ class GameMatch extends Model
         'venue',
         'status',
         'confirmed_at',
+        // Jam pertandingan. Tanpa baris ini `$model->update()` menelannya tanpa
+        // error — kegagalan diam yang sudah pernah terjadi di `events:backfill-plan`.
+        'period',
+        'clock_started_at',
+        'clock_elapsed_seconds',
     ];
 
     protected function casts(): array
@@ -55,6 +60,9 @@ class GameMatch extends Model
             'home_penalty' => 'integer',
             'away_penalty' => 'integer',
             'scheduled_at' => 'datetime',
+            'period' => 'integer',
+            'clock_started_at' => 'datetime',
+            'clock_elapsed_seconds' => 'integer',
         ];
     }
 
@@ -93,6 +101,38 @@ class GameMatch extends Model
     protected static function booted(): void
     {
         static::created(fn (GameMatch $match) => app(RubberService::class)->seedFor($match));
+
+        /**
+         * Jam yang berjalan pada laga yang statusnya bukan `ongoing` adalah
+         * keadaan yang saling membantah, dan papan skor yang ditinggal menyala
+         * akan terus berdetak setelah laganya selesai.
+         *
+         * Dipasang di sini, bukan di tiap pintu yang menulis status
+         * (`MatchController::updateStatus`, `MatchResultService::apply`, dan
+         * kedua pintu jam), karena menitipkan "jangan lupa bekukan jamnya" ke
+         * empat tempat berarti salah satunya akan lupa — persis alasan hook
+         * `created` di atas ada.
+         *
+         * Sisa detiknya **dilipat**, tidak dibuang: menit laga yang berhenti di
+         * 67:14 adalah bagian dari hasilnya, dan membuangnya membuat laporan
+         * pertandingan kehilangan lama laga yang sebenarnya.
+         */
+        static::saving(function (GameMatch $match) {
+            if (! $match->isDirty('status') || $match->status === 'ongoing') {
+                return;
+            }
+
+            if ($match->clock_started_at === null) {
+                return;
+            }
+
+            $match->clock_elapsed_seconds = max(
+                0,
+                (int) $match->clock_elapsed_seconds
+                    + $match->clock_started_at->diffInSeconds(now(), absolute: false),
+            );
+            $match->clock_started_at = null;
+        });
     }
 
     public function event(): BelongsTo

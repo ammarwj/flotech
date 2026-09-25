@@ -52,6 +52,7 @@ class Catalog
                     'scoring' => $s->scoring,
                     'participant_modes' => $s->participantModes(),
                     'discipline_config' => $s->disciplineConfig(),
+                    'period_config' => $s->periodConfig(),
                     'default_match_minutes' => $s->default_match_minutes,
                     'stats' => $s->stats->map(fn ($stat) => [
                         'key' => $stat->stat_key,
@@ -153,6 +154,19 @@ class Catalog
     public static function disciplineConfig(?string $slug): array
     {
         return self::sport($slug)['discipline_config'] ?? [];
+    }
+
+    /**
+     * This sport's default period shape, as stored. Empty means the fallbacks in
+     * MatchClockRules::DEFAULTS apply — and empty is *not* the same as "this
+     * sport has no clock": that question is answered by `scoring`, since a set
+     * sport counts games rather than minutes.
+     *
+     * @return array<string, mixed>
+     */
+    public static function periodConfig(?string $slug): array
+    {
+        return self::sport($slug)['period_config'] ?? [];
     }
 
     /** stat_key => disciplinary weight, for the fair-play tiebreaker. */

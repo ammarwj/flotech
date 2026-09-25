@@ -142,8 +142,8 @@ class PublicEventController extends Controller
 
         $matches = $category->matches()
             ->with($category->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers']
-                : ['homeTeam', 'awayTeam'])
+                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
+                : ['homeTeam', 'awayTeam', 'category.event'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')
@@ -197,7 +197,10 @@ class PublicEventController extends Controller
     {
         $event = $this->resolve($orgSlug, $eventSlug);
 
-        $match = GameMatch::with(['homeTeam', 'awayTeam', 'rubbers', 'category'])->findOrFail($matchId);
+        // `category.event` ikut karena blok `clock` di MatchResource membaca
+        // rules_config event lewat kategorinya; tanpa itu satu baris ini memicu
+        // dua query tambahan diam-diam (preventLazyLoading tidak menyala).
+        $match = GameMatch::with(['homeTeam', 'awayTeam', 'rubbers', 'category.event'])->findOrFail($matchId);
 
         // Same authorization as matchStats(), and for the same reason: the slug
         // pair is the whole of it, so a match that belongs to another event must

@@ -68,6 +68,7 @@ class SportSeeder extends Seeder
             [
                 'slug' => 'football', 'name' => 'Sepak Bola', 'color' => '#1E6FFF', 'icon' => '⚽',
                 'scoring' => 'goal', 'default_match_minutes' => 90, 'stats' => $goalStats,
+                'period_config' => ['periods' => 2, 'period_minutes' => 45, 'label' => 'Babak'],
                 'positions' => [
                     ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
                     ['position_key' => 'defender', 'label' => 'Bek'],
@@ -81,11 +82,13 @@ class SportSeeder extends Seeder
             [
                 'slug' => 'mini_soccer', 'name' => 'Mini Soccer', 'color' => '#0EA5E9', 'icon' => '🥅',
                 'scoring' => 'goal', 'default_match_minutes' => 50, 'stats' => $goalStats,
+                'period_config' => ['periods' => 2, 'period_minutes' => 25, 'label' => 'Babak'],
                 'positions' => $goalPositions,
             ],
             [
                 'slug' => 'futsal', 'name' => 'Futsal', 'color' => '#7C3AED', 'icon' => '🏟️',
                 'scoring' => 'goal', 'default_match_minutes' => 40, 'stats' => $goalStats,
+                'period_config' => ['periods' => 2, 'period_minutes' => 20, 'label' => 'Babak'],
                 'positions' => [
                     ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
                     ['position_key' => 'anchor', 'label' => 'Anchor'],
@@ -145,6 +148,8 @@ class SportSeeder extends Seeder
                 // stat, which here is Poin: the points leader is the top scorer.
                 'slug' => 'basketball', 'name' => 'Basket', 'color' => '#EA580C', 'icon' => '🏀',
                 'scoring' => 'goal', 'default_match_minutes' => 40,
+                // Empat kuarter, dan kata "Babak" salah di sini.
+                'period_config' => ['periods' => 4, 'period_minutes' => 10, 'label' => 'Kuarter'],
                 'stats' => [
                     ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS', 'role' => 'goal'],
                     ['stat_key' => 'assists', 'label' => 'Assist', 'short' => 'AST', 'role' => 'assist'],
@@ -179,6 +184,11 @@ class SportSeeder extends Seeder
                     ...$data,
                     'participant_modes' => $data['participant_modes'] ?? ['team'],
                     'discipline_config' => $books ? DisciplineRules::DEFAULTS : null,
+                    // Hanya cabang berskor lari yang punya babak. Cabang set
+                    // menghitung game, dan "Babak 1" di papan skornya salah —
+                    // alasan yang sama kenapa discipline_config di atas cuma
+                    // diberikan ke cabang yang membooking pemain.
+                    'period_config' => $data['period_config'] ?? null,
                     'is_active' => true,
                     'sort_order' => $order,
                 ],

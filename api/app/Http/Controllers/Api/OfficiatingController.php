@@ -102,8 +102,8 @@ class OfficiatingController extends Controller
 
         $matches = $categoryModel->matches()
             ->with($categoryModel->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers']
-                : ['homeTeam', 'awayTeam'])
+                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
+                : ['homeTeam', 'awayTeam', 'category.event'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

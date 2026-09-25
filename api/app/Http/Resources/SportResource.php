@@ -27,6 +27,11 @@ class SportResource extends JsonResource
             // Cast so an empty rulebook serializes as {} and the admin form can
             // bind to it, rather than arriving as [].
             'discipline_config' => (object) $this->disciplineConfig(),
+            // Null, bukan {}, dan bedanya dibaca form: cabang berskor set memang
+            // tidak punya babak sama sekali, sementara {} berarti "punya, tapi
+            // ikut default". `MatchClockRules::enabled` menjawab yang pertama
+            // dari `scoring`, jadi yang tersimpan null tetap null di sini.
+            'period_config' => $this->periodConfig() ? (object) $this->periodConfig() : null,
             'default_match_minutes' => (int) $this->default_match_minutes,
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) $this->sort_order,

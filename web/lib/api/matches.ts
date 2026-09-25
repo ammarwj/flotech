@@ -7,6 +7,7 @@ import type {
   KnockoutPlan,
   Leaderboard,
   Match,
+  MatchClockAction,
   MatchRubber,
   MatchStatsData,
   MatchStatus,
@@ -293,6 +294,25 @@ export async function updateMatchStatus(
   const { data } = await apiClient.patch<ApiEnvelope<Match>>(
     `/organizations/${orgId}/matches/${matchId}/status`,
     { status }
+  );
+  return data.data;
+}
+
+/**
+ * Jam pertandingan, pintu organizer.
+ *
+ * Bukan `org.admin` di server: ini presentasi, bukan hasil resmi — sama seperti
+ * {@link updateMatchStatus} di atasnya. Pintu keduanya ada di
+ * `lib/api/officiating.ts`, dan keduanya memanggil service yang sama.
+ */
+export async function updateMatchClock(
+  orgId: string,
+  matchId: string,
+  action: MatchClockAction
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/clock`,
+    { action }
   );
   return data.data;
 }

@@ -15,7 +15,11 @@ import {
   getOfficiatingMatches,
 } from "@/lib/api/officiating";
 import { parseApiError } from "@/lib/api/errors";
-import { officiatingResultGateway, officiatingStatsGateway } from "@/lib/match-doors";
+import {
+  officiatingClockGateway,
+  officiatingResultGateway,
+  officiatingStatsGateway,
+} from "@/lib/match-doors";
 import { isSetBased, tracksDiscipline } from "@/lib/scoring";
 import {
   buildMatchSections,
@@ -41,6 +45,7 @@ import { useUrlState } from "@/lib/hooks/use-url-state";
 import { cn } from "@/lib/utils";
 import { EventTimezoneProvider, useEventTimezone } from "@/components/event/event-timezone";
 import { MatchDayTabs } from "@/components/event/match-day-tabs";
+import { MatchClockControls } from "@/components/event/match-clock-controls";
 import { MatchDisciplineNotice } from "@/components/event/match-discipline-notice";
 import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { GoalScoreEditor } from "@/components/event/goal-score-editor";
@@ -497,6 +502,22 @@ function CrewMatchCard({
       {bans.length > 0 && (
         <div className="mt-2">
           <MatchDisciplineNotice bans={bans} sport={sport} rules={disciplineRules} />
+        </div>
+      )}
+
+      {/* Ini justru pintu utama jam pertandingan: yang memegang stopwatch di
+          pinggir lapangan hampir selalu akun petugas, bukan admin organisasi.
+          Di balik `scoring` bersama editor skor — wasit mengesahkan susunan,
+          bukan menjalankan jam, dan `event.staff` di server menolaknya
+          betapapun kartunya dirender. Komponennya sendiri tidak merender apa
+          pun untuk cabang tanpa jam. */}
+      {scoring && (
+        <div className="mt-3 flex justify-end border-t border-border pt-3">
+          <MatchClockControls
+            match={m}
+            clock={m.clock}
+            gateway={officiatingClockGateway(eventId, m.id)}
+          />
         </div>
       )}
 
