@@ -6,6 +6,7 @@ use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -358,9 +359,7 @@ class ScheduleService
             return Carbon::parse($lastGroup, 'UTC')->setTimezone($tz)->startOfDay()->addDay();
         }
 
-        return $category->start_date
-            ? Carbon::parse($category->start_date, $tz)->startOfDay()
-            : Carbon::now($tz)->startOfDay();
+        return $this->localDay($category->start_date, $tz) ?? Carbon::now($tz)->startOfDay();
     }
 
     /**
@@ -593,7 +592,7 @@ class ScheduleService
      * from the team count, so it stays right when teams are approved or
      * withdrawn after generation.
      *
-     * @return \Illuminate\Database\Eloquent\Collection<int, GameMatch>
+     * @return Collection<int, GameMatch>
      */
     public function firstRoundSlots(EventCategory $category, ?string $stage = null)
     {
@@ -1063,11 +1062,32 @@ class ScheduleService
      */
     protected function categoryStart(EventCategory $category): Carbon
     {
-        $tz = $category->timezone;
+        return $this->localDay($category->start_date, $category->timezone)
+            ?? Carbon::now($category->timezone)->startOfDay();
+    }
 
-        return $category->start_date
-            ? Carbon::parse($category->start_date, $tz)->startOfDay()
-            : Carbon::now($tz)->startOfDay();
+    /**
+     * Midnight on a stored calendar date, *in the venue's zone*.
+     *
+     * The second argument to Carbon::parse() is only a fallback — it is ignored
+     * when the input already carries a zone, and `events.start_date` is cast to
+     * `date`, so it arrives as a Carbon already pinned to UTC midnight. Passing
+     * it straight through therefore yields 00:00Z, and every kickoff built on
+     * top of it lands 7 hours early in WIB: an 08:00 window was stored as
+     * 01:00Z and read back as 08:00 UTC = 15:00 WIB. Re-reading the date as a
+     * bare "Y-m-d" is what makes the zone argument mean anything.
+     *
+     * @param  \DateTimeInterface|string|null  $date
+     */
+    protected function localDay($date, string $tz): ?Carbon
+    {
+        if (! $date) {
+            return null;
+        }
+
+        $ymd = $date instanceof \DateTimeInterface ? $date->format('Y-m-d') : (string) $date;
+
+        return Carbon::parse($ymd, $tz)->startOfDay();
     }
 
     protected function findMatch(EventCategory $category, string $bracket, int $round, int $order): ?GameMatch
@@ -1132,12 +1152,11 @@ class ScheduleService
         // fixture would then show up at 22:00.
         $tz = $category->timezone;
 
-        $startDate = ! empty($opts['start_date'])
-            ? Carbon::parse($opts['start_date'], $tz)->startOfDay()
-            : ($stage === 'knockout'
+        $startDate = $this->localDay($opts['start_date'] ?? null, $tz)
+            ?? ($stage === 'knockout'
                 ? $this->knockoutStart($category)->startOfDay()
-                : ($category->start_date ? Carbon::parse($category->start_date, $tz)->startOfDay() : Carbon::now($tz)->startOfDay()));
-        $endDate = $category->end_date ? Carbon::parse($category->end_date, $tz)->startOfDay() : null;
+                : $this->categoryStart($category));
+        $endDate = $this->localDay($category->end_date, $tz);
 
         $startMin = $this->minutesOfDay($opts['daily_start'] ?? '15:00');
         $endMin = $this->minutesOfDay($opts['daily_end'] ?? '21:00');
@@ -1170,33 +1189,58 @@ class ScheduleService
         // category's group and knockout rounds share round numbers, so the stage is
         // part of the key.
         $rounds = $matches->groupBy(fn (GameMatch $m) => ($m->stage ?? '').'#'.$m->round);
-        $daysNeeded = 0;
+        $idealDays = 0;
         foreach ($rounds as $list) {
-            $daysNeeded += (int) ceil($list->count() / $perDay);
+            $idealDays += (int) ceil($list->count() / $perDay);
         }
 
-        $days = $this->scheduleDays($startDate, $endDate, $daysNeeded, $spread);
+        // ...but the date range wins. One-round-per-day is a preference; the
+        // range is something the organizer typed, and a one-day tournament
+        // means one day. So rounds share a day down to the only floor the range
+        // cannot argue with: what a day can actually hold. Without this a
+        // 3-round group stage silently ran 4-6 Oct for an event that ends on
+        // the 4th, and nothing on the page said why.
+        $capacityDays = (int) ceil($matches->count() / $perDay);
+        $availableDays = $endDate ? ((int) $startDate->diffInDays($endDate)) + 1 : $idealDays;
+        $dayCount = max($capacityDays, min($idealDays, max(1, $availableDays)));
+
+        $days = $this->scheduleDays($startDate, $endDate, $dayCount, $spread);
         $lastDay = count($days) - 1;
+
+        // Slots already taken per day. Rounds that end up sharing a day have to
+        // queue after one another — resetting the counter per round would start
+        // both at the first kickoff on the same court.
+        $used = array_fill(0, count($days), 0);
+        $remaining = $matches->count();
 
         $dayIdx = 0;
         foreach ($rounds as $list) {
-            $slot = 0;
+            // A fresh day per round, but only while the days left behind it can
+            // still hold everything left to place. Skipping the rest of a day is
+            // a luxury the tight ranges above cannot afford: there $dayCount is
+            // exactly the capacity floor, and one wasted slot pushes the last
+            // fixtures past the final day, where they would pile onto one
+            // kickoff on one court.
+            if ($used[$dayIdx] > 0 && $dayIdx < $lastDay && ($lastDay - $dayIdx) * $perDay >= $remaining) {
+                $dayIdx++;
+            }
+
             foreach ($list as $m) {
-                if ($slot >= $perDay) {
+                if ($used[$dayIdx] >= $perDay && $dayIdx < $lastDay) {
                     $dayIdx++;
-                    $slot = 0;
                 }
+                $slot = $used[$dayIdx];
+                $used[$dayIdx]++;
+                $remaining--;
 
                 // A tie the organizer timed themselves keeps what they chose.
                 // It still consumes its slot, so the fixtures around it land
                 // where they would have anyway.
                 if ($m->round === 1 && in_array($m->order, $lockedOrders, true)) {
-                    $slot++;
-
                     continue;
                 }
 
-                $day = $days[min($dayIdx, $lastDay)];
+                $day = $days[$dayIdx];
                 $lane = $slot % $venues;
                 $time = $times[min(intdiv($slot, $venues), count($times) - 1)];
 
@@ -1207,9 +1251,7 @@ class ScheduleService
                     'scheduled_at' => $day->copy()->addMinutes($time)->utc(),
                     'venue' => $courts[$lane] ?? ($venues > 1 ? 'Lapangan '.($lane + 1) : null),
                 ]);
-                $slot++;
             }
-            $dayIdx++; // next round starts on a fresh day
         }
     }
 

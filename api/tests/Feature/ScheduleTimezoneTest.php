@@ -117,6 +117,30 @@ class ScheduleTimezoneTest extends TestCase
         }
     }
 
+    public function test_the_events_own_start_date_is_read_in_its_timezone_too(): void
+    {
+        $service = app(ScheduleService::class);
+        // No start_date option: the date comes off the event, where the `date`
+        // cast has already made it a Carbon at UTC midnight. Carbon::parse()
+        // ignores its zone argument for an input that carries one, so that path
+        // used to skip the conversion the option path gets — 15:00 WIB landed
+        // as 15:00Z and read back to the organizer as 22:00.
+        $opts = ['daily_start' => '15:00', 'daily_end' => '21:00'];
+
+        $jakarta = $this->categoryIn('Asia/Jakarta');
+        $service->generateRoundRobin($jakarta);
+        $service->applySchedule($jakarta, $opts);
+
+        $jayapura = $this->categoryIn('Asia/Jayapura');
+        $service->generateRoundRobin($jayapura);
+        $service->applySchedule($jayapura, $opts);
+
+        // Same instants the option path produces above — the two ways of naming
+        // the same first day must not disagree.
+        $this->assertSame('08:00', $this->firstKickoffUtc($jakarta), '15:00 WIB is 08:00Z');
+        $this->assertSame('06:00', $this->firstKickoffUtc($jayapura), '15:00 WIT is 06:00Z');
+    }
+
     public function test_schedule_stays_within_the_event_dates_in_a_far_east_timezone(): void
     {
         $service = app(ScheduleService::class);
