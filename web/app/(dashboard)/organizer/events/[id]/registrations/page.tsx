@@ -49,6 +49,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
+import { PillTabs } from "@/components/event/pill-tabs";
 import { ImportTeamsDialog } from "@/components/event/import-teams-dialog";
 import {
   schemaOf,
@@ -80,12 +81,16 @@ const FILTERS: [Filter, string][] = [
   ["rejected", "Ditolak"],
 ];
 
+/** Sentinel "tanpa filter kategori" — sebuah id kategori tidak akan pernah ini. */
+const ALL_CATEGORIES = "all";
+
 export default function RegistrationsPage() {
   const qc = useQueryClient();
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { orgId } = useActiveOrg();
   const [filter, setFilter] = useState<Filter>("all");
+  const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
 
   // null = closed, "new" = adding, a Team = editing that team.
@@ -177,13 +182,22 @@ export default function RegistrationsPage() {
     );
   }, [teams, search]);
 
+  // Kategori disaring sebelum chip status dihitung, alasan yang sama dengan
+  // pencarian di atas: "Menunggu 12" di atas dua baris adalah janji yang tidak
+  // ditepati. Hitungan di strip kategori sendiri dibaca dari `matched`, bukan
+  // dari `scoped` — kalau tidak, tiap kategori selain yang terpilih akan
+  // menampilkan 0.
+  const categories = eventQuery.data?.categories ?? [];
+  const scoped =
+    categoryId === ALL_CATEGORIES ? matched : matched.filter((t) => t.category_id === categoryId);
+
   const counts: Record<Filter, number> = {
-    all: matched.length,
-    pending: matched.filter((t) => t.status === "pending").length,
-    approved: matched.filter((t) => t.status === "approved").length,
-    rejected: matched.filter((t) => t.status === "rejected").length,
+    all: scoped.length,
+    pending: scoped.filter((t) => t.status === "pending").length,
+    approved: scoped.filter((t) => t.status === "approved").length,
+    rejected: scoped.filter((t) => t.status === "rejected").length,
   };
-  const shown = matched.filter((t) => filter === "all" || t.status === filter);
+  const shown = scoped.filter((t) => filter === "all" || t.status === filter);
 
   return (
     <div>
@@ -236,6 +250,26 @@ export default function RegistrationsPage() {
 
       {teams && teams.length > 0 && (
         <>
+          {categories.length > 1 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Kategori
+              </span>
+              <PillTabs
+                tone="tint"
+                items={[
+                  { key: ALL_CATEGORIES, label: `Semua (${matched.length})` },
+                  ...categories.map((c) => ({
+                    key: c.id,
+                    label: `${c.name} (${matched.filter((t) => t.category_id === c.id).length})`,
+                  })),
+                ]}
+                activeKey={categoryId}
+                onSelect={setCategoryId}
+              />
+            </div>
+          )}
+
           <div className="mb-4 flex flex-wrap items-center gap-3">
             {/* Same rule as PillTabs, which this rail is the compact cousin of:
                 scrolls sideways on a phone, wraps from sm up. Left as a plain
@@ -289,11 +323,11 @@ export default function RegistrationsPage() {
           </div>
 
           {shown.length === 0 ? (
-            search.trim() ? (
+            search.trim() || categoryId !== ALL_CATEGORIES ? (
               <EmptyState
                 icon={Search}
                 title="Tidak ada tim yang cocok"
-                description="Coba ubah kata kunci atau filter status."
+                description="Coba ubah kata kunci, kategori, atau filter status."
               />
             ) : (
               <EmptyState icon={Inbox} title="Tidak ada tim" description="Tidak ada tim pada filter ini." />
