@@ -78,9 +78,9 @@ export function RubberScoreEditor({
   }
 
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-3 text-sm">
-        <span className="flex-1 truncate text-right font-semibold">{match.home_team?.name}</span>
+    <div className="grid min-w-0 gap-3">
+      <div className="flex min-w-0 items-center gap-3 text-sm">
+        <span className="min-w-0 flex-1 truncate text-right font-semibold">{match.home_team?.name}</span>
         <span
           className="font-extrabold tabular-nums"
           style={{ fontFamily: "var(--font-display)" }}
@@ -88,7 +88,7 @@ export function RubberScoreEditor({
         >
           {won.home} – {won.away}
         </span>
-        <span className="flex-1 truncate font-semibold">{match.away_team?.name}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{match.away_team?.name}</span>
       </div>
 
       {rubbers.map((rubber) => (

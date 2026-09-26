@@ -85,8 +85,8 @@ export function GoalScoreEditor({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex-1 truncate text-right text-sm font-semibold">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold">
           {match.home_team?.name ?? "TBD"}
         </span>
         <Input
@@ -106,7 +106,7 @@ export function GoalScoreEditor({
           className="h-9 w-14 text-center"
           aria-label={`Skor ${match.away_team?.name ?? "tim tamu"}`}
         />
-        <span className="flex-1 truncate text-sm font-semibold">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {match.away_team?.name ?? "TBD"}
         </span>
         {/* The actions travel as one block. Left loose in the wrapping row they

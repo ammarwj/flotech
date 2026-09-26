@@ -60,13 +60,13 @@ export function SetScoreEditor({
     setSets((s) => s.map((x, j) => (j === i ? { ...x, [side]: v } : x)));
 
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center gap-3 text-sm">
-        <span className="flex-1 truncate text-right font-semibold">{match.home_team?.name}</span>
+    <div className="grid min-w-0 gap-2">
+      <div className="flex min-w-0 items-center gap-3 text-sm">
+        <span className="min-w-0 flex-1 truncate text-right font-semibold">{match.home_team?.name}</span>
         <span className="font-extrabold tabular-nums" style={{ fontFamily: "var(--font-display)" }}>
           {homeWon} – {awayWon}
         </span>
-        <span className="flex-1 truncate font-semibold">{match.away_team?.name}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{match.away_team?.name}</span>
       </div>
 
       {sets.map((s, i) => (

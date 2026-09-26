@@ -1071,7 +1071,7 @@ function MatchCard({
   // through the other endpoint — the two doors would disagree in the UI.
   if (match.status === "cancelled") {
     return (
-      <Card className="p-3 opacity-60">
+      <Card className="min-w-0 p-3 opacity-60">
         <MatchCardHeader
           orgId={orgId}
           eventId={eventId}
@@ -1083,7 +1083,7 @@ function MatchCard({
           disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex-1 truncate text-right font-medium">
+          <span className="min-w-0 flex-1 truncate text-right font-medium">
             {match.home_team?.name ?? "TBD"}
           </span>
           <span className="text-xs">
@@ -1091,7 +1091,7 @@ function MatchCard({
               ? `${match.home_score}–${match.away_score}`
               : "vs"}
           </span>
-          <span className="flex-1 truncate font-medium">
+          <span className="min-w-0 flex-1 truncate font-medium">
             {match.away_team?.name ?? "TBD"}
           </span>
           {removeBtn}
@@ -1104,7 +1104,7 @@ function MatchCard({
   // "Menang WO" badge in the header says so — no second label here.
   if (match.home_team && !match.away_team && match.status === "finished") {
     return (
-      <Card className="p-3 text-sm">
+      <Card className="min-w-0 p-3 text-sm">
         <MatchCardHeader
           orgId={orgId}
           eventId={eventId}
@@ -1126,7 +1126,7 @@ function MatchCard({
   // A slot still awaiting an earlier result — teams TBD, but it can still be scheduled.
   if (!match.home_team || !match.away_team) {
     return (
-      <Card className="p-3">
+      <Card className="min-w-0 p-3">
         <MatchCardHeader
           orgId={orgId}
           eventId={eventId}
@@ -1138,11 +1138,11 @@ function MatchCard({
           disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex-1 truncate text-right font-medium">
+          <span className="min-w-0 flex-1 truncate text-right font-medium">
             {match.home_team?.name ?? "TBD"}
           </span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
-          <span className="flex-1 truncate font-medium">
+          <span className="min-w-0 flex-1 truncate font-medium">
             {match.away_team?.name ?? "TBD"}
           </span>
         </div>
@@ -1159,7 +1159,7 @@ function MatchCard({
   // plain set-based branch, which such a category would otherwise fall into.
   if (rubbers) {
     return (
-      <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
+      <Card className={cn("min-w-0 p-3", showGoals && "xl:col-span-2")}>
         <MatchCardHeader
           orgId={orgId}
           eventId={eventId}
@@ -1186,7 +1186,7 @@ function MatchCard({
   // Set-based sports (volleyball/badminton/padel): score per set.
   if (setBased) {
     return (
-      <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
+      <Card className={cn("min-w-0 p-3", showGoals && "xl:col-span-2")}>
         <MatchCardHeader
           orgId={orgId}
           eventId={eventId}
@@ -1233,7 +1233,7 @@ function MatchCard({
 
   return (
     // Opening the stat editor needs the full row; a half-width card squashes it.
-    <Card className={cn("p-3", showGoals && "xl:col-span-2")}>
+    <Card className={cn("min-w-0 p-3", showGoals && "xl:col-span-2")}>
       <MatchCardHeader
         orgId={orgId}
         eventId={eventId}
