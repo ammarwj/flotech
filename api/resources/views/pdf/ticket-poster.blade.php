@@ -36,7 +36,11 @@
         /* URL-nya dipecah aman: dompdf tidak memotong kata, dan URL panjang yang
            tidak muat akan melebar keluar halaman alih-alih membungkus. */
         .url { font-size: 12px; margin-top: 14px; word-wrap: break-word; }
-        .steps { font-size: 12px; margin-top: 18px; color: #374151; }
+        /* dompdf memakai shrink-to-fit untuk tabel: tanpa wrapper selebar
+           halaman, `align=center` cuma memusatkan isi di dalam cell yang
+           selebar isinya sendiri — blok-nya tetap menempel ke kiri. */
+        .center { width: 100%; }
+        .steps { font-size: 12px; color: #374151; }
         .steps td { padding: 3px 10px; }
         .foot { margin-top: 22px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #6b7280; }
     </style>
@@ -61,10 +65,10 @@
     <div class="cta">BELI TIKET DI SINI</div>
     <div class="hint muted">Scan QR dengan kamera ponsel</div>
 
-    <table style="margin-top: 16px;">
+    <table class="center" style="margin-top: 16px;">
         <tr>
             <td align="center">
-                <table class="qr-box" style="width: auto;">
+                <table class="qr-box" style="width: auto; margin: 0 auto;">
                     <tr><td><img class="qr" src="{{ $qr }}" alt=""></td></tr>
                 </table>
             </td>
@@ -73,11 +77,17 @@
 
     <div class="url">{{ $url }}</div>
 
-    <table class="steps">
+    <table class="center" style="margin-top: 18px;">
         <tr>
-            <td>1. Scan QR di atas</td>
-            <td>2. Pilih kategori tiket</td>
-            <td>3. Bayar &amp; tiket dikirim ke email</td>
+            <td align="center">
+                <table class="steps" style="width: auto; margin: 0 auto;">
+                    <tr>
+                        <td>1. Scan QR di atas</td>
+                        <td>2. Pilih kategori tiket</td>
+                        <td>3. Bayar &amp; tiket dikirim ke email</td>
+                    </tr>
+                </table>
+            </td>
         </tr>
     </table>
 
