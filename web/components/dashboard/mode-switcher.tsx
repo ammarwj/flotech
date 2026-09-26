@@ -1,14 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { updateDefaultMode } from "@/lib/api/auth";
 import { cn } from "@/lib/utils";
 import {
   DASHBOARD_MODES,
+  isCrewOnly,
   MODE_HOME,
   MODE_LABEL,
   MODE_SHORT_LABEL,
+  modeFromPath,
   useDashboardMode,
   type DashboardMode,
 } from "@/lib/hooks/use-dashboard-mode";
@@ -38,10 +40,16 @@ export function ModeSwitcher({
   fullWidth?: boolean;
 } = {}) {
   const router = useRouter();
+  const pathname = usePathname();
   const role = useAuthStore((s) => s.user?.role);
   const user = useAuthStore((s) => s.user);
   const setDefaultMode = useAuthStore((s) => s.setDefaultMode);
   const mode = useDashboardMode();
+  // /account belongs to no mode — it applies to all of them — so `mode` there is
+  // the hat being worn, not the surface being looked at. Without this the active
+  // button is a dead end on that page: it matches `mode`, so the early return
+  // below fires and the one hat the user is actually in has no way home.
+  const insideMode = modeFromPath(pathname) !== null;
 
   if (role === "super_admin") {
     return (
@@ -51,12 +59,11 @@ export function ModeSwitcher({
     );
   }
 
-  // Crew and nothing else. `account_types` is derived from organizations and
-  // managed teams, so it is empty exactly when this account has neither — which
-  // is what a task account provisioned from a personnel row looks like. A
-  // referee who also manages a team keeps the switcher; they really do have two
-  // hats.
-  if ((user?.officiating?.length ?? 0) > 0 && (user?.account_types?.length ?? 0) === 0) {
+  // Crew and nothing else — the test itself lives in `isCrewOnly`, which is
+  // also what decides where "Login sebagai" lands such an account. Two copies
+  // would eventually disagree, and the shape that disagreement takes is an
+  // account routed to /officiating that is then handed the organizer switcher.
+  if (user && isCrewOnly(user)) {
     return (
       <span className="hidden text-sm font-medium text-muted-foreground md:inline">
         {MODE_LABEL.officiating}
@@ -68,7 +75,7 @@ export function ModeSwitcher({
     // Still dismiss the mobile panel when the active mode is tapped: to the user
     // that reads as "yes, this one", not as a no-op.
     onSelect?.();
-    if (next === mode) return;
+    if (next === mode && insideMode) return;
 
     router.push(MODE_HOME[next]);
 

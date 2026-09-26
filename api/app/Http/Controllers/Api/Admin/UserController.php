@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AuthService;
 use App\Support\ApiResponse;
 use App\Support\Search;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -33,6 +34,15 @@ class UserController extends Controller
      * memuat sebagian di salah satu endpoint membuat badge jenis akun hilang
      * diam-diam di respons itu saja.
      *
+     * `personnelAssignments` ikut di sini karena alasan yang sama dengan
+     * ketiganya, di respons yang berbeda: `impersonate()` mengembalikan
+     * `UserResource` dan **itu yang dipakai shell sebagai user-nya**, jadi tanpa
+     * relasi ini `officiating` absen dan seluruh deteksi petugas di frontend
+     * (`ModeSwitcher`, halaman tujuan) diam-diam mati untuk sesi login-sebagai —
+     * admin mendarat di dashboard organizer kosong milik seorang wasit. Di
+     * `index()` ia juga yang memberi badge Wasit/Staf datanya, dan itu satu query
+     * eager untuk seluruh halaman, bukan satu per baris.
+     *
      * @return array<string, mixed>
      */
     private function contextRelations(): array
@@ -45,16 +55,58 @@ class UserController extends Controller
             'managedTeams' => fn ($q) => $q->select('id', 'manager_user_id', 'event_id', 'name')
                 ->with('event:id,name')
                 ->latest('created_at'),
+            'personnelAssignments' => fn ($q) => $q->select('id', 'user_id', 'event_id', 'kind')
+                ->with('event:id,name'),
         ];
+    }
+
+    /**
+     * Semua jalan dari sebuah user ke sebuah event, sebagai kondisi OR.
+     *
+     * Ada empat, dan mengabaikan salah satunya membuat kotak pencarian menjawab
+     * "tidak ada" untuk orang yang jelas-jelas ada di event itu: manajer tim,
+     * pemilik organisasi penyelenggara, anggota organisasi itu, dan petugas
+     * (wasit/staf) yang ditugaskan ke event-nya. Nama kolomnya datang dari kode;
+     * yang di-bind cuma `$term` (lihat `Search`).
+     *
+     * @param  Builder<User>  $query
+     */
+    private function orWhereInEvent($query, string $term): void
+    {
+        $matches = fn ($q) => Search::anyColumn($q, ['events.name'], $term);
+
+        $query
+            ->orWhereHas('managedTeams.event', $matches)
+            ->orWhereHas('ownedOrganizations.events', $matches)
+            ->orWhereHas('organizationMemberships.organization.events', $matches)
+            ->orWhereHas('personnelAssignments.event', $matches);
     }
 
     /** Paginated, searchable list with each user's org context. */
     public function index(Request $request): JsonResponse
     {
         $page = User::query()
+            // Satu kotak, tiga pertanyaan: nama, email, dan **nama event** yang
+            // user ini terlibat di dalamnya. Satu kotak dan bukan dua karena yang
+            // dicari super admin adalah orangnya — "siapa saja di Piala Kaboax"
+            // dan "siapa yang emailnya kaboax" adalah pencarian yang sama dari
+            // sisi si pencari, dan kotak kedua yang hampir selalu kosong cuma
+            // memindahkan beban memilih ke dia.
+            //
+            // Bungkus `where(...)` di luar wajib: tanpanya `orWhereHas` di
+            // `orWhereInEvent()` bocor ke level teratas dan meng-OR dirinya
+            // dengan filter role/type di sebelahnya — filternya terbaca mati.
+            //
             // Search::anyColumn, bukan LIKE polos: LIKE case-sensitive di
             // Postgres, jadi mencari "Kaboax" tidak menemukan kaboax@gmail.com.
-            ->when($request->query('q'), fn ($query, $q) => Search::anyColumn($query, ['full_name', 'email'], (string) $q))
+            ->when($request->query('q'), function ($query, $q) {
+                $term = (string) $q;
+
+                $query->where(function ($w) use ($term) {
+                    Search::anyColumn($w, ['full_name', 'email'], $term);
+                    $this->orWhereInEvent($w, $term);
+                });
+            })
             ->when($request->query('role'), fn ($query, $role) => $query->where('role', $role))
             // Filter jenis akun memakai definisi yang sama persis dengan
             // User::accountTypes() — kalau keduanya menyimpang, badge di kartu
@@ -64,10 +116,20 @@ class UserController extends Controller
                     ->whereHas('ownedOrganizations')
                     ->orWhereHas('organizationMemberships')),
                 'participant' => $query->whereHas('managedTeams'),
+                // Petugas bukan `account_types` (itu diturunkan dari organisasi &
+                // tim saja) — ia hidup di `officiating`. Filternya di sini dan
+                // bukan di filter `role`: `users.role` cuma super_admin|user, dan
+                // wasit adalah penugasan per event, bukan peran platform.
+                'crew' => $query->whereHas('personnelAssignments'),
+                // "Belum ada aktivitas" wajib ikut mengecualikan petugas, kalau
+                // tidak filter ini mengembalikan baris yang kartunya justru
+                // berbadge Wasit — dan yang dijaga docblock di atas persis itu:
+                // filter dan badge tidak boleh saling membantah di satu layar.
                 'none' => $query
                     ->whereDoesntHave('ownedOrganizations')
                     ->whereDoesntHave('organizationMemberships')
-                    ->whereDoesntHave('managedTeams'),
+                    ->whereDoesntHave('managedTeams')
+                    ->whereDoesntHave('personnelAssignments'),
                 default => $query,
             })
             ->with($this->contextRelations())

@@ -226,13 +226,20 @@ export function navItems(sections: NavSection[]): NavItem[] {
 
 /** Pick the navigation set for the signed-in user's role and current mode. */
 function useNav(): NavSection[] {
+  const pathname = usePathname();
   const role = useAuthStore((s) => s.user?.role);
   const mode = useDashboardMode();
 
-  // Before the role check, unlike the other two branches: `officiating` is
-  // derived from the pathname, so it is only ever true for someone standing on
-  // that surface — and a super_admin who opened it wants the menu that belongs
-  // to the page, not the platform menu with no way back to the fixtures.
+  // Read off the path, ahead of `mode`, because /admin belongs to no mode — so
+  // `mode` here is whichever hat the account last wore, and a super_admin who
+  // dipped into /officiating would get the crew menu on every platform page.
+  if (pathname.startsWith("/admin")) return ADMIN_NAV;
+
+  // Before the role check, unlike the other two branches: a super_admin standing
+  // on that surface wants the menu that belongs to the page, not the platform
+  // menu with no way back to the fixtures. It now also covers a crew account on
+  // /account, which belongs to no mode either and used to fall through to the
+  // organizer menu it has no access to.
   if (mode === "officiating") return OFFICIATING_NAV;
   if (role === "super_admin") return ADMIN_NAV;
   return mode === "participant" ? PARTICIPANT_NAV : ORGANIZER_NAV;

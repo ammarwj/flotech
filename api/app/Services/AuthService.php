@@ -23,7 +23,7 @@ class AuthService
      */
     public function issueTokens(User $user, Request $request): array
     {
-        $accessToken = JWTAuth::fromUser($user);
+        $accessToken = $this->mint($user);
 
         $plainRefresh = Str::random(64);
 
@@ -55,7 +55,55 @@ class AuthService
      */
     public function issueImpersonationToken(User $target, User $admin): string
     {
-        return JWTAuth::customClaims(['act_as' => $admin->id])->fromUser($target);
+        return $this->mint($target, ['act_as' => $admin->id]);
+    }
+
+    /**
+     * Cetak satu access token, dan **buang dulu klaim sisa milik orang lain**.
+     *
+     * Semua cetakan lewat sini karena resetnya tidak boleh dilewatkan satu pun,
+     * dan itu bukan kehati-hatian berlebih — tanpanya `act_as` bocor ke token
+     * yang sah:
+     *
+     *  - `Tymon\JWTAuth\Factory` adalah singleton, dan `make()` **tidak**
+     *    mengosongkan Collection `$claims`-nya (`$resetClaims` default false,
+     *    `addClaim()` cuma `put()` di atasnya). Jadi `act_as` dari satu cetakan
+     *    tetap di sana dan **tertandatangani ke dalam** token biasa berikutnya.
+     *  - Factory yang sama juga diisi saat **membaca**: `Manager::decode()`
+     *    memanggil `customClaims($payloadArray)->make()`. Satu request yang
+     *    memakai token impersonasi sudah cukup untuk mengotorinya, jadi reset di
+     *    sisi cetak saja — di dalam `issueImpersonationToken()` — masih
+     *    menyisakan lubangnya.
+     *  - `customClaims([])` mengurus store kedua: array di instance
+     *    `tymon.jwt.auth` sendiri, yang `getClaimsArray()` merge di tiap cetakan.
+     *
+     * Semuanya berujung di satu akibat, dan diam: EnsurePasswordRotated melihat
+     * `act_as` di token yang sah, lalu mempersilakan password undangan yang sudah
+     * dibaca orang lain masuk ke permukaan tugas — tepat yang ia ada untuk
+     * menahan. Di request-per-proses PHP-FPM pola itu jarang terlihat; di Octane
+     * dan queue worker prosesnya hidup terus. Middleware itu menjaga sisi
+     * bacanya (ia men-decode token request itu sendiri, bukan `payload()`);
+     * **keduanya** perlu, karena reset di sini saja tetap menyisakan token sah
+     * yang berbohong soal dirinya, dan pembaca ketiga nanti akan memercayainya.
+     */
+    private function mint(User $user, array $claims = []): string
+    {
+        try {
+            JWTAuth::factory()->emptyClaims();
+
+            return JWTAuth::customClaims($claims)->fromUser($user);
+        } finally {
+            // Dibersihkan di kedua sisi, dan yang sesudah bukan mubazir: yang
+            // sebelum menjaga token *ini* dari klaim orang lain, yang sesudah
+            // menjaga pencetak lain dari klaim *ini*. `JWTAuth::fromUser()`
+            // bukan satu-satunya pintu cetak — `auth('api')->login()` memakai
+            // instance `tymon.jwt` yang berbeda tapi Factory yang sama, jadi ia
+            // tidak akan pernah lewat sini untuk direset. Selama semua cetakan
+            // meninggalkan Factory-nya kosong, siapa pun pencetak berikutnya
+            // aman tanpa perlu tahu soal ini.
+            JWTAuth::factory()->emptyClaims();
+            JWTAuth::customClaims([]);
+        }
     }
 
     /**

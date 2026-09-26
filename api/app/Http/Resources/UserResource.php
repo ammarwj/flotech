@@ -53,8 +53,9 @@ class UserResource extends JsonResource
             // auth response eager-loads this one (see AuthController::withAuth)
             // — it decides the landing page, and a task account owns no
             // organization, so without it a referee lands on an empty organizer
-            // dashboard. Still whenLoaded, because the admin user list pages
-            // through hundreds of rows and has no use for it.
+            // dashboard. The admin user management loads it for the same reason
+            // one step removed: its impersonate() response *is* the shell's user
+            // (see Admin\UserController::contextRelations()).
             'officiating' => $this->whenLoaded('personnelAssignments', fn () => $this->personnelAssignments
                 ->filter(fn ($p) => $p->event !== null)
                 ->map(fn ($p) => [

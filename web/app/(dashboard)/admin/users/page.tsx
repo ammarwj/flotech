@@ -17,6 +17,9 @@ import {
   KeyRound,
   Megaphone,
   Shirt,
+  ClipboardList,
+  Search as SearchIcon,
+  X,
 } from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
@@ -30,7 +33,8 @@ import {
 } from "@/lib/api/admin";
 import { parseApiError } from "@/lib/api/errors";
 import { useAuthStore } from "@/stores/auth-store";
-import { MODE_HOME } from "@/lib/hooks/use-dashboard-mode";
+import { dashboardModeFor, MODE_HOME, MODE_LABEL } from "@/lib/hooks/use-dashboard-mode";
+import { EVENT_PERSONNEL_KIND_LABELS } from "@/lib/labels";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -40,7 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import type { AccountType, AdminUser } from "@/types/api";
+import type { AccountType, AdminUser, EventPersonnelKind } from "@/types/api";
 
 const relative = (iso: string | null) =>
   iso ? formatDistanceToNow(new Date(iso), { addSuffix: true, locale: idLocale }) : "belum pernah";
@@ -55,8 +59,17 @@ const ACCOUNT_TYPES: Record<AccountType, { label: string; icon: typeof Megaphone
   participant: { label: "Tim Peserta", icon: Shirt },
 };
 
-/** Berapa tim yang ditampilkan sebelum sisanya diringkas jadi "+N". */
-const TEAM_CHIP_LIMIT = 3;
+/**
+ * Petugas **bukan** salah satu `account_types` — itu diturunkan dari organisasi
+ * & tim saja, jadi seorang wasit murni terbaca kosong di sana dan dulu memakai
+ * badge "Belum ada aktivitas" padahal dia bertugas di dua event. Urutannya
+ * dikunci di sini (bukan urutan kemunculan di `officiating`) supaya dua kartu
+ * dengan penugasan sama tidak menampilkan badge dengan urutan berbeda.
+ */
+const CREW_KINDS: EventPersonnelKind[] = ["referee", "staff"];
+
+/** Berapa chip tim/penugasan yang ditampilkan sebelum sisanya diringkas jadi "+N". */
+const CHIP_LIMIT = 3;
 
 export default function AdminUsersPage() {
   const confirm = useConfirm();
@@ -124,7 +137,13 @@ export default function AdminUsersPage() {
       // impersonated session — it's cached under keys with no user id.
       qc.clear();
       toast.success(`Sekarang login sebagai ${res.user.full_name || res.user.email}.`);
-      router.push(MODE_HOME[res.user.default_mode ?? "organizer"]);
+      // Tujuannya dari `dashboardModeFor`, bukan `default_mode` mentah — kolom
+      // itu cuma benar untuk akun yang undangan petugas ikut *buatkan*; lihat
+      // docblock helper-nya. Dan tujuan yang sama sekarang dipakai AdminLayout,
+      // jadi `push` di sini dan `replace` dari layout (yang menyala pada tick
+      // yang sama, begitu store berganti user) mendarat di alamat yang sama
+      // siapa pun yang menang.
+      router.push(MODE_HOME[dashboardModeFor(res.user)]);
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal login sebagai user ini.").message),
   });
@@ -139,21 +158,43 @@ export default function AdminUsersPage() {
         description="Semua pengguna platform. Ubah role, tandai verifikasi, reset password, atau hapus akun."
       />
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <Input
-          placeholder="Cari nama atau email…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="sm:max-w-xs"
-        />
+      {/* Filter. Ambangnya `lg`, bukan `sm`: sidebar dashboard muncul di `md`
+          dan memakan 260px, jadi tiga kontrol satu baris sejak `sm` menyisakan
+          ~48px untuk kotak pencarian tepat di lebar tablet. Di bawah `sm`
+          semuanya satu kolom, di `sm` dua select berbagi satu baris dan
+          pencarian mengambil keduanya. */}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex">
+        <div className="relative min-w-0 sm:col-span-2 lg:max-w-sm lg:flex-1">
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          {/* Event ikut dicari di server (UserController::orWhereInEvent) lewat
+              keempat jalan user→event, jadi placeholder-nya wajib menyebutnya:
+              fitur pencarian yang tidak diumumkan tidak akan pernah dicoba. */}
+          <Input
+            placeholder="Cari nama, email, atau nama event…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 pr-9"
+            aria-label="Cari user"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Hapus pencarian"
+              className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
         <Select
           value={role}
           onChange={(e) => {
             setRole(e.target.value);
             setPage(1);
           }}
-          className="sm:max-w-[200px]"
+          className="lg:max-w-[180px]"
+          aria-label="Filter role platform"
         >
           <option value="">Semua role</option>
           <option value="user">Pengguna</option>
@@ -165,11 +206,13 @@ export default function AdminUsersPage() {
             setType(e.target.value);
             setPage(1);
           }}
-          className="sm:max-w-[200px]"
+          className="lg:max-w-[200px]"
+          aria-label="Filter jenis akun"
         >
           <option value="">Semua jenis akun</option>
           <option value="organizer">{ACCOUNT_TYPES.organizer.label}</option>
           <option value="participant">{ACCOUNT_TYPES.participant.label}</option>
+          <option value="crew">Petugas Event</option>
           <option value="none">Belum ada aktivitas</option>
         </Select>
       </div>
@@ -177,7 +220,7 @@ export default function AdminUsersPage() {
       {query.isLoading ? (
         <div className="grid gap-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-[110px] rounded-xl" />
+            <Skeleton key={i} className="h-[150px] rounded-xl" />
           ))}
         </div>
       ) : query.isError ? (
@@ -192,7 +235,26 @@ export default function AdminUsersPage() {
         />
       ) : (
         <>
-          <div className="grid gap-3">
+          {/* Hitungan hasil, bukan cuma nomor halaman: pencarian nama event bisa
+              mengembalikan seluruh panitia satu turnamen, dan angkanya di atas
+              daftar itulah yang memberi tahu pencarinya bahwa filternya kena. */}
+          {meta && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {meta.total} user{q ? ` cocok dengan “${q}”` : ""}
+            </p>
+          )}
+
+          {/* `grid-cols-1`, bukan `grid` telanjang. Kolom implisit `auto`
+              mengambil lebar **minimum-content** item terbesarnya, dan
+              min-content sebuah kartu di sini adalah string nowrap
+              terpanjangnya — satu nama organisasi ("Asosiasi Futsal Kabupaten
+              Kepulauan Anambas · Pemilik") membuat seluruh kartu ~800px di
+              viewport 375px, lalu semua isinya ikut melebar bersamanya. Itu
+              yang membuat kolom kanan baris aksi terpotong di tepi layar, bukan
+              tombolnya sendiri. `grid-cols-1` = `minmax(0, 1fr)`, jadi
+              track-nya boleh menyusut; `min-w-0` di Card melengkapinya karena
+              item grid tetap punya `min-width: auto` sendiri. */}
+          <div className="grid grid-cols-1 gap-3">
             {users.map((u) => (
               <UserCard
                 key={u.id}
@@ -218,9 +280,27 @@ export default function AdminUsersPage() {
                 onImpersonate={() =>
                   void confirm({
                     title: "Login sebagai pengguna ini?",
-                    description: `Kamu akan melihat platform sebagai ${u.full_name || u.email}.`,
-                    consequences:
-                      'Tampilan admin tidak tersedia sampai kamu menekan "Kembali ke admin".',
+                    // Tujuan pendaratannya disebut, karena untuk akun petugas ia
+                    // bukan dashboard organizer. Dibaca dari `dashboardModeFor`
+                    // yang sama dengan navigasinya di `onSuccess`, bukan dari
+                    // `default_mode` mentah: kalimat yang menjanjikan satu
+                    // halaman lalu mendarat di halaman lain lebih buruk daripada
+                    // tidak menyebutkannya sama sekali.
+                    description: `Kamu akan melihat platform sebagai ${u.full_name || u.email} di ${MODE_LABEL[dashboardModeFor(u)]}.`,
+                    consequences: (
+                      <>
+                        Tampilan admin tidak tersedia sampai kamu menekan &quot;Kembali ke
+                        admin&quot;.
+                        {u.must_change_password && (
+                          <>
+                            {" "}
+                            Akun ini masih memakai password sementara dari undangan petugas —
+                            kamu tetap masuk tanpa menggantinya, jadi kredensial aslinya tidak
+                            tersentuh.
+                          </>
+                        )}
+                      </>
+                    ),
                     confirmLabel: "Login sebagai pengguna",
                     icon: UserCheck,
                   }).then((ok) => ok && impersonate.mutate(u.id))
@@ -241,12 +321,16 @@ export default function AdminUsersPage() {
             />
           )}
 
+          {/* `flex-wrap` + `ml-auto`, bukan `justify-between` sendirian:
+              stringnya panjang dan kedua tombolnya `whitespace-nowrap`, jadi di
+              lebar ponsel barisnya meluber keluar kartu. Setelah membungkus,
+              tombolnya tetap rapat ke kanan. */}
           {meta && meta.last_page > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-muted-foreground">
                 Halaman {meta.page} dari {meta.last_page} · {meta.total} user
               </span>
-              <div className="flex gap-2">
+              <div className="ml-auto flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -269,6 +353,43 @@ export default function AdminUsersPage() {
         </>
       )}
     </>
+  );
+}
+
+/** Chip abu-abu seragam untuk organisasi / tim / penugasan. */
+function Chip({
+  icon: Icon,
+  children,
+  title,
+  tone = "muted",
+}: {
+  icon: typeof Building2;
+  children: React.ReactNode;
+  title?: string;
+  tone?: "muted" | "brand";
+}) {
+  return (
+    <span
+      title={title}
+      className={
+        tone === "brand"
+          ? "inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-[var(--tint)] px-2 py-0.5 text-xs text-[var(--brand-600)]"
+          : "inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]"
+      }
+    >
+      <Icon className="h-3 w-3 shrink-0" />
+      {/* `min-w-0` di samping `truncate`: min-width flex item default `auto` =
+          min-content, dan untuk teks itu kata terpanjangnya — jadi satu nama
+          event tanpa spasi tetap mendorong chip melewati `max-w-full` induknya.
+          `truncate` sendirian tidak pernah jalan di dalam flex.
+
+          Yang di root chip (`min-w-0 max-w-full`) menjawab setengah lainnya:
+          chip ini sendiri item flex dari baris yang membungkusnya, dan
+          **min-width menang atas max-width**, jadi `max-w-full` tanpa `min-w-0`
+          tidak pernah menahan apa pun. Itu yang membuat baris ini terpotong di
+          tepi layar alih-alih ter-ellipsis di tepi kartu. */}
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
   );
 }
 
@@ -296,6 +417,12 @@ function UserCard({
   // Server yang menurunkannya; `?? []` cuma menjaga klien yang lebih baru dari API.
   const accountTypes = user.account_types ?? [];
   const teams = user.managed_teams ?? [];
+  const crew = user.officiating ?? [];
+  // "Belum ada aktivitas" harus melihat petugas juga, persis seperti filter
+  // `none` di server — kalau tidak, satu kartu bisa berbadge "Wasit" DAN
+  // "Belum ada aktivitas" sekaligus.
+  const idle = accountTypes.length === 0 && crew.length === 0;
+
   const deleteReason = isSelf
     ? "Tidak bisa menghapus akun sendiri"
     : ownsOrgs
@@ -318,109 +445,191 @@ function UserCard({
       : undefined;
 
   return (
-    <Card className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]">
-          {initial}
-        </span>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{user.full_name || "Tanpa nama"}</span>
-            {isSelf && (
-              <Badge variant="neutral" className="font-medium">
-                Anda
-              </Badge>
-            )}
-            {user.is_verified ? (
-              <Badge variant="success">
-                <BadgeCheck className="h-3 w-3" />
-                Terverifikasi
-              </Badge>
-            ) : (
-              <Badge variant="warning">Belum verifikasi</Badge>
-            )}
-            {/* Jenis akun — apa yang user ini benar-benar lakukan di platform,
-                bukan mode dashboard yang terakhir dia pilih. */}
-            {accountTypes.map((t) => {
-              const { label, icon: Icon } = ACCOUNT_TYPES[t];
-              return (
-                <Badge key={t} variant="info">
-                  <Icon className="h-3 w-3" />
-                  {label}
-                </Badge>
-              );
-            })}
-            {accountTypes.length === 0 && (
-              <Badge variant="outline" title="Belum punya organisasi maupun tim terdaftar">
-                Belum ada aktivitas
-              </Badge>
-            )}
-          </div>
-          <p className="truncate text-sm text-muted-foreground">{user.email}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Aktif terakhir {relative(user.last_seen_at)}
-          </p>
+    <Card className="min-w-0 p-4 sm:p-5">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]">
+            {initial}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">{user.full_name || "Tanpa nama"}</p>
+            <p className="truncate text-sm text-muted-foreground">{user.email}</p>
 
-          {(user.owned_organizations.length > 0 ||
-            user.memberships.length > 0 ||
-            teams.length > 0) && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {user.owned_organizations.map((o) => (
-                <span
-                  key={o.id}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--tint)] px-2 py-0.5 text-xs text-[var(--brand-600)]"
+            {/* Badge di barisnya sendiri, tidak lagi menyambung nama. Satu kartu
+                bisa membawa tujuh badge sekaligus (role, verifikasi, dua jenis
+                akun, dua jenis petugas, password sementara) dan semuanya
+                `whitespace-nowrap` dari cva-nya — di lebar ponsel nama panjang
+                tergencet jadi satu kata per baris di antara mereka. */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {isSelf && (
+                <Badge variant="neutral" className="font-medium">
+                  Anda
+                </Badge>
+              )}
+              {isSuperAdmin && (
+                <Badge variant="danger">
+                  <ShieldCheck className="h-3 w-3" />
+                  {roleLabel("super_admin")}
+                </Badge>
+              )}
+              {user.is_verified ? (
+                <Badge variant="success">
+                  <BadgeCheck className="h-3 w-3" />
+                  Terverifikasi
+                </Badge>
+              ) : (
+                <Badge variant="warning">Belum verifikasi</Badge>
+              )}
+              {/* Jenis akun — apa yang user ini benar-benar lakukan di platform,
+                  bukan mode dashboard yang terakhir dia pilih. */}
+              {accountTypes.map((t) => {
+                const { label, icon: Icon } = ACCOUNT_TYPES[t];
+                return (
+                  <Badge key={t} variant="info">
+                    <Icon className="h-3 w-3" />
+                    {label}
+                  </Badge>
+                );
+              })}
+              {/* Wasit/Staf. Labelnya dari EVENT_PERSONNEL_KIND_LABELS (cermin
+                  EventPersonnel::KIND_LABELS) — jangan tulis "Wasit" di sini. */}
+              {CREW_KINDS.map((kind) => {
+                const n = crew.filter((c) => c.kind === kind).length;
+                if (n === 0) return null;
+                return (
+                  <Badge key={kind} variant="default">
+                    <ClipboardList className="h-3 w-3" />
+                    {EVENT_PERSONNEL_KIND_LABELS[kind]}
+                    {n > 1 && ` · ${n} event`}
+                  </Badge>
+                );
+              })}
+              {/* Password undangan petugas yang belum diganti. Ini yang membuat
+                  "Login sebagai" dulu terasa rusak, jadi keadaannya kelihatan di
+                  kartu sebelum tombolnya ditekan. */}
+              {user.must_change_password && (
+                <Badge
+                  variant="warning"
+                  title="Masih memakai password sementara dari undangan petugas"
                 >
-                  <Building2 className="h-3 w-3" />
-                  {o.name} · Pemilik
-                </span>
-              ))}
-              {user.memberships.map((m) => (
-                <span
-                  key={m.organization_id}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]"
+                  <KeyRound className="h-3 w-3" />
+                  Password sementara
+                </Badge>
+              )}
+              {idle && (
+                <Badge
+                  variant="outline"
+                  title="Belum punya organisasi, tim terdaftar, maupun penugasan petugas"
                 >
-                  <Building2 className="h-3 w-3" />
-                  {m.organization_name ?? "—"} · {orgRoleLabel(m.role)}
-                </span>
-              ))}
-              {teams.slice(0, TEAM_CHIP_LIMIT).map((t) => (
-                <span
-                  key={t.id}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]"
-                  title={t.event_name ?? undefined}
-                >
-                  <Shirt className="h-3 w-3" />
-                  {t.name}
-                  {t.event_name && <span className="opacity-70">· {t.event_name}</span>}
-                </span>
-              ))}
-              {teams.length > TEAM_CHIP_LIMIT && (
-                <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
-                  +{teams.length - TEAM_CHIP_LIMIT} tim lain
-                </span>
+                  Belum ada aktivitas
+                </Badge>
               )}
             </div>
-          )}
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Aktif terakhir {relative(user.last_seen_at)}
+            </p>
+
+            {(ownsOrgs || user.memberships.length > 0 || teams.length > 0 || crew.length > 0) && (
+              <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                {user.owned_organizations.map((o) => (
+                  <Chip key={o.id} icon={Building2} tone="brand">
+                    {o.name} · Pemilik
+                  </Chip>
+                ))}
+                {user.memberships.map((m) => (
+                  <Chip key={m.organization_id} icon={Building2}>
+                    {m.organization_name ?? "—"} · {orgRoleLabel(m.role)}
+                  </Chip>
+                ))}
+                {teams.slice(0, CHIP_LIMIT).map((t) => (
+                  <Chip key={t.id} icon={Shirt} title={t.event_name ?? undefined}>
+                    {t.name}
+                    {t.event_name && <span className="opacity-70"> · {t.event_name}</span>}
+                  </Chip>
+                ))}
+                {teams.length > CHIP_LIMIT && (
+                  <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
+                    +{teams.length - CHIP_LIMIT} tim lain
+                  </span>
+                )}
+                {/* Event tempat dia bertugas. Ini juga jawaban yang dicari
+                    pencarian nama event: baris yang ketemu harus bisa
+                    menunjukkan event mana yang membuatnya ketemu. */}
+                {crew.slice(0, CHIP_LIMIT).map((c) => (
+                  <Chip
+                    key={`${c.event_id}-${c.kind}`}
+                    icon={ClipboardList}
+                    title={`${EVENT_PERSONNEL_KIND_LABELS[c.kind]} di ${c.event_name}`}
+                  >
+                    {c.event_name}
+                    <span className="opacity-70"> · {EVENT_PERSONNEL_KIND_LABELS[c.kind]}</span>
+                  </Chip>
+                ))}
+                {crew.length > CHIP_LIMIT && (
+                  <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
+                    +{crew.length - CHIP_LIMIT} penugasan lain
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Role platform dipisah dari tombol aksi: ia satu-satunya kontrol yang
+            mengubah *apa* akun ini, bukan sesuatu yang dilakukan padanya.
+
+            Dan tanpa `shrink-0` — perbaikan yang sama yang sudah ditulis panjang
+            di PageHeader: pada flex item, `flex-basis: auto` jadi lebar
+            max-content, dan untuk flex container bersarang itu berarti seluruh
+            anaknya dalam SATU baris; `shrink-0` lalu melarangnya turun dari
+            sana. Di lebar ponsel select 150px-nya jadi pulau terpencil di kiri
+            kartu, jadi di bawah `lg` ia lebar penuh dan labelnya ikut terbaca
+            (bukan `sr-only` lagi: di barisnya sendiri memang ada tempatnya). */}
+        <label className="flex w-full items-center gap-2 text-xs text-muted-foreground lg:w-auto">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span>Role</span>
+          <div className="min-w-0 flex-1 lg:flex-none">
+            <Select
+              value={user.role}
+              disabled={isSelf || busy}
+              title={isSelf ? "Tidak bisa mengubah role akun sendiri" : undefined}
+              onChange={(e) => onRoleChange(e.target.value as "super_admin" | "user")}
+              className="h-9 w-full text-sm lg:w-[150px]"
+            >
+              <option value="user">{roleLabel("user")}</option>
+              <option value="super_admin">{roleLabel("super_admin")}</option>
+            </Select>
+          </div>
+        </label>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-        <div className="flex items-center gap-1.5">
-          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-          <Select
-            value={user.role}
-            disabled={isSelf || busy}
-            title={isSelf ? "Tidak bisa mengubah role akun sendiri" : undefined}
-            onChange={(e) => onRoleChange(e.target.value as "super_admin" | "user")}
-            className="h-9 w-[150px] text-sm"
-          >
-            <option value="user">{roleLabel("user")}</option>
-            <option value="super_admin">{roleLabel("super_admin")}</option>
-          </Select>
-        </div>
+      {/* Aksi pindah ke barisnya sendiri di bawah pemisah. Sebelumnya lima
+          kontrol berebut separuh kanan kartu dengan identitas, jadi di lebar
+          laptop mana pun ia membungkus jadi tangga tiga baris; di sini mereka
+          dapat lebar penuh kartu dan urutannya tetap.
 
-        <Button size="sm" variant="outline" onClick={onToggleVerified} disabled={busy}>
-          {user.is_verified ? "Batalkan verifikasi" : "Verifikasi"}
+          Grid 2 kolom di ponsel, flex-wrap baru sejak `sm`: keempat tombol
+          `whitespace-nowrap` (itu di cva Button, bukan di sini), jadi flex-wrap
+          sendirian meluber keluar kartu yang interiornya cuma ~303px di 375px
+          alih-alih membungkus di dalamnya. Grid memberi tiap tombol lebar kolom
+          yang sudah pasti muat. `ml-auto` pada Hapus dipindah ke `sm:` karena
+          di grid ia tidak berarti apa-apa. */}
+      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onToggleVerified}
+          disabled={busy}
+          className="w-full min-w-0 sm:w-auto"
+        >
+          <BadgeCheck className="h-4 w-4" />
+          {/* Label pendek di ponsel lewat pola `sm:hidden`/`hidden sm:inline`
+              yang sudah dipakai tabel-tabel lain. "Batalkan verifikasi" adalah
+              label terpanjang di baris ini, dan satu-satunya yang tidak muat. */}
+          <span className="min-w-0 truncate sm:hidden">{user.is_verified ? "Batalkan" : "Verifikasi"}</span>
+          <span className="hidden min-w-0 truncate sm:inline">
+            {user.is_verified ? "Batalkan verifikasi" : "Verifikasi"}
+          </span>
         </Button>
 
         <Button
@@ -429,9 +638,16 @@ function UserCard({
           onClick={onResetPassword}
           disabled={busy || isSelf || isSuperAdmin}
           title={resetReason}
+          className="w-full min-w-0 sm:w-auto"
         >
           <KeyRound className="h-4 w-4" />
-          Reset password
+          {/* Pola label pendek yang sama dengan tombol verifikasi di atas. Di
+              375px tiap kolom grid ~147px dan chrome tombol (padding + ikon +
+              gap) memakan ~48px, jadi "Reset password" adalah label kedua yang
+              tidak muat — dan tombol yang berbunyi "Reset passwor…" lebih buruk
+              daripada yang berbunyi "Reset". */}
+          <span className="min-w-0 truncate sm:hidden">Reset</span>
+          <span className="hidden min-w-0 truncate sm:inline">Reset password</span>
         </Button>
 
         <Button
@@ -440,9 +656,10 @@ function UserCard({
           onClick={onImpersonate}
           disabled={busy || isSelf || isSuperAdmin}
           title={impersonateReason}
+          className="w-full min-w-0 sm:w-auto"
         >
           <UserCog className="h-4 w-4" />
-          Login sebagai
+          <span className="min-w-0 truncate">Login sebagai</span>
         </Button>
 
         <Button
@@ -451,9 +668,10 @@ function UserCard({
           onClick={onDelete}
           disabled={busy || isSelf || ownsOrgs}
           title={deleteReason}
+          className="w-full min-w-0 sm:ml-auto sm:w-auto"
         >
           <Trash2 className="h-4 w-4" />
-          Hapus
+          <span className="min-w-0 truncate">Hapus</span>
         </Button>
       </div>
     </Card>

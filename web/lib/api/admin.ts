@@ -27,9 +27,21 @@ export async function getAdminStats(): Promise<AdminStats> {
 // ---- Platform user management ----
 
 export interface AdminUserQuery {
+  /**
+   * Nama, email, **atau nama event**. Server meng-OR keempat jalan user→event
+   * (tim yang dimanajeri, organisasi yang dimiliki, keanggotaan organisasi,
+   * penugasan petugas) — lihat `Admin\UserController::orWhereInEvent()`.
+   */
   q?: string;
   role?: string;
-  /** Jenis akun turunan: "organizer" | "participant" | "none" (belum ada aktivitas). */
+  /**
+   * Jenis akun turunan: `"organizer"` | `"participant"` | `"crew"` (wasit/staf
+   * event) | `"none"` (belum ada aktivitas).
+   *
+   * `"crew"` bukan bagian dari `AdminUser["account_types"]` — penugasan petugas
+   * hidup di `officiating`, dan `"none"` di server ikut mengecualikannya, jadi
+   * keduanya tidak pernah mengembalikan baris yang sama.
+   */
   type?: string;
   page?: number;
   per_page?: number;

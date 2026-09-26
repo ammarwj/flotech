@@ -1,4 +1,5 @@
 import type {
+  EventPersonnelKind,
   EventStatus,
   MatchStatus,
   PlanOrderStatus,
@@ -19,6 +20,16 @@ export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
   ongoing: "Berlangsung",
   finished: "Selesai",
   cancelled: "Dibatalkan",
+};
+
+/**
+ * Petugas event. Nilai tersimpannya Inggris karena itu juga batas otorisasi di
+ * PHP dan di rute (`event.staff`/`event.referee`); yang dibaca orang tetap
+ * Indonesia. Cerminan `EventPersonnel::KIND_LABELS`.
+ */
+export const EVENT_PERSONNEL_KIND_LABELS: Record<EventPersonnelKind, string> = {
+  referee: "Wasit",
+  staff: "Staf",
 };
 
 export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {

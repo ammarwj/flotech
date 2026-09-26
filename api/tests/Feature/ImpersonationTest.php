@@ -157,6 +157,48 @@ class ImpersonationTest extends TestCase
             ->assertJsonPath('data.id', $target->id);
     }
 
+    /**
+     * `act_as` tidak boleh bocor ke token berikutnya, dan sekali lagi ke arah
+     * sebaliknya.
+     *
+     * Kebocoran ini nyata dan pernah ada: `Tymon\JWTAuth\Factory` singleton dan
+     * `make()` tidak mengosongkan Collection klaimnya, jadi `act_as` dari satu
+     * impersonasi **tertandatangani ke dalam** access token sah siapa pun yang
+     * dicetak sesudahnya di proses yang sama — dan `EnsurePasswordRotated`
+     * membaca klaim itu, sehingga token yang berbohong soal dirinya membuka
+     * permukaan tugas dengan password undangan. Di PHP-FPM satu request satu
+     * proses jadi jarang terlihat; di Octane & queue worker prosesnya hidup
+     * terus.
+     *
+     * Wajib **membandingkan dua arah dalam satu proses**: assert "token
+     * impersonasi punya act_as" saja lolos untuk kebocoran ini, dan assert
+     * "token sesudahnya bersih" saja lolos untuk `issueImpersonationToken()`
+     * yang berhenti menulis klaimnya sama sekali — yang justru mematikan seluruh
+     * jalur dukungan.
+     */
+    public function test_the_impersonation_claim_never_leaks_into_another_users_token(): void
+    {
+        $admin = $this->admin();
+        $target = User::factory()->create(['role' => 'user']);
+        $other = User::factory()->create(['role' => 'user']);
+
+        $auth = app(AuthService::class);
+        $request = Request::create('/');
+
+        // Cetak impersonasi dulu, lalu login biasa orang lain: urutan inilah
+        // yang dulu mencemari yang kedua.
+        $actAs = $auth->issueImpersonationToken($target, $admin);
+        $after = $auth->issueTokens($other, $request)['access_token'];
+
+        // Dan urutan sebaliknya, karena resetnya dipasang di kedua sisi.
+        $before = $auth->issueTokens($other, $request)['access_token'];
+
+        $this->assertSame($admin->id, $this->claims($actAs)['act_as'] ?? null);
+        $this->assertArrayNotHasKey('act_as', $this->claims($after));
+        $this->assertArrayNotHasKey('act_as', $this->claims($before));
+        $this->assertSame($other->id, $this->claims($after)['sub']);
+    }
+
     public function test_a_super_admin_cannot_impersonate_another_super_admin(): void
     {
         $admin = $this->admin();

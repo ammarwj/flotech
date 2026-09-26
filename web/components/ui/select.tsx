@@ -9,7 +9,13 @@ import { cn } from "@/lib/utils";
  */
 const Select = React.forwardRef<HTMLSelectElement, React.ComponentProps<"select">>(
   ({ className, children, ...props }, ref) => (
-    <div className="relative">
+    // `min-w-0` di pembungkusnya, bukan di `className` pemanggil: yang jadi item
+    // flex/grid adalah div ini, dan lebar min-content sebuah <select> adalah
+    // opsi terpanjangnya — "Semua jenis akun" meluber keluar track-nya di lebar
+    // ponsel walau `w-full` sudah dipasang, karena min-width menang atas width.
+    // Di konteks blok `min-width: auto` memang sudah 0, jadi ini no-op di mana
+    // pun kecuali tempat yang membutuhkannya.
+    <div className="relative min-w-0">
       <select
         ref={ref}
         className={cn(

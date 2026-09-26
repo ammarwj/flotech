@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { getOrganizations } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
+import { dashboardModeFor } from "@/lib/hooks/use-dashboard-mode";
 import { safeNext } from "@/lib/next-param";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,18 @@ function LoginForm() {
 
       if (user.role === "super_admin") {
         router.push("/admin");
+        return;
+      }
+
+      // Petugas yang passwordnya sudah diganti — cabang di atas tidak lagi
+      // menangkapnya, dan `default_mode` belum tentu menyebut dirinya petugas:
+      // EventPersonnelService cuma menuliskannya pada akun yang ia *buat*, jadi
+      // baris petugas yang menempel ke email lama masih membawa "organizer".
+      // Tanpa cabang ini dia jatuh ke pemeriksaan organisasi di bawah, tidak
+      // punya satu pun, dan mendarat di /onboarding — organisasi memang bukan
+      // urusannya.
+      if (dashboardModeFor(user) === "officiating") {
+        router.push("/officiating");
         return;
       }
 

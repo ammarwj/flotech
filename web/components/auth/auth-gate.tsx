@@ -27,6 +27,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
+  const impersonating = useAuthStore((s) => s.impersonating);
   const setAuth = useAuthStore((s) => s.setAuth);
   const setAccessToken = useAuthStore((s) => s.setAccessToken);
   const startImpersonation = useAuthStore((s) => s.startImpersonation);
@@ -126,7 +127,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // `user?.must_change_password` is briefly falsy for everyone. Rendering
   // children in that gap is what already happens today, and the server's
   // password.rotated is the fence that actually holds.
-  if (user?.must_change_password) return <ForcePasswordGate />;
+  //
+  // Not while impersonating, and that is the whole reason "login sebagai" works
+  // on a freshly invited referee. This takeover is rendered *instead of*
+  // children, and ImpersonationBanner is one of those children — so an admin who
+  // landed here would have no "Kembali ke admin" button and no header, leaving
+  // full logout as the only exit. Worse, the form in front of them writes the
+  // real crew member's credential. The server agrees with this branch rather
+  // than merely tolerating it: EnsurePasswordRotated lets an `act_as` token
+  // through, so the duty surface behind this screen actually answers.
+  if (user?.must_change_password && !impersonating) return <ForcePasswordGate />;
 
   return <>{children}</>;
 }

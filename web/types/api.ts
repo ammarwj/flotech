@@ -14,7 +14,7 @@ export interface AuthUser {
   avatar_url: string | null;
   role: "super_admin" | "user";
   /** Which dashboard the next login opens in. */
-  default_mode: "organizer" | "participant" | "officiating";
+  default_mode: DashboardModeValue;
   is_verified: boolean;
   /**
    * True while the account still holds a password somebody else chose for it —
@@ -1810,13 +1810,32 @@ export interface AdminUser {
   phone: string | null;
   avatar_url: string | null;
   role: "super_admin" | "user";
-  default_mode: "organizer" | "participant";
+  /**
+   * Sama lebarnya dengan `AuthUser["default_mode"]`, dan wajib begitu: akun yang
+   * dibuatkan undangan petugas lahir dengan `'officiating'` di kolom ini, dan
+   * respons `impersonate()` dipakai langsung sebagai user shell — tipe yang
+   * menyempit di sini membuat `MODE_HOME[...]` kehilangan satu cabang yang
+   * benar-benar dikirim server.
+   */
+  default_mode: DashboardModeValue;
   is_verified: boolean;
+  /**
+   * Masih memegang password sementara dari undangan petugas. Dipublikasikan di
+   * setiap respons (bukan `whenLoaded`), jadi kartu admin boleh memercayainya.
+   */
+  must_change_password: boolean;
   email_verified_at: string | null;
   last_seen_at: string | null;
   owned_organizations: { id: string; name: string }[];
   memberships: { organization_id: string; organization_name: string | null; role: string }[];
   managed_teams: { id: string; name: string; event_name: string | null }[];
+  /**
+   * Event tempat akun ini bertugas sebagai wasit/staf. **Bukan** bagian dari
+   * `account_types` — itu diturunkan dari organisasi & tim saja, jadi akun
+   * petugas murni terbaca kosong di sana. Inilah satu-satunya yang membedakan
+   * "belum ada aktivitas" dari "wasit di dua event".
+   */
+  officiating: OfficiatingAssignment[];
   /**
    * Jenis akun yang diturunkan server dari jejak user (punya/anggota organisasi
    * = organizer, mendaftarkan tim = peserta) — bukan `default_mode`, yang cuma
@@ -1827,6 +1846,16 @@ export interface AdminUser {
 }
 
 export type AccountType = "organizer" | "participant";
+
+/**
+ * Nilai kolom `users.default_mode` apa adanya.
+ *
+ * Kembarannya `DashboardMode` di `lib/hooks/use-dashboard-mode` adalah mode yang
+ * sedang dilihat (diturunkan dari URL); yang ini nilai yang benar-benar tersimpan
+ * di DB. Keduanya memang punya anggota yang sama, dan dipisah supaya file tipe
+ * ini tidak mengimpor hook.
+ */
+export type DashboardModeValue = "organizer" | "participant" | "officiating";
 
 /**
  * Status domain sebuah event. **Diturunkan server**, tidak disimpan sebagai
