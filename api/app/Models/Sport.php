@@ -29,6 +29,7 @@ class Sport extends Model
         'scoring',
         'participant_modes',
         'discipline_config',
+        'period_config',
         'default_match_minutes',
         'is_active',
         'sort_order',
@@ -39,6 +40,7 @@ class Sport extends Model
         return [
             'participant_modes' => 'array',
             'discipline_config' => 'array',
+            'period_config' => 'array',
             'default_match_minutes' => 'integer',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
@@ -71,6 +73,18 @@ class Sport extends Model
     public function disciplineConfig(): array
     {
         return $this->discipline_config ?: [];
+    }
+
+    /**
+     * Bentuk babak cabang ini. Kosong berarti "tidak berpendapat" — fallback di
+     * MatchClockRules::DEFAULTS yang berlaku — dan itu juga yang dikembalikan
+     * cabang set, yang tidak punya babak sama sekali.
+     *
+     * @return array<string, mixed>
+     */
+    public function periodConfig(): array
+    {
+        return $this->period_config ?: [];
     }
 
     public function stats(): HasMany

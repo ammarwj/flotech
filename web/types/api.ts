@@ -336,6 +336,23 @@ export interface DisciplineRuleValues {
   reset_yellow_on_knockout?: boolean;
 }
 
+/**
+ * Berapa babak sebuah pertandingan dimainkan, dan berapa lama tiap babaknya.
+ *
+ * Tiap field opsional saat diam: cabang atau event yang tidak pernah mengisinya
+ * mewarisi lapis di bawahnya — cermin `MatchClockRules` di server.
+ *
+ * `periods`/`period_minutes` saja tidak menjawab "cabang ini berjam?"; itu
+ * `tracksClock()`, yang membaca `scoring`. Karena itu cabang berskor set
+ * menyimpan `period_config: null`, bukan nilai yang tidak pernah dibaca.
+ */
+export interface PeriodConfigValues {
+  periods?: number;
+  period_minutes?: number;
+  /** "Babak" / "Kuarter" — kata yang mendahului nomornya di papan skor. */
+  label?: string;
+}
+
 /** A position a player of this sport can hold. The key is what a roster stores. */
 export interface SportPositionDef {
   key: string;
@@ -359,6 +376,8 @@ export interface SportDef {
   default_match_minutes: number;
   /** Card thresholds this sport's events inherit; {} = platform defaults. */
   discipline_config: DisciplineRuleValues;
+  /** Babak this sport's events inherit. Null for a set-based sport: no clock. */
+  period_config: PeriodConfigValues | null;
   stats: SportStatDef[];
   positions: SportPositionDef[];
   official_roles: SportOfficialRoleDef[];
@@ -468,7 +487,42 @@ export interface Match {
   confirmed: boolean;
   scheduled_at: string | null;
   venue: string | null;
+  /**
+   * Babak & jam yang sedang berjalan, atau null saat laga ini tidak berjam —
+   * cabang berskor set dan tie beregu. **Nullable, bukan opsional**: `?` membuat
+   * komponen yang lupa mengoper prop-nya lolos review diam-diam, alasan yang
+   * sama yang sudah tertulis untuk `bans`/`sport` di `PublicMatchCard`.
+   */
+  clock: MatchClock | null;
 }
+
+/**
+ * Jam pertandingan sebagaimana server menerbitkannya.
+ *
+ * Yang dikirim adalah *anchor*, bukan menit: `elapsed_seconds` benar **pada**
+ * `server_time`, dan klien yang menampilkannya harus menambahkan waktu yang
+ * lewat sejak itu sendiri (`clockSeconds()` di `lib/match-clock.ts`). Karena itu
+ * `server_time` ikut di blok ini — laptop venue yang jamnya meleset empat menit
+ * akan menampilkan menit yang salah kalau ia memakai `Date.now()` mentah.
+ */
+export interface MatchClock {
+  /** Babak yang sedang berjalan; null = belum dimulai. */
+  period: number | null;
+  /** Berapa babak seluruhnya — batas atas tombol "babak berikutnya". */
+  periods: number;
+  /** "Babak" / "Kuarter", kata yang mendahului nomornya. */
+  label: string;
+  /** Durasi satu babak, dipakai sebagai offset presentasi babak ke-2 dst. */
+  period_minutes: number;
+  /** Detik yang sudah berjalan **di babak ini**, benar pada `server_time`. */
+  elapsed_seconds: number;
+  running: boolean;
+  /** Jam server saat payload ini dibuat, untuk koreksi skew. ISO-8601. */
+  server_time: string;
+}
+
+/** Aksi yang bisa dikirim ke endpoint jam. */
+export type MatchClockAction = "start" | "pause" | "resume" | "advance" | "reset";
 
 /** What one entrant of a category is. */
 export type ParticipantType = "single" | "double" | "team";
@@ -736,6 +790,25 @@ export interface PublicMatchStats {
 }
 
 /**
+ * One fixture on its own, as the scoreboard screen reads it.
+ *
+ * The heading data travels with the match rather than being fetched beside it:
+ * the screen is opened cold in a new tab from a link that carries nothing but a
+ * match id, so a second request for the event and category names would leave
+ * the board blank while it waited. `sport` is the same catalogue entry the
+ * event page hands its panels, so the screen names a scoreline the same way
+ * they do instead of keeping its own copy of the rule.
+ */
+export interface PublicScoreboard {
+  match: Match;
+  event_name: string;
+  category_name: string | null;
+  /** IANA zone the kickoff is printed in; null falls back to Asia/Jakarta. */
+  timezone: string | null;
+  sport: SportDef | null;
+}
+
+/**
  * One competition inside an event (U17, U19, Woman, …). Format, bracket config,
  * fee and team cap live here — an event may run several at once, each different.
  */
@@ -830,6 +903,7 @@ export interface SportEvent {
  */
 export interface EventRulesConfig {
   discipline?: DisciplineRuleValues;
+  clock?: PeriodConfigValues;
   deposit?: DepositConfig;
 }
 

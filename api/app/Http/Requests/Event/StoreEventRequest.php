@@ -4,6 +4,7 @@ namespace App\Http\Requests\Event;
 
 use App\Services\Catalog;
 use App\Support\DisciplineRules;
+use App\Support\MatchClockRules;
 use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -53,6 +54,12 @@ class StoreEventRequest extends FormRequest
             'rules_config' => ['sometimes', 'nullable', 'array'],
             'rules_config.discipline' => ['sometimes', 'nullable', 'array'],
             ...DisciplineRules::validationRules('rules_config.discipline.'),
+
+            // Berapa babak dan berapa lama, di atas default cabangnya. Field yang
+            // dikosongkan datang absen (bukan null), dan MatchClockRules::clean()
+            // yang menjatuhkannya kembali ke lapis cabang.
+            'rules_config.clock' => ['sometimes', 'nullable', 'array'],
+            ...MatchClockRules::validationRules('rules_config.clock.'),
             // Security deposit: flat per event, no sport layer to fall back to,
             // so an empty field just means 0 / feature off rather than "inherit".
             'rules_config.deposit' => ['sometimes', 'nullable', 'array'],

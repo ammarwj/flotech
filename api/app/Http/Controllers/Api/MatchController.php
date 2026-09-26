@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\AppliesMatchClock;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
 use App\Http\Resources\TeamResource;
@@ -35,6 +36,8 @@ use Illuminate\Validation\Rule;
  */
 class MatchController extends Controller
 {
+    use AppliesMatchClock;
+
     public function __construct(
         protected ScheduleService $schedule,
         protected StandingService $standings,
@@ -1147,6 +1150,22 @@ class MatchController extends Controller
     }
 
     /**
+     * Jalankan, jeda, majukan, atau nol-kan jam pertandingan.
+     *
+     * Presentasi, bukan hasil resmi: yang berubah hanya angka di papan skor, dan
+     * tidak ada bracket yang bergerak karenanya. Karena itu ia duduk di grup
+     * `tenant` bersama `matches/{match}/status`, bukan di belakang `org.admin` —
+     * petugas yang memegang stopwatch adalah orang yang sama yang mengetik skor.
+     *
+     * Aturannya ada di MatchClockService, dipanggil lewat trait yang sama dengan
+     * pintu petugas pertandingan.
+     */
+    public function updateClock(Request $request, string $organization, string $match): JsonResponse
+    {
+        return $this->applyClock($request, $this->match($request, $match));
+    }
+
+    /**
      * Delete a fixture (manual or generated). Player stats and goals cascade
      * with the match at the database level.
      */
@@ -1227,9 +1246,14 @@ class MatchController extends Controller
         return $category->matches()
             // Rosters ride along so a squad tie can name its lineups without a
             // query per partai — see MatchResource.
+            //
+            // `category.event` ikut karena blok `clock` menurunkan aturannya dari
+            // keduanya. Tanpa itu MatchResource menariknya per baris: 158 laga di
+            // satu kategori = 316 query tambahan, dan `preventLazyLoading` tidak
+            // menyala sehingga ia jalan diam-diam alih-alih melempar.
             ->with($category->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers']
-                : ['homeTeam', 'awayTeam'])
+                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
+                : ['homeTeam', 'awayTeam', 'category.event'])
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

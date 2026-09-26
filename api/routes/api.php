@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\TeamAlbumController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
+use App\Http\Controllers\Api\TicketPosterController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
@@ -185,6 +186,10 @@ Route::prefix('v1')->group(function () {
         Route::get('categories/{categorySlug}/discipline', [PublicEventController::class, 'discipline']);
         // Player stats of a single fixture, for the match detail dialog.
         Route::get('matches/{match}/stats', [PublicEventController::class, 'matchStats']);
+        // One fixture on its own, for the scoreboard screen that polls it while
+        // it is being played. Below the stats route so the literal segment is
+        // never swallowed by the {match} placeholder.
+        Route::get('matches/{match}', [PublicEventController::class, 'match']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
         Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
     });
@@ -266,6 +271,10 @@ Route::prefix('v1')->group(function () {
                     Route::get('matches/{match}/stats', [OfficiatingMatchController::class, 'matchStats']);
                     Route::put('matches/{match}/stats', [OfficiatingMatchController::class, 'saveMatchStats']);
                     Route::patch('matches/{match}', [OfficiatingMatchController::class, 'updateResult']);
+                    // Jam pertandingan — `event.staff`, bukan `event.referee`:
+                    // yang memegang stopwatch adalah petugas yang juga mengetik
+                    // skor; wasit hanya mengesahkan hasilnya.
+                    Route::patch('matches/{match}/clock', [OfficiatingMatchController::class, 'updateClock']);
                     // The sheet for the IP table. Refuses until the referee has
                     // signed off *both* sides; the organizer's twin below is the
                     // same action, so the gate is written once.
@@ -416,6 +425,10 @@ Route::prefix('v1')->group(function () {
             // Scheduled / ongoing / cancelled. Finishing still goes through the
             // result endpoint, which is the only one that validates a scoreline.
             Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);
+            // Babak & jam papan skor. Kembarannya ada di grup `officiating`,
+            // satu service — presentasi, bukan hasil resmi, jadi ia tidak
+            // duduk di belakang `org.admin`.
+            Route::patch('matches/{match}/clock', [MatchController::class, 'updateClock']);
             Route::delete('matches/{match}', [MatchController::class, 'destroy']);
             Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
             Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
@@ -442,6 +455,12 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/ticket-categories', [TicketCategoryController::class, 'store']);
             Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
+            // Printable QR poster pointing at the public ticket shop — taped up
+            // at the venue. Plain `tenant`, no org.admin: it carries no buyer
+            // data and moves no money, and the operator at the gate is who
+            // reprints one that fell off. Gated on `qr_tickets` in the
+            // controller, like the category routes above.
+            Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
 

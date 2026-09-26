@@ -122,6 +122,23 @@ export function tracksDiscipline(sport: CardBearing | null | undefined): boolean
 }
 
 /**
+ * Whether this sport is played against a running clock, and so whether "Babak 2
+ * · 67:14" means anything for it.
+ *
+ * Read from `scoring` rather than a list of slugs, the mirror of
+ * `MatchClockRules::enabled`: a running-score sport an admin adds tomorrow gets
+ * the clock without a deploy, and a set sport never lights up by mistake — its
+ * scoreboard already shows sets, and "Babak 1" above them is simply wrong.
+ *
+ * A squad tie is refused a layer further in (each partai has its own clock, so a
+ * single number over the tie points at nothing) — that is the category's shape,
+ * not the sport's, and `Match.clock` arrives null for it.
+ */
+export function tracksClock(sport: Pick<SportDef, "scoring"> | null | undefined): boolean {
+  return sport?.scoring === "goal";
+}
+
+/**
  * Why a player is sitting out, in words the organizer uses — "kartu merah",
  * "2 kartu kuning (dikeluarkan)", "akumulasi 3 kartu kuning". The card's name
  * comes from the sport's own label, and the numbers from the rules in force for
@@ -298,4 +315,28 @@ export function matchScoreText(m: Match): { main: string; detail?: string } {
     return { main, detail: setsText(m.sets) };
   }
   return { main };
+}
+
+/**
+ * What the big number on a scoreboard is counting, or null when it needs no
+ * saying.
+ *
+ * A football scoreline is self-evident — nobody reads "2 – 1" and wonders. A
+ * badminton tie's "3 – 0" is not: it is partai won, not points, and a set
+ * sport's is sets won. On a screen across the hall, where the set detail
+ * underneath is too small to read, that caption is the only thing separating a
+ * 3-0 thrashing from a 3-0 tie that went to five games.
+ *
+ * Here rather than in the page for the reason every other label in this file is
+ * here: the same question gets asked again the next time a surface renders a
+ * scoreline, and two copies of it will disagree.
+ */
+export function scoreUnitLabel(
+  sport: SportDef | null | undefined,
+  match: Match,
+): string | null {
+  if (match.rubbers?.length) return "Partai dimenangkan";
+  if (sport?.scoring === "set") return "Set dimenangkan";
+
+  return null;
 }

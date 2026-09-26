@@ -7,10 +7,12 @@ import type {
   KnockoutPlan,
   Leaderboard,
   Match,
+  MatchClockAction,
   MatchRubber,
   MatchStatsData,
   MatchStatus,
   PublicMatchStats,
+  PublicScoreboard,
   Standing,
   Team,
 } from "@/types/api";
@@ -296,6 +298,25 @@ export async function updateMatchStatus(
   return data.data;
 }
 
+/**
+ * Jam pertandingan, pintu organizer.
+ *
+ * Bukan `org.admin` di server: ini presentasi, bukan hasil resmi — sama seperti
+ * {@link updateMatchStatus} di atasnya. Pintu keduanya ada di
+ * `lib/api/officiating.ts`, dan keduanya memanggil service yang sama.
+ */
+export async function updateMatchClock(
+  orgId: string,
+  matchId: string,
+  action: MatchClockAction
+): Promise<Match> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match>>(
+    `/organizations/${orgId}/matches/${matchId}/clock`,
+    { action }
+  );
+  return data.data;
+}
+
 export async function getStandings(
   orgId: string,
   eventId: string,
@@ -546,6 +567,26 @@ export async function getPublicMatchStats(
 ): Promise<PublicMatchStats> {
   const { data } = await apiClient.get<ApiEnvelope<PublicMatchStats>>(
     `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}/stats`
+  );
+  return data.data;
+}
+
+/**
+ * One fixture plus the names around it, for the scoreboard screen.
+ *
+ * A single match rather than getPublicMatches(): this is polled while a match
+ * is being played, and re-sending the category's whole schedule every few
+ * seconds to redraw one scoreline would carry the rosters a racket category
+ * eager loads along with it. It is also what lets a scoreboard URL carry a
+ * match id and nothing else.
+ */
+export async function getPublicScoreboard(
+  orgSlug: string,
+  eventSlug: string,
+  matchId: string
+): Promise<PublicScoreboard> {
+  const { data } = await apiClient.get<ApiEnvelope<PublicScoreboard>>(
+    `/public/events/${orgSlug}/${eventSlug}/matches/${matchId}`
   );
   return data.data;
 }

@@ -12,6 +12,7 @@ import {
   MapPin,
   Plus,
   RectangleVertical,
+  Timer,
   Trash2,
   Trophy,
   Wallet,
@@ -37,7 +38,7 @@ import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { planAllowsGateway } from "@/lib/plan";
-import { disciplineStatDefs, tracksDiscipline } from "@/lib/scoring";
+import { disciplineStatDefs, tracksClock, tracksDiscipline } from "@/lib/scoring";
 import { compressToWebp } from "@/lib/image";
 import {
   uploadImage,
@@ -559,6 +560,18 @@ export function EventForm({
     };
   });
 
+  // Babak & durasinya, sama-sama string untuk alasan yang sama seperti di atas:
+  // kosong = ikut default cabang, dan `num()` membuatnya absen di JSON alih-alih
+  // null — yang di-merge apa adanya justru menimpa lapis cabangnya.
+  const [clock, setClock] = useState(() => {
+    const c = initial?.rules_config?.clock;
+    return {
+      periods: c?.periods?.toString() ?? "",
+      period_minutes: c?.period_minutes?.toString() ?? "",
+      label: c?.label ?? "",
+    };
+  });
+
   // Flat per event, no sport layer to inherit from — blank just means 0/off.
   const [deposit, setDeposit] = useState(() => {
     const dep = initial?.rules_config?.deposit;
@@ -689,6 +702,7 @@ export function EventForm({
   // both shown as placeholders so a blank field reads as "inherited", not "0".
   const sportCards = disciplineStatDefs(selectedSport);
   const sportDiscipline = selectedSport?.discipline_config ?? {};
+  const sportPeriods = selectedSport?.period_config ?? {};
   // Lowercased card names for the explanation panels, which read as prose. The
   // sport owns its labels, so a cabang that calls them something else says so
   // everywhere instead of only in the column headings.
@@ -708,6 +722,14 @@ export function EventForm({
     yellows_per_expulsion: num(discipline.yellows_per_expulsion),
     expulsion_ban_matches: num(discipline.expulsion_ban_matches),
     reset_yellow_on_knockout: discipline.reset_yellow_on_knockout,
+  };
+  // `label` ikut lewat `num`-nya sendiri: string kosong harus absen, bukan ""
+  // — `clean()` di server memang membuang keduanya, tapi mengirim "" berarti
+  // menyimpan kolom kosong yang tidak berarti apa-apa di baris event.
+  const cleanedClock = {
+    periods: num(clock.periods),
+    period_minutes: num(clock.period_minutes),
+    label: clock.label.trim() || undefined,
   };
   const fallbackFormat = tournament_formats[0]?.key ?? "";
 
@@ -788,6 +810,9 @@ export function EventForm({
         ...(tracksDiscipline(selectedSport)
           ? { discipline: cleanedDiscipline }
           : {}),
+        // Alasan yang sama: cabang berskor set tidak punya babak, dan aturan
+        // yang tersimpan dari cabang sebelumnya dibiarkan tertidur di tempatnya.
+        ...(tracksClock(selectedSport) ? { clock: cleanedClock } : {}),
         deposit,
       },
     });
@@ -1266,6 +1291,108 @@ export function EventForm({
                     </FieldHint>
                   </span>
                 </label>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cabang berskor lari saja. Cabang set menghitung game, dan "Babak 1"
+        di papan skornya salah — gate yang sama dengan `MatchClockRules::enabled`
+        di server, dibaca dari `scoring`, bukan daftar slug. */}
+          {tracksClock(selectedSport) && (
+            <Card>
+              <SectionHeader
+                icon={Timer}
+                title="Babak & Jam Pertandingan"
+                description="Berapa babak dimainkan dan berapa lama tiap babaknya, untuk jam di papan skor."
+              />
+              <CardContent className="grid gap-4">
+                <div className="grid items-end gap-4 sm:grid-cols-3">
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="clock-periods" className="font-semibold">
+                        Jumlah babak
+                      </Label>
+                      <InfoHint label="Penjelasan jumlah babak">
+                        Berapa kali jam dimulai ulang dalam satu pertandingan.
+                        Sepak bola <b>2</b>, basket <b>4</b>. Panitia tidak bisa
+                        melewati angka ini saat menekan tombol babak
+                        berikutnya.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="clock-periods"
+                      type="number"
+                      min={1}
+                      max={10}
+                      inputMode="numeric"
+                      value={clock.periods}
+                      onChange={(e) =>
+                        setClock((c) => ({ ...c, periods: e.target.value }))
+                      }
+                      placeholder={sportPeriods.periods?.toString() ?? "2"}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="clock-minutes" className="font-semibold">
+                        Durasi satu babak (menit)
+                      </Label>
+                      <InfoHint label="Penjelasan durasi satu babak">
+                        Waktu bermain, bukan jarak antar jadwal — yang terakhir
+                        itu punya generator jadwal dan memang memuat jeda turun
+                        minum. Dipakai papan skor untuk melanjutkan hitungan:
+                        babak 2 dari 45 menit dimulai dari <b>45:00</b>, bukan
+                        dari nol.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="clock-minutes"
+                      type="number"
+                      min={1}
+                      max={120}
+                      inputMode="numeric"
+                      value={clock.period_minutes}
+                      onChange={(e) =>
+                        setClock((c) => ({
+                          ...c,
+                          period_minutes: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        sportPeriods.period_minutes?.toString() ?? "45"
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="clock-label" className="font-semibold">
+                        Sebutan babak
+                      </Label>
+                      <InfoHint
+                        label="Penjelasan sebutan babak"
+                        align="end"
+                      >
+                        Kata yang mendahului nomornya di papan skor — &ldquo;
+                        <b>Babak</b> 2&rdquo;, &ldquo;<b>Kuarter</b> 4&rdquo;.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="clock-label"
+                      maxLength={24}
+                      value={clock.label}
+                      onChange={(e) =>
+                        setClock((c) => ({ ...c, label: e.target.value }))
+                      }
+                      placeholder={sportPeriods.label ?? "Babak"}
+                    />
+                  </div>
+                </div>
+                <FieldHint>
+                  Kosongkan untuk mengikuti aturan bawaan cabang — angka pada
+                  placeholder itulah yang sedang berlaku. Jamnya selalu naik dari
+                  0 dan dijalankan panitia dari kartu jadwal atau halaman petugas
+                  pertandingan; penonton hanya melihatnya di papan skor.
+                </FieldHint>
               </CardContent>
             </Card>
           )}

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\GameMatch;
+use App\Services\MatchClockService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -45,6 +46,11 @@ class MatchResource extends JsonResource
             'confirmed' => $this->confirmed_at !== null,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),
             'venue' => $this->venue,
+            // Babak & jam, atau null untuk cabang set dan tie beregu yang tidak
+            // punya babak. Diturunkan tiap pembacaan, tidak pernah disimpan —
+            // lihat MatchClockService. Di-resolve lewat `app()` karena
+            // JsonResource tidak bisa menerima constructor injection.
+            'clock' => app(MatchClockService::class)->snapshot($this->resource),
         ];
     }
 

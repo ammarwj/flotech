@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Ticket, Trophy, ArrowUpRight, ScanLine, ArrowRight } from "lucide-react";
+import { Ticket, Trophy, ArrowUpRight, ScanLine, ArrowRight, QrCode } from "lucide-react";
+import { toast } from "sonner";
 
 import { getEvents } from "@/lib/api/events";
+import { downloadTicketPoster } from "@/lib/api/tickets";
+import { parseApiError } from "@/lib/api/errors";
 import { isTicketingEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
@@ -18,6 +22,23 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 export default function TicketsOverviewPage() {
   const { sportLabel, sportColor } = useCatalog();
   const { org, orgId, isLoading: orgLoading } = useActiveOrg();
+  // Which event's poster is rendering, so only that row's button spins.
+  const [printing, setPrinting] = useState<string | null>(null);
+
+  async function printPoster(eventId: string) {
+    if (!orgId) return;
+    setPrinting(eventId);
+    try {
+      await downloadTicketPoster(orgId, eventId);
+    } catch (err) {
+      // The server's own sentence, not a generic one: the refusal that matters
+      // here says the event is still a draft, which is the one thing the
+      // organizer can act on.
+      toast.error(parseApiError(err).message);
+    } finally {
+      setPrinting(null);
+    }
+  }
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -115,6 +136,28 @@ export default function TicketsOverviewPage() {
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 {ticketing ? (
                   <>
+                    {/* Poster QR untuk ditempel di loket. Event draf dimatikan di
+                        sini, bukan cuma ditolak server: halaman publiknya 404
+                        (ResolvesPublicEvent), jadi QR-nya mati begitu keluar dari
+                        printer — dan poster adalah satu-satunya artefak di sini
+                        yang tidak bisa dikoreksi setelah tertempel. Guard-nya
+                        tetap ada di server karena event bisa kembali ke draf
+                        setelah halaman ini dirender. */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 sm:flex-none"
+                      onClick={() => printPoster(ev.id)}
+                      disabled={!orgId || ev.status === "draft" || printing === ev.id}
+                      title={
+                        ev.status === "draft"
+                          ? "Terbitkan event dulu — halaman pembeliannya belum bisa dibuka."
+                          : undefined
+                      }
+                    >
+                      <QrCode className="h-4 w-4" />
+                      Cetak QR
+                    </Button>
                     <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none">
                       <Link href={`/organizer/events/${ev.id}/scan`}>
                         <ScanLine className="h-4 w-4" />

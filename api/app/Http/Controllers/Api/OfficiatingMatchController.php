@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\AppliesMatchClock;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
 use App\Models\Event;
@@ -34,6 +35,8 @@ use Illuminate\Http\Request;
  */
 class OfficiatingMatchController extends Controller
 {
+    use AppliesMatchClock;
+
     public function __construct(
         protected MatchResultService $results,
         protected MatchStatService $statSheet,
@@ -86,6 +89,19 @@ class OfficiatingMatchController extends Controller
                 ? 'Hasil disimpan — menunggu konfirmasi admin'
                 : 'Pertandingan diperbarui',
         );
+    }
+
+    /**
+     * Jam pertandingan, dari pinggir lapangan.
+     *
+     * Ini justru pintu utamanya: yang memegang stopwatch hampir selalu akun
+     * petugas, bukan admin organisasi. Tidak seperti hasil pertandingan, jam
+     * tidak punya langkah "menunggu konfirmasi admin" — ia presentasi, dan
+     * papan skor yang menunggu ratifikasi tidak ada gunanya bagi siapa pun.
+     */
+    public function updateClock(Request $request, string $event, string $match): JsonResponse
+    {
+        return $this->applyClock($request, $this->match($request, $match));
     }
 
     /**

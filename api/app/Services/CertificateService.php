@@ -7,10 +7,7 @@ use App\Models\CertificateTemplate;
 use App\Models\Event;
 use App\Models\Player;
 use App\Models\Team;
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
+use App\Support\QrImage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -150,7 +147,7 @@ class CertificateService
             'template' => $template,
             'background' => $background ?? $this->backgroundDataUri($template->background_url),
             'values' => $this->values($certificate),
-            'qr' => $this->qrDataUri($certificate->verifyUrl()),
+            'qr' => QrImage::svgDataUri($certificate->verifyUrl()),
         ])
             ->setPaper('a4', $template->orientation === 'portrait' ? 'portrait' : 'landscape')
             ->output();
@@ -251,13 +248,5 @@ class CertificateService
 
             return null;
         }
-    }
-
-    /** QR as an inline SVG — dompdf draws it through php-svg-lib, no raster needed. */
-    protected function qrDataUri(string $url): string
-    {
-        $writer = new Writer(new ImageRenderer(new RendererStyle(300, 0), new SvgImageBackEnd()));
-
-        return 'data:image/svg+xml;base64,'.base64_encode($writer->writeString($url));
     }
 }

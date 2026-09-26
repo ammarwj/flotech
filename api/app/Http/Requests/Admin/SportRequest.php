@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\Sport;
 use App\Support\DisciplineRules;
+use App\Support\MatchClockRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -40,6 +41,11 @@ class SportRequest extends FormRequest
             // through to DisciplineRules::DEFAULTS, so a partial object is fine.
             'discipline_config' => ['nullable', 'array'],
             ...DisciplineRules::validationRules('discipline_config.'),
+            // Bentuk babak cabang ini. Aturan yang sama dipakai form event
+            // lewat MatchClockRules::validationRules, jadi master cabang dan
+            // override event tidak bisa berselisih.
+            'period_config' => ['nullable', 'array'],
+            ...MatchClockRules::validationRules('period_config.'),
             'default_match_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],

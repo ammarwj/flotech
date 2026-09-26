@@ -25,8 +25,17 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
-import { participantLabel, participantModes, tracksDiscipline } from "@/lib/scoring";
-import type { DisciplineRuleValues, ParticipantType } from "@/types/api";
+import {
+  participantLabel,
+  participantModes,
+  tracksClock,
+  tracksDiscipline,
+} from "@/lib/scoring";
+import type {
+  DisciplineRuleValues,
+  ParticipantType,
+  PeriodConfigValues,
+} from "@/types/api";
 
 type SportForm = {
   slug: string;
@@ -38,6 +47,8 @@ type SportForm = {
   default_match_minutes: number;
   /** Card thresholds this sport's events inherit; {} = platform defaults. */
   discipline_config: DisciplineRuleValues;
+  /** Babak this sport's events inherit; {} = platform defaults (2 × 45 "Babak"). */
+  period_config: PeriodConfigValues;
   is_active: boolean;
   sort_order: number;
 };
@@ -55,6 +66,7 @@ const EMPTY: SportForm = {
   participant_modes: ["team"],
   default_match_minutes: 60,
   discipline_config: {},
+  period_config: {},
   is_active: true,
   sort_order: 0,
 };
@@ -168,6 +180,9 @@ export default function AdminSportsPage() {
       participant_modes: participantModes(sport),
       default_match_minutes: sport.default_match_minutes,
       discipline_config: sport.discipline_config ?? {},
+      // Null di server berarti "cabang set, tidak berjam" — bentuk yang di form
+      // sudah dijawab `scoring`, jadi di sini ia cuma jatuh ke {}.
+      period_config: sport.period_config ?? {},
       is_active: sport.is_active,
       sort_order: sport.sort_order,
     });
@@ -220,6 +235,24 @@ export default function AdminSportsPage() {
       else next[key] = n as never;
 
       return { ...f, discipline_config: next };
+    });
+
+  /** Same contract as setRule; `label` is the one that is text, not a number. */
+  const setPeriod = (key: keyof PeriodConfigValues, raw: string) =>
+    setForm((f) => {
+      const next = { ...f.period_config };
+
+      if (key === "label") {
+        if (raw.trim() === "") delete next.label;
+        else next.label = raw;
+        return { ...f, period_config: next };
+      }
+
+      const n = Number(raw.trim());
+      if (raw.trim() === "" || Number.isNaN(n)) delete next[key];
+      else next[key] = n;
+
+      return { ...f, period_config: next };
     });
 
   return (
@@ -433,6 +466,63 @@ export default function AdminSportsPage() {
                   onChange={(e) => setRule("expulsion_ban_matches", e.target.value)}
                   placeholder="1"
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Gate-nya `form.scoring`, bukan cabang yang tersimpan — beda dari
+            akumulasi kartu di atas, yang menunggu kolom statistiknya ada. Babak
+            tidak bergantung pada apa pun yang diedit di bawah, jadi form
+            pembuatan cabang baru pun sudah bisa mengisinya. */}
+        {tracksClock(form) && (
+          <div className="grid gap-3 rounded-xl border border-border bg-[var(--surface-2)] p-3">
+            <div>
+              <p className="text-sm font-semibold">Babak & jam pertandingan</p>
+              <p className="text-xs text-muted-foreground">
+                Bawaan untuk event cabang ini. Organizer bisa menimpanya per event,
+                dan kolom yang dikosongkan di sini memakai bawaan platform (2 babak
+                × 45 menit). Beda dari durasi slot jadwal di atas: yang ini waktu
+                bermain, yang itu jarak antar pertandingan.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="period-count">Jumlah babak</Label>
+                <Input
+                  id="period-count"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={form.period_config.periods ?? ""}
+                  onChange={(e) => setPeriod("periods", e.target.value)}
+                  placeholder="2"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="period-minutes">Durasi satu babak (menit)</Label>
+                <Input
+                  id="period-minutes"
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={form.period_config.period_minutes ?? ""}
+                  onChange={(e) => setPeriod("period_minutes", e.target.value)}
+                  placeholder="45"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="period-label">Sebutan babak</Label>
+                <Input
+                  id="period-label"
+                  maxLength={24}
+                  value={form.period_config.label ?? ""}
+                  onChange={(e) => setPeriod("label", e.target.value)}
+                  placeholder="Babak"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Basket memakai &ldquo;Kuarter&rdquo;.
+                </p>
               </div>
             </div>
           </div>

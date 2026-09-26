@@ -1,6 +1,7 @@
 import {
   getMatchStats,
   saveMatchStats,
+  updateMatchClock,
   updateMatchResult,
   type MatchResultPayload,
   type MatchStatEntry,
@@ -8,9 +9,10 @@ import {
 import {
   getOfficiatingMatchStats,
   saveOfficiatingMatchStats,
+  updateOfficiatingClock,
   updateOfficiatingResult,
 } from "@/lib/api/officiating";
-import type { Match, MatchStatsData } from "@/types/api";
+import type { Match, MatchClockAction, MatchStatsData } from "@/types/api";
 
 /**
  * The two doors onto one fixture.
@@ -57,6 +59,21 @@ export interface MatchResultGateway {
   invalidate: Keys;
 }
 
+/**
+ * Where the match clock is driven from.
+ *
+ * A third gateway rather than a flag on the result one: the clock is
+ * presentation, not a scoreline, and the server keeps it that way — it sits
+ * behind `tenant` on the organizer side rather than `org.admin`, and on the
+ * staff side it has no "menunggu konfirmasi admin" step at all. Folding it into
+ * {@link MatchResultGateway} would tie the two together on the client precisely
+ * where the server took care to keep them apart.
+ */
+export interface MatchClockGateway {
+  save: (action: MatchClockAction) => Promise<Match>;
+  invalidate: Keys;
+}
+
 /** The organizer's door: tenant-scoped, and the keys its pages read. */
 export function organizerStatsGateway(
   orgId: string,
@@ -90,6 +107,23 @@ export function organizerResultGateway(
   };
 }
 
+/**
+ * Klasemen sengaja tidak ikut di-invalidate: jam tidak menggeser satu pun
+ * angkanya, dan `start()` yang mengangkat `scheduled` → `ongoing` justru
+ * mengeluarkan laganya dari hitungan (`countingMatches` membaca `finished` +
+ * `confirmed_at`). Yang berubah cuma kartu jadwalnya.
+ */
+export function organizerClockGateway(
+  orgId: string,
+  eventId: string,
+  matchId: string,
+): MatchClockGateway {
+  return {
+    save: (action) => updateMatchClock(orgId, matchId, action),
+    invalidate: [["matches", orgId, eventId]],
+  };
+}
+
 /** The match staff's door. */
 export function officiatingStatsGateway(
   eventId: string,
@@ -103,6 +137,16 @@ export function officiatingStatsGateway(
       ["officiating-discipline", eventId],
       ["officiating-match-stats", eventId, matchId],
     ],
+  };
+}
+
+export function officiatingClockGateway(
+  eventId: string,
+  matchId: string,
+): MatchClockGateway {
+  return {
+    save: (action) => updateOfficiatingClock(eventId, matchId, action),
+    invalidate: [["officiating-matches", eventId]],
   };
 }
 

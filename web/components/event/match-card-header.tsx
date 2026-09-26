@@ -2,11 +2,13 @@
 
 import { MatchStatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { MatchClockControls } from "./match-clock-controls";
 import { MatchConfirmBar } from "./match-confirm-bar";
 import { MatchDisciplineNotice } from "./match-discipline-notice";
 import { MatchLineupSheetButton } from "./match-lineup-sheet-button";
 import { MatchReportButton } from "./match-report-button";
 import { MatchStatusActions } from "./match-status-actions";
+import { organizerClockGateway } from "@/lib/match-doors";
 import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
 /**
@@ -92,6 +94,16 @@ export function MatchCardHeader({
           <MatchStatusActions orgId={orgId} eventId={eventId} match={match} knockout={knockout} />
         </div>
       </div>
+      {/*
+        Renders nothing for a sport without a clock — a set-based one, or a
+        squad tie — and nothing once the fixture is over. `match.clock` is the
+        server's answer to both; this row never decides it for itself.
+      */}
+      <MatchClockControls
+        match={match}
+        clock={match.clock}
+        gateway={organizerClockGateway(orgId, eventId, match.id)}
+      />
       {/* Renders nothing when nobody is suspended. */}
       <MatchDisciplineNotice bans={bans} sport={sport} rules={disciplineRules} />
     </div>

@@ -44,7 +44,9 @@ class MyTeamMatchController extends Controller
 
         $matches = GameMatch::where('category_id', $model->category_id)
             ->where(fn ($q) => $q->where('home_team_id', $model->id)->orWhere('away_team_id', $model->id))
-            ->with(['homeTeam', 'awayTeam'])
+            // `category.event` untuk blok `clock` di MatchResource — tanpa itu
+            // ia ditarik per baris.
+            ->with(['homeTeam', 'awayTeam', 'category.event'])
             ->orderByRaw('scheduled_at is null, scheduled_at')
             ->orderBy('round')
             ->orderBy('order')

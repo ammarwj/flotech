@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 import type {
   ApiEnvelope,
   PurchaseResult,
@@ -73,6 +74,33 @@ export async function getTicketOrders(orgId: string, eventId: string): Promise<T
     `/organizations/${orgId}/events/${eventId}/ticket-orders`
   );
   return data.data;
+}
+
+/**
+ * Poster QR yang ditempel di loket — PDF A4 berisi kode ke halaman pembelian
+ * publik event ini.
+ *
+ * Lewat apiClient dengan `responseType: "blob"`, bukan `<a href>` polos: access
+ * token disimpan in-memory sehingga tautan langsung ke API akan 401. Sama
+ * seperti album tim dan lembar susunan pemain. `unpackBlobError` yang menjaga
+ * penolakannya tetap terbaca — server menolak event draf dengan kalimat yang
+ * menjelaskan apa yang kurang, dan body blob tidak akan sampai ke
+ * `parseApiError()` tanpanya.
+ */
+export async function downloadTicketPoster(orgId: string, eventId: string): Promise<void> {
+  try {
+    const response = await apiClient.get<Blob>(
+      `/organizations/${orgId}/events/${eventId}/ticket-poster`,
+      { responseType: "blob" }
+    );
+
+    downloadBlob(
+      response.data,
+      fileNameFromDisposition(response.headers["content-disposition"], "qr-tiket.pdf")
+    );
+  } catch (err) {
+    throw await unpackBlobError(err);
+  }
 }
 
 export async function getTicketReport(orgId: string, eventId: string): Promise<TicketReport> {

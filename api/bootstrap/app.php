@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\DomainException;
+use App\Exceptions\MatchClockException;
 use App\Exceptions\MatchResultException;
 use App\Exceptions\PaymentException;
 use App\Exceptions\PlanFeatureException;
@@ -104,6 +105,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (MatchResultException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (MatchClockException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }
