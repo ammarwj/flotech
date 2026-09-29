@@ -49,6 +49,6 @@ test.describe("Pengaturan platform — saklar payment gateway", () => {
     // settings must not have been swept into switches with it.
     await expect(page.getByLabel("Minimal penarikan")).toHaveValue(/^\d+$/);
     await expect(page.getByLabel("Biaya admin per penarikan")).toHaveValue(/^\d+$/);
-    await expect(page.getByLabel("Masa tahan setelah event selesai (hari)")).toHaveValue(/^\d+$/);
+    await expect(page.getByLabel("Tambahan masa tahan di atas batas 01:00 (hari)")).toHaveValue(/^\d+$/);
   });
 });

@@ -19,8 +19,10 @@ class Event extends Model
      * the moment it ends, and nobody wants to march it through every step. Two
      * moves go backwards: reopening registration, and reactivating a cancelled
      * event (see nextStatuses(), which is why `cancelled` reads empty here and
-     * is not). `finished` is the only terminal status, because closing an event
-     * releases the funds the platform was holding and there is no undo for that.
+     * is not). `finished` is the only terminal status, because an ended event's
+     * money is exempt from the withdrawal minimum (Wallet::minimumWaivedBalance())
+     * and the organizer may have already drained it below that floor — there is no
+     * undoing that.
      *
      * @var array<string, array<int, string>>
      */
@@ -182,7 +184,9 @@ class Event extends Model
         // Cancelling spends nothing that cannot be given back — no payout, no
         // refund, no notification, and the wallet reads the status live — so it
         // is the one terminal-looking status with a way out: back to exactly
-        // where the event stood, and nowhere else.
+        // where the event stood, and nowhere else. (`cancelled` does waive the
+        // withdrawal minimum, but taking that back is harmless: the waiver is
+        // recomputed per request, and what was already withdrawn stays spent.)
         if ($this->status === 'cancelled') {
             return [$this->restoreTarget()];
         }

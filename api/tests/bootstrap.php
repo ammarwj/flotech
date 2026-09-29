@@ -32,9 +32,10 @@ $testGateway = [
  * And the same story once more for the drivers. The container exports
  * QUEUE_CONNECTION=redis, so every job the suite dispatched was pushed onto the
  * dev queue and never ran — a queued side effect could not be asserted at all
- * (ReleaseEventFundsJob was the one that caught it: marking an event finished
- * released nothing, because nothing executed). `sync` runs jobs inline, which is
- * what phpunit.xml already intends and every test assumes.
+ * (the wallet release job was the one that caught it: marking an event finished
+ * released nothing, because nothing executed; that job has since been replaced
+ * by a clock-driven sweep). `sync` runs jobs inline, which is what phpunit.xml
+ * already intends and every test assumes.
  *
  * Cache/session/mail follow for isolation: pointed at the container's redis they
  * leak state between the suite and the running dev app.

@@ -48,7 +48,7 @@ class BackfillWallets extends Command
 
         $this->info("{$credited} entri dompet dibuat (entri yang sudah ada dilewati).");
 
-        // Past events settle straight into the available balance.
+        // Anything credited before the last 01:00 WIB boundary is already due.
         $released = $wallet->releaseDue();
         $this->info("{$released} transaksi langsung dirilis ke saldo tersedia.");
 

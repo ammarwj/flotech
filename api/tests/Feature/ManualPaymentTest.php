@@ -30,6 +30,18 @@ class ManualPaymentTest extends TestCase
     {
         parent::setUp();
         PlatformSettings::flush();
+
+        // The gateway sale below is asserted to sit in `balance_pending`, and
+        // that is a question about the clock now: a credit written between
+        // 00:00 and 01:00 WIB is released by the next sweep. Pinned so the
+        // comparison gateway-vs-manual states the rule, not the run time.
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     /**

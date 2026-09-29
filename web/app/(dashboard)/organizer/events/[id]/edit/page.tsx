@@ -84,7 +84,7 @@ export default function EditEventPage() {
             : updated.status === "open"
               ? "Halaman event tayang dan pendaftaran tim terbuka."
               : updated.status === "finished"
-                ? "Dana tertahan dicairkan ke saldo organizer."
+                ? "Saldo dari event ini bebas dari batas minimal penarikan."
                 : undefined,
         }
       );

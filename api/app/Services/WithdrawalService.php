@@ -49,9 +49,33 @@ class WithdrawalService
             $minimum = PlatformSettings::minimumWithdrawal();
             $fee = PlatformSettings::adminFee();
 
-            if ($amount < $minimum) {
+            // Money from events that are over is exempt from the minimum: there
+            // is no next sale to top it up with, so a floor there would just
+            // trap the last few rupiah forever.
+            //
+            // Compared against `$amount`, not `$totalDebit` — matching on the
+            // total would refuse a payout for exactly the exempt balance and put
+            // that money straight back in the trap. The admin fee is therefore
+            // taken from the general balance, and is not waived.
+            //
+            // Rounded with a cent of slack because `decimal:2` casts and PDO's
+            // SUM() over decimals both come back as strings: without it a waiver
+            // of 39999.999999999 refuses a withdrawal of exactly 40000.
+            $waived = round($wallet->minimumWaivedBalance(), 2);
+
+            // Whether the waiver is what let this payout through. A request at
+            // or above the minimum needed no exemption, so it must not draw on
+            // the stock — money is fungible and the ordinary balance is what it
+            // came from. Consuming unconditionally is the same bug as the
+            // stateless formula wearing a different hat: one Rp 300.000 payout
+            // would wipe out a waiver it never used, and the organizer's last
+            // Rp 40.000 from a closed event would be trapped for good.
+            $usesWaiver = $amount < $minimum;
+
+            if ($amount > $waived + 0.001 && $usesWaiver) {
                 throw new WalletException(
-                    'Minimal penarikan adalah Rp '.number_format($minimum, 0, ',', '.').'.',
+                    'Minimal penarikan adalah Rp '.number_format($minimum, 0, ',', '.')
+                    .'. Saldo dari event yang sudah berakhir bisa ditarik berapa pun.',
                     ['amount' => 'Jumlah di bawah minimal penarikan.'],
                 );
             }
@@ -73,7 +97,13 @@ class WithdrawalService
                 'amount' => $amount,
                 'admin_fee' => $fee,
                 'total_debit' => $totalDebit,
+                // The configured value even when the payout was waived: 0 is a
+                // legal setting for the minimum, so writing 0 here would make
+                // "waived" indistinguishable from "the admin set it to zero" —
+                // in exactly the record a dispute over a below-minimum payout
+                // would be settled from. `exempt_consumed` is the marker.
                 'minimum_at_request' => $minimum,
+                'exempt_consumed' => $usesWaiver ? min($totalDebit, $waived) : 0,
                 'status' => 'pending',
                 'bank_name' => $bank->bank_name,
                 'bank_code' => $bank->bank_code,

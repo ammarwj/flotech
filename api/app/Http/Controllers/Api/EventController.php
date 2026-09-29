@@ -10,7 +10,6 @@ use App\Http\Requests\Event\UpdateEventRequest;
 use App\Http\Resources\EventResource;
 use App\Jobs\PurgeMediaJob;
 use App\Models\Certificate;
-use App\Jobs\ReleaseEventFundsJob;
 use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\EventPlanOrder;
@@ -242,12 +241,6 @@ class EventController extends Controller
             'status_before_cancel' => $status === 'cancelled' ? $model->status : null,
         ]);
 
-        // Closing an event releases the ticket & registration money the
-        // platform has been holding for this organizer.
-        if ($status === 'finished') {
-            ReleaseEventFundsJob::dispatch($model->id)->afterCommit();
-        }
-
         return ApiResponse::success(
             new EventResource($model->load('categories')),
             // Restoring lands on an ordinary status, so the per-status message
@@ -264,7 +257,7 @@ class EventController extends Controller
         'open' => 'Event dipublikasikan — pendaftaran tim dibuka',
         'registration_closed' => 'Pendaftaran ditutup',
         'ongoing' => 'Event ditandai sedang berlangsung',
-        'finished' => 'Event diselesaikan — dana tertahan dicairkan',
+        'finished' => 'Event diselesaikan',
         'cancelled' => 'Event dibatalkan',
     ];
 

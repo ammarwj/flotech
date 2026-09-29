@@ -24,7 +24,7 @@ Pembeli bayar (Midtrans → akun platform)
                    (neto = total − platform_fee)
                    status: PENDING  ← "Saldo Tertahan"
         │
-        │  event selesai (status=finished, atau end_date lewat)
+        │  lewat jam 01:00 WIB berikutnya (+ hold_days, kalau diisi)
         ▼
   wallet:release  ──►  status: AVAILABLE  ← "Saldo Tersedia"
         │
@@ -38,9 +38,19 @@ Pembeli bayar (Midtrans → akun platform)
   lalu upload bukti & tandai selesai
 ```
 
-### Kenapa dana ditahan sampai event selesai
+### Kenapa dana ditahan sampai lewat jam 01:00
 
-Supaya refund tidak perlu "menarik balik" uang yang sudah dicairkan. Kalau kredit masih `pending` saat direfund, kreditnya cukup **dibatalkan** — tanpa debit, tanpa saldo minus. Ini kasus paling umum.
+Jendela penahanan aslinya ada supaya refund tidak perlu "menarik balik" uang yang sudah dicairkan: kalau kredit masih `pending` saat direfund, kreditnya cukup **dibatalkan** — tanpa debit, tanpa saldo minus.
+
+Dulu jendela itu selebar event: uang tiket minggu pertama sebuah liga terkunci sampai final. Sekarang batasnya **jam 01:00 WIB berikutnya**, satu malam paling lama — kas organizer berjalan, dan pembatalan-tanpa-debit jadi cabang yang jarang alih-alih yang umum (refund biasanya menulis debit sekarang).
+
+Batasnya literal, tanpa aturan "minimal satu malam": kredit jam 00:30 cair jam 01:00 hari yang sama, kredit jam 10:00 cair jam 01:00 besok. Diturunkan dari **saat kredit ditulis**, bukan dari `end_date`, dan status event tidak merilis apa pun lagi.
+
+### Kenapa event yang berakhir membebaskan minimum penarikan
+
+Event yang sudah `finished` atau `cancelled` tidak akan menghasilkan uang lagi, jadi sisa Rp 40.000 di bawah minimum penarikan akan terjebak selamanya. Porsi saldo yang kreditnya berasal dari event berakhir itu bisa ditarik **berapa pun**.
+
+Cakupannya per event — sisanya tetap terikat minimum. **Biaya admin tidak dibebaskan**: yang bisa ditarik selalu `saldo − biaya admin`, jadi saldo di bawah biaya admin tidak bisa ditarik sama sekali (dengan `admin_fee` = 0 batas itu hilang, tapi kodenya tetap benar saat dinaikkan).
 
 ### Saldo boleh minus (disengaja)
 
@@ -100,7 +110,7 @@ Aturan pencairan **diatur super_admin dari UI** (`/admin/settings`) — tidak pe
 |---|---|---|
 | Minimal penarikan | `wallet_minimum_withdrawal` | 0 – 100.000.000 |
 | Biaya admin per penarikan | `wallet_admin_fee` | 0 – 1.000.000 |
-| Masa tahan setelah event selesai (hari) | `wallet_hold_days` | 0 – 90 |
+| Tambahan masa tahan di atas batas 01:00 (hari) | `wallet_hold_days` | 0 – 90 |
 
 Disimpan di tabel `platform_settings` (key–value), dibaca lewat `PlatformSettings` yang ber-cache. **`config/wallet.php` tetap jadi default** — instalasi baru jalan tanpa satu baris pun di tabel itu; sebuah baris hanya meng-override default-nya.
 
@@ -114,7 +124,7 @@ WALLET_HOLD_DAYS=0
 WALLET_TIMEZONE=Asia/Jakarta
 ```
 
-**Kenapa `WALLET_TIMEZONE` tidak masuk UI:** ini penentu kapan "akhir hari" event, bukan kebijakan bisnis. Salah set bisa mencairkan dana saat event masih berjalan. Biarkan di env.
+**Kenapa `WALLET_TIMEZONE` tidak masuk UI:** ini penentu kapan jam 01:00 jatuh, bukan kebijakan bisnis. Salah set menggeser batas pencairan tujuh jam. Biarkan di env.
 
 **Batas nilai divalidasi di backend** (`PlatformSettings::DEFINITIONS`), bukan cuma di UI — biaya admin Rp 5.000.000 tidak bisa tersimpan meski API dipanggil langsung.
 
@@ -122,19 +132,21 @@ WALLET_TIMEZONE=Asia/Jakarta
 
 Nilai efektifnya dikirim ke frontend lewat `GET /wallet` → `rules`, jadi UI **tidak pernah** hardcode rupiah.
 
-> ⚠️ `wallet_hold_days` hanya memengaruhi kredit **baru** — `available_at` dihitung saat kredit dibuat, jadi mengubahnya tidak menggeser dana yang sudah tertahan.
+> ⚠️ `wallet_hold_days` adalah **tambahan hari di atas batas 01:00**, bukan masa tahan sejak event selesai: 0 = jam 01:00 WIB terdekat, 1 = satu hari setelahnya. Hanya memengaruhi kredit **baru** — `available_at` dihitung saat kredit dibuat, jadi mengubahnya tidak menggeser dana yang sudah tertahan.
 
 **Aturan penarikan:**
-- Jumlah ≥ `minimum_withdrawal`
-- Saldo tersedia ≥ `amount + admin_fee`
+- Jumlah ≥ `minimum_withdrawal`, **kecuali** porsi saldo yang berasal dari event `finished`/`cancelled` — itu bebas berapa pun (`balance_minimum_waived` di `GET /wallet`)
+- Saldo tersedia ≥ `amount + admin_fee` — **biaya admin tidak pernah dibebaskan**, jadi yang bisa ditarik selalu `saldo − admin_fee` (`max_withdrawable`)
 - Rekening bank primary harus ada
 - Maksimal **1 penarikan aktif** (`pending`/`processing`) per organisasi
 
+Pembebasan itu **stok dikurangi konsumsi yang dicatat**: `Wallet::exemptSourceBalance()` (kredit `available` yang `event_id`-nya menunjuk event berakhir) minus `Σ withdrawals.exempt_consumed`. Kolom itu ditulis **hanya** saat penarikannya memang di bawah minimum — penarikan normal tidak menggerus pembebasan. Mengurangi arus penarikan kumulatif dari stok tanpa kolom itu terbukti salah dan gagal **diam-diam** (lihat invarian di `CLAUDE.md`).
+
 ### ⚠️ Timezone — jangan diakali
 
-`events.end_date` bertipe **DATE** dan `config/app.php` timezone-nya **UTC**. Cek naif `end_date <= now()` akan mencairkan dana jam **07:00 WIB di hari terakhir event** — saat event masih berjalan.
+`config/app.php` timezone-nya **UTC**, sementara batas rilis dinyatakan dalam WIB: jam 01:00 WIB = **18:00 UTC hari sebelumnya**. Menghitungnya di UTC menggeser batas tujuh jam.
 
-Semua logika rilis **wajib** lewat `WalletService::availableAtFor()`.
+Semua logika rilis **wajib** lewat `WalletService::availableAtFor()`, yang membaca `config('wallet.timezone')`.
 
 ---
 
@@ -198,7 +210,7 @@ PUT    /admin/settings                              { wallet_minimum_withdrawal?
 
 | Perintah | Fungsi |
 |---|---|
-| `wallet:release` | Cairkan saldo tertahan untuk event yang sudah selesai. **Terjadwal per jam.** Idempoten. `--event={id}` untuk satu event. |
+| `wallet:release` | Cairkan saldo tertahan yang sudah lewat batas waktunya (jam 01:00 WIB + `hold_days`). **Terjadwal per jam.** Idempoten. Tidak ada opsi per-event — status event tidak merilis apa pun. |
 | `wallet:audit` | Bandingkan saldo vs ledger, laporkan drift. **Terjadwal harian 01:00.** Read-only. |
 | `wallet:backfill` | **Wajib dijalankan sekali saat deploy.** Buat entri dompet untuk pesanan/pendaftaran lunas yang sudah ada. Idempoten. |
 
@@ -227,8 +239,8 @@ Test suite jalan di sqlite `:memory:` dan `MIDTRANS_SERVER_KEY` dikosongkan di `
 | File test | Yang dibuktikan |
 |---|---|
 | `WalletTest` | Kredit neto (2×50rb, fee 5% → 95rb pending); tiket gratis → **nol** baris ledger; plan tanpa fee → kredit penuh; biaya pendaftaran; **double-credit dicegah** (webhook Midtrans dikirim 2× dengan signature sha512 asli → tetap 1 baris). |
-| `WalletReleaseTest` | Rilis setelah event selesai; idempoten; event masih jalan → tetap tertahan; event `cancelled` → **tidak pernah** dirilis; `PATCH events/{id}` ke `finished` → rilis instan; **batas WIB**: 10:00 UTC (17:00 WIB) belum rilis, 17:00 UTC (00:00 WIB besok) baru rilis. |
-| `WithdrawalTest` | Tanpa rekening → 422; di bawah minimum → 422; saldo cukup untuk `amount` tapi tidak untuk `amount+fee` → 422; dana pending tidak bisa ditarik; happy path (dana langsung ditahan); **1 request aktif**; batal → dana kembali; **member `operator` → 403**; org lain → 403. |
+| `WalletReleaseTest` | Kredit 10:00 WIB: sapuan 00:00 WIB **belum** rilis, 01:00 WIB rilis; kredit 00:30 WIB cair 01:00 **hari yang sama**; batas dibaca WIB bukan UTC (01:00 UTC tidak merilis); `hold_days=1` menggeser tepat satu hari; event `cancelled` **tetap** dirilis jam; `PATCH` ke `finished` merilis **nol**; idempoten. |
+| `WithdrawalTest` | Tanpa rekening → 422; di bawah minimum → 422; saldo cukup untuk `amount` tapi tidak untuk `amount+fee` → 422; dana pending tidak bisa ditarik; happy path (dana langsung ditahan); **1 request aktif**; batal → dana kembali; **member `operator` → 403**; org lain → 403. **Pembebasan minimum**: jumlah sama dari event `open` ditolak vs `finished` diterima; `cancelled` sama dengan `finished`; hanya porsi event berakhir yang bebas; penarikan **di atas** minimum tidak menggerus pembebasan (`exempt_consumed`=0); pembebasan habis di penarikan bebas kedua; pembatalan memulihkannya; status event bolak-balik; adjustment admin **tidak** membebaskan; **biaya admin tidak dibebaskan** (saldo 4rb, fee 5rb → 422). |
 | `AdminWithdrawalTest` | Non-superadmin → 403; `complete` tanpa `proof_url` → 422; `complete` **tidak** menulis ledger baru (debit sudah terjadi saat request); `reject` → dana kembali + baris `withdrawal_reversal`; reject yang sudah `completed` → 409. |
 | `RefundTest` | Refund saat pending → kredit `cancelled`, **tanpa** debit, **tanpa** minus; refund setelah cair → debit; **refund setelah ditarik → saldo minus & penarikan terkunci**; kuota tiket dilepas; refund 2× → 422; tiket sudah check-in → tidak bisa direfund. |
 | `WalletLedgerTest` | **Invarian**: setelah rangkaian campuran (kredit → rilis → WD ditolak → WD selesai → refund → adjustment), saldo tersimpan == Σ ledger, dan `wallet:audit` sukses. |
@@ -278,13 +290,13 @@ Tanpa `MIDTRANS_SERVER_KEY`, gateway jalan di **mock mode** → setiap pembelian
 ## 3. Tes cepat lewat skrip (tanpa klik UI)
 
 Untuk membuktikan seluruh alur uang dalam sekali jalan terhadap Postgres asli, jalankan skrip yang:
-menjual tiket → menyelesaikan event → mengajukan WD → memblokir WD kedua → menyelesaikan WD → refund → memverifikasi saldo minus mengunci penarikan.
+menjual tiket → menyapu `wallet:release` setelah batas 01:00 → mengajukan WD → memblokir WD kedua → menyelesaikan WD → refund → memverifikasi saldo minus mengunci penarikan.
 
 Output yang diharapkan:
 
 ```
 1. Setelah jual tiket → pending=190000.00 available=0.00
-2. Event selesai      → pending=0.00      available=190000.00
+2. Lewat 01:00 WIB    → pending=0.00      available=190000.00
 3. Ajukan WD 150rb    → available=35000.00 on_hold=155000
 4. WD kedua ditolak   → "Masih ada permintaan penarikan yang sedang diproses."
 5. Admin selesaikan   → available=35000.00 total_withdrawn=150000.00 on_hold=0
@@ -299,7 +311,7 @@ Output yang diharapkan:
 - [ ] `php artisan wallet:backfill` ← **jangan dilewat**
 - [ ] Scheduler jalan (`php artisan schedule:work` / cron), supaya `wallet:release` jalan per jam
 - [ ] Atur minimal penarikan & biaya admin di **`/admin/settings`** (atau biarkan pakai default dari env)
-- [ ] Pertimbangkan masa tahan > 0 hari sebagai bantalan kalau event batal setelah dana dicairkan
+- [ ] Pertimbangkan `wallet_hold_days` > 0 sebagai bantalan tambahan di atas batas 01:00
 
 ---
 

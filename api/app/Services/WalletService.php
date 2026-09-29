@@ -20,8 +20,13 @@ use Illuminate\Support\Facades\DB;
  *
  * Buyers pay the platform's Midtrans account, so the organizer's net share
  * (amount − platform_fee) is credited here as *pending* and released once the
- * event is over — a window in which a refund can cancel the credit outright
- * instead of clawing money back.
+ * next 01:00 in the organizer's zone has passed — an overnight window in which a
+ * refund can cancel the credit outright instead of clawing money back.
+ *
+ * The clock is the *only* thing that releases funds. It used to also happen when
+ * an event finished, and two readers of one rule disagree sooner or later; what
+ * an ended event does now is waive the withdrawal minimum for its own money
+ * (see Wallet::minimumWaivedBalance()), not move anything.
  *
  * Every mutation goes through record(), which locks the wallet row and relies
  * on a unique index over (source_type, source_id, category) so a re-delivered
@@ -35,19 +40,30 @@ class WalletService
     }
 
     /**
-     * When an event's funds become withdrawable.
+     * When a credit written now becomes withdrawable: the next 01:00 in the
+     * organizer's zone, plus any extra cooling days.
      *
-     * `events.end_date` is a DATE and the app runs in UTC, so a naive
-     * `end_date <= now()` would release money at 07:00 WIB *on the final day*,
-     * while the event is still being played. The event ends at the end of that
-     * day in the organizer's zone.
+     * Not derived from `events.end_date` any more. A league runs for months, and
+     * its first week's ticket money is spendable cash rather than a deposit.
+     *
+     * The boundary has to be computed *in* `wallet.timezone`: the app runs in
+     * UTC, so naive arithmetic lands the cut-off seven hours off — the same trap
+     * that used to release an event's funds at 07:00 WIB on its final day.
+     *
+     * Literal, with no minimum-one-night rule: a credit at 00:30 WIB clears at
+     * 01:00 the same morning, one at 10:00 WIB clears at 01:00 the next.
      */
-    public function availableAtFor(Event $event): Carbon
+    public function availableAtFor(?Carbon $now = null): Carbon
     {
-        return Carbon::parse(
-            $event->end_date->toDateString().' 23:59:59',
-            config('wallet.timezone'),
-        )->utc()->addDays(PlatformSettings::holdDays());
+        $local = ($now ? $now->copy() : Carbon::now())->setTimezone(config('wallet.timezone'));
+
+        $boundary = $local->copy()->setTime(1, 0, 0);
+
+        if ($boundary->lte($local)) {
+            $boundary->addDay();
+        }
+
+        return $boundary->addDays(PlatformSettings::holdDays())->utc();
     }
 
     /**
@@ -90,34 +106,20 @@ class WalletService
     }
 
     /**
-     * Move an event's pending funds into the available balance. Ignores
-     * `available_at` — the caller has established the event is over.
-     */
-    public function releaseEvent(Event $event): int
-    {
-        if ($event->status === 'cancelled') {
-            return 0;
-        }
-
-        return $this->releaseTransactions(
-            WalletTransaction::where('event_id', $event->id)->where('status', 'pending')
-        );
-    }
-
-    /**
-     * Sweep every pending credit whose event has finished (explicitly, or by
-     * its end date passing). Idempotent: a second run moves nothing.
+     * Sweep every pending credit whose boundary has passed. Idempotent: a second
+     * run moves nothing.
+     *
+     * One condition, deliberately. There is no "the event finished" arm and no
+     * exception for cancelled events: the event's status decides whether its
+     * money is exempt from the withdrawal minimum, never whether it is released.
+     * Cancelling pauses nothing here — a refund is what takes money back.
      */
     public function releaseDue(?Carbon $now = null): int
     {
         $now ??= Carbon::now();
 
         $query = WalletTransaction::where('status', 'pending')
-            ->whereHas('event', fn ($q) => $q->where('status', '!=', 'cancelled'))
-            ->where(function ($q) use ($now) {
-                $q->whereHas('event', fn ($e) => $e->where('status', 'finished'))
-                    ->orWhere('available_at', '<=', $now);
-            });
+            ->where('available_at', '<=', $now);
 
         return $this->releaseTransactions($query, $now);
     }
@@ -263,7 +265,7 @@ class WalletService
             'fee_amount' => $fee,
             'source_type' => $sourceType,
             'source_id' => $sourceId,
-            'available_at' => $this->availableAtFor($event),
+            'available_at' => $this->availableAtFor(),
             'description' => $description,
         ]);
     }
@@ -327,8 +329,8 @@ class WalletService
 
     /**
      * Flip a set of pending rows to available and move the balances, wallet by
-     * wallet. Rows are re-checked under the lock, so concurrent runs (the
-     * hourly command racing the "event finished" job) cannot double-release.
+     * wallet. Rows are re-checked under the lock, so two overlapping sweeps
+     * cannot double-release the same row.
      *
      * @param  Builder<WalletTransaction>  $query
      */

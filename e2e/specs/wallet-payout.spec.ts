@@ -46,7 +46,10 @@ test.describe("§5.7 & §5.8 Dompet & penarikan dana", () => {
     await addBankAccount(page);
 
     await expect(page.getByRole("button", { name: /tarik dana/i })).toBeDisabled();
-    await expect(page.getByText(/belum mencapai/i)).toBeVisible();
+    // The copy states the floor rather than the shortfall: "penarikan bisa
+    // dilakukan mulai Rp …". Matched on that phrase, not on a wording that
+    // only ever existed in a comment.
+    await expect(page.getByText(/penarikan bisa dilakukan mulai/i)).toBeVisible();
   });
 
   test("alur penuh: organizer ajukan → admin proses → selesai dengan bukti transfer", async ({

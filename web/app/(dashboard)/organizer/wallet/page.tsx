@@ -212,17 +212,28 @@ function WalletPage() {
   const withdrawals = withdrawalsQuery.data ?? [];
 
   const negative = !!wallet && wallet.balance_available < 0;
-  const belowMinimum =
-    !!wallet && wallet.balance_available < wallet.rules.minimum_withdrawal + wallet.rules.admin_fee;
 
   const minimumTotal = wallet
     ? wallet.rules.minimum_withdrawal + wallet.rules.admin_fee
     : 0;
 
+  // The admin fee is never waived, so a balance under it cannot be withdrawn at
+  // all — stated here rather than left for the organizer to discover from an
+  // error after being told they have exempt money to take.
+  const belowFee = !!wallet && wallet.max_withdrawable <= 0;
+
+  // Money from events that are over escapes the minimum (the server's figure —
+  // this page must not work out which money qualifies, the same reason
+  // `effective_payment_method` exists).
+  const hasWaiver = !!wallet && wallet.balance_minimum_waived > 0 && !belowFee;
+
+  const belowMinimum =
+    !!wallet && !hasWaiver && wallet.balance_available < minimumTotal;
+
   // Money is in the wallet, just not withdrawable yet. Saying "belum mencapai"
   // here reads as "you haven't sold enough", which is the wrong thing to tell
   // an organizer sitting on millions in held funds — they would go looking for
-  // missing sales instead of waiting for their event to finish.
+  // missing sales instead of waiting for the clock.
   const heldCoversMinimum =
     !!wallet && wallet.balance_pending > 0 && wallet.balance_available + wallet.balance_pending >= minimumTotal;
 
@@ -235,11 +246,13 @@ function WalletPage() {
         ? "Masih ada penarikan yang sedang diproses."
         : negative
           ? "Saldo minus karena refund."
-          : belowMinimum
-            ? heldCoversMinimum
-              ? `${rupiah(wallet.balance_pending)} masih tertahan sampai event-nya selesai. Dana cair otomatis setelah itu, lalu bisa ditarik.`
-              : `Saldo tersedia ${rupiah(wallet.balance_available)} — penarikan bisa dilakukan mulai ${rupiah(minimumTotal)} (minimum ${rupiah(wallet.rules.minimum_withdrawal)} + biaya admin ${rupiah(wallet.rules.admin_fee)}).`
-            : null;
+          : belowFee
+            ? `Saldo tersedia ${rupiah(wallet.balance_available)} belum menutup biaya admin ${rupiah(wallet.rules.admin_fee)}, jadi belum ada yang bisa ditarik.`
+            : belowMinimum
+              ? heldCoversMinimum
+                ? `${rupiah(wallet.balance_pending)} masih tertahan sampai lewat jam 01:00 WIB. Dana cair otomatis setelah itu, lalu bisa ditarik.`
+                : `Saldo tersedia ${rupiah(wallet.balance_available)} — penarikan bisa dilakukan mulai ${rupiah(minimumTotal)} (minimum ${rupiah(wallet.rules.minimum_withdrawal)} + biaya admin ${rupiah(wallet.rules.admin_fee)}).`
+              : null;
 
   return (
     <>
@@ -276,7 +289,7 @@ function WalletPage() {
               icon={Hourglass}
               label="Saldo Tertahan"
               value={rupiah(wallet.balance_pending)}
-              hint="Cair setelah event selesai"
+              hint="Cair setelah jam 01:00 WIB"
             />
             <StatCard
               icon={Clock}
@@ -300,6 +313,19 @@ function WalletPage() {
                 positif — pendapatan berikutnya akan menutup selisih ini otomatis.
               </p>
             </Card>
+          )}
+
+          {/* Stated up front, not only inside the dialog: a small exempt balance
+              looks unwithdrawable from this screen, and an organizer who reads
+              the minimum on the cards has no reason to open the form at all. */}
+          {hasWaiver && !negative && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {rupiah(wallet.balance_minimum_waived)} berasal dari event yang sudah berakhir dan
+              bisa ditarik tanpa batas minimal
+              {wallet.rules.admin_fee > 0
+                ? ` — biaya admin ${rupiah(wallet.rules.admin_fee)} tetap dipotong.`
+                : "."}
+            </p>
           )}
 
           {blockedReason && !negative && (

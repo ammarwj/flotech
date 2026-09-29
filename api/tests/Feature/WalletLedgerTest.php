@@ -25,6 +25,12 @@ class WalletLedgerTest extends TestCase
 
     public function test_balances_match_the_ledger_after_a_mixed_sequence(): void
     {
+        // Pinned BEFORE the purchases: `available_at` comes from the moment the
+        // credit is written, so a sweep pinned after the sale is what releases
+        // it. At real wall-clock the sales would land in the future relative to
+        // the 2026-08 sweeps below and nothing would ever release.
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB — boundary 2026-08-02 18:00 UTC
+
         $owner = User::factory()->create();
         $admin = User::factory()->create(['role' => 'super_admin']);
 
@@ -70,6 +76,7 @@ class WalletLedgerTest extends TestCase
         $orderA = $buy(4);   // 200.000 gross, credited in full — no fee cut
         $orderB = $buy(2);   // 100.000 gross, credited in full
 
+        // Past the 01:00 WIB boundary of both sales.
         Carbon::setTestNow('2026-08-03 12:00:00');
         $wallets->releaseDue();
 

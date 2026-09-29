@@ -1471,10 +1471,18 @@ export interface Wallet {
   id: string;
   organization_id: string;
   balance_available: number;
-  /** Held until the event finishes. */
+  /** Held until the next 01:00 WIB has passed. */
   balance_pending: number;
   /** Debited already, sitting in an open payout request. */
   balance_on_hold: number;
+  /**
+   * The slice of `balance_available` that came from events which have ended,
+   * and so may be withdrawn below `rules.minimum_withdrawal`. Derived by the
+   * server — never recompute it here, or the two answers will drift.
+   */
+  balance_minimum_waived: number;
+  /** `balance_available` minus the admin fee. The fee is never waived. */
+  max_withdrawable: number;
   total_earned: number;
   total_withdrawn: number;
   has_bank_account: boolean;

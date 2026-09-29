@@ -27,6 +27,13 @@ class RefundTest extends TestCase
     {
         parent::setUp();
         $this->admin = User::factory()->create(['role' => 'super_admin']);
+
+        // Pinned BEFORE any purchase: `available_at` is now derived from the
+        // moment the credit is written, so a sweep pinned later than the sale
+        // is the only thing that can release it. Left at real wall-clock the
+        // purchase would land in 2026-09 and every sweep here would run
+        // backwards, releasing nothing.
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB — boundary is 2026-08-02 18:00 UTC
     }
 
     /** @return array{0: Organization, 1: Event, 2: TicketOrder} */
@@ -64,6 +71,7 @@ class RefundTest extends TestCase
         return [$org, $event, TicketOrder::findOrFail($orderId)];
     }
 
+    /** Move past the credit's 01:00 WIB boundary and sweep. */
     private function release(): void
     {
         Carbon::setTestNow('2026-08-03 12:00:00');

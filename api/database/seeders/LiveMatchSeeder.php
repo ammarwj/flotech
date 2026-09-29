@@ -109,9 +109,10 @@ class LiveMatchSeeder extends Seeder
                 'sport_type' => 'football',
                 'status' => 'ongoing',
                 'timezone' => self::TIMEZONE,
-                // Rentang yang memuat kickoff-nya: dana dompet baru cair setelah
-                // `end_date` lewat, jadi event yang "selesai" di tanggal laga
-                // yang sedang berjalan akan mencairkan uang di tengah turnamen.
+                // Rentang yang memuat kickoff-nya, supaya event ini benar-benar
+                // berstatus berjalan. Bukan lagi soal dompet — pencairan sekarang
+                // ikut jam 01:00 WIB, bukan `end_date` — tapi event yang
+                // "selesai" di tanggal laga yang sedang berjalan tetap salah.
                 'start_date' => $kickoff->copy()->subDays(20)->toDateString(),
                 'end_date' => $kickoff->copy()->addDays(6)->toDateString(),
                 'registration_open' => $kickoff->copy()->subDays(45),

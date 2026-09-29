@@ -26,6 +26,7 @@ class Withdrawal extends Model
         'admin_fee',
         'total_debit',
         'minimum_at_request',
+        'exempt_consumed',
         'status',
         'bank_name',
         'bank_code',
@@ -48,6 +49,7 @@ class Withdrawal extends Model
             'admin_fee' => 'decimal:2',
             'total_debit' => 'decimal:2',
             'minimum_at_request' => 'decimal:2',
+            'exempt_consumed' => 'decimal:2',
             'processed_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

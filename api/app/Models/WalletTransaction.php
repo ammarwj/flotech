@@ -10,9 +10,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One immutable movement in an organization's wallet.
  *
  * `amount` is always positive; `type` gives it a sign. `status` says which
- * balance it sits in — pending funds are held until the event finishes, and a
- * refund of a still-pending credit flips it to `cancelled` instead of writing
- * an opposing debit.
+ * balance it sits in — pending funds are held until `available_at`, the next
+ * 01:00 in the organizer's zone, and a refund of a still-pending credit flips
+ * it to `cancelled` instead of writing an opposing debit. That window is under
+ * a day now, so the cancelling branch is the rare one and a refund usually
+ * writes a debit instead.
+ *
+ * `event_id` is load-bearing beyond reporting: it is what makes a credit
+ * traceable to an ended event, and so exempt from the withdrawal minimum (see
+ * Wallet::exemptSourceBalance()).
  *
  * The ledger identity, asserted by wallet:audit:
  *   balance_available = SUM(±amount WHERE status = 'available')

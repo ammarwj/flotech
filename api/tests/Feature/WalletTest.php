@@ -10,17 +10,36 @@ use App\Models\User;
 use App\Services\TicketService;
 use App\Services\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
  * Income: a paid ticket order or registration fee credits the organizer's
- * wallet with the full gross amount, held until the event is over. Gateway
- * and service fees are paid by the buyer on top — they never touch this.
+ * wallet with the full gross amount, held until the next 01:00 in the
+ * organizer's zone has passed. Gateway and service fees are paid by the buyer
+ * on top — they never touch this.
  */
 class WalletTest extends TestCase
 {
     use CreatesPlannedEvents, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Every credit below is asserted to be `pending`, and that is now a
+        // question about the clock: a sale made between 00:00 and 01:00 WIB is
+        // released by the very next sweep. Pinned to mid-morning WIB so the
+        // assertions state the rule instead of depending on when CI runs.
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     private function orgWithPlan(User $owner, array $features = []): Organization
     {

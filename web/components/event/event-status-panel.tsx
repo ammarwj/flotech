@@ -48,7 +48,7 @@ const MOVES: Record<
     confirm: {
       title: "Selesaikan event ini?",
       description: "Status tidak bisa dikembalikan lagi.",
-      consequences: "Dana tertahan dari tiket & pendaftaran langsung dicairkan ke saldo.",
+      consequences: "Saldo dari event ini bebas dari batas minimal penarikan — sisanya bisa ditarik berapa pun.",
       confirmLabel: "Selesaikan event",
     },
   },
@@ -58,7 +58,7 @@ const MOVES: Record<
     confirm: {
       title: "Batalkan event ini?",
       description: "Halaman event ditandai dibatalkan. Bisa diaktifkan kembali nanti.",
-      consequences: "Dana tertahan tidak akan dicairkan selama event dibatalkan.",
+      consequences: "Saldo dari event ini jadi bebas batas minimal penarikan, sama seperti event yang diselesaikan.",
       confirmLabel: "Batalkan event",
       tone: "danger",
     },
@@ -171,7 +171,7 @@ export function EventStatusPanel({
         target === "draft"
           ? "Event kembali jadi draf dan tetap belum terlihat publik."
           : `Event kembali ke status ${EVENT_STATUS_LABELS[target]} dan halamannya tayang lagi.`,
-      consequences: "Dana tertahan kembali dicairkan saat event diselesaikan.",
+      consequences: "Saldo dari event ini terikat batas minimal penarikan lagi selama event berjalan.",
       confirmLabel: "Aktifkan kembali",
       icon: RotateCcw,
     });
@@ -266,11 +266,11 @@ function hintFor(event: SportEvent): string {
     case "registration_closed":
       return "Pendaftaran ditutup. Halaman event tetap tayang.";
     case "ongoing":
-      return "Dana tiket & pendaftaran ditahan sampai event selesai.";
+      return "Dana tiket & pendaftaran cair otomatis setelah lewat jam 01:00 WIB.";
     case "finished":
-      return "Dana tertahan sudah dicairkan ke saldo organizer.";
+      return "Saldo dari event ini bebas dari batas minimal penarikan.";
     case "cancelled":
-      return "Dana tertahan tidak akan dicairkan selama event dibatalkan.";
+      return "Saldo dari event ini bebas dari batas minimal penarikan.";
   }
 }
 

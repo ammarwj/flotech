@@ -4,7 +4,7 @@
 Penarikan **{{ $withdrawal->reference }}** sudah kami proses dan dananya dikirim ke rekening tujuan.
 
 @component('mail::status', ['type' => 'success', 'title' => 'Selesai'])
-Dana biasanya masuk dalam hitungan menit, tapi bisa memakan waktu sampai 1 hari kerja tergantung banknya.
+Dana biasanya masuk dalam hitungan menit, dan paling lama 1x24 jam tergantung banknya.
 @endcomponent
 
 @component('mail::table')
@@ -24,5 +24,5 @@ Dana biasanya masuk dalam hitungan menit, tapi bisa memakan waktu sampai 1 hari 
 Lihat Dompet
 @endcomponent
 
-Dana tidak masuk juga setelah 1 hari kerja? Balas email ini dengan menyertakan nomor penarikan di atas.
+Dana tidak masuk juga setelah 1x24 jam? Balas email ini dengan menyertakan nomor penarikan di atas.
 @endcomponent

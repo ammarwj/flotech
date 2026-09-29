@@ -45,11 +45,16 @@ export function WithdrawDialog({
   if (!open) return null;
 
   const { minimum_withdrawal: minimum, admin_fee: fee } = wallet.rules;
+  const waived = wallet.balance_minimum_waived;
   const value = Number(amount) || 0;
   const totalDebit = value > 0 ? value + fee : 0;
   const remaining = wallet.balance_available - totalDebit;
 
-  const belowMinimum = value > 0 && value < minimum;
+  // Mirrors the server gate exactly (WithdrawalService::request): money from
+  // events that have ended is exempt from the minimum, up to that portion.
+  // Recomputing which money qualifies here would be a second reader of one
+  // rule — `balance_minimum_waived` is the server's answer.
+  const belowMinimum = value > 0 && value < minimum && value > waived;
   const overBalance = totalDebit > wallet.balance_available;
   const canSubmit = value > 0 && !belowMinimum && !overBalance && !pending;
 
@@ -76,7 +81,7 @@ export function WithdrawDialog({
               Tarik Dana
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Proses pencairan memerlukan 1–2 hari kerja.
+              Dana masuk ke rekeningmu maksimal 1x24 jam sejak diajukan.
             </p>
           </div>
           <button
@@ -111,12 +116,21 @@ export function WithdrawDialog({
               placeholder={angka(minimum)}
             />
             <p className="text-xs text-muted-foreground">
-              Saldo tersedia {rupiah(wallet.balance_available)} &middot; minimal{" "}
-              {rupiah(minimum)}.
+              Bisa ditarik {rupiah(wallet.max_withdrawable)}
+              {fee > 0 && <> (saldo {rupiah(wallet.balance_available)} &minus; biaya admin {rupiah(fee)})</>}
+              {" "}&middot; minimal {rupiah(minimum)}.
             </p>
+            {waived > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {rupiah(waived)} berasal dari event yang sudah berakhir dan bisa
+                ditarik tanpa batas minimal.
+              </p>
+            )}
             {belowMinimum && (
               <p className="text-xs font-medium text-[var(--danger)]">
-                Minimal penarikan {rupiah(minimum)}.
+                Minimal penarikan {rupiah(minimum)}
+                {waived > 0 && <>, kecuali {rupiah(waived)} dari event yang sudah berakhir</>}
+                .
               </p>
             )}
             {overBalance && (

@@ -18,8 +18,9 @@ use Illuminate\Support\Facades\Cache;
  * the `minimum_at_request` and `admin_fee` it was created under, and every
  * order snapshots the `payment_method` it was created under.
  *
- * NOT settable here: `wallet.timezone`. That decides when an event's day ends,
- * and getting it wrong releases funds mid-event — infrastructure, not policy.
+ * NOT settable here: `wallet.timezone`. That decides which zone the 01:00 release
+ * boundary is read in, and getting it wrong moves every payout by seven hours —
+ * infrastructure, not policy.
  */
 class PlatformSettings
 {
@@ -63,7 +64,8 @@ class PlatformSettings
             'type' => 'int',
             'min' => 0,
             'max' => 90,
-            'label' => 'Masa tahan setelah event selesai (hari)',
+            'label' => 'Tambahan masa tahan di atas batas 01:00 (hari)',
+            'description' => 'Dana masuk cair otomatis setelah lewat jam 01:00 WIB berikutnya. Isi 0 untuk batas 01:00 terdekat, atau tambahkan hari untuk menahannya lebih lama.',
         ],
         // Two margins, not one rate applied twice. The money moves between
         // different parties in each case — a participant paying an organizer,

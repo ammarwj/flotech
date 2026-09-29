@@ -8,8 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Wallet: held funds become withdrawable once an event is over, and the
-// denormalized balances are checked against the ledger daily.
+// Wallet: held funds become withdrawable once the next 01:00 WIB has passed, and
+// the denormalized balances are checked against the ledger daily. Hourly rather
+// than a single 01:00 run because wallet_hold_days can push a row's boundary any
+// number of days out, and one sweep covers both without a second schedule.
 Schedule::command('wallet:release')->hourly()->withoutOverlapping();
 Schedule::command('wallet:audit')->dailyAt('01:00');
 

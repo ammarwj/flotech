@@ -2,18 +2,24 @@
 
 namespace Tests\Feature;
 
-use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
+use App\Models\WalletTransaction;
+use App\Services\PlatformSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
- * Held funds become withdrawable once the event is over — by its end date
- * passing, or by the organizer closing it early.
+ * Held funds become withdrawable once the next 01:00 in the organizer's zone
+ * has passed — the clock, and nothing else. The event's own status no longer
+ * releases anything (what an ended event does now is waive the withdrawal
+ * minimum; that lives in WithdrawalTest).
+ *
+ * Every test here pins the clock BEFORE the sale, because `available_at` is
+ * derived from the moment the credit is written.
  */
 class WalletReleaseTest extends TestCase
 {
@@ -39,7 +45,10 @@ class WalletReleaseTest extends TestCase
         ]);
     }
 
-    /** An org with 100.000 pending from one paid order on an event ending 2026-08-02. */
+    /**
+     * An org with 100.000 pending from one paid order, bought at whatever the
+     * clock currently says. The event's dates are deliberately irrelevant now.
+     */
     private function seedPendingIncome(User $user): array
     {
         $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
@@ -47,7 +56,7 @@ class WalletReleaseTest extends TestCase
             'plan_id' => $this->planId(),
             'name' => 'Cup', 'slug' => 'cup-'.uniqid(), 'sport_type' => 'futsal',
             'tournament_format' => 'league', 'status' => 'open',
-            'start_date' => '2026-08-01', 'end_date' => '2026-08-02',
+            'start_date' => '2026-08-01', 'end_date' => '2026-12-20',
         ]);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
@@ -62,130 +71,152 @@ class WalletReleaseTest extends TestCase
         return [$org, $event];
     }
 
-    public function test_funds_are_released_after_the_event_ends(): void
+    private function sweepAt(string $utc): void
     {
-        [$org] = $this->seedPendingIncome(User::factory()->create());
-
-        Carbon::setTestNow('2026-08-03 12:00:00');
+        Carbon::setTestNow($utc);
         $this->artisan('wallet:release')->assertSuccessful();
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '0.00',
-            'balance_available' => '100000.00',
-        ]);
-        $this->assertDatabaseHas('wallet_transactions', ['organization_id' => $org->id, 'status' => 'available']);
     }
 
-    public function test_release_is_idempotent(): void
+    private function assertBalances(Organization $org, string $pending, string $available, string $message = ''): void
     {
-        [$org] = $this->seedPendingIncome(User::factory()->create());
+        $wallet = $org->wallet()->first();
 
-        Carbon::setTestNow('2026-08-03 12:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-        $this->artisan('wallet:release')->assertSuccessful();
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_available' => '100000.00',
-            'balance_pending' => '0.00',
-        ]);
-    }
-
-    public function test_funds_stay_held_while_the_event_is_still_running(): void
-    {
-        [$org] = $this->seedPendingIncome(User::factory()->create());
-
-        Carbon::setTestNow('2026-08-01 12:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '100000.00',
-            'balance_available' => '0.00',
-        ]);
+        $this->assertSame($pending, (string) $wallet->balance_pending, $message);
+        $this->assertSame($available, (string) $wallet->balance_available, $message);
     }
 
     /**
-     * The event's last day ends at midnight WIB, not at 00:00 UTC. Releasing on
-     * the naive UTC date would hand over the money at 07:00 WIB — mid-event.
+     * The rule, stated as a comparison on one credit: a sweep at 00:00 WIB the
+     * next morning is too early, the sweep an hour later is not. Asserting only
+     * the second half would pass even if the boundary were midnight.
      */
-    public function test_release_respects_the_wib_end_of_day_boundary(): void
+    public function test_a_morning_credit_clears_at_the_next_0100_and_not_before(): void
     {
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB
         [$org] = $this->seedPendingIncome(User::factory()->create());
 
-        // 2026-08-02 10:00 UTC = 17:00 WIB on the final day. Still playing.
-        Carbon::setTestNow('2026-08-02 10:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '0.00']);
+        // 2026-08-02 17:00 UTC = 2026-08-03 00:00 WIB. One hour short.
+        $this->sweepAt('2026-08-02 17:00:00');
+        $this->assertBalances($org, '100000.00', '0.00', 'Midnight WIB is not the boundary — 01:00 is.');
 
-        // 2026-08-02 17:00 UTC = 00:00 WIB the next day. Over.
-        Carbon::setTestNow('2026-08-02 17:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '100000.00']);
+        // 2026-08-02 18:00 UTC = 2026-08-03 01:00 WIB.
+        $this->sweepAt('2026-08-02 18:00:00');
+        $this->assertBalances($org, '0.00', '100000.00');
     }
 
-    public function test_cancelled_event_funds_are_never_released(): void
+    /**
+     * No minimum-one-night rule: the boundary is literally the next 01:00, so
+     * money that arrives at 00:30 is withdrawable thirty minutes later.
+     *
+     * Paired with the test above — same rule, opposite side of the boundary.
+     */
+    public function test_a_credit_just_before_0100_clears_the_same_night(): void
     {
+        // 2026-08-01 17:30 UTC = 2026-08-02 00:30 WIB.
+        Carbon::setTestNow('2026-08-01 17:30:00');
+        [$org] = $this->seedPendingIncome(User::factory()->create());
+
+        $credit = WalletTransaction::where('organization_id', $org->id)->firstOrFail();
+
+        // The same day's 01:00 WIB, not tomorrow's.
+        $this->assertSame(
+            '2026-08-01 18:00:00',
+            $credit->available_at->utc()->format('Y-m-d H:i:s'),
+        );
+
+        $this->sweepAt('2026-08-01 18:00:00');
+        $this->assertBalances($org, '0.00', '100000.00');
+    }
+
+    /**
+     * The boundary is read in the wallet timezone. Computed naively in UTC the
+     * cut-off would land seven hours away, and this is the hour that tells the
+     * two apart: 2026-08-02 01:00 UTC is 08:00 WIB — past a UTC 01:00 but a
+     * long way from the WIB one.
+     */
+    public function test_the_boundary_is_read_in_wib_not_utc(): void
+    {
+        Carbon::setTestNow('2026-08-01 20:00:00'); // 2026-08-02 03:00 WIB
+        [$org] = $this->seedPendingIncome(User::factory()->create());
+
+        $this->sweepAt('2026-08-02 01:00:00');
+        $this->assertBalances($org, '100000.00', '0.00', 'A UTC 01:00 must not release anything.');
+
+        // 2026-08-02 18:00 UTC = 2026-08-03 01:00 WIB — the real boundary.
+        $this->sweepAt('2026-08-02 18:00:00');
+        $this->assertBalances($org, '0.00', '100000.00');
+    }
+
+    /**
+     * `wallet_hold_days` survives, reinterpreted: extra days stacked on top of
+     * the 01:00 boundary. Compared against the same credit under the default 0,
+     * because "still held" on its own proves nothing about the shift.
+     */
+    public function test_hold_days_pushes_the_boundary_by_whole_days(): void
+    {
+        PlatformSettings::put(['wallet_hold_days' => 1], null);
+        PlatformSettings::flush();
+
+        Carbon::setTestNow('2026-08-02 03:00:00'); // 10:00 WIB
+        [$org] = $this->seedPendingIncome(User::factory()->create());
+
+        // The boundary a hold of 0 would have produced.
+        $this->sweepAt('2026-08-02 18:00:00'); // 2026-08-03 01:00 WIB
+        $this->assertBalances($org, '100000.00', '0.00');
+
+        $this->sweepAt('2026-08-03 18:00:00'); // 2026-08-04 01:00 WIB
+        $this->assertBalances($org, '0.00', '100000.00');
+    }
+
+    /**
+     * The clock is the only reader now, so a cancelled event's money is
+     * released like anyone else's — the exact opposite of the rule this file
+     * used to assert. Refunds are what take that money back, and they already
+     * write their own debit.
+     */
+    public function test_a_cancelled_events_funds_are_still_released_by_the_clock(): void
+    {
+        Carbon::setTestNow('2026-08-02 03:00:00');
         [$org, $event] = $this->seedPendingIncome(User::factory()->create());
+
         $event->update(['status' => 'cancelled']);
 
-        Carbon::setTestNow('2026-09-01 12:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '100000.00',
-            'balance_available' => '0.00',
-        ]);
+        $this->sweepAt('2026-08-02 18:00:00');
+        $this->assertBalances($org, '0.00', '100000.00');
     }
 
     /**
-     * Cancelling only pauses the payout, because the sweep reads the event's
-     * status live — nothing about the ledger is rewritten either way.
-     *
-     * Paired with the test above on purpose: that one proves the money stops,
-     * this one proves it is still there to move once the event is back.
+     * Closing an event moves no money at all any more. Asserted at an hour
+     * before the credit's boundary, so a release here could only have come from
+     * the status change.
      */
-    public function test_reactivating_a_cancelled_event_lets_its_funds_flow_again(): void
+    public function test_finishing_an_event_releases_nothing(): void
     {
+        Carbon::setTestNow('2026-08-02 03:00:00');
         $user = User::factory()->create();
         [$org, $event] = $this->seedPendingIncome($user);
-        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/status";
-
-        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'cancelled'])->assertOk();
-
-        Carbon::setTestNow('2026-09-01 12:00:00');
-        $this->artisan('wallet:release')->assertSuccessful();
-        $this->assertDatabaseHas('wallets', ['organization_id' => $org->id, 'balance_available' => '0.00']);
-
-        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'open'])->assertOk();
-        $this->actingAs($user, 'api')->patchJson($url, ['status' => 'finished'])->assertOk();
-
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '0.00',
-            'balance_available' => '100000.00',
-        ]);
-    }
-
-    public function test_marking_an_event_finished_releases_funds_immediately(): void
-    {
-        $user = User::factory()->create();
-        [$org, $event] = $this->seedPendingIncome($user);
-
-        // Well before end_date — closing the event is what releases the money.
-        Carbon::setTestNow('2026-07-20 12:00:00');
 
         $this->actingAs($user, 'api')
             ->patchJson("/api/v1/organizations/{$org->id}/events/{$event->id}/status", ['status' => 'finished'])
             ->assertOk();
 
-        $this->assertDatabaseHas('wallets', [
-            'organization_id' => $org->id,
-            'balance_pending' => '0.00',
-            'balance_available' => '100000.00',
-        ]);
+        $this->assertBalances($org, '100000.00', '0.00');
+
+        // And the clock still works on it afterwards.
+        $this->sweepAt('2026-08-02 18:00:00');
+        $this->assertBalances($org, '0.00', '100000.00');
+    }
+
+    public function test_release_is_idempotent(): void
+    {
+        Carbon::setTestNow('2026-08-02 03:00:00');
+        [$org] = $this->seedPendingIncome(User::factory()->create());
+
+        $this->sweepAt('2026-08-02 18:00:00');
+        $this->artisan('wallet:release')->assertSuccessful();
+        $this->artisan('wallet:release')->assertSuccessful();
+
+        $this->assertBalances($org, '0.00', '100000.00');
     }
 
     protected function tearDown(): void

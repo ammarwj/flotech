@@ -202,7 +202,7 @@ flo-event hadir sebagai platform SaaS multi-tier yang:
 #### FR-17: Dompet Organizer & Penarikan Dana
 - Karena uang pembeli mendarat di akun platform (FR-14), bagian organizer ditampung di **dompet** per organisasi
 - Pemasukan = penjualan tiket + biaya pendaftaran tim, dikreditkan **neto** (bruto − platform fee)
-- Dana **tertahan** sampai event selesai, lalu jadi **tersedia** untuk ditarik
+- Dana **tertahan** sampai lewat jam 01:00 WIB berikutnya, lalu jadi **tersedia** untuk ditarik — event yang sudah berakhir membebaskan minimal penarikan untuk dananya
 - Organizer mengajukan penarikan ke rekening bank; Super Admin transfer manual lalu mencatat bukti transfer
 - Ledger immutable + audit otomatis; refund mengoreksi saldo organizer
 
@@ -361,7 +361,7 @@ Terpisah dari paket, karena ini kebijakan **platform**, bukan per-tenant. Disimp
 |---------|--------|-------|
 | Minimal penarikan | Rp 100.000 | 0 – 100.000.000 |
 | Biaya admin per penarikan | Rp 5.000 | 0 – 1.000.000 |
-| Masa tahan setelah event selesai | 0 hari | 0 – 90 |
+| Tambahan masa tahan di atas batas 01:00 | 0 hari | 0 – 90 |
 | Payment gateway aktif | ya / tidak | boolean — mematikannya mengalihkan **seluruh** platform ke transfer manual (§4.25) |
 
 Perubahan berlaku untuk penarikan **baru**. Penarikan yang sudah diajukan menyimpan snapshot aturan yang berlaku saat itu, sehingga riwayat tidak pernah ditulis ulang.
@@ -629,15 +629,17 @@ Konsekuensi langsung dari §4.12: uang pembeli ada di akun platform, jadi harus 
 Pembeli bayar (Midtrans → akun platform)
   → kredit NETO ke dompet organizer (bruto − platform fee)
     status: TERTAHAN
-  → event selesai  ──►  status: TERSEDIA
+  → lewat jam 01:00 WIB berikutnya  ──►  status: TERSEDIA
   → organizer ajukan penarikan (dana langsung ditahan)
   → Super Admin transfer MANUAL via m-banking + upload bukti
   → status: SELESAI
 ```
 
-**Kenapa dana ditahan sampai event selesai:** kalau terjadi refund saat kredit masih tertahan, kreditnya cukup **dibatalkan** — tanpa perlu menarik balik uang yang sudah dicairkan.
+**Kenapa dana ditahan semalam:** kalau terjadi refund saat kredit masih tertahan, kreditnya cukup **dibatalkan** — tanpa perlu menarik balik uang yang sudah dicairkan. Jendelanya dulu selebar event, yang mengunci uang tiket liga berbulan-bulan; sekarang batasnya jam 01:00 WIB berikutnya (literal — kredit jam 00:30 cair jam 01:00 hari yang sama) sehingga kas organizer berjalan. Status event tidak merilis dana lagi; jam adalah satu-satunya penentu.
 
 **Aturan penarikan:** minimal penarikan, biaya admin tetap per penarikan (dipotong dari saldo), dan maksimal **1 permintaan aktif** per organisasi. Nilainya diatur Super Admin (§3.6).
+
+**Event yang berakhir membebaskan minimal penarikan.** Event `finished` atau `cancelled` tidak bisa menghasilkan uang lagi, jadi sisa di bawah minimal akan terjebak selamanya. Porsi saldo yang dananya berasal dari event berakhir bisa ditarik **berapa pun**; sisanya tetap terikat minimal. **Biaya admin tidak dibebaskan** — yang bisa ditarik selalu `saldo − biaya admin`, jadi saldo di bawah biaya admin tidak bisa ditarik sama sekali.
 
 **Refund** (Super Admin): membatalkan pesanan dan mengoreksi saldo organizer. Kalau dananya sudah dicairkan **dan** ditarik, saldo bisa **minus** — ini disengaja, dan otomatis mengunci penarikan berikutnya sampai tertutup pendapatan baru.
 
@@ -1244,7 +1246,6 @@ api/
 │   │   └── PlanGate.php            # Feature flag & limit paket
 │   ├── Jobs/
 │   │   ├── SendCertificateJob.php  # Kirim 1 sertifikat; sent_at ditulis setelah terkirim (sendNow)
-│   │   ├── ReleaseEventFundsJob.php
 │   │   └── RecalculateStandings.php
 │   ├── Notifications/              # Email transaksional, semua ShouldQueue (§4.20)
 │   │   ├── VerifyEmailNotification.php  ResetPasswordNotification.php
@@ -1857,7 +1858,7 @@ wallets (
   id                 UUID PK,
   organization_id    UUID FK → organizations UNIQUE,
   balance_available  DECIMAL(16,2) DEFAULT 0,  -- siap ditarik
-  balance_pending    DECIMAL(16,2) DEFAULT 0,  -- tertahan sampai event selesai
+  balance_pending    DECIMAL(16,2) DEFAULT 0,  -- tertahan sampai lewat 01:00 WIB
   total_earned       DECIMAL(16,2) DEFAULT 0,
   total_withdrawn    DECIMAL(16,2) DEFAULT 0,
   created_at, updated_at
@@ -2535,7 +2536,7 @@ Konsekuensi dari keputusan bahwa **semua uang mendarat di akun Midtrans platform
 ```
 api/:
   → wallets + wallet_transactions (ledger immutable, idempoten per sumber)
-  → Kredit neto saat pembayaran lunas; dana tertahan sampai event selesai
+  → Kredit neto saat pembayaran lunas; dana tertahan sampai lewat 01:00 WIB
   → Perintah terjadwal: rilis dana (per jam) + audit saldo vs ledger (harian)
   → Rekening bank + permintaan penarikan (min, biaya admin, 1 request aktif)
   → Antrian pencairan Super Admin: proses / selesai (+bukti) / tolak
@@ -2886,7 +2887,7 @@ Verifikasi publik:  floevent.id/verify/CERT-2026-07-0001
 | JWT key compromise | Very Low | Critical | Key rotation policy, stored di .env terenkripsi |
 | Queue job failure | Medium | Medium | Laravel Horizon retry, failed job table |
 | Scope creep | High | Medium | Strict phase planning, backlog grooming |
-| Refund setelah dana ditarik organizer | Medium | High | Dana ditahan sampai event selesai; saldo boleh minus & mengunci penarikan; opsi masa tahan tambahan (§3.6) |
+| Refund setelah dana ditarik organizer | Medium | High | Dana ditahan sampai lewat 01:00 WIB; saldo boleh minus & mengunci penarikan; opsi masa tahan tambahan (§3.6) |
 | Saldo dompet melenceng dari ledger | Low | Critical | Semua mutasi lewat satu service + row lock; unique index per sumber; audit harian `wallet:audit` |
 | Operator organisasi menyalahgunakan dompet | Medium | Critical | Endpoint uang wajib `org.admin` — member `operator` (petugas scan) ditolak |
 | Refund Midtrans tidak sinkron dengan dompet | Medium | High | Prosedur: refund selalu lewat panel admin; webhook refund masuk roadmap Q3 2026 |
