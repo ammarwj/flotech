@@ -162,6 +162,11 @@ export default function TeamLineupPage() {
   const match = data.match;
   const time = timeOf(match.scheduled_at, tz);
   const starters = countRole(selection, "starter");
+  // How many the sheet must name to be handed in. `null` for a sport with no
+  // squad size at all, where the only rule left is "not empty" — the same two
+  // branches the server takes, so the button and the 422 cannot disagree.
+  const required = data.squad_rules?.starters ?? null;
+  const complete = required === null ? starters > 0 : starters === required;
   const busy = save.isPending || submit.isPending;
 
   return (
@@ -252,6 +257,7 @@ export default function TeamLineupPage() {
             sport={data.team.sport_type}
             bans={data.bans}
             rules={data.discipline_rules}
+            squadRules={data.squad_rules}
             disabled={!editable || busy}
           />
         </CardContent>
@@ -260,17 +266,23 @@ export default function TeamLineupPage() {
       {editable && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           {/* The same rule the server enforces on submit, said before the
-              button is pressed rather than as a toast afterwards. */}
+              button is pressed rather than as a toast afterwards. The editor's
+              own counter is the ceiling; this is the floor, and the two are the
+              same number read with two operators — see `SquadRules`. */}
           <p className="text-sm text-muted-foreground">
-            {starters === 0
-              ? "Pilih minimal satu pemain inti sebelum mengirim ke wasit."
-              : `${starters} pemain inti dipilih.`}
+            {required === null
+              ? starters === 0
+                ? "Pilih minimal satu pemain inti sebelum mengirim ke wasit."
+                : `${starters} pemain inti dipilih.`
+              : starters === required
+                ? `${starters} pemain inti dipilih.`
+                : `Isi ${required} pemain inti sebelum mengirim ke wasit. Saat ini ${starters}.`}
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={() => save.mutate()} disabled={busy}>
               {save.isPending ? "Menyimpan…" : "Simpan draf"}
             </Button>
-            <Button onClick={() => submit.mutate()} disabled={busy || starters === 0}>
+            <Button onClick={() => submit.mutate()} disabled={busy || !complete}>
               {submit.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

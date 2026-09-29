@@ -7,9 +7,7 @@ use App\Models\Team;
 use App\Support\RegistrationForm;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 /**
  * Renders the printable "player album" — one page per team, laid out as the
@@ -23,23 +21,6 @@ use Illuminate\Support\Str;
  */
 class TeamAlbumService
 {
-    /**
-     * Field keys/labels we look for in the event's registration form to fill
-     * the two rows the database has no column for: "Tempat Lahir" and "Alamat".
-     *
-     * Matched loosely (substring, case-insensitive, against both the key and
-     * the label) because the form builder lets organizers name their own
-     * fields — `alamat`, `alamat_rumah`, `address` all mean the same row on
-     * this sheet. Nothing found leaves the row blank, which is the point: the
-     * printed sheet is meant to be finished by hand.
-     *
-     * @var array<string, list<string>>
-     */
-    protected const FIELD_HINTS = [
-        'birth_place' => ['tempat_lahir', 'tempatlahir', 'birth_place', 'birthplace', 'tempat lahir', 'pob'],
-        'address' => ['alamat', 'address', 'domisili'],
-    ];
-
     public function __construct(protected PdfImageService $images) {}
 
     /**
@@ -72,12 +53,10 @@ class TeamAlbumService
         $shared = [
             'organizer_logo' => $this->images->dataUri($event->organization?->logo_url),
             'venue' => $this->venue($event),
-            'sport_label' => Catalog::sport($event->sport_type)['name'] ?? null,
         ];
 
         return view('pdf.team-album', [
             'event' => $event,
-            'sportLabel' => $shared['sport_label'],
             'teams' => $teams->map(fn (Team $team) => $this->teamPayload($event, $team, $form, $shared)),
         ])->render();
     }
@@ -98,28 +77,40 @@ class TeamAlbumService
             'organizer_logo' => $shared['organizer_logo'],
             'venue' => $shared['venue'],
             'category' => $team->category?->name,
+            'contact' => $this->contactLine($team),
             'players' => $players->map(fn ($player) => [
                 'name' => $player->full_name,
                 'jersey_number' => $player->jersey_number ?? '',
                 'position' => Catalog::positionLabel($event->sport_type, $player->position) ?? '',
-                'birth' => $this->birthLine(
-                    $this->answer($form->playerFields, $player->custom_fields, 'birth_place'),
-                    $player->date_of_birth,
-                ),
-                'address' => $this->answer($form->playerFields, $player->custom_fields, 'address'),
+                'extra' => $form->albumRows('player', $player->custom_fields),
                 'photo' => $this->images->dataUri($player->photo_url, 'photo'),
             ])->all(),
             'officials' => $team->officials->map(fn ($official) => [
                 'name' => $official->full_name,
                 'role' => Catalog::officialRoleLabel($event->sport_type, $official->role) ?? 'Ofisial',
-                'birth' => $this->birthLine(
-                    $this->answer($form->officialFields, $official->custom_fields, 'birth_place'),
-                    null,
-                ),
-                'address' => $this->answer($form->officialFields, $official->custom_fields, 'address'),
+                'extra' => $form->albumRows('official', $official->custom_fields),
                 'photo' => $this->images->dataUri($official->photo_url, 'photo'),
             ])->all(),
         ];
+    }
+
+    /**
+     * "Budi (0812…)" beside the club name, or just whichever half the team
+     * filled in. Null when neither is set, so the sheet prints the club line
+     * alone instead of an empty label — the form is photocopied and handed
+     * out, and a stray "KONTAK :" with nothing after it reads as missing data
+     * rather than as data the team never had to give.
+     */
+    protected function contactLine(Team $team): ?string
+    {
+        $name = trim((string) $team->contact_name);
+        $phone = trim((string) $team->contact_phone);
+
+        if ($name !== '' && $phone !== '') {
+            return $name.' ('.$phone.')';
+        }
+
+        return $name !== '' ? $name : ($phone !== '' ? $phone : null);
     }
 
     /**
@@ -133,51 +124,5 @@ class TeamAlbumService
         $line = trim((string) ($event->location_address ?: $event->location_name));
 
         return $line !== '' ? $line : null;
-    }
-
-    /**
-     * "Tempat, d F Y" — whichever halves exist, joined only when both do.
-     *
-     * The paper form has one row for both, so an entry with a date but no
-     * birthplace prints just the date rather than a stray comma.
-     */
-    protected function birthLine(string $place, $date): string
-    {
-        $date = $date ? Carbon::parse($date)->locale('id')->translatedFormat('d F Y') : '';
-
-        return match (true) {
-            $place !== '' && $date !== '' => $place.', '.$date,
-            $place !== '' => $place,
-            default => $date,
-        };
-    }
-
-    /**
-     * One custom-field answer, found by hint rather than by exact key.
-     *
-     * @param  list<array<string, mixed>>  $fields
-     * @param  array<string, mixed>|null  $answers
-     */
-    protected function answer(array $fields, ?array $answers, string $hint): string
-    {
-        if (! $answers) {
-            return '';
-        }
-
-        foreach ($fields as $field) {
-            $haystack = Str::lower($field['key'].' '.$field['label']);
-
-            foreach (self::FIELD_HINTS[$hint] as $needle) {
-                if (str_contains($haystack, $needle)) {
-                    $value = trim((string) ($answers[$field['key']] ?? ''));
-
-                    if ($value !== '') {
-                        return $value;
-                    }
-                }
-            }
-        }
-
-        return '';
     }
 }

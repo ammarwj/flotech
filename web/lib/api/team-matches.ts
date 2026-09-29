@@ -8,6 +8,7 @@ import type {
   Match,
   MatchLineup,
   MyTeamMatch,
+  SquadRules,
 } from "@/types/api";
 
 /**
@@ -70,6 +71,15 @@ export interface TeamLineupData {
    * reason to fall back to defaults.
    */
   discipline_rules: DisciplineRules | null;
+  /**
+   * Berapa nama sheet ini boleh memuat. Ikut bersama sheet-nya karena alasan
+   * yang sama dengan `bans`: editor menghentikan manajer di angka itu alih-alih
+   * membiarkannya mengisi formulir lalu bertemu 422.
+   *
+   * `null` untuk cabang yang tidak punya susunan pemain (voli, badminton) —
+   * sinyal untuk tidak merender batas apa pun, bukan alasan jatuh ke default.
+   */
+  squad_rules: SquadRules | null;
   roster: LineupRosterPlayer[];
   officials: LineupRosterOfficial[];
 }

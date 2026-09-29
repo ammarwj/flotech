@@ -18,8 +18,14 @@ use App\Models\Event;
  * go through is what stops them drifting. Everything here is read-only; the
  * writing side is EventController::syncRegistrationForm().
  *
- * A field also carries `is_public`, which decides whether the answers to it
- * appear on the public event page. Documents deliberately have no such flag:
+ * A field also carries two independent visibility flags: `is_public`, which
+ * decides whether the answers appear on the public event page, and `in_album`,
+ * which decides whether the field gets a row on the printed player album. They
+ * are deliberately not one flag — the album is a sheet panitia hand out at the
+ * venue, and a birthplace an organizer is happy to print on it is not the same
+ * decision as publishing it on a URL anyone can index.
+ *
+ * Documents deliberately have neither flag:
  * they are uploaded files -- an ID card, a birth certificate -- and publishing
  * one is a different class of decision from publishing a line of text the
  * entrant typed. Adding it there would need its own thinking, not this one
@@ -175,6 +181,68 @@ final class RegistrationForm
     }
 
     /**
+     * The rows the printed album should carry for one person, label and all.
+     *
+     * Unlike publicAnswers(), an unanswered field is **kept** — blank. The album
+     * is a form panitia photocopy and finish by hand, so a labelled empty row is
+     * the useful output there, while on a public page it would read as missing
+     * data. Same schema, two readers, two rules; that is why this is its own
+     * method rather than a flag on the other one.
+     *
+     * @param  array<string, mixed>|null  $answers
+     * @return list<array{label: string, value: string}>
+     */
+    public function albumRows(string $section, ?array $answers): array
+    {
+        $answers ??= [];
+        $out = [];
+
+        foreach ($this->fieldsFor($section) as $field) {
+            if (! ($field['in_album'] ?? false)) {
+                continue;
+            }
+
+            $value = is_scalar($answers[$field['key']] ?? null)
+                ? trim((string) $answers[$field['key']])
+                : '';
+
+            $out[] = [
+                'label' => $field['label'],
+                'value' => $field['type'] === 'date' ? self::albumDate($value) : $value,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * "2003-09-26" as "26 Sept 2003", for the printed album only.
+     *
+     * The month names are spelled out here rather than taken from Carbon's `id`
+     * locale, which abbreviates September to "Sep": the sheet is a form panitia
+     * read at a glance, and three letters that also start "Sep-tember" in every
+     * other row's handwriting is exactly the ambiguity the fourth letter
+     * settles. Screens keep showing whatever the entrant typed — this is a
+     * print concern, so it lives on the print path.
+     *
+     * Anything that is not a date the field's own type promised is returned
+     * untouched: the flag can be ticked on a field whose type was changed after
+     * answers came in, and a garbled "01 Jan 1970" would be worse than the raw
+     * text the person actually wrote.
+     */
+    private static function albumDate(string $value): string
+    {
+        if ($value === '' || ! preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $value, $m)) {
+            return $value;
+        }
+
+        $months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sept', 'Okt', 'Nov', 'Des'];
+        $month = $months[(int) $m[2] - 1] ?? null;
+
+        return $month ? ((int) $m[3]).' '.$month.' '.$m[1] : $value;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function documentsFor(string $section): array
@@ -242,6 +310,7 @@ final class RegistrationForm
             $rules[$section.'.*.type'] = ['required', 'string', 'in:'.implode(',', self::TYPES)];
             $rules[$section.'.*.required'] = ['nullable', 'boolean'];
             $rules[$section.'.*.is_public'] = ['nullable', 'boolean'];
+            $rules[$section.'.*.in_album'] = ['nullable', 'boolean'];
             $rules[$section.'.*.options'] = ['nullable', 'array', 'max:50'];
             $rules[$section.'.*.options.*'] = ['required', 'string', 'max:100'];
         }
@@ -294,6 +363,10 @@ final class RegistrationForm
                 // it -- must not start publishing answers people gave to a
                 // form that promised nothing of the sort.
                 'is_public' => (bool) ($row['is_public'] ?? false),
+                // Absent reads as "not printed", same reasoning as is_public:
+                // a schema saved before this flag existed must not start
+                // growing rows on a sheet the organizer already designed.
+                'in_album' => (bool) ($row['in_album'] ?? false),
                 // Options only mean anything for a select; carrying them on the
                 // other types would let a stale list reappear if the organizer
                 // switched the type back.

@@ -53,6 +53,7 @@ class Catalog
                     'participant_modes' => $s->participantModes(),
                     'discipline_config' => $s->disciplineConfig(),
                     'period_config' => $s->periodConfig(),
+                    'squad_config' => $s->squadConfig(),
                     'default_match_minutes' => $s->default_match_minutes,
                     'stats' => $s->stats->map(fn ($stat) => [
                         'key' => $stat->stat_key,
@@ -167,6 +168,19 @@ class Catalog
     public static function periodConfig(?string $slug): array
     {
         return self::sport($slug)['period_config'] ?? [];
+    }
+
+    /**
+     * This sport's default squad shape, as stored. Empty means the fallbacks in
+     * SquadRules::DEFAULTS apply — and, exactly as above, empty is *not* the
+     * same as "this sport has no team sheet": that question is answered by
+     * `scoring` too, and by the same gate, on purpose.
+     *
+     * @return array<string, mixed>
+     */
+    public static function squadConfig(?string $slug): array
+    {
+        return self::sport($slug)['squad_config'] ?? [];
     }
 
     /** stat_key => disciplinary weight, for the fair-play tiebreaker. */

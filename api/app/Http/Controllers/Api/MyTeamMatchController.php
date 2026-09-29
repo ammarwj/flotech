@@ -10,6 +10,7 @@ use App\Models\MatchLineup;
 use App\Models\MatchLineupPlayer;
 use App\Models\Team;
 use App\Services\LineupService;
+use App\Support\SquadRules;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -161,6 +162,12 @@ class MyTeamMatchController extends Controller
             'lineup' => new MatchLineupResource($lineup),
             'bans' => $discipline['bans'],
             'discipline_rules' => $discipline['rules'],
+            // How many the sheet may name, so the editor can stop the manager at
+            // eleven rather than letting them fill it in and meet a 422 — the
+            // same proactive-and-reactive shape the plan gates take, and the same
+            // shape `bans` above already has. Null for a sport with no team
+            // sheet, which is the editor's signal to render no counter at all.
+            'squad_rules' => SquadRules::forCategory($match->category)->toArray(),
             // The pool the sheet is drawn from. Sent whole rather than filtered to
             // what is not yet named: a manager moving a player between starters
             // and the bench is the common edit, and a list that shrinks as they
@@ -213,8 +220,13 @@ class MyTeamMatchController extends Controller
      */
     protected function matchFor(Team $team, string $match): GameMatch
     {
+        // `category.event` because both rulebooks resolved off this fixture —
+        // the squad size and the discipline thresholds — layer the event's
+        // override on top of the sport's, and without it each one lazy-loads the
+        // same two rows.
         return GameMatch::whereKey($match)
             ->where(fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))
+            ->with('category.event')
             ->firstOrFail();
     }
 

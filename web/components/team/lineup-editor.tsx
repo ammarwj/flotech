@@ -11,6 +11,7 @@ import type {
   LineupBan,
   LineupRosterOfficial,
   LineupRosterPlayer,
+  SquadRules,
 } from "@/types/api";
 
 /**
@@ -27,6 +28,13 @@ import type {
  * full-list contract means a player left out of the payload is deleted from the
  * sheet, so the row has to be able to say so out loud — otherwise a manager
  * removing somebody would be doing it by failing to click anything.
+ *
+ * The squad size is a ceiling here and nothing else. A manager who has named
+ * eleven cannot name a twelfth — the button is simply off, the same shape a
+ * suspension takes — but nobody is pushed towards eleven: a half-filled draft is
+ * a legitimate save, and the exactly-eleven rule belongs to the page's submit
+ * button, which is the moment it becomes true. Two operators, one number; see
+ * `SquadRules` on the server.
  *
  * A suspended player stays on the list, struck through with the reason beside
  * them, rather than disappearing from it. Removing the row would leave the
@@ -61,6 +69,7 @@ export function LineupEditor({
   sport,
   bans,
   rules,
+  squadRules,
   disabled = false,
 }: {
   roster: LineupRosterPlayer[];
@@ -80,12 +89,28 @@ export function LineupEditor({
   bans: LineupBan[];
   /** The rules naming the reason; `null` for a sport without cards. */
   rules: DisciplineRules | null;
+  /**
+   * How many the sheet may name. Required for the same reason `bans` is: a
+   * default would let a caller that forgot it render an editor with no ceiling
+   * at all, which looks identical to one that works until somebody names a
+   * twelfth. `null` is the sport's own answer — a set sport has no starting
+   * eleven, so the counter says nothing rather than inventing a number.
+   */
+  squadRules: SquadRules | null;
   disabled?: boolean;
 }) {
   const { officialRoleLabel, sport: sportDef } = useCatalog();
 
   // By player, so a row asks once rather than scanning the list per render.
   const bannedBy = new Map(bans.map((ban) => [ban.player_id, ban]));
+
+  const starters = countRole(selection, "starter");
+  const substitutes = countRole(selection, "substitute");
+  // Full means "this row cannot move into that column", so a player already in
+  // it is never blocked — without that exception the eleventh starter could not
+  // be sent to the bench, and the sheet would be stuck at its own ceiling.
+  const startersFull = squadRules ? starters >= squadRules.starters : false;
+  const benchFull = squadRules ? substitutes >= squadRules.max_substitutes : false;
 
   const setRole = (playerId: string, role: LineupRole) => {
     onSelectionChange({ ...selection, [playerId]: role });
@@ -106,9 +131,12 @@ export function LineupEditor({
           <h3 className="inline-flex items-center gap-2 font-semibold">
             <Shirt className="h-4 w-4" /> Pemain
           </h3>
+          {/* The ceiling is shown next to the count rather than only enforced,
+              so a manager who finds a button off can see why. */}
           <p className="text-sm text-muted-foreground">
-            {countRole(selection, "starter")} inti ·{" "}
-            {countRole(selection, "substitute")} cadangan
+            {starters}
+            {squadRules && `/${squadRules.starters}`} inti · {substitutes}
+            {squadRules && `/${squadRules.max_substitutes}`} cadangan
           </p>
         </div>
 
@@ -173,6 +201,10 @@ export function LineupEditor({
                   value={ban ? null : (selection[player.id] ?? null)}
                   onChange={(role) => setRole(player.id, role)}
                   disabled={disabled || Boolean(ban)}
+                  full={{
+                    starter: startersFull,
+                    substitute: benchFull,
+                  }}
                   name={player.full_name}
                 />
               </li>
@@ -237,11 +269,14 @@ function RoleToggle({
   value,
   onChange,
   disabled,
+  full,
   name,
 }: {
   value: LineupRole;
   onChange: (role: LineupRole) => void;
   disabled: boolean;
+  /** Which columns are at their ceiling. The row's own column never counts. */
+  full: { starter: boolean; substitute: boolean };
   name: string;
 }) {
   return (
@@ -252,20 +287,24 @@ function RoleToggle({
     >
       {ROLE_OPTIONS.map((option) => {
         const active = value === option.value;
+        // "Tidak dibawa" is never blocked: taking somebody off the sheet is how
+        // a full column gets room, and the third state is a real choice.
+        const blocked =
+          !active && option.value !== null && full[option.value];
 
         return (
           <button
             key={option.label}
             type="button"
             onClick={() => onChange(option.value)}
-            disabled={disabled}
+            disabled={disabled || blocked}
             aria-pressed={active}
             className={cn(
               "px-3 py-1.5 text-sm font-medium transition-colors",
               active
                 ? "bg-[var(--brand-600)] text-white"
                 : "text-muted-foreground hover:bg-[var(--bg-soft)]",
-              disabled && "cursor-not-allowed opacity-60",
+              (disabled || blocked) && "cursor-not-allowed opacity-60",
             )}
           >
             {option.label}

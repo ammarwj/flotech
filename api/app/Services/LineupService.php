@@ -9,6 +9,7 @@ use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamOfficial;
 use App\Models\User;
+use App\Support\SquadRules;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -23,11 +24,22 @@ use Illuminate\Validation\ValidationException;
  * logged in), and two copies of "is this player even on that team?" is how one of
  * them ends up letting a ringer through.
  *
- * What is NOT validated is the size of the sheet. There is no source of truth for
- * it: `sports` has no lineup_size and Catalog::positions() is a catalogue of
- * positions, not a count. Ownership, duplicates and an upper bound are checked;
- * how many is eleven is left to the referee, which is what the approval step is
- * for. A known gap, stated rather than overlooked.
+ * How many may be named is `SquadRules`, resolved per category from the sport's
+ * own numbers and the event's override — football eleven and seven, futsal five
+ * and nine. It replaces what this docblock used to call a known gap ("how many is
+ * eleven is left to the referee"): the answer now has a source of truth, so there
+ * is no reason to make the referee the one who counts.
+ *
+ * The count is asked with two different operators, and the difference is the
+ * point. `sync()` enforces the ceiling, `submit()` enforces the exact number: a
+ * manager filling the sheet in while waiting to hear from a player must be able
+ * to save eight, and the sheet the referee receives must be a full one. That is
+ * also why it is one number rather than a min and a max — see the invariant on
+ * SquadRules.
+ *
+ * A sport without a team sheet (`enabled` false — every set sport) is not
+ * counted at all. MAX_PLAYERS below still applies there, and remains what stops
+ * a client loop filling the table.
  *
  * Suspensions are read here, and the direction of that read is the whole of why
  * it is allowed. DisciplineService's own docblock says `match_lineups` is
@@ -75,6 +87,9 @@ class LineupService
 
         $this->assertEditable($lineup);
         $this->assertPlayersOwned($team, $players);
+        // Ceiling only here — a half-filled draft is a legitimate save. The exact
+        // count is submit()'s question, see the note on the class.
+        $this->assertSquadSize($match, $players, exact: false);
         $this->assertNoBannedPlayers($match, $team, array_column($players, 'player_id'));
         $this->assertOfficialsOwned($team, $officials);
 
@@ -151,14 +166,16 @@ class LineupService
     {
         $this->assertEditable($lineup);
 
-        // Everything else about the size of a sheet is the referee's call, but a
-        // sheet with nobody starting is not a sheet — it is the manager having
-        // opened the form and pressed the button.
-        if ($lineup->players()->where('role', 'starter')->count() === 0) {
-            throw ValidationException::withMessages([
-                'players' => 'Isi minimal satu pemain inti sebelum mengirim ke wasit.',
-            ]);
-        }
+        // Asked of the stored rows, and with `exact` — this is the hand-in, so
+        // the sheet has to be a full one. It also covers what used to be a
+        // separate "at least one starter" guard here: a sport with a squad
+        // rulebook demands its exact eleven, and a sport without one (every set
+        // sport) still cannot hand in an empty sheet.
+        $stored = $lineup->players()->get(['player_id', 'role'])
+            ->map(fn ($row) => ['player_id' => $row->player_id, 'role' => $row->role])
+            ->all();
+
+        $this->assertSquadSize($lineup->match()->with('category.event')->first(), $stored, exact: true);
 
         // Asked again, of the stored rows rather than of a payload — and not a
         // duplicate of the check in sync(). A draft saved last week passed that
@@ -311,6 +328,71 @@ class LineupService
         if ($owned !== count($ids)) {
             throw ValidationException::withMessages([
                 'players' => 'Pemain harus berasal dari tim yang bertanding.',
+            ]);
+        }
+    }
+
+    /**
+     * How many are named, against what this category allows.
+     *
+     * One method for both doors, because the two questions differ by one
+     * operator and nothing else — written twice they would drift, and the drift
+     * would be a manager who can save a sheet the hand-in then refuses for a
+     * reason neither screen states.
+     *
+     * Substitutes are capped identically at both doors: `max_substitutes` is a
+     * ceiling in its own right, never a target, so there is nothing for `exact`
+     * to change about it. A bench may legitimately be short — that is a squad
+     * that has run out of players, not a sheet that is incomplete.
+     *
+     * A sport without a team sheet is skipped entirely rather than falling back
+     * to the eleven in DEFAULTS: those numbers describe running-score sports,
+     * and applied to badminton they would refuse every sheet ever filed. This is
+     * the one place where "no rulebook" must not read as "the default rulebook",
+     * which is why SquadRules answers `enabled` from the catalogue rather than
+     * from whether a config row happens to exist.
+     *
+     * @param  array<int, array<string, mixed>>  $players
+     *
+     * @throws ValidationException
+     */
+    protected function assertSquadSize(GameMatch $match, array $players, bool $exact): void
+    {
+        $rules = SquadRules::forCategory($match->category);
+
+        if (! $rules->enabled) {
+            // Still not a sheet with nobody on it. The check the squad rules
+            // took over above has to survive for the sports they do not cover,
+            // or a set-sport manager hands in an empty form.
+            if ($exact && $players === []) {
+                throw ValidationException::withMessages([
+                    'players' => 'Isi minimal satu pemain sebelum mengirim ke wasit.',
+                ]);
+            }
+
+            return;
+        }
+
+        $starters = count(array_filter($players, fn ($row) => ($row['role'] ?? 'substitute') === 'starter'));
+        $substitutes = count($players) - $starters;
+
+        if ($exact && $starters !== $rules->starters) {
+            throw ValidationException::withMessages([
+                'players' => "Susunan pemain harus berisi tepat {$rules->starters} pemain inti sebelum dikirim ke wasit. Saat ini {$starters}.",
+            ]);
+        }
+
+        if (! $exact && $starters > $rules->starters) {
+            throw ValidationException::withMessages([
+                'players' => "Maksimal {$rules->starters} pemain inti untuk kategori ini.",
+            ]);
+        }
+
+        if ($substitutes > $rules->maxSubstitutes) {
+            throw ValidationException::withMessages([
+                'players' => $rules->maxSubstitutes === 0
+                    ? 'Kategori ini tidak memakai pemain cadangan.'
+                    : "Maksimal {$rules->maxSubstitutes} pemain cadangan untuk kategori ini.",
             ]);
         }
     }

@@ -145,4 +145,85 @@ class MyTeamTest extends TestCase
 
         $this->actingAs($stranger, 'api')->getJson("/api/v1/my-teams/{$teamId}")->assertStatus(404);
     }
+
+    /**
+     * Compared, not asserted alone: the same request runs twice against the same
+     * team, and only the event's clock differs. Asserting the 422 by itself
+     * would pass just as well if the endpoint had been broken outright.
+     */
+    public function test_closed_registration_freezes_the_participants_own_team(): void
+    {
+        $user = User::factory()->create();
+        $event = $this->openEvent();
+        $teamId = $this->register($event, $user);
+
+        $payload = [
+            'name' => 'Garuda United',
+            'players' => [
+                ['full_name' => 'Player One', 'jersey_number' => '10'],
+                ['full_name' => 'Player Three', 'jersey_number' => '9'],
+            ],
+        ];
+
+        // Door open: the edit lands.
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/my-teams/{$teamId}", $payload)
+            ->assertOk();
+        $this->assertDatabaseHas('players', ['team_id' => $teamId, 'full_name' => 'Player Three']);
+
+        // Same team, same payload, clock run out.
+        $event->update(['registration_close' => Carbon::now()->subDay()]);
+
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/my-teams/{$teamId}", [
+                'name' => 'Garuda Rejected',
+                'players' => [['full_name' => 'Player Four', 'jersey_number' => '4']],
+            ])
+            ->assertStatus(422);
+
+        // The roster from before the deadline is what survived — a 422 that still
+        // wrote would pass an assertion on the status code alone.
+        $this->assertDatabaseHas('teams', ['id' => $teamId, 'name' => 'Garuda United']);
+        $this->assertDatabaseHas('players', ['team_id' => $teamId, 'full_name' => 'Player Three']);
+        $this->assertDatabaseMissing('players', ['team_id' => $teamId, 'full_name' => 'Player Four']);
+    }
+
+    /**
+     * The window closes the form, not the exit. Withdrawing and settling an
+     * outstanding fee stay open on purpose — see MyTeamController::isEditable().
+     */
+    public function test_closed_registration_still_allows_withdrawing(): void
+    {
+        $user = User::factory()->create();
+        $event = $this->openEvent();
+        $teamId = $this->register($event, $user);
+
+        $event->update(['registration_close' => Carbon::now()->subDay()]);
+
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/my-teams/{$teamId}/withdraw")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'withdrawn');
+    }
+
+    /**
+     * The status half of the same rule: the dates can still be wide open while
+     * the organizer has shut the door by hand. Both halves live in
+     * Event::isRegistrationOpen(), which is exactly why the controller asks it
+     * rather than comparing dates itself.
+     */
+    public function test_registration_closed_status_freezes_the_team_too(): void
+    {
+        $user = User::factory()->create();
+        $event = $this->openEvent();
+        $teamId = $this->register($event, $user);
+
+        $event->update(['status' => 'registration_closed']);
+
+        $this->actingAs($user, 'api')
+            ->patchJson("/api/v1/my-teams/{$teamId}", ['name' => 'Nope'])
+            ->assertStatus(422);
+
+        $this->assertDatabaseMissing('teams', ['id' => $teamId, 'name' => 'Nope']);
+    }
 }

@@ -50,15 +50,28 @@ class MyTeamController extends Controller
     }
 
     /**
-     * Update team details and sync the player roster. Only allowed while the
-     * registration is still editable (not rejected/disqualified/withdrawn).
+     * Update team details and sync the player roster.
+     *
+     * Two separate doors, and the messages differ because the participant can
+     * act on the difference: a rejected/withdrawn team is finished, a closed
+     * registration is the organizer's clock running out — the organizer can
+     * still change the roster on their behalf, so telling them which one it is
+     * tells them whom to ask.
      */
     public function update(Request $request, string $team): JsonResponse
     {
-        $model = $this->scope()->with('players')->findOrFail($team);
+        $model = $this->scope()->with(['players', 'event'])->findOrFail($team);
 
         if (! $this->isEditable($model)) {
             return ApiResponse::error('Tim ini tidak dapat diubah lagi.', null, 422);
+        }
+
+        if (! $model->event?->isRegistrationOpen()) {
+            return ApiResponse::error(
+                'Pendaftaran event ini sudah ditutup, data tim tidak dapat diubah lagi. Hubungi penyelenggara bila ada perubahan.',
+                null,
+                422,
+            );
         }
 
         $data = $request->validate([
@@ -206,6 +219,15 @@ class MyTeamController extends Controller
             ->download('album-'.str_replace('/', '-', $model->name).'.pdf');
     }
 
+    /**
+     * Whether the registration row itself is still live.
+     *
+     * Deliberately not the registration window — that is a second, independent
+     * gate asked separately in update(). Withdrawing stays available after the
+     * door shuts (a team that cannot play should still be able to pull out, and
+     * the organizer wants to know before the draw), and so does paying an
+     * outstanding fee.
+     */
     protected function isEditable(Team $team): bool
     {
         return ! in_array($team->status, ['rejected', 'disqualified', 'withdrawn'], true);

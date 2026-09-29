@@ -443,6 +443,56 @@ class RegistrationFormTest extends TestCase
         $this->assertFalse($stored[1]['is_public']);
     }
 
+    /**
+     * The album flag is its own axis, not a second name for is_public.
+     *
+     * One request carrying all four combinations: a field that is public but
+     * not printed, one printed but not public, one both, one neither. Asserting
+     * a single field would stay green if the endpoint copied one flag onto the
+     * other — which is exactly the mistake worth catching, because the two
+     * answer different questions (a URL anyone can index vs a sheet handed out
+     * at the venue).
+     */
+    public function test_the_album_flag_round_trips_independently_of_the_public_flag(): void
+    {
+        $org = $this->openEvent()->organization;
+        $event = $org->events()->first();
+
+        $field = fn (string $key, ?bool $public, ?bool $album) => array_filter([
+            'key' => $key, 'label' => ucfirst($key), 'type' => 'short_text',
+            'required' => false, 'is_public' => $public, 'in_album' => $album,
+            'options' => [],
+        ], fn ($v) => $v !== null);
+
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", [
+                'player_fields' => [
+                    $field('publik', true, false),
+                    $field('album', false, true),
+                    $field('keduanya', true, true),
+                    // Neither key sent at all — an older client.
+                    $field('polos', null, null),
+                ],
+                'team_fields' => [], 'team_documents' => [], 'player_documents' => [],
+                'team_official_fields' => [], 'team_official_documents' => [],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.player_fields.0.is_public', true)
+            ->assertJsonPath('data.player_fields.0.in_album', false)
+            ->assertJsonPath('data.player_fields.1.is_public', false)
+            ->assertJsonPath('data.player_fields.1.in_album', true)
+            ->assertJsonPath('data.player_fields.2.in_album', true)
+            ->assertJsonPath('data.player_fields.3.is_public', false)
+            ->assertJsonPath('data.player_fields.3.in_album', false);
+
+        $stored = $event->fresh()->registration_form['player_fields'];
+
+        $this->assertSame(
+            [[true, false], [false, true], [true, true], [false, false]],
+            array_map(fn ($f) => [$f['is_public'], $f['in_album']], $stored),
+        );
+    }
+
     public function test_select_must_have_options_and_answers_must_match_them(): void
     {
         $org = $this->openEvent()->organization;

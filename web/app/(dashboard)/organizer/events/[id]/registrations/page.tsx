@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Search,
   FileSpreadsheet,
+  Loader2,
   Printer,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -217,8 +218,12 @@ export default function RegistrationsPage() {
               onClick={printAll}
               disabled={!orgId || approvedCount === 0 || printingAll}
             >
-              <Printer className="h-4 w-4" />
-              Cetak Semua Tim
+              {printingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Printer className="h-4 w-4" />
+              )}
+              {printingAll ? "Menyiapkan…" : "Cetak Semua Tim"}
             </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!orgId}>
               <FileSpreadsheet className="h-4 w-4" />
@@ -490,8 +495,12 @@ function RegistrationCard({
             disabled={printing || players.length === 0}
             aria-label={`Cetak album ${team.name}`}
           >
-            <Printer className="h-4 w-4" />
-            Cetak Album
+            {printing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {printing ? "Menyiapkan…" : "Cetak Album"}
           </Button>
           <Button size="sm" variant="outline" onClick={onEdit} aria-label={`Ubah tim ${team.name}`}>
             <Pencil className="h-4 w-4" />

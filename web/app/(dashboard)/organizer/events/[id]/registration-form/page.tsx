@@ -47,6 +47,7 @@ const EMPTY_FIELD: CustomField = {
   // New fields start private. An organizer adding "No. KTP" should have to say
   // they want it on the public page, not remember to say they don't.
   is_public: false,
+  in_album: false,
   options: [],
 };
 
@@ -456,6 +457,25 @@ function FieldRows({
                   Tampilkan di halaman publik
                 </span>
               </label>
+
+              {/* Only the person sections: the album renders one block per
+                  official and per player, so offering the box on Data Tim
+                  would promise a row nothing ever prints. */}
+              {section !== "team_fields" && (
+                <label className="flex w-fit items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    checked={row.in_album ?? false}
+                    onChange={(e) =>
+                      onChange(section, i, { in_album: e.target.checked })
+                    }
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    Tampilkan di album pemain
+                  </span>
+                </label>
+              )}
             </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}

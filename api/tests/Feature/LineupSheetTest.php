@@ -48,6 +48,12 @@ class LineupSheetTest extends TestCase
         $event = $this->eventOn($org, attrs: [
             'registration_open' => Carbon::now()->subDay(),
             'registration_close' => Carbon::now()->addDays(10),
+            // Tim di skenario ini beranggota dua orang, jadi ukuran sepak
+            // bola sungguhan (11 inti) tidak mungkin dipenuhi. Override event
+            // dipakai alih-alih melonggarkan aturannya: lapis ketiga
+            // `SquadRules` memang untuk ini, dan memakainya di sini sekaligus
+            // membuktikan ia menimpa default cabang.
+            'rules_config' => ['squad' => ['starters' => 1, 'max_substitutes' => 5]],
         ]);
 
         $category = $event->categories()->create([

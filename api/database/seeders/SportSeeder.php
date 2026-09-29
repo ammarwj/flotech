@@ -69,6 +69,7 @@ class SportSeeder extends Seeder
                 'slug' => 'football', 'name' => 'Sepak Bola', 'color' => '#1E6FFF', 'icon' => '⚽',
                 'scoring' => 'goal', 'default_match_minutes' => 90, 'stats' => $goalStats,
                 'period_config' => ['periods' => 2, 'period_minutes' => 45, 'label' => 'Babak'],
+                'squad_config' => ['starters' => 11, 'max_substitutes' => 7],
                 'positions' => [
                     ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
                     ['position_key' => 'defender', 'label' => 'Bek'],
@@ -83,12 +84,14 @@ class SportSeeder extends Seeder
                 'slug' => 'mini_soccer', 'name' => 'Mini Soccer', 'color' => '#0EA5E9', 'icon' => '🥅',
                 'scoring' => 'goal', 'default_match_minutes' => 50, 'stats' => $goalStats,
                 'period_config' => ['periods' => 2, 'period_minutes' => 25, 'label' => 'Babak'],
+                'squad_config' => ['starters' => 7, 'max_substitutes' => 5],
                 'positions' => $goalPositions,
             ],
             [
                 'slug' => 'futsal', 'name' => 'Futsal', 'color' => '#7C3AED', 'icon' => '🏟️',
                 'scoring' => 'goal', 'default_match_minutes' => 40, 'stats' => $goalStats,
                 'period_config' => ['periods' => 2, 'period_minutes' => 20, 'label' => 'Babak'],
+                'squad_config' => ['starters' => 5, 'max_substitutes' => 9],
                 'positions' => [
                     ['position_key' => 'goalkeeper', 'label' => 'Kiper'],
                     ['position_key' => 'anchor', 'label' => 'Anchor'],
@@ -150,6 +153,7 @@ class SportSeeder extends Seeder
                 'scoring' => 'goal', 'default_match_minutes' => 40,
                 // Empat kuarter, dan kata "Babak" salah di sini.
                 'period_config' => ['periods' => 4, 'period_minutes' => 10, 'label' => 'Kuarter'],
+                'squad_config' => ['starters' => 5, 'max_substitutes' => 7],
                 'stats' => [
                     ['stat_key' => 'points', 'label' => 'Poin', 'short' => 'PTS', 'role' => 'goal'],
                     ['stat_key' => 'assists', 'label' => 'Assist', 'short' => 'AST', 'role' => 'assist'],
@@ -189,6 +193,10 @@ class SportSeeder extends Seeder
                     // alasan yang sama kenapa discipline_config di atas cuma
                     // diberikan ke cabang yang membooking pemain.
                     'period_config' => $data['period_config'] ?? null,
+                    // Gate yang sama dengan period_config di atasnya, dan itu
+                    // disengaja: cabang yang punya jam berjalan adalah cabang
+                    // yang menurunkan susunan pemain sebelum kick-off.
+                    'squad_config' => $data['squad_config'] ?? null,
                     'is_active' => true,
                     'sort_order' => $order,
                 ],

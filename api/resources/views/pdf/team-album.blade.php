@@ -34,7 +34,6 @@
         .masthead-title { text-align: center; padding: 0 6pt; }
 
         .doc-title { font-size: 17pt; font-weight: bold; letter-spacing: 0.5pt; }
-        .doc-subtitle { font-size: 12.5pt; font-weight: bold; margin-top: 2pt; }
         .doc-event { font-size: 12.5pt; font-weight: bold; margin-top: 1pt; }
         .doc-place { font-size: 7.5pt; font-weight: bold; margin-top: 3pt; }
 
@@ -42,17 +41,28 @@
         .rule-thick { border-top: 3pt solid #000; margin-top: 4pt; }
         .rule-thin { border-top: 0.75pt solid #000; margin-top: 1.5pt; }
 
-        .club-line { font-size: 12pt; font-weight: bold; margin: 16pt 0 4pt 0; }
-        .club-line .dots { font-weight: normal; letter-spacing: 1pt; }
-        .club-sub { font-size: 10pt; font-weight: bold; margin-bottom: 12pt; }
+        .club-row { width: 100%; border-collapse: collapse; margin: 14pt 0 5pt 0; }
+        /* Baseline, bukan top: nama klub yang panjang melipat jadi dua baris,
+           dan kontak yang ikut naik ke atas bersamanya terbaca seperti judul
+           kedua alih-alih pasangan sebaris. */
+        .club-row td { border: none; padding: 0; vertical-align: bottom; }
+        /* Label kecil di atas nilainya, dua kolom bentuknya sama persis —
+           dulu labelnya sebaris (12pt) sementara kontaknya 9.5pt, jadi kolom
+           kanan terbaca seperti catatan kaki yang kebetulan sejajar. */
+        .club-label { font-size: 6.5pt; font-weight: bold; letter-spacing: 1pt; color: #555; }
+        .club-value { font-size: 9pt; font-weight: bold; margin-top: 1pt; }
+        /* nowrap + lebar minimum: kontak selalu utuh satu baris, dan nama klub
+           — satu-satunya kolom yang lentur — yang melipat kalau kehabisan
+           tempat. Sebaliknya nomor telepon terpotong di tengah. */
+        .club-contact { width: 1%; white-space: nowrap; text-align: right; padding-left: 16pt !important; }
 
-        table.roster { width: 100%; border-collapse: collapse; }
+        table.roster { width: 100%; border-collapse: collapse; margin-top: 6pt; }
         table.roster td, table.roster th { border: 0.75pt solid #000; padding: 4pt 5pt; }
 
-        .col-no { width: 7%; text-align: center; }
-        .col-photo { width: 26%; text-align: center; }
-        .col-data { width: 55%; padding: 0 !important; }
-        .col-ket { width: 12%; }
+        .col-no { width: 6%; text-align: center; }
+        .col-photo { width: 20%; text-align: center; }
+        .col-data { width: 60%; padding: 0 !important; }
+        .col-ket { width: 14%; }
 
         thead th { font-size: 8.5pt; font-weight: bold; text-align: center; }
 
@@ -74,10 +84,9 @@
         .photo-box img { width: 66pt; height: 88pt; }
 
         table.data { width: 100%; border-collapse: collapse; }
-        table.data td { border: 0.75pt solid #000; padding: 4pt 5pt; font-size: 8.5pt; }
-        table.data td.label { width: 42%; }
-        table.data td.value { width: 58%; }
-        table.data tr.filler td { height: 12pt; }
+        table.data td { border: 0.75pt solid #000; padding: 2pt 6pt; font-size: 8.5pt; vertical-align: middle; }
+        table.data td.label { width: 32%; color: #333; }
+        table.data td.value { width: 68%; font-weight: bold; }
         /* Baris terluar sudah digambar sel induknya; buang yang dobel. */
         table.data tr:first-child td { border-top: none; }
         table.data tr:last-child td { border-bottom: none; }
@@ -87,6 +96,22 @@
         .empty-row td { font-style: italic; color: #555; text-align: center; }
     </style>
 </head>
+@php
+    /**
+     * Padding vertikal tiap baris data, dihitung dari jumlah barisnya.
+     *
+     * Sel orang setinggi kotak foto (92pt) sementara jumlah barisnya
+     * berubah-ubah — ofisial 2, pemain 3, plus berapa pun field dinamis yang
+     * organizer centang. Sisa tinggi yang tidak terpakai menggantung sebagai
+     * kotak kosong yang terbaca "lupa diisi".
+     *
+     * Padding, bukan `height` per baris: dompdf mengabaikan tinggi baris dan
+     * memusatkan tabel anaknya secara vertikal, yang justru menghasilkan gap di
+     * atas DAN di bawah. Minimum 2pt supaya baris yang sudah lewat 92pt (banyak
+     * field dinamis) tetap terbaca, bukan gepeng.
+     */
+    $rowPad = fn (int $rows) => max(2, round((92 / max(1, $rows) - 11) / 2, 2));
+@endphp
 <body>
     @foreach ($teams as $team)
         <div class="team">
@@ -99,9 +124,6 @@
                     </td>
                     <td class="masthead-title">
                         <div class="doc-title">ALBUM PEMAIN</div>
-                        @if ($sportLabel)
-                            <div class="doc-subtitle">{{ mb_strtoupper($sportLabel) }}</div>
-                        @endif
                         <div class="doc-event">{{ mb_strtoupper($event->name) }}</div>
                         @if ($team['venue'])
                             <div class="doc-place">{{ $team['venue'] }}</div>
@@ -117,10 +139,22 @@
             <div class="rule-thick"></div>
             <div class="rule-thin"></div>
 
-            <div class="club-line">NAMA KLUB&nbsp;&nbsp;&nbsp;: {{ $team['name'] }}</div>
-            @if ($team['category'])
-                <div class="club-sub">KATEGORI&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {{ $team['category'] }}</div>
-            @endif
+            {{-- Dua kolom, bukan satu baris: nama klub bisa panjang dan dompdf
+                 tidak punya flex, jadi tabel yang memisahkannya. --}}
+            <table class="club-row">
+                <tr>
+                    <td>
+                        <div class="club-label">NAMA KLUB</div>
+                        <div class="club-value">{{ $team['name'] }}</div>
+                    </td>
+                    @if ($team['contact'])
+                        <td class="club-contact">
+                            <div class="club-label">KONTAK</div>
+                            <div class="club-value">{{ $team['contact'] }}</div>
+                        </td>
+                    @endif
+                </tr>
+            </table>
 
             @php $no = 0; @endphp
 
@@ -149,12 +183,16 @@
                                 </div>
                             </td>
                             <td class="col-data">
-                                <table class="data">
-                                    <tr><td class="label">Nama</td><td class="value">{{ $official['name'] }}</td></tr>
-                                    <tr><td class="label">Tempat &amp; Tgl Lahir</td><td class="value">{{ $official['birth'] }}</td></tr>
-                                    <tr><td class="label">Jabatan</td><td class="value">{{ $official['role'] }}</td></tr>
-                                    <tr><td class="label">Alamat</td><td class="value">{{ $official['address'] }}</td></tr>
-                                    <tr class="filler"><td class="label">&nbsp;</td><td class="value">&nbsp;</td></tr>
+                                @php $pad = $rowPad(2 + count($official['extra'])); @endphp
+                                <table class="data" style="padding: 0">
+                                    <tr><td class="label" style="padding: {{ $pad }}pt 6pt">Nama</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $official['name'] }}</td></tr>
+                                    <tr><td class="label" style="padding: {{ $pad }}pt 6pt">Jabatan</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $official['role'] }}</td></tr>
+                                    {{-- Field dinamis yang organizer centang "Tampilkan di album
+                                         pemain". Nilai kosong tetap dicetak — lembar ini
+                                         dilengkapi tangan di lapangan. --}}
+                                    @foreach ($official['extra'] as $row)
+                                        <tr><td class="label" style="padding: {{ $pad }}pt 6pt">{{ $row['label'] }}</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $row['value'] }}</td></tr>
+                                    @endforeach
                                 </table>
                             </td>
                             <td class="col-ket person-ket">&nbsp;</td>
@@ -182,12 +220,14 @@
                                 </div>
                             </td>
                             <td class="col-data">
-                                <table class="data">
-                                    <tr><td class="label">Nama</td><td class="value">{{ $player['name'] }}</td></tr>
-                                    <tr><td class="label">Tempat &amp; Tgl Lahir</td><td class="value">{{ $player['birth'] }}</td></tr>
-                                    <tr><td class="label">Posisi bermain</td><td class="value">{{ $player['position'] }}</td></tr>
-                                    <tr><td class="label">No punggung</td><td class="value">{{ $player['jersey_number'] }}</td></tr>
-                                    <tr><td class="label">Alamat</td><td class="value">{{ $player['address'] }}</td></tr>
+                                @php $pad = $rowPad(3 + count($player['extra'])); @endphp
+                                <table class="data" style="padding: 0">
+                                    <tr><td class="label" style="padding: {{ $pad }}pt 6pt">Nama</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $player['name'] }}</td></tr>
+                                    <tr><td class="label" style="padding: {{ $pad }}pt 6pt">Posisi bermain</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $player['position'] }}</td></tr>
+                                    <tr><td class="label" style="padding: {{ $pad }}pt 6pt">No punggung</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $player['jersey_number'] }}</td></tr>
+                                    @foreach ($player['extra'] as $row)
+                                        <tr><td class="label" style="padding: {{ $pad }}pt 6pt">{{ $row['label'] }}</td><td class="value" style="padding: {{ $pad }}pt 6pt">{{ $row['value'] }}</td></tr>
+                                    @endforeach
                                 </table>
                             </td>
                             <td class="col-ket person-ket">&nbsp;</td>

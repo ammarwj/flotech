@@ -139,6 +139,22 @@ export function tracksClock(sport: Pick<SportDef, "scoring"> | null | undefined)
 }
 
 /**
+ * Whether this sport names a starting lineup at all — inti dan cadangan.
+ *
+ * Deliberately `tracksClock` itself rather than a second reading of `scoring`:
+ * a sport played against a running clock is a sport that puts eleven names down
+ * before kick-off, and the server answers both with one expression too
+ * (`SquadRules::enabled`). Two gates would drift, and the drift would only show
+ * up the day an admin adds a sport.
+ *
+ * A set sport is left out on purpose. Volleyball fields a squad and has six on
+ * court, but rotation and the libero are not "inti vs cadangan", and any number
+ * put here would lie about them — that is a `squad_config` of its own plus a
+ * loosening of this gate, never a second rule beside it.
+ */
+export const namesSquad = tracksClock;
+
+/**
  * Why a player is sitting out, in words the organizer uses — "kartu merah",
  * "2 kartu kuning (dikeluarkan)", "akumulasi 3 kartu kuning". The card's name
  * comes from the sport's own label, and the numbers from the rules in force for

@@ -353,6 +353,24 @@ export interface PeriodConfigValues {
   label?: string;
 }
 
+/**
+ * Berapa nama yang boleh ditulis di satu team sheet: inti, lalu bangku.
+ *
+ * Tiap field opsional saat diam — cabang atau event yang tidak pernah
+ * mengisinya mewarisi lapis di bawahnya, cermin `SquadRules` di server. Field
+ * yang dikosongkan di form harus **absen**, bukan `null` dan bukan `0`: null
+ * menimpa lapis bawahnya, dan 0 bangku adalah nilai yang sah.
+ *
+ * Angkanya saja tidak menjawab "cabang ini punya susunan pemain?"; itu dibaca
+ * dari `scoring`, gate yang sama dengan jam pertandingan. Karena itu cabang
+ * berskor set menyimpan `squad_config: null`.
+ */
+export interface SquadConfigValues {
+  starters?: number;
+  /** 0 = tidak ada bangku. Bukan "tanpa batas". */
+  max_substitutes?: number;
+}
+
 /** A position a player of this sport can hold. The key is what a roster stores. */
 export interface SportPositionDef {
   key: string;
@@ -378,6 +396,8 @@ export interface SportDef {
   discipline_config: DisciplineRuleValues;
   /** Babak this sport's events inherit. Null for a set-based sport: no clock. */
   period_config: PeriodConfigValues | null;
+  /** Ukuran susunan pemain yang diwarisi event cabang ini. Null untuk cabang set. */
+  squad_config: SquadConfigValues | null;
   stats: SportStatDef[];
   positions: SportPositionDef[];
   official_roles: SportOfficialRoleDef[];
@@ -877,6 +897,13 @@ export interface SportEvent {
   timezone: string;
   registration_open: string | null;
   registration_close: string | null;
+  /**
+   * Whether the door is open right now — status `open` AND inside the window.
+   * Derived on the server so the client never recombines the rule itself: it is
+   * the same boolean `MyTeamController` enforces, and a second copy here would
+   * drift into a form that saves fine but 422s.
+   */
+  registration_is_open: boolean;
   location_name: string | null;
   location_address: string | null;
   /** Named courts/pitches for scheduling; [] when the organizer set none. */
@@ -904,6 +931,7 @@ export interface SportEvent {
 export interface EventRulesConfig {
   discipline?: DisciplineRuleValues;
   clock?: PeriodConfigValues;
+  squad?: SquadConfigValues;
   deposit?: DepositConfig;
 }
 
@@ -988,6 +1016,22 @@ export interface LineupBan {
   reason: BanReason;
   /** Fixtures still owed, counting this one. */
   bans_remaining: number;
+}
+
+/**
+ * Ukuran susunan pemain sebagaimana sudah diselesaikan server untuk satu
+ * kategori: default cabang di bawah override event.
+ *
+ * Bukan `Required<SquadConfigValues>`: `max_players` adalah jumlah keduanya,
+ * dihitung sekali di server supaya editor dan API tidak menjumlahkannya
+ * masing-masing. `null` di payload berarti cabang ini tidak punya susunan sama
+ * sekali — sinyal editor untuk tidak merender batas apa pun, bukan alasan untuk
+ * jatuh ke default.
+ */
+export interface SquadRules {
+  starters: number;
+  max_substitutes: number;
+  max_players: number;
 }
 
 /** A player's running card tally across the category. */

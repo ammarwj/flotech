@@ -55,6 +55,13 @@ class EventResource extends JsonResource
             'timezone' => $this->timezone,
             'registration_open' => $this->registration_open,
             'registration_close' => $this->registration_close,
+            // Whether the door is open right now: status `open` AND inside the
+            // window. Published rather than left for the client to recombine,
+            // same reasoning as `next_statuses` and `effective_payment_method` —
+            // two readers of one rule drift, and the drift is invisible. It is
+            // what freezes the participant's own team page once registration
+            // closes, so it has to be the same boolean MyTeamController checks.
+            'registration_is_open' => $this->isRegistrationOpen(),
             'location_name' => $this->location_name,
             'location_address' => $this->location_address,
             // Named courts for scheduling; [] when the organizer hasn't set any.

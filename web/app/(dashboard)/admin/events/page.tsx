@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarDays, Globe, Link2Off, Printer, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CalendarDays, Globe, Link2Off, Loader2, Printer, ShieldCheck, TriangleAlert } from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
 import {
@@ -327,8 +327,12 @@ function EventDomainCard({
             </Button>
           )}
           <Button size="sm" variant="outline" disabled={printing} onClick={printAlbum}>
-            <Printer className="h-4 w-4" />
-            Cetak Album
+            {printing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {printing ? "Menyiapkan…" : "Cetak Album"}
           </Button>
         </div>
       </div>

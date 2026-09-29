@@ -48,7 +48,14 @@ class LineupDisciplineTest extends TestCase
      */
     private function event(string $sport = 'football'): Event
     {
-        $event = $this->eventOn($this->org, attrs: ['sport_type' => $sport]);
+        $event = $this->eventOn($this->org, attrs: [
+            'sport_type' => $sport,
+            // Tim di sini beranggota dua-tiga orang, jadi 11 inti sepak bola
+            // tidak mungkin dipenuhi. Override event dipakai alih-alih
+            // melonggarkan aturannya — lapis ketiga `SquadRules` memang untuk
+            // ini, dan ukurannya tidak ikut menentukan apa yang file ini uji.
+            'rules_config' => ['squad' => ['starters' => 1, 'max_substitutes' => 5]],
+        ]);
 
         $event->categories()->create([
             'name' => 'Umum',

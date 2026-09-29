@@ -82,11 +82,11 @@ class TeamAlbumTest extends TestCase
                 'team_fields' => [], 'team_documents' => [],
                 'player_documents' => [], 'team_official_documents' => [],
                 'player_fields' => [
-                    ['key' => 'tempat_lahir', 'label' => 'Tempat Lahir', 'type' => 'short_text', 'required' => false, 'options' => []],
-                    ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'long_text', 'required' => false, 'options' => []],
+                    ['key' => 'tempat_lahir', 'label' => 'Tempat Lahir', 'type' => 'short_text', 'required' => false, 'in_album' => true, 'options' => []],
+                    ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'long_text', 'required' => false, 'in_album' => true, 'options' => []],
                 ],
                 'team_official_fields' => [
-                    ['key' => 'alamat_ofisial', 'label' => 'Alamat Rumah', 'type' => 'long_text', 'required' => false, 'options' => []],
+                    ['key' => 'alamat_ofisial', 'label' => 'Alamat Rumah', 'type' => 'long_text', 'required' => false, 'in_album' => true, 'options' => []],
                 ],
             ],
         ]);
@@ -123,19 +123,23 @@ class TeamAlbumTest extends TestCase
         $this->assertMatchesRegularExpression('/1\.(?s).*Dadang Supriatna/', $html);
         $this->assertMatchesRegularExpression('/2\.(?s).*Rizky Ramadhan/', $html);
 
-        // Data diri: label resolved from the catalogue, Indonesian month, and
-        // both custom-field rows found by hint rather than by exact key.
+        // Data diri: labels resolved from the catalogue, then the organizer's
+        // own fields — each printed under the label they typed, not under a
+        // row this sheet decided to name for them.
         $this->assertStringContainsString('Pelatih Kepala', $html);
         $this->assertStringContainsString('Kiper', $html);
-        $this->assertStringContainsString('Tasikmalaya, 12 Maret 2014', $html);
+        $this->assertStringContainsString('Tempat Lahir', $html);
+        $this->assertStringContainsString('Tasikmalaya', $html);
+        $this->assertStringContainsString('Alamat Rumah', $html);
         $this->assertStringContainsString('Kp. Cijawer RT 01', $html);
         $this->assertStringContainsString('Kp. Cikancra RT 02', $html);
     }
 
     /**
-     * Compare an event that defines the address field with one that does not:
-     * asserting only that the sheet renders would pass even if the lookup never
-     * ran, because a blank row is what an unanswered field prints too.
+     * Compare an event whose address field is marked for the album with one
+     * whose identical field is not: asserting only that the sheet renders would
+     * pass even if the flag were never read, because a schema that defines the
+     * field either way stores the very same answer.
      */
     public function test_custom_field_rows_fill_only_when_the_event_defines_them(): void
     {
@@ -144,11 +148,19 @@ class TeamAlbumTest extends TestCase
             'team_fields' => [], 'team_documents' => [],
             'player_documents' => [], 'team_official_documents' => [], 'team_official_fields' => [],
             'player_fields' => [
-                ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'long_text', 'required' => false, 'options' => []],
+                ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'long_text', 'required' => false, 'in_album' => true, 'options' => []],
             ],
         ]]);
 
+        // Same field, same answer — only the album flag differs.
         $plain = $this->eventWithOrg();
+        $plain->update(['registration_form' => [
+            'team_fields' => [], 'team_documents' => [],
+            'player_documents' => [], 'team_official_documents' => [], 'team_official_fields' => [],
+            'player_fields' => [
+                ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'long_text', 'required' => false, 'in_album' => false, 'options' => []],
+            ],
+        ]]);
 
         $roster = [['full_name' => 'Rizky', 'jersey_number' => '7', 'custom_fields' => ['alamat' => 'Kp. Cijawer RT 01']]];
 
@@ -165,6 +177,75 @@ class TeamAlbumTest extends TestCase
 
         $this->assertStringContainsString('Kp. Cijawer RT 01', $filled);
         $this->assertStringNotContainsString('Kp. Cijawer RT 01', $blank);
+    }
+
+    /**
+     * Compare three teams in one sweep: both halves, one half, neither.
+     * Asserting only that the phone shows up would stay green if the label
+     * printed for a team that never gave a contact — the blank "KONTAK :" is
+     * exactly the failure the fallback exists to prevent.
+     */
+    public function test_contact_line_prints_only_what_the_team_gave(): void
+    {
+        $event = $this->eventWithOrg();
+        $albums = app(TeamAlbumService::class);
+
+        $render = function (Team $team) use ($event, $albums) {
+            return $albums->html(
+                $event->load('organization'),
+                collect([$team->load('players', 'officials', 'category')]),
+            );
+        };
+
+        $both = $this->approvedTeam($event, 'Tim Lengkap');
+        $phoneOnly = $this->approvedTeam($event, 'Tim Telepon');
+        $phoneOnly->update(['contact_name' => null]);
+        $none = $this->approvedTeam($event, 'Tim Sepi');
+        $none->update(['contact_name' => null, 'contact_phone' => null]);
+
+        $this->assertStringContainsString('KONTAK', $render($both));
+        $this->assertStringContainsString('Andi (08123456789)', $render($both));
+
+        $this->assertStringContainsString('08123456789', $render($phoneOnly));
+        $this->assertStringNotContainsString('(08123456789)', $render($phoneOnly));
+
+        $this->assertStringNotContainsString('KONTAK', $render($none));
+    }
+
+    /**
+     * A `date` field prints as "26 Sept 2003"; a text field holding the very
+     * same string does not.
+     *
+     * Compared in one sheet because the two are indistinguishable by value —
+     * asserting only that the formatted date appears would stay green if every
+     * answer that merely looks like a date were reformatted, which would rewrite
+     * text people typed for some other reason.
+     */
+    public function test_date_fields_print_formatted_but_text_fields_print_verbatim(): void
+    {
+        $event = $this->eventWithOrg();
+        $event->update(['registration_form' => [
+            'team_fields' => [], 'team_documents' => [],
+            'player_documents' => [], 'team_official_documents' => [], 'team_official_fields' => [],
+            'player_fields' => [
+                ['key' => 'lahir', 'label' => 'Tanggal Lahir', 'type' => 'date', 'required' => false, 'in_album' => true, 'options' => []],
+                ['key' => 'catatan', 'label' => 'Catatan', 'type' => 'short_text', 'required' => false, 'in_album' => true, 'options' => []],
+            ],
+        ]]);
+
+        $team = $this->approvedTeam($event, 'Garuda FC', [[
+            'full_name' => 'Rizky',
+            'custom_fields' => ['lahir' => '2003-09-26', 'catatan' => '2003-09-26'],
+        ]]);
+
+        $html = app(TeamAlbumService::class)->html(
+            $event->load('organization'),
+            collect([$team->load('players', 'officials', 'category')]),
+        );
+
+        $this->assertStringContainsString('26 Sept 2003', $html);
+        $this->assertStringContainsString('2003-09-26', $html);
+        $this->assertSame(1, substr_count($html, '26 Sept 2003'));
     }
 
     public function test_organizer_can_print_one_teams_album(): void

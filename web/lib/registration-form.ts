@@ -25,6 +25,13 @@ export interface CustomField {
    * defaulted (the backend normalizes the same way).
    */
   is_public?: boolean;
+  /**
+   * Whether the field gets its own row on the printed player album. Separate
+   * from `is_public` on purpose: a sheet handed out at the venue and a page
+   * anyone can index are two different decisions. Optional and absent-is-false
+   * for the same reason — the backend normalizes identically.
+   */
+  in_album?: boolean;
   /** Only meaningful for `select`; [] everywhere else. */
   options: string[];
 }

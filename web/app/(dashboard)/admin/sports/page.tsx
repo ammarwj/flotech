@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import {
   participantLabel,
+  namesSquad,
   participantModes,
   tracksClock,
   tracksDiscipline,
@@ -35,6 +36,7 @@ import type {
   DisciplineRuleValues,
   ParticipantType,
   PeriodConfigValues,
+  SquadConfigValues,
 } from "@/types/api";
 
 type SportForm = {
@@ -49,6 +51,8 @@ type SportForm = {
   discipline_config: DisciplineRuleValues;
   /** Babak this sport's events inherit; {} = platform defaults (2 × 45 "Babak"). */
   period_config: PeriodConfigValues;
+  /** Ukuran susunan pemain yang diwarisi event cabang ini; {} = 11 + 7. */
+  squad_config: SquadConfigValues;
   is_active: boolean;
   sort_order: number;
 };
@@ -67,6 +71,7 @@ const EMPTY: SportForm = {
   default_match_minutes: 60,
   discipline_config: {},
   period_config: {},
+  squad_config: {},
   is_active: true,
   sort_order: 0,
 };
@@ -183,6 +188,9 @@ export default function AdminSportsPage() {
       // Null di server berarti "cabang set, tidak berjam" — bentuk yang di form
       // sudah dijawab `scoring`, jadi di sini ia cuma jatuh ke {}.
       period_config: sport.period_config ?? {},
+      // Null berarti hal yang sama dengan period_config di atasnya: cabang set,
+      // yang di form sudah dijawab `scoring`.
+      squad_config: sport.squad_config ?? {},
       is_active: sport.is_active,
       sort_order: sport.sort_order,
     });
@@ -253,6 +261,18 @@ export default function AdminSportsPage() {
       else next[key] = n;
 
       return { ...f, period_config: next };
+    });
+
+  /** Same contract as setRule: blank must leave as no key, not as 0. */
+  const setSquad = (key: keyof SquadConfigValues, raw: string) =>
+    setForm((f) => {
+      const next = { ...f.squad_config };
+      const n = Number(raw.trim());
+
+      if (raw.trim() === "" || Number.isNaN(n)) delete next[key];
+      else next[key] = n;
+
+      return { ...f, squad_config: next };
     });
 
   return (
@@ -522,6 +542,52 @@ export default function AdminSportsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Basket memakai &ldquo;Kuarter&rdquo;.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Gate yang sama dengan babak di atasnya, dan itu memang satu ekspresi:
+            cabang yang punya jam berjalan adalah cabang yang menurunkan susunan
+            pemain sebelum kick-off. */}
+        {namesSquad(form) && (
+          <div className="grid gap-3 rounded-xl border border-border bg-[var(--surface-2)] p-3">
+            <div>
+              <p className="text-sm font-semibold">Susunan pemain</p>
+              <p className="text-xs text-muted-foreground">
+                Bawaan untuk event cabang ini. Organizer bisa menimpanya per event,
+                dan kolom yang dikosongkan di sini memakai bawaan platform (11 inti,
+                7 cadangan). Manajer wajib mengisi pemain inti tepat sejumlah ini
+                sebelum susunan bisa dikirim ke wasit.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="squad-starters">Pemain inti</Label>
+                <Input
+                  id="squad-starters"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={form.squad_config.starters ?? ""}
+                  onChange={(e) => setSquad("starters", e.target.value)}
+                  placeholder="11"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="squad-subs">Maksimal cadangan</Label>
+                <Input
+                  id="squad-subs"
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.squad_config.max_substitutes ?? ""}
+                  onChange={(e) => setSquad("max_substitutes", e.target.value)}
+                  placeholder="7"
+                />
+                <p className="text-xs text-muted-foreground">
+                  0 berarti tanpa bangku cadangan.
                 </p>
               </div>
             </div>

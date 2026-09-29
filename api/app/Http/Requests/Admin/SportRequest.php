@@ -5,6 +5,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\Sport;
 use App\Support\DisciplineRules;
 use App\Support\MatchClockRules;
+use App\Support\SquadRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -46,6 +47,11 @@ class SportRequest extends FormRequest
             // override event tidak bisa berselisih.
             'period_config' => ['nullable', 'array'],
             ...MatchClockRules::validationRules('period_config.'),
+            // Berapa pemain inti & cadangan di team sheet cabang ini. Aturan
+            // yang sama dipakai form event, alasan yang sama dengan dua blok
+            // di atasnya.
+            'squad_config' => ['nullable', 'array'],
+            ...SquadRules::validationRules('squad_config.'),
             'default_match_minutes' => ['nullable', 'integer', 'min:5', 'max:600'],
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],

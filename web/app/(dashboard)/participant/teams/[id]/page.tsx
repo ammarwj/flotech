@@ -62,7 +62,14 @@ export default function ManageTeamPage() {
 
   const query = useQuery({ queryKey: ["my-team", params.id], queryFn: () => getMyTeam(params.id) });
   const team = query.data;
-  const editable = team ? !LOCKED.includes(team.status) : false;
+  // Two independent gates, mirroring MyTeamController::update(): the row itself
+  // must still be live, and the event's registration must still be open. The
+  // window half is read off the server's own `registration_is_open` rather than
+  // recombining status + dates here — a second copy of that rule drifts, and the
+  // drift shows up as a form that looks editable and 422s on save.
+  const rowLive = team ? !LOCKED.includes(team.status) : false;
+  const windowOpen = team?.event?.registration_is_open ?? false;
+  const editable = rowLive && windowOpen;
   // Tunggal/ganda: the entry is its players, so the roster is a fixed pair of
   // slots and there is no team name to type.
   const rosterSize = team?.category?.roster_size ?? null;
@@ -257,7 +264,7 @@ export default function ManageTeamPage() {
           aria-label={`Cetak album ${team.name}`}
         >
           {printingAlbum ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-          Cetak Album
+          {printingAlbum ? "Menyiapkan…" : "Cetak Album"}
         </Button>
       </div>
       <p className="mb-6 text-sm text-muted-foreground">{team.event?.name}</p>
@@ -335,9 +342,19 @@ export default function ManageTeamPage() {
         </Card>
       )}
 
-      {!editable && (
+      {/* Which of the two gates closed, because the participant can act on the
+          difference: a withdrawn team is finished, a closed registration is a
+          clock that ran out and the organizer can still edit on their behalf. */}
+      {!rowLive && (
         <p className="mb-6 rounded-md border border-border bg-[var(--bg-soft)] px-4 py-3 text-sm text-muted-foreground">
           Tim ini berstatus <b>{team.status}</b> dan tidak dapat diubah lagi.
+        </p>
+      )}
+
+      {rowLive && !windowOpen && (
+        <p className="mb-6 rounded-md border border-border bg-[var(--bg-soft)] px-4 py-3 text-sm text-muted-foreground">
+          Pendaftaran event ini sudah ditutup, jadi data tim dan pemain tidak dapat
+          diubah lagi. Hubungi penyelenggara bila ada perubahan susunan.
         </p>
       )}
 
@@ -463,7 +480,11 @@ export default function ManageTeamPage() {
           </p>
         )}
 
-        {editable && (
+        {/* Withdrawing hangs off `rowLive`, not `editable`: MyTeamController
+            keeps it open after registration closes, and a team that cannot play
+            still needs the exit — the organizer would rather hear it before the
+            draw than find an empty slot. Only saving is frozen by the window. */}
+        {rowLive && (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Button
               type="button"
@@ -486,19 +507,21 @@ export default function ManageTeamPage() {
             </Button>
             {/* A half-finished player row is rejected outright by the server, so
                 blocking here is what keeps a 422 from costing the whole form. */}
-            <Button
-              type="submit"
-              size="lg"
-              disabled={
-                save.isPending ||
-                uploading ||
-                teamMissing.length > 0 ||
-                hasIncompletePlayer(schema, players) ||
-                hasIncompleteOfficial(schema, officials)
-              }
-            >
-              {save.isPending ? "Menyimpan…" : "Simpan perubahan"}
-            </Button>
+            {editable && (
+              <Button
+                type="submit"
+                size="lg"
+                disabled={
+                  save.isPending ||
+                  uploading ||
+                  teamMissing.length > 0 ||
+                  hasIncompletePlayer(schema, players) ||
+                  hasIncompleteOfficial(schema, officials)
+                }
+              >
+                {save.isPending ? "Menyimpan…" : "Simpan perubahan"}
+              </Button>
+            )}
           </div>
         )}
       </form>

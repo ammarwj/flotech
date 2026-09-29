@@ -5,6 +5,7 @@ namespace App\Http\Requests\Event;
 use App\Services\Catalog;
 use App\Support\DisciplineRules;
 use App\Support\MatchClockRules;
+use App\Support\SquadRules;
 use DateTimeZone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -55,6 +56,11 @@ class UpdateEventRequest extends FormRequest
             // yang menjatuhkannya kembali ke lapis cabang.
             'rules_config.clock' => ['sometimes', 'nullable', 'array'],
             ...MatchClockRules::validationRules('rules_config.clock.'),
+
+            // Berapa pemain inti & cadangan di team sheet, di atas default
+            // cabangnya. Bentuk dan alasan yang sama dengan blok `clock`.
+            'rules_config.squad' => ['sometimes', 'nullable', 'array'],
+            ...SquadRules::validationRules('rules_config.squad.'),
             // Security deposit: flat per event, no sport layer to fall back to,
             // so an empty field just means 0 / feature off rather than "inherit".
             'rules_config.deposit' => ['sometimes', 'nullable', 'array'],

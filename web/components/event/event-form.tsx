@@ -15,6 +15,7 @@ import {
   Timer,
   Trash2,
   Trophy,
+  Users,
   Wallet,
   X,
 } from "lucide-react";
@@ -38,7 +39,12 @@ import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { planAllowsGateway } from "@/lib/plan";
-import { disciplineStatDefs, tracksClock, tracksDiscipline } from "@/lib/scoring";
+import {
+  disciplineStatDefs,
+  namesSquad,
+  tracksClock,
+  tracksDiscipline,
+} from "@/lib/scoring";
 import { compressToWebp } from "@/lib/image";
 import {
   uploadImage,
@@ -572,6 +578,17 @@ export function EventForm({
     };
   });
 
+  // Ukuran susunan pemain, string untuk alasan yang sama dengan `clock` di
+  // atasnya: kosong = ikut default cabang, dan itu harus sampai ke server
+  // sebagai key yang absen.
+  const [squad, setSquad] = useState(() => {
+    const sq = initial?.rules_config?.squad;
+    return {
+      starters: sq?.starters?.toString() ?? "",
+      max_substitutes: sq?.max_substitutes?.toString() ?? "",
+    };
+  });
+
   // Flat per event, no sport layer to inherit from — blank just means 0/off.
   const [deposit, setDeposit] = useState(() => {
     const dep = initial?.rules_config?.deposit;
@@ -703,6 +720,7 @@ export function EventForm({
   const sportCards = disciplineStatDefs(selectedSport);
   const sportDiscipline = selectedSport?.discipline_config ?? {};
   const sportPeriods = selectedSport?.period_config ?? {};
+  const sportSquad = selectedSport?.squad_config ?? {};
   // Lowercased card names for the explanation panels, which read as prose. The
   // sport owns its labels, so a cabang that calls them something else says so
   // everywhere instead of only in the column headings.
@@ -730,6 +748,10 @@ export function EventForm({
     periods: num(clock.periods),
     period_minutes: num(clock.period_minutes),
     label: clock.label.trim() || undefined,
+  };
+  const cleanedSquad = {
+    starters: num(squad.starters),
+    max_substitutes: num(squad.max_substitutes),
   };
   const fallbackFormat = tournament_formats[0]?.key ?? "";
 
@@ -813,6 +835,10 @@ export function EventForm({
         // Alasan yang sama: cabang berskor set tidak punya babak, dan aturan
         // yang tersimpan dari cabang sebelumnya dibiarkan tertidur di tempatnya.
         ...(tracksClock(selectedSport) ? { clock: cleanedClock } : {}),
+        // Gate yang sama dengan `clock` di atasnya, dan memang satu ekspresi
+        // (`namesSquad` = `tracksClock`) — dua gate akan berselisih dan
+        // selisihnya baru terlihat saat admin menambah cabang baru.
+        ...(namesSquad(selectedSport) ? { squad: cleanedSquad } : {}),
         deposit,
       },
     });
@@ -1392,6 +1418,79 @@ export function EventForm({
                   placeholder itulah yang sedang berlaku. Jamnya selalu naik dari
                   0 dan dijalankan panitia dari kartu jadwal atau halaman petugas
                   pertandingan; penonton hanya melihatnya di papan skor.
+                </FieldHint>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Gate yang sama dengan kartu jam di atasnya — cabang yang punya jam
+        berjalan adalah cabang yang menurunkan susunan pemain sebelum kick-off. */}
+          {namesSquad(selectedSport) && (
+            <Card>
+              <SectionHeader
+                icon={Users}
+                title="Susunan Pemain"
+                description="Berapa pemain yang boleh ditulis manajer di susunan tiap pertandingan."
+              />
+              <CardContent className="grid gap-4">
+                <div className="grid items-end gap-4 sm:grid-cols-2">
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="squad-starters" className="font-semibold">
+                        Pemain inti
+                      </Label>
+                      <InfoHint label="Penjelasan pemain inti">
+                        Jumlah yang turun sejak menit pertama — sepak bola{" "}
+                        <b>11</b>, futsal <b>5</b>. Manajer boleh menyimpan draf
+                        yang belum lengkap, tapi susunan yang dikirim ke wasit
+                        harus berisi tepat sejumlah ini.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="squad-starters"
+                      type="number"
+                      min={1}
+                      max={30}
+                      inputMode="numeric"
+                      value={squad.starters}
+                      onChange={(e) =>
+                        setSquad((q) => ({ ...q, starters: e.target.value }))
+                      }
+                      placeholder={sportSquad.starters?.toString() ?? "11"}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="squad-subs" className="font-semibold">
+                        Maksimal cadangan
+                      </Label>
+                      <InfoHint label="Penjelasan maksimal cadangan" align="end">
+                        Batas atas saja — manajer boleh membawa lebih sedikit.
+                        Isi <b>0</b> kalau turnamen ini tidak memakai bangku
+                        cadangan.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="squad-subs"
+                      type="number"
+                      min={0}
+                      max={30}
+                      inputMode="numeric"
+                      value={squad.max_substitutes}
+                      onChange={(e) =>
+                        setSquad((q) => ({
+                          ...q,
+                          max_substitutes: e.target.value,
+                        }))
+                      }
+                      placeholder={sportSquad.max_substitutes?.toString() ?? "7"}
+                    />
+                  </div>
+                </div>
+                <FieldHint>
+                  Kosongkan untuk mengikuti aturan bawaan cabang — angka pada
+                  placeholder itulah yang sedang berlaku. Turnamen 7-a-side
+                  mengubahnya di sini sekali, dan seluruh kategori event ini ikut.
                 </FieldHint>
               </CardContent>
             </Card>

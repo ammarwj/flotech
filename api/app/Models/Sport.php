@@ -30,6 +30,7 @@ class Sport extends Model
         'participant_modes',
         'discipline_config',
         'period_config',
+        'squad_config',
         'default_match_minutes',
         'is_active',
         'sort_order',
@@ -41,6 +42,7 @@ class Sport extends Model
             'participant_modes' => 'array',
             'discipline_config' => 'array',
             'period_config' => 'array',
+            'squad_config' => 'array',
             'default_match_minutes' => 'integer',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
@@ -85,6 +87,18 @@ class Sport extends Model
     public function periodConfig(): array
     {
         return $this->period_config ?: [];
+    }
+
+    /**
+     * Bentuk susunan pemain cabang ini. Kosong berarti "tidak berpendapat" —
+     * fallback di `SquadRules::DEFAULTS` yang berlaku — dan itu juga yang
+     * dikembalikan cabang set, yang tidak menurunkan inti/cadangan sama sekali.
+     *
+     * @return array<string, mixed>
+     */
+    public function squadConfig(): array
+    {
+        return $this->squad_config ?: [];
     }
 
     public function stats(): HasMany

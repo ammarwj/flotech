@@ -32,6 +32,10 @@ class SportResource extends JsonResource
             // ikut default". `MatchClockRules::enabled` menjawab yang pertama
             // dari `scoring`, jadi yang tersimpan null tetap null di sini.
             'period_config' => $this->periodConfig() ? (object) $this->periodConfig() : null,
+            // Bentuk dan alasan yang sama dengan `period_config` di atas: null
+            // berarti cabang ini tidak menurunkan susunan pemain sama sekali,
+            // {} berarti punya tapi ikut default.
+            'squad_config' => $this->squadConfig() ? (object) $this->squadConfig() : null,
             'default_match_minutes' => (int) $this->default_match_minutes,
             'is_active' => (bool) $this->is_active,
             'sort_order' => (int) $this->sort_order,
