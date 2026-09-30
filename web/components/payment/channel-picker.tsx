@@ -189,7 +189,8 @@ export function ServiceFeeExplainer({
       </span>
       <span className="mt-2 block">
         Biaya ini masuk ke floevent dan dipakai untuk pengembangan
-        sistem/operasional tim.
+        sistem/operasional tim. agar acara bisa terus berjalan lancar, aman, dan
+        nyaman bagi semua pihak.
       </span>
     </>
   );
