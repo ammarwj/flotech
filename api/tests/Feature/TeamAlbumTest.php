@@ -15,7 +15,7 @@ use Tests\TestCase;
 
 /**
  * The printable player album, both entrypoints: per-team (organizer, plain
- * `tenant`) and event-wide (organizer + super_admin). No plan gate — this is
+ * `tenant`) and event-wide (organizer). No plan gate — this is
  * a re-layout of roster data every org member already sees, same reasoning
  * as the referee/personnel routes next to it.
  */
@@ -331,31 +331,6 @@ class TeamAlbumTest extends TestCase
 
         $this->actingAs($org->owner, 'api')
             ->get("/api/v1/organizations/{$org->id}/events/{$event->id}/registrations/album")
-            ->assertStatus(404);
-    }
-
-    public function test_admin_can_print_event_wide_album_without_org_membership(): void
-    {
-        $event = $this->eventWithOrg();
-        $this->approvedTeam($event, 'Garuda FC', [
-            ['full_name' => 'Player One', 'jersey_number' => '10'],
-        ]);
-
-        $admin = User::factory()->create(['role' => 'super_admin']);
-
-        $this->actingAs($admin, 'api')
-            ->get("/api/v1/admin/events/{$event->id}/album")
-            ->assertOk();
-    }
-
-    public function test_admin_album_404s_when_no_team_is_approved(): void
-    {
-        $event = $this->eventWithOrg();
-
-        $admin = User::factory()->create(['role' => 'super_admin']);
-
-        $this->actingAs($admin, 'api')
-            ->get("/api/v1/admin/events/{$event->id}/album")
             ->assertStatus(404);
     }
 }

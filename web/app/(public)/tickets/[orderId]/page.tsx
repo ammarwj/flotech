@@ -143,7 +143,6 @@ export default function ETicketPage() {
               hint={
                 <ServiceFeeExplainer
                   unit={order.quantity > 0 ? order.service_fee / order.quantity : order.service_fee}
-                  units={order.quantity}
                 />
               }
               note={

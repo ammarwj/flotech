@@ -550,9 +550,6 @@ Route::prefix('v1')->group(function () {
             // Domains are super-admin only: activating one spends Let's Encrypt
             // quota shared by the whole platform.
             Route::get('events', [AdminEventController::class, 'index']);
-            // Support/oversight: print every approved team's album for an
-            // event without needing organizer access.
-            Route::get('events/{event}/album', [AdminEventController::class, 'album']);
             Route::put('events/{event}/domain', [AdminEventController::class, 'updateDomain']);
             Route::post('events/{event}/domain/activate', [AdminEventController::class, 'activateDomain']);
             Route::delete('events/{event}/domain', [AdminEventController::class, 'destroyDomain']);

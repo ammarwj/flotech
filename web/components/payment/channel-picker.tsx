@@ -45,7 +45,9 @@ export function ChannelPicker({
   });
 
   if (query.isLoading) {
-    return <p className="text-sm text-muted-foreground">Memuat metode pembayaran…</p>;
+    return (
+      <p className="text-sm text-muted-foreground">Memuat metode pembayaran…</p>
+    );
   }
 
   const channels = query.data ?? [];
@@ -66,15 +68,19 @@ export function ChannelPicker({
               "flex w-full items-center justify-between rounded-xl border p-3 text-left transition-colors",
               active
                 ? "border-[var(--brand-600)] bg-[var(--tint)]"
-                : "border-border hover:border-[var(--border-strong)]"
+                : "border-border hover:border-[var(--border-strong)]",
             )}
           >
             <div>
               <div className="flex items-center gap-2 font-medium">
                 {c.label}
-                {active && <Check className="h-4 w-4 text-[var(--brand-600)]" />}
+                {active && (
+                  <Check className="h-4 w-4 text-[var(--brand-600)]" />
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">Termasuk fee {rupiah(fee)}</p>
+              <p className="text-xs text-muted-foreground">
+                Termasuk fee {rupiah(fee)}
+              </p>
             </div>
             <span className="shrink-0 font-semibold">{rupiah(c.total)}</span>
           </button>
@@ -99,7 +105,6 @@ export function ChannelPicker({
                 <InfoHint label="Penjelasan biaya layanan">
                   <ServiceFeeExplainer
                     unit={selected.service_fee_unit}
-                    units={selected.units}
                     unitLabel={unitLabel}
                     audience={audience}
                   />
@@ -108,10 +113,13 @@ export function ChannelPicker({
               <dd className="text-right">
                 {selected.units > 1 && (
                   <span className="block text-xs text-muted-foreground tabular-nums">
-                    {rupiah(selected.service_fee_unit)} &times; {selected.units} {unitLabel}
+                    {rupiah(selected.service_fee_unit)} &times; {selected.units}{" "}
+                    {unitLabel}
                   </span>
                 )}
-                <span className="tabular-nums">{rupiah(selected.service_fee)}</span>
+                <span className="tabular-nums">
+                  {rupiah(selected.service_fee)}
+                </span>
               </dd>
             </div>
           )}
@@ -120,14 +128,18 @@ export function ChannelPicker({
           {selected.gateway_fee_base > 0 && (
             <div className="flex justify-between gap-4">
               <dt className="text-muted-foreground">Biaya {selected.label}</dt>
-              <dd className="tabular-nums">{rupiah(selected.gateway_fee_base)}</dd>
+              <dd className="tabular-nums">
+                {rupiah(selected.gateway_fee_base)}
+              </dd>
             </div>
           )}
           {/* A channel may well be untaxed — saying "PPN Rp 0" is worse than
               saying nothing. */}
           {selected.gateway_tax > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">PPN {selected.tax_percent}%</dt>
+              <dt className="text-muted-foreground">
+                PPN {selected.tax_percent}%
+              </dt>
               <dd className="tabular-nums">{rupiah(selected.gateway_tax)}</dd>
             </div>
           )}
@@ -139,8 +151,8 @@ export function ChannelPicker({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Poin dari penyedia pembayaran tidak boleh digunakan, dan PayLater dilarang —
-        keduanya termasuk riba.
+        Poin dari penyedia pembayaran tidak boleh digunakan, dan PayLater
+        dilarang — keduanya termasuk riba.
       </p>
     </div>
   );
@@ -154,35 +166,30 @@ export function ChannelPicker({
  */
 export function ServiceFeeExplainer({
   unit,
-  units,
   unitLabel = "tiket",
   audience = "participant",
 }: {
   /** Per-unit rate. Pass 0 when only the total is known (a stored order). */
   unit?: number;
-  units?: number;
   unitLabel?: string;
   audience?: FeeAudience;
 }) {
-  const per = audience === "organizer" ? "per pembelian paket" : `per ${unitLabel}`;
+  const per =
+    audience === "organizer" ? "per pembelian paket" : `per ${unitLabel}`;
 
   return (
     <>
       <span className="block">
-        Biaya layanan dihitung <strong className="font-semibold text-foreground">{per}</strong>
-        {unit && unit > 0 ? (
-          <>
-            {" "}
-            sebesar {rupiah(unit)}
-            {units && units > 1 ? `, jadi ${units} ${unitLabel} = ${rupiah(unit * units)}` : ""}
-          </>
-        ) : null}
-        , bukan per transaksi.
+        Biaya layanan dihitung{" "}
+        <strong className="font-semibold text-foreground">{per}</strong>
+        {/* The multiplier is deliberately NOT repeated here — the row this
+            hint hangs off already spells out "Rp X x N tiket", and a second
+            copy of the arithmetic would be a second thing to keep in step. */}
+        {unit && unit > 0 ? <> sebesar {rupiah(unit)}</> : null}
       </span>
       <span className="mt-2 block">
-        Biaya ini masuk ke flo-event dan dipakai untuk pengembangan sistem, biaya server,
-        keamanan data, serta dukungan pengguna — terpisah dari biaya bank/gateway yang
-        tertera di baris lain.
+        Biaya ini masuk ke floevent dan dipakai untuk pengembangan
+        sistem/operasional tim.
       </span>
     </>
   );
