@@ -48,17 +48,21 @@
     {{-- A BankAccount row, not a SiteSetting: its existence *is* the account,
          so there is no hasBankAccount() to ask. --}}
     @elseif ($bank)
+        {{-- Bank or e-wallet: same three facts, different words for them. Saying
+             "rekening" over a phone number sends the payer looking for a field
+             their e-wallet app does not have. --}}
+        @php($isEwallet = $bank->account_type === 'ewallet')
         <p class="muted" style="margin-top: 24px;">
-            Mohon transfer tepat sejumlah di atas ke rekening berikut, lalu unggah bukti
+            Mohon transfer tepat sejumlah di atas ke {{ $isEwallet ? 'e-wallet' : 'rekening' }} berikut, lalu unggah bukti
             transfernya. Pembayaran akan dikonfirmasi setelah diverifikasi penyelenggara.
         </p>
         <table style="margin-top: 12px;">
             <tr>
-                <td class="key muted">Bank</td>
+                <td class="key muted">{{ $isEwallet ? 'E-wallet' : 'Bank' }}</td>
                 <td>{{ $bank->bank_name }}{{ $bank->bank_code ? ' ('.$bank->bank_code.')' : '' }}</td>
             </tr>
             <tr>
-                <td class="key muted">No. rekening</td>
+                <td class="key muted">{{ $isEwallet ? 'No. HP' : 'No. rekening' }}</td>
                 <td>{{ $bank->account_number }}</td>
             </tr>
             <tr>

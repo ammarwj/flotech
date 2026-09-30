@@ -41,7 +41,7 @@ class WithdrawalService
 
             $bank = $org->bankAccounts()->where('is_primary', true)->first();
             if (! $bank) {
-                throw new WalletException('Tambahkan rekening bank terlebih dahulu.');
+                throw new WalletException('Tambahkan rekening bank atau e-wallet terlebih dahulu.');
             }
 
             // Super-admin editable (config/wallet.php holds the defaults). The
@@ -105,6 +105,7 @@ class WithdrawalService
                 'minimum_at_request' => $minimum,
                 'exempt_consumed' => $usesWaiver ? min($totalDebit, $waived) : 0,
                 'status' => 'pending',
+                'account_type' => $bank->account_type,
                 'bank_name' => $bank->bank_name,
                 'bank_code' => $bank->bank_code,
                 'account_number' => $bank->account_number,

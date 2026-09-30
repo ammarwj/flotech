@@ -96,8 +96,8 @@ class PaymentRails
             // account is setup the organizer still owes them.
             if (! $bank) {
                 throw new PaymentException($this->gatewayIsDown()
-                    ? 'Pembayaran sedang dialihkan ke transfer manual, tetapi penyelenggara belum menyiapkan rekening tujuan. Hubungi penyelenggara.'
-                    : 'Penyelenggara event ini menerima pembayaran lewat transfer manual, tetapi belum menyiapkan rekening tujuan. Hubungi penyelenggara.',
+                    ? 'Pembayaran sedang dialihkan ke transfer manual, tetapi penyelenggara belum menyiapkan tujuan pembayaran. Hubungi penyelenggara.'
+                    : 'Penyelenggara event ini menerima pembayaran lewat transfer manual, tetapi belum menyiapkan tujuan pembayaran. Hubungi penyelenggara.',
                 );
             }
 

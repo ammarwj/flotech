@@ -9,6 +9,7 @@ import type { Withdrawal } from "@/types/api";
 import { uploadImage } from "@/lib/api/events";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
+import { payoutLabels } from "@/lib/payout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,7 +104,9 @@ export function CompleteWithdrawalDialog({
               <span className="font-bold tabular-nums">{rupiah(withdrawal.amount)}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground">{withdrawal.bank_name}</span>
+              <span className="text-muted-foreground">
+                {payoutLabels(withdrawal.account_type).kind} {withdrawal.bank_name}
+              </span>
               <button
                 onClick={() => copy(withdrawal.account_number)}
                 className="inline-flex items-center gap-1.5 font-mono font-semibold transition-colors hover:text-[var(--brand-600)]"

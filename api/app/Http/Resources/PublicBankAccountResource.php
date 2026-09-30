@@ -25,6 +25,10 @@ class PublicBankAccountResource extends JsonResource
     {
         /** @var BankAccount $this */
         return [
+            // The kind travels with it: a buyer paying an e-wallet is sending
+            // to a phone number, and a panel that calls it "nomor rekening"
+            // reads as the wrong field entirely.
+            'account_type' => $this->account_type,
             'bank_name' => $this->bank_name,
             'bank_code' => $this->bank_code,
             'account_number' => $this->account_number,

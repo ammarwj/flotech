@@ -6,6 +6,7 @@ import { Banknote, X } from "lucide-react";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { BankAccount, Wallet } from "@/types/api";
 import { angka, rupiah } from "@/lib/labels";
+import { payoutLabels } from "@/lib/payout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,6 +99,9 @@ export function WithdrawDialog({
             <p className="font-semibold">{bank.bank_name}</p>
             <p className="text-muted-foreground">
               {bank.account_number} &middot; {bank.account_holder}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {payoutLabels(bank.account_type).kind}
             </p>
           </div>
 

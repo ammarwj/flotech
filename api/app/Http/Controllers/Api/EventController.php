@@ -377,7 +377,7 @@ class EventController extends Controller
     {
         if ($method === 'manual' && ! $org->bankAccounts()->where('is_primary', true)->exists()) {
             throw ValidationException::withMessages([
-                'payment_method' => 'Transfer manual butuh rekening tujuan. Isi rekening penarikan di menu Dompet dulu.',
+                'payment_method' => 'Transfer manual butuh tujuan pembayaran. Isi rekening bank atau e-wallet di menu Dompet dulu.',
             ]);
         }
 

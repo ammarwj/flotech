@@ -29,6 +29,7 @@ import {
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { rupiah, WALLET_TX_CATEGORY_LABELS } from "@/lib/labels";
+import { payoutLabels } from "@/lib/payout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,7 +82,7 @@ const dateTime = (iso: string | null) =>
 
 /** Three lists that share a page but not a job. `bank` is the default, so it carries no query param. */
 const TABS = [
-  { key: "bank", label: "Rekening Pencairan", icon: Landmark },
+  { key: "bank", label: "Tujuan Pencairan", icon: Landmark },
   { key: "withdrawals", label: "Riwayat Penarikan", icon: Banknote },
   { key: "transactions", label: "Mutasi Dompet", icon: ReceiptText },
 ];
@@ -145,10 +146,10 @@ function WalletPage() {
       setBankErrors({});
       qc.invalidateQueries({ queryKey: ["bank-accounts", orgId] });
       qc.invalidateQueries({ queryKey: ["wallet", orgId] });
-      toast.success("Rekening bank disimpan");
+      toast.success("Tujuan pencairan disimpan");
     },
     onError: (err) => {
-      const parsed = parseApiError(err, "Gagal menyimpan rekening.");
+      const parsed = parseApiError(err, "Gagal menyimpan tujuan pencairan.");
       setBankErrors(parsed.fieldErrors);
       if (Object.keys(parsed.fieldErrors).length === 0) toast.error(parsed.message);
     },
@@ -241,7 +242,7 @@ function WalletPage() {
   const blockedReason = !wallet
     ? "Memuat saldo…"
     : !primaryBank
-      ? "Tambahkan rekening bank dulu."
+      ? "Tambahkan rekening bank atau e-wallet dulu."
       : wallet.has_active_withdrawal
         ? "Masih ada penarikan yang sedang diproses."
         : negative
@@ -391,7 +392,8 @@ function WalletPage() {
                       a list when it fits on one. */}
                   <div className="mt-1 flex flex-col text-sm text-muted-foreground sm:block">
                     <span>
-                      {w.bank_name} &middot; {w.account_number}
+                      {payoutLabels(w.account_type).kind} &middot; {w.bank_name}{" "}
+                      &middot; {w.account_number}
                     </span>
                     <span className="hidden sm:inline"> &middot; </span>
                     <span>
@@ -502,7 +504,10 @@ function WalletPage() {
             ? [
                 { label: "Jumlah", value: <b>{rupiah(proof.amount)}</b> },
                 { label: "Biaya admin", value: rupiah(proof.admin_fee) },
-                { label: "Rekening", value: `${proof.bank_name} · ${proof.account_number}` },
+                {
+                  label: payoutLabels(proof.account_type).kind,
+                  value: `${proof.bank_name} · ${proof.account_number}`,
+                },
                 { label: "Atas nama", value: proof.account_holder },
               ]
             : []

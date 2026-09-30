@@ -2,35 +2,35 @@
 
 namespace App\Http\Requests\Wallet;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Models\Organization;
+use App\Support\PayoutChannels;
 
-class UpdateBankAccountRequest extends FormRequest
+class UpdateBankAccountRequest extends PayoutDestinationRequest
 {
-    public function authorize(): bool
+    protected function presence(): string
     {
-        return true;
+        return 'sometimes';
     }
 
     /**
-     * @return array<string, mixed>
+     * A partial update need not resend `account_type`, so the kind falls back to
+     * the stored row's. Without this an e-wallet edited by phone number alone
+     * would be validated as a rekening — digits-only passes, so the row would
+     * save with no error and the phone rule would simply never have run.
      */
-    public function rules(): array
+    protected function isEwallet(): bool
     {
-        return [
-            'bank_name' => ['sometimes', 'string', 'max:100'],
-            'bank_code' => ['nullable', 'string', 'max:20'],
-            'account_number' => ['sometimes', 'string', 'max:50', 'regex:/^[0-9]+$/'],
-            'account_holder' => ['sometimes', 'string', 'max:150'],
-        ];
-    }
+        if ($this->has('account_type')) {
+            return parent::isEwallet();
+        }
 
-    /**
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'account_number.regex' => 'Nomor rekening hanya boleh berisi angka.',
-        ];
+        /** @var Organization|null $org */
+        $org = $this->attributes->get('organization');
+        $id = $this->route('bankAccount');
+
+        return (bool) $org?->bankAccounts()
+            ->whereKey($id)
+            ->where('account_type', PayoutChannels::TYPE_EWALLET)
+            ->exists();
     }
 }

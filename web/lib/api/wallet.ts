@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  PayoutAccountType,
   ApiEnvelope,
   BankAccount,
   Paginated,
@@ -9,6 +10,8 @@ import type {
 } from "@/types/api";
 
 export interface BankAccountInput {
+  account_type: PayoutAccountType;
+  /** The bank's name, or — for an e-wallet — the provider *key* (gopay, dana, …). */
   bank_name: string;
   bank_code?: string | null;
   account_number: string;

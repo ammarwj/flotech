@@ -96,7 +96,7 @@ class WithdrawalTest extends TestCase
         $this->actingAs($user, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/withdrawals", ['amount' => 200000])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Tambahkan rekening bank terlebih dahulu.');
+            ->assertJsonPath('message', 'Tambahkan rekening bank atau e-wallet terlebih dahulu.');
     }
 
     public function test_withdrawal_below_the_minimum_is_rejected(): void

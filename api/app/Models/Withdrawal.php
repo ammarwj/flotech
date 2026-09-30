@@ -21,6 +21,7 @@ class Withdrawal extends Model
         'organization_id',
         'wallet_id',
         'bank_account_id',
+        'account_type',
         'reference',
         'amount',
         'admin_fee',

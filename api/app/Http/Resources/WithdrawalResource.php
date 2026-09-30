@@ -25,6 +25,7 @@ class WithdrawalResource extends JsonResource
             'admin_fee' => (float) $this->admin_fee,
             'total_debit' => (float) $this->total_debit,
             'status' => $this->status,
+            'account_type' => $this->account_type,
             'bank_name' => $this->bank_name,
             'bank_code' => $this->bank_code,
             'account_number' => $this->account_number,

@@ -6,6 +6,7 @@ import { Building2, Check, Clock, Copy, TriangleAlert, Upload } from "lucide-rea
 import { uploadImage } from "@/lib/api/events";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
+import { payoutLabels } from "@/lib/payout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { PublicBankAccount } from "@/types/api";
@@ -21,7 +22,7 @@ type Payee = "organizer" | "platform";
 const COPY: Record<Payee, Record<string, string>> = {
   organizer: {
     title: "Transfer manual",
-    body: "Transfer tepat sejumlah di bawah ke rekening penyelenggara, lalu unggah bukti transfernya. Penyelenggara akan memverifikasi secara manual.",
+    body: "Transfer tepat sejumlah di bawah ke tujuan pembayaran penyelenggara, lalu unggah bukti transfernya. Penyelenggara akan memverifikasi secara manual.",
     awaitingTitle: "Bukti terkirim, menunggu verifikasi",
     awaitingBody:
       "Penyelenggara akan memeriksa buktimu. Halaman ini diperbarui otomatis begitu pembayaranmu diterima.",
@@ -82,6 +83,10 @@ export function ManualTransferPanel({
   }
 
   if (!bankAccount) return null;
+
+  // The destination's own words: a buyer sent to GoPay looking for a "nomor
+  // rekening" is looking for a field their app does not have.
+  const words = payoutLabels(bankAccount.account_type);
 
   const copy = async () => {
     await navigator.clipboard.writeText(bankAccount.account_number);
@@ -144,17 +149,17 @@ export function ManualTransferPanel({
 
       <div className="mt-4 grid gap-2 rounded-lg border border-border bg-[var(--surface)] p-4 text-sm">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Bank</span>
+          <span className="text-muted-foreground">{words.kind}</span>
           <span className="font-medium">{bankAccount.bank_name}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Nomor rekening</span>
+          <span className="text-muted-foreground">{words.number}</span>
           <span className="flex items-center gap-2">
             <code className="font-mono font-semibold">{bankAccount.account_number}</code>
             <button
               type="button"
               onClick={copy}
-              aria-label="Salin nomor rekening"
+              aria-label={`Salin ${words.number.toLowerCase()}`}
               className="text-muted-foreground transition-colors hover:text-foreground"
             >
               {copied ? (

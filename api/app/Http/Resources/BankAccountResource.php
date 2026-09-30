@@ -23,6 +23,7 @@ class BankAccountResource extends JsonResource
         return [
             'id' => $this->id,
             'organization_id' => $this->organization_id,
+            'account_type' => $this->account_type,
             'bank_name' => $this->bank_name,
             'bank_code' => $this->bank_code,
             'account_number' => $isSuperAdmin ? $this->account_number : $this->maskedNumber(),

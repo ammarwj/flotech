@@ -1214,7 +1214,12 @@ export interface Team extends ManualPaymentFields {
 export type PaymentMethod = "gateway" | "manual";
 
 /** Where a buyer must transfer for a manual payment. */
+/** Bank account or e-wallet — see `lib/payout.ts` for how the shared fields read. */
+export type PayoutAccountType = "bank" | "ewallet";
+
 export interface PublicBankAccount {
+  /** Absent on older payloads; treat a missing one as "bank". */
+  account_type?: PayoutAccountType;
   bank_name: string;
   bank_code: string | null;
   account_number: string;
@@ -1529,6 +1534,8 @@ export interface Paginated<T> {
 export interface BankAccount {
   id: string;
   organization_id: string;
+  account_type: PayoutAccountType;
+  /** The bank ("BCA") or the e-wallet provider's label ("GoPay"). */
   bank_name: string;
   bank_code: string | null;
   /** Masked for the organizer; full digits for the super admin who transfers. */
@@ -1551,6 +1558,7 @@ export interface Withdrawal {
   /** amount + admin_fee — what left the wallet. */
   total_debit: number;
   status: WithdrawalStatus;
+  account_type: PayoutAccountType;
   bank_name: string;
   bank_code: string | null;
   account_number: string;

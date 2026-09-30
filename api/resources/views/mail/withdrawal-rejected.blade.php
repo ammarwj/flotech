@@ -13,7 +13,7 @@ Dananya **sudah dikembalikan ke saldo tersedia** — tidak ada rupiah yang hilan
 | | |
 |:--- |:--- |
 | **Jumlah** | Rp {{ number_format((float) $withdrawal->amount, 0, ',', '.') }} |
-| **Rekening tujuan** | {{ $withdrawal->bank_name }} · {{ $withdrawal->account_number }} |
+| **{{ $withdrawal->account_type === 'ewallet' ? 'E-wallet tujuan' : 'Rekening tujuan' }}** | {{ $withdrawal->bank_name }} · {{ $withdrawal->account_number }} |
 | **Atas nama** | {{ $withdrawal->account_holder }} |
 @endcomponent
 

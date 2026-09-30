@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/admin-wallet";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { payoutLabels } from "@/lib/payout";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -152,7 +153,9 @@ export default function AdminWithdrawalsPage() {
                 <p className="mt-1 text-sm font-medium">{w.organization_name ?? "—"}</p>
 
                 <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                  <span>{w.bank_name}</span>
+                  <span>
+                    {payoutLabels(w.account_type).kind} {w.bank_name}
+                  </span>
                   <span>&middot;</span>
                   <button
                     onClick={() => copy(w.account_number)}
