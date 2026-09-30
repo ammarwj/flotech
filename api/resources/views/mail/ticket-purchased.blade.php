@@ -19,8 +19,16 @@ Halo **{{ $order->buyer_name }}**, tiketmu untuk **{{ $event->name }}** sudah ak
         'Harga tiket' => $rp($order->total_price),
     ];
 
+    // Per ticket, not per order: three tickets carry three fees, so the value
+    // spells the arithmetic out rather than leaving the buyer to divide a total
+    // they have no rate to check against. It goes in the *value* cell, not the
+    // label — the labels are what test_mail_renders_every_row_inside_one_table
+    // matches on to prove each row is still a table cell.
     if ((float) $order->service_fee > 0) {
-        $rows['Biaya layanan'] = $rp($order->service_fee);
+        $units = max(1, (int) $order->quantity);
+        $rows['Biaya layanan'] = $units > 1
+            ? $rp($order->service_fee).' ('.$rp((float) $order->service_fee / $units).' × '.$units.' tiket)'
+            : $rp($order->service_fee);
     }
 
     // Rows settled before gateway_tax existed report 0 and keep the single

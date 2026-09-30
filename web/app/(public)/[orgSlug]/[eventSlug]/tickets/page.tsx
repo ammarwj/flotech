@@ -58,13 +58,14 @@ export default function BuyTicketsPage() {
   const total = (selectedCat?.price ?? 0) * quantity;
   const requiresChannel = Boolean(eventQuery.data?.requires_payment_channel) && total > 0;
 
-  // Same query key ChannelPicker uses internally, so react-query dedupes the
-  // fetch — this just reads the cache to know the fee-inclusive total once a
+  // Same query key ChannelPicker uses internally — quantity included, because
+  // the platform's service fee is per ticket — so react-query dedupes the
+  // fetch; this just reads the cache to know the fee-inclusive total once a
   // channel is picked. `total` alone is the ticket price only and omits the
-  // platform's flat service fee, so it understated what the buyer pays.
+  // platform's service fee, so it understated what the buyer pays.
   const channelsQuery = useQuery({
-    queryKey: ["payment-channels", total, "participant"],
-    queryFn: () => getPaymentChannels(total, "participant"),
+    queryKey: ["payment-channels", total, "participant", quantity],
+    queryFn: () => getPaymentChannels(total, "participant", quantity),
     enabled: requiresChannel,
   });
   const selectedBreakdown = channelsQuery.data?.find((c) => c.channel === channel) ?? null;
@@ -271,6 +272,8 @@ export default function BuyTicketsPage() {
                 <ChannelPicker
                   amount={total}
                   audience="participant"
+                  units={quantity}
+                  unitLabel="tiket"
                   value={channel}
                   onChange={setChannel}
                 />

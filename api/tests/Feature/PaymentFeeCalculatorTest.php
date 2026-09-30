@@ -42,6 +42,76 @@ class PaymentFeeCalculatorTest extends TestCase
         $this->assertEqualsWithDelta(100_777.0, $breakdown['total'], 0.0001);
     }
 
+    /**
+     * The platform margin is per unit bought, the gateway's is per transaction —
+     * compared on the same channel and the same price so nothing but the unit
+     * count can explain the difference. Asserting the three-ticket number alone
+     * would still pass if the gateway fee were being multiplied too.
+     */
+    public function test_service_fee_multiplies_per_unit_while_gateway_fee_does_not(): void
+    {
+        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::flush();
+
+        $calculator = app(PaymentFeeCalculator::class);
+
+        $one = $calculator->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT, 1);
+        $three = $calculator->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT, 3);
+
+        $this->assertEqualsWithDelta(2000.0, $one['service_fee'], 0.0001);
+        $this->assertEqualsWithDelta(6000.0, $three['service_fee'], 0.0001);
+
+        // The bank charges once per Midtrans call no matter how many seats are
+        // in the basket — this is the half that must NOT scale.
+        $this->assertEqualsWithDelta($one['gateway_fee'], $three['gateway_fee'], 0.0001);
+
+        // The rate and the multiplier travel with the total so the UI can spell
+        // out the arithmetic instead of dividing it back apart.
+        $this->assertEqualsWithDelta(2000.0, $three['service_fee_unit'], 0.0001);
+        $this->assertSame(3, $three['units']);
+        $this->assertEqualsWithDelta(
+            $three['service_fee_unit'] * $three['units'],
+            $three['service_fee'],
+            0.0001,
+        );
+    }
+
+    /**
+     * Every flow except ticket purchase buys exactly one thing, so an omitted
+     * unit count must bill exactly one fee — a default that quietly multiplied
+     * would overcharge registrations and plan orders.
+     */
+    public function test_omitted_and_invalid_unit_counts_bill_exactly_one_fee(): void
+    {
+        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::flush();
+
+        $calculator = app(PaymentFeeCalculator::class);
+
+        $default = $calculator->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT);
+        $zero = $calculator->forChannel('va', 100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT, 0);
+
+        $this->assertEqualsWithDelta(2000.0, $default['service_fee'], 0.0001);
+        $this->assertSame(1, $default['units']);
+        // A 0 basket is not a free fee: it is a caller bug, clamped to one.
+        $this->assertEqualsWithDelta($default['service_fee'], $zero['service_fee'], 0.0001);
+    }
+
+    public function test_all_channels_applies_the_unit_count_to_every_channel(): void
+    {
+        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::flush();
+
+        $channels = app(PaymentFeeCalculator::class)
+            ->allChannels(100_000, PaymentFeeCalculator::AUDIENCE_PARTICIPANT, 4);
+
+        $this->assertNotEmpty($channels);
+        foreach ($channels as $channel) {
+            $this->assertSame(4, $channel['units'], $channel['channel']);
+            $this->assertEqualsWithDelta(8000.0, $channel['service_fee'], 0.0001, $channel['channel']);
+        }
+    }
+
     public function test_service_fee_is_a_flat_amount_regardless_of_price(): void
     {
         PlatformSettings::put(['service_fee_amount' => 1500], null);
@@ -54,7 +124,9 @@ class PaymentFeeCalculatorTest extends TestCase
         $this->assertEqualsWithDelta(1500.0, $small['service_fee'], 0.0001);
         $this->assertEqualsWithDelta(105_940.0, $small['total'], 0.0001);
 
-        // Same flat fee no matter the price — that's the point of it being flat.
+        // Same flat fee no matter the price — that's the point of it being
+        // flat. It scales with the *quantity*, not the amount: both calls here
+        // buy one unit.
         $this->assertEqualsWithDelta(1500.0, $large['service_fee'], 0.0001);
     }
 

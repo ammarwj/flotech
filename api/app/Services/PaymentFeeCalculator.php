@@ -31,16 +31,16 @@ class PaymentFeeCalculator
      * payment flow has to state which side of the platform it sits on rather
      * than quietly inheriting the other side's rate.
      *
-     * @return array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, total: float, midtrans_payments: array<int, string>}
+     * @return array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, service_fee_unit: float, units: int, total: float, midtrans_payments: array<int, string>}
      */
-    public function forChannel(string $channel, float $amount, string $audience): array
+    public function forChannel(string $channel, float $amount, string $audience, int $units = 1): array
     {
         $config = config("payment_fees.channels.{$channel}");
         if (! $config || ! $config['enabled']) {
             throw new PaymentException('Metode pembayaran tidak tersedia.');
         }
 
-        return $this->compute($channel, $config, $amount, $audience);
+        return $this->compute($channel, $config, $amount, $audience, $units);
     }
 
     /**
@@ -48,22 +48,22 @@ class PaymentFeeCalculator
      *
      * `$audience` picks the platform margin — see forChannel().
      *
-     * @return list<array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, total: float, midtrans_payments: array<int, string>}>
+     * @return list<array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, service_fee_unit: float, units: int, total: float, midtrans_payments: array<int, string>}>
      */
-    public function allChannels(float $amount, string $audience): array
+    public function allChannels(float $amount, string $audience, int $units = 1): array
     {
         return collect(config('payment_fees.channels'))
             ->filter(fn (array $config) => $config['enabled'])
-            ->map(fn (array $config, string $key) => $this->compute($key, $config, $amount, $audience))
+            ->map(fn (array $config, string $key) => $this->compute($key, $config, $amount, $audience, $units))
             ->values()
             ->all();
     }
 
     /**
      * @param  array{label: string, fee_type: string, fee_value: float, tax_percent: float, midtrans_payments: array<int, string>}  $config
-     * @return array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, total: float, midtrans_payments: array<int, string>}
+     * @return array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, service_fee_unit: float, units: int, total: float, midtrans_payments: array<int, string>}
      */
-    private function compute(string $key, array $config, float $amount, string $audience): array
+    private function compute(string $key, array $config, float $amount, string $audience, int $units = 1): array
     {
         // Per-channel switches (/admin/settings) sit on top of the per-channel
         // config — keyed by $key so VA and e-wallet toggle independently.
@@ -76,7 +76,16 @@ class PaymentFeeCalculator
         );
         $tax = PlatformSettings::get("ppn_enabled_{$key}") ? $base * $config['tax_percent'] / 100 : 0.0;
         $gatewayFee = $base + $tax;
-        $serviceFee = PlatformSettings::get($audience);
+
+        // The platform margin is charged per unit being bought, not per
+        // checkout: three tickets in one basket cost three service fees. The
+        // gateway's own fee is genuinely per transaction (one Midtrans call,
+        // one bank charge) and is deliberately NOT multiplied here — the two
+        // fees answer different questions and multiplying both would bill the
+        // bank's flat charge several times over.
+        $units = max(1, $units);
+        $serviceFeeUnit = (float) PlatformSettings::get($audience);
+        $serviceFee = $serviceFeeUnit * $units;
 
         return [
             'channel' => $key,
@@ -90,6 +99,11 @@ class PaymentFeeCalculator
             'gateway_tax' => $tax,
             'tax_percent' => (float) $config['tax_percent'],
             'service_fee' => $serviceFee,
+            // The per-unit rate and the multiplier travel alongside the total
+            // so the picker can spell out "Rp 2.000 x 3 tiket" instead of
+            // dividing them back apart and disagreeing on the rounding.
+            'service_fee_unit' => $serviceFeeUnit,
+            'units' => $units,
             'total' => $amount + $gatewayFee + $serviceFee,
             'midtrans_payments' => $config['midtrans_payments'],
         ];

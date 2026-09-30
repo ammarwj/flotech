@@ -113,10 +113,15 @@ class PublicTicketController extends Controller
                 );
             }
 
+            // Quantity is passed as the unit count: the platform's service fee
+            // is charged per ticket, so a basket of three carries three of
+            // them. The gateway's own fee stays per transaction — see
+            // PaymentFeeCalculator.
             $breakdown = $this->fees->forChannel(
                 $data['payment_channel'],
                 $total,
                 PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
+                (int) $data['quantity'],
             );
             $channel = $breakdown['channel'];
             $gatewayFee = $breakdown['gateway_fee'];

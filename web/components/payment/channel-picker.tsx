@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { getPaymentChannels, type FeeAudience } from "@/lib/api/payments";
 import { rupiah } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { InfoHint } from "@/components/ui/info-hint";
 
 /**
  * Fee-inclusive channel picker shown before Snap token creation. `amount` is
@@ -15,21 +16,31 @@ import { cn } from "@/lib/utils";
  * `audience` says which side of the platform this payment sits on, because the
  * platform's own margin is set separately for each; it is required rather than
  * defaulted so a new checkout flow cannot quietly bill the other side's rate.
+ *
+ * `units` is the basket size. The platform's service fee is charged per unit
+ * bought, so a cart of three tickets carries three of them — it is part of the
+ * query key because a quantity change moves the total the buyer is quoted.
+ * Every flow except ticket purchase buys exactly one thing, hence the default.
  */
 export function ChannelPicker({
   amount,
   audience,
+  units = 1,
+  unitLabel = "tiket",
   value,
   onChange,
 }: {
   amount: number;
   audience: FeeAudience;
+  units?: number;
+  /** Counted noun for the per-unit line; only rendered when `units > 1`. */
+  unitLabel?: string;
   value: string | null;
   onChange: (channel: string) => void;
 }) {
   const query = useQuery({
-    queryKey: ["payment-channels", amount, audience],
-    queryFn: () => getPaymentChannels(amount, audience),
+    queryKey: ["payment-channels", amount, audience, units],
+    queryFn: () => getPaymentChannels(amount, audience, units),
     enabled: amount > 0,
   });
 
@@ -80,8 +91,28 @@ export function ChannelPicker({
           </div>
           {selected.service_fee > 0 && (
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">Biaya layanan</dt>
-              <dd className="tabular-nums">{rupiah(selected.service_fee)}</dd>
+              <dt className="inline-flex items-center gap-1 text-muted-foreground">
+                Biaya layanan
+                {/* The one fee a buyer has no way to guess the shape of: it is
+                    ours, not the bank's, and it multiplies with the quantity
+                    while the gateway's charge next to it does not. */}
+                <InfoHint label="Penjelasan biaya layanan">
+                  <ServiceFeeExplainer
+                    unit={selected.service_fee_unit}
+                    units={selected.units}
+                    unitLabel={unitLabel}
+                    audience={audience}
+                  />
+                </InfoHint>
+              </dt>
+              <dd className="text-right">
+                {selected.units > 1 && (
+                  <span className="block text-xs text-muted-foreground tabular-nums">
+                    {rupiah(selected.service_fee_unit)} &times; {selected.units} {unitLabel}
+                  </span>
+                )}
+                <span className="tabular-nums">{rupiah(selected.service_fee)}</span>
+              </dd>
             </div>
           )}
           {/* A channel's gateway fee can be toggled off in /admin/settings —
@@ -112,5 +143,47 @@ export function ChannelPicker({
         keduanya termasuk riba.
       </p>
     </div>
+  );
+}
+
+/**
+ * Shared copy for the two places a buyer meets the platform fee: the picker
+ * above and the order page they land on afterwards. Written once because the
+ * per-unit claim is the whole point — two copies would drift and one of them
+ * would keep calling it per transaction.
+ */
+export function ServiceFeeExplainer({
+  unit,
+  units,
+  unitLabel = "tiket",
+  audience = "participant",
+}: {
+  /** Per-unit rate. Pass 0 when only the total is known (a stored order). */
+  unit?: number;
+  units?: number;
+  unitLabel?: string;
+  audience?: FeeAudience;
+}) {
+  const per = audience === "organizer" ? "per pembelian paket" : `per ${unitLabel}`;
+
+  return (
+    <>
+      <span className="block">
+        Biaya layanan dihitung <strong className="font-semibold text-foreground">{per}</strong>
+        {unit && unit > 0 ? (
+          <>
+            {" "}
+            sebesar {rupiah(unit)}
+            {units && units > 1 ? `, jadi ${units} ${unitLabel} = ${rupiah(unit * units)}` : ""}
+          </>
+        ) : null}
+        , bukan per transaksi.
+      </span>
+      <span className="mt-2 block">
+        Biaya ini masuk ke flo-event dan dipakai untuk pengembangan sistem, biaya server,
+        keamanan data, serta dukungan pengguna — terpisah dari biaya bank/gateway yang
+        tertera di baris lain.
+      </span>
+    </>
   );
 }

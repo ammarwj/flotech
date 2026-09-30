@@ -12,6 +12,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QrCode } from "@/components/event/qr-code";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { ServiceFeeExplainer } from "@/components/payment/channel-picker";
+import { InfoHint } from "@/components/ui/info-hint";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
@@ -130,8 +132,29 @@ export default function ETicketPage() {
           <Row label="Kategori" value={order.category?.name ?? "-"} />
           <Row label="Jumlah" value={`${order.quantity} tiket`} />
           {order.total_price > 0 && <Row label="Harga tiket" value={rupiah(order.total_price)} />}
-          {order.gateway_fee + order.service_fee > 0 && (
-            <Row label="Biaya layanan" value={rupiah(order.gateway_fee + order.service_fee)} />
+          {/* Split, not lumped: the platform fee is ours and scales with the
+              quantity, the gateway's is the bank's and does not. One combined
+              "Biaya layanan" row made the per-ticket rate impossible to check
+              against what the picker quoted. */}
+          {order.service_fee > 0 && (
+            <Row
+              label="Biaya layanan"
+              value={rupiah(order.service_fee)}
+              hint={
+                <ServiceFeeExplainer
+                  unit={order.quantity > 0 ? order.service_fee / order.quantity : order.service_fee}
+                  units={order.quantity}
+                />
+              }
+              note={
+                order.quantity > 1
+                  ? `${rupiah(order.service_fee / order.quantity)} × ${order.quantity} tiket`
+                  : undefined
+              }
+            />
+          )}
+          {order.gateway_fee > 0 && (
+            <Row label="Biaya pembayaran" value={rupiah(order.gateway_fee)} />
           )}
           <Row
             label="Total"
@@ -200,11 +223,29 @@ export default function ETicketPage() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  hint,
+  note,
+}: {
+  label: string;
+  value: string;
+  /** Explanation panel behind an info marker beside the label. */
+  hint?: React.ReactNode;
+  /** Sub-line under the value, e.g. the per-unit arithmetic. */
+  note?: string;
+}) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className="flex items-start justify-between gap-4">
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        {label}
+        {hint && <InfoHint label={`Penjelasan ${label.toLowerCase()}`}>{hint}</InfoHint>}
+      </span>
+      <span className="text-right">
+        {note && <span className="block text-xs text-muted-foreground tabular-nums">{note}</span>}
+        <span className="font-medium">{value}</span>
+      </span>
     </div>
   );
 }

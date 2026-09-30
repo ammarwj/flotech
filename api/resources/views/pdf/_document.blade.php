@@ -105,8 +105,21 @@
             </tr>
         @endif
         @if ($order->service_fee > 0)
+            {{-- Per unit, not per transaction: a ticket order of three carries
+                 three fees, so the document spells the arithmetic out rather
+                 than printing a total the buyer cannot reconcile. Only
+                 ticket_orders have a quantity; the other two documents are
+                 single-unit and fall through to the plain line. --}}
+            @php($feeUnits = (int) ($order->quantity ?? 1))
             <tr>
-                <td colspan="2">Biaya layanan</td>
+                <td colspan="2">
+                    Biaya layanan
+                    @if ($feeUnits > 1)
+                        <div class="muted">
+                            {{ $money($order->service_fee / $feeUnits) }} &times; {{ $feeUnits }} tiket
+                        </div>
+                    @endif
+                </td>
                 <td class="right">{{ $money($order->service_fee) }}</td>
             </tr>
         @endif

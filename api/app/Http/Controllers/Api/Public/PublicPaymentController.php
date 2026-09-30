@@ -14,8 +14,10 @@ use Illuminate\Http\Request;
  *
  * `audience` is the one thing that does differ: the platform's own margin is
  * set separately for participants paying an organizer and organizers paying
- * us. It is a preview of public pricing either way — neither rate is a secret,
- * and the number that gets charged is recomputed server-side at order time.
+ * us. `units` is the second: that margin is per unit bought, so a basket of
+ * three tickets carries three of them. It is a preview of public pricing
+ * either way — neither rate is a secret, and the number that gets charged is
+ * recomputed server-side at order time.
  */
 class PublicPaymentController extends Controller
 {
@@ -24,12 +26,21 @@ class PublicPaymentController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0'],
             'audience' => ['nullable', 'in:participant,organizer'],
+            // How many things are being bought. The platform margin is charged
+            // per unit, so the preview has to be told the basket size or it
+            // quotes a total the order path will not honour. Defaults to 1:
+            // every flow except ticket purchase buys exactly one thing.
+            'units' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
         $audience = ($data['audience'] ?? 'participant') === 'organizer'
             ? PaymentFeeCalculator::AUDIENCE_ORGANIZER
             : PaymentFeeCalculator::AUDIENCE_PARTICIPANT;
 
-        return ApiResponse::success($calculator->allChannels((float) $data['amount'], $audience));
+        return ApiResponse::success($calculator->allChannels(
+            (float) $data['amount'],
+            $audience,
+            (int) ($data['units'] ?? 1),
+        ));
     }
 }

@@ -73,15 +73,18 @@ class PlatformSettings
         // one can be zero while the other is not. PaymentFeeCalculator takes
         // the key as an argument rather than picking it, so a call site that
         // forgets to say which one it is cannot silently inherit the other.
-        // Flat rupiah, not a percentage — a fixed cost per transaction rather
-        // than one that scales with the ticket/plan price.
+        // Flat rupiah, not a percentage — a fixed cost per unit rather than one
+        // that scales with the ticket/plan price. Per *unit*, not per checkout:
+        // PaymentFeeCalculator multiplies it by the basket size, so three
+        // tickets in one order carry three fees while the gateway's own
+        // per-transaction charge is counted once.
         'service_fee_amount' => [
             'config' => 'payments.service_fee_amount',
             'type' => 'money',
             'min' => 0,
             'max' => 100_000,
-            'label' => 'Fee platform ke peserta (Rp)',
-            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Nominal tetap per transaksi, ditambahkan ke tagihan peserta di atas fee gateway.',
+            'label' => 'Fee platform ke peserta (Rp / tiket)',
+            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Nominal tetap per tiket (beli 3 tiket = 3x fee), ditambahkan ke tagihan peserta di atas fee gateway. Biaya pendaftaran tim dihitung satu unit.',
         ],
         'plan_service_fee_amount' => [
             'config' => 'payments.plan_service_fee_amount',
