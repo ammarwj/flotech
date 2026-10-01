@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { EventQrDialog } from "@/components/event/event-qr-dialog";
 
 export default function EventsPage() {
   const { sportLabel, sportColor } = useCatalog();
@@ -126,19 +127,31 @@ export default function EventsPage() {
                   </div>
                 </div>
               </div>
-              {/* Eight nowrap buttons are ~800px; the card has ~288px on a
+              {/* Nine nowrap buttons are ~800px; the card has ~288px on a
                   phone, and the widest single button ("Pendaftaran") is ~120px,
                   so every one of them still fits on a line of its own. Full
                   width first so they wrap inside the card instead of stretching
                   it past the viewport. */}
               <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                {/* Both gated on the same condition as each other, because
+                    they lead to the same page: a draft 404s publicly, and a QR
+                    printed on a banner for a page that is not there yet is
+                    worse than no QR — it is checked once, works, and the
+                    organizer has no reason to check it again. */}
                 {ev.status !== "draft" && org?.slug && (
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/${org.slug}/${ev.slug}`} target="_blank" rel="noopener noreferrer">
-                      <Eye className="h-4 w-4" />
-                      Lihat
-                    </a>
-                  </Button>
+                  <>
+                    <Button asChild size="sm" variant="outline">
+                      <a href={`/${org.slug}/${ev.slug}`} target="_blank" rel="noopener noreferrer">
+                        <Eye className="h-4 w-4" />
+                        Lihat
+                      </a>
+                    </Button>
+                    <EventQrDialog
+                      path={`/${org.slug}/${ev.slug}`}
+                      eventName={ev.name}
+                      fileStem={ev.slug}
+                    />
+                  </>
                 )}
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/organizer/events/${ev.id}/registrations`}>

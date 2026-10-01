@@ -7,6 +7,7 @@ use App\Models\MatchLineup;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamOfficial;
+use App\Support\SquadRules;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
 use Illuminate\Support\Carbon;
@@ -45,6 +46,28 @@ class MatchReportService
      * is a sheet for a clipboard.
      */
     protected const MAX_STAT_COLUMNS = 4;
+
+    /**
+     * How many ruled lines each of the five filing tables gets at minimum.
+     *
+     * They exist to be written on. A table sized to exactly the rows the
+     * database can answer would print a single line for a match with one goal,
+     * and the panitia who needs to add the minute beside it — or the goal the
+     * stat editor never received — would have nowhere to put it. Padding is the
+     * table; the filled rows are a head start.
+     */
+    protected const MIN_SUBSTITUTION_ROWS = 7;
+
+    protected const MIN_LIST_ROWS = 6;
+
+    /**
+     * Rows one player may contribute to one list.
+     *
+     * player_match_stats is an aggregate, so a typo of 400 goals would print
+     * four hundred rows and the sheet would stop being one page. The cap is
+     * deliberately well above anything a real match produces.
+     */
+    protected const MAX_ROWS_PER_PLAYER = 10;
 
     public function __construct(protected PdfImageService $images) {}
 
@@ -139,6 +162,11 @@ class MatchReportService
             // sheet would carry an abbreviation whose expansion exists only in
             // the app the reader is holding a printout instead of.
             'positionLegend' => $this->positionLegend($match, $sport, $shorts),
+            // The five filing tables of the paper form. Each is a pair of
+            // half-width columns, home on the left and away on the right, so
+            // they are built as one structure rather than ten.
+            'substitutions' => $this->substitutions($match, $sport),
+            'incidents' => $this->incidents($match, $sport, $stats),
             // Printed as a note rather than used as a gate. A finished result is
             // a result; whether the panitia has ratified it is a second fact,
             // and a sheet that stayed silent about it would let an unconfirmed
@@ -388,6 +416,119 @@ class MatchReportService
                 ->map(fn ($set) => ($set['home'] ?? '-').'-'.($set['away'] ?? '-'))
                 ->implode(', '),
         ])->all();
+    }
+
+    /**
+     * The substitution table: ruled and empty, always.
+     *
+     * Nothing anywhere records who came off for whom, or when. `match_lineups`
+     * names who was *available* on the bench, which is a different fact — a
+     * named substitute may never come on, and printing the bench here would
+     * claim seven substitutions were made in a match that saw none. The same
+     * rule the rest of this sheet runs on applies: a cell the database cannot
+     * answer is ruled and blank, not invented.
+     *
+     * Gated on whether the sport names a squad at all — the same gate the team
+     * sheet uses, deliberately, so a badminton tie never prints a bench table it
+     * has no bench for. The row count is a plain minimum because there is
+     * nothing to count.
+     *
+     * @return int  how many ruled rows to print, 0 to print no table
+     */
+    protected function substitutions(GameMatch $match, ?string $sport): int
+    {
+        $rules = $match->category
+            ? SquadRules::forCategory($match->category)
+            : SquadRules::forSport($sport);
+
+        if (! $rules->enabled) {
+            return 0;
+        }
+
+        // A bench of three gets three lines plus the minimum's worth of room;
+        // the sheet is a form, so the larger of the two wins.
+        return max(self::MIN_SUBSTITUTION_ROWS, $rules->maxSubstitutes);
+    }
+
+    /**
+     * The three incident lists — yellows, reds, scorers — each as a pair of
+     * half-width columns.
+     *
+     * **The roles are read, never the stat keys.** `yellow_cards` is a name an
+     * admin owns and may rename from /admin/sports, and a sport calling its card
+     * `kartu_kuning` would silently print an empty table forever. This is the
+     * same rule DisciplineService runs on, for the same reason, and it is why a
+     * sport with no card columns at all (volleyball, basketball) prints no card
+     * tables rather than two empty ones.
+     *
+     * A stat row is an aggregate — `goals: 2` is two goals by one player — so it
+     * expands into that many lines, each with its own blank minute box, which is
+     * what a scorer who scored twice needs. The expansion is capped: the value
+     * is an integer an organizer typed, and a slipped zero would push the sheet
+     * off its page.
+     *
+     * Every table still prints its minimum of ruled rows even when the database
+     * has nothing for it: a match with no cards still needs somewhere to write
+     * the one the stat editor never received.
+     *
+     * @param  Collection<string, Collection<string, int>>  $stats
+     * @return array<int, array{title: string, home: array<int, array<string, string>>, away: array<int, array<string, string>>, rows: int}>
+     */
+    protected function incidents(GameMatch $match, ?string $sport, Collection $stats): array
+    {
+        $lists = [];
+
+        foreach ([['yellow', 'Daftar Kartu Kuning'], ['red', 'Daftar Kartu Merah'], ['goal', 'Daftar Pencetak Gol']] as [$role, $title]) {
+            $key = Catalog::statKeyForRole($sport, $role);
+
+            if (! $key) {
+                continue;
+            }
+
+            $home = $this->incidentRows($match->homeTeam, $key, $stats);
+            $away = $this->incidentRows($match->awayTeam, $key, $stats);
+
+            $lists[] = [
+                'title' => $title,
+                'home' => $home,
+                'away' => $away,
+                'rows' => max(self::MIN_LIST_ROWS, count($home), count($away)),
+            ];
+        }
+
+        return $lists;
+    }
+
+    /**
+     * One side of one incident list: a line per occurrence, in shirt order.
+     *
+     * Read off the team's own roster rather than off the stat rows, so a stat
+     * belonging to a player who has since been removed from the squad cannot
+     * put a nameless line on the sheet.
+     *
+     * @param  Collection<string, Collection<string, int>>  $stats
+     * @return array<int, array{name: string, number: string}>
+     */
+    protected function incidentRows(?Team $team, string $key, Collection $stats): array
+    {
+        if (! $team) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($team->players as $player) {
+            $count = (int) ($stats[$player->id][$key] ?? 0);
+
+            for ($i = 0; $i < min($count, self::MAX_ROWS_PER_PLAYER); $i++) {
+                $rows[] = [
+                    'name' => $player->full_name,
+                    'number' => (string) ($player->jersey_number ?: ''),
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /** "Grup A" / "Babak 3" / null — whichever the fixture actually carries. */

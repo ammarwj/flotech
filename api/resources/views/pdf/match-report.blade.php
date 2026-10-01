@@ -96,6 +96,40 @@
         .sheet td.name { text-align: center; }
         .legend { font-size: 6pt; color: #555; padding: 2pt 1pt 0; }
 
+        /* ---- Filing tables ----
+           The five tables of the paper form: substitutions, then yellows, reds
+           and scorers, each split home | away down the middle. The split is two
+           cells of one row — dompdf has no flexbox — and the heading band is a
+           full-width row above them so the title centres over both halves.
+
+           They are ruled and mostly empty on purpose, like cuaca above: the
+           minute a goal or a card happened has no column anywhere in the
+           schema, so the name and the shirt print and the minute is left for
+           the panitia. A table sized to exactly what the database holds would
+           leave nowhere to write the goal the stat editor never received. */
+        .filing { margin-top: 7pt; }
+        /* The five tables are their own sheet, and that is a decision rather
+           than a side effect. dompdf honours neither `page-break-inside` nor
+           `orphans`, so a band left to flow lands at the foot of page one with
+           its table on page two — which is what happened. More to the point the
+           two halves are used at different times: page one is read before and
+           during the match, these are filled in as it runs and signed at the
+           end, so they belong on the sheet that stays on the table. */
+        .filing.first { page-break-before: always; margin-top: 0; }
+        .filing td, .filing th { border: 0.75pt solid #000; padding: 1.8pt 3pt; font-size: 7.5pt; text-align: center; }
+        .filing th.band { background: #cfe0f3; font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; }
+        .filing th.side { background: #f1f1f1; font-size: 7pt; text-align: left; font-weight: bold; }
+        .filing th.col { background: #fff; font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.03em; }
+        /* A written-in cell, as opposed to one this file filled. Same meaning as
+           .blank above; a shorter rule because these tables carry many rows. */
+        .filing td.open { height: 11pt; }
+        .filing td.npg { width: 26pt; }
+        .filing td.min { width: 34pt; }
+        .filing td.name { text-align: left; }
+        /* The divider between the home half and the away half. Heavier than the
+           cell rules so the eye reads two tables, not one wide one. */
+        .filing .split { border-left: 1.5pt solid #000; }
+
         /* ---- Signatures ----
            The whole sheet is meant to come off the printer as one page: a
            clipboard holds one, and a signature block that spilled onto a second
@@ -105,6 +139,11 @@
         .signatures td { width: 25%; padding: 0 5pt; text-align: center; vertical-align: bottom; }
         .sign-line { border-bottom: 0.75pt solid #000; height: 24pt; }
         .sign-label { font-size: 7.5pt; padding-top: 3pt; }
+        /* A team signs twice — manager and captain — under one heading naming
+           the team, the way the paper form has it. The heading is the row above;
+           these are the two lines beneath it. */
+        .sign-who { font-size: 7.5pt; font-weight: bold; text-transform: uppercase; padding-bottom: 3pt; }
+        .sign-pair td { width: 50%; padding: 0 3pt; }
         .foot { margin-top: 6pt; font-size: 7pt; color: #444; }
     </style>
 </head>
@@ -333,6 +372,79 @@
         <div class="legend">POS: {{ implode(' · ', $positionLegend) }} · S: menit pergantian</div>
     @endif
 
+    {{-- Data pergantian pemain. Entirely ruled and empty: nothing records who
+         came off for whom, or in which minute. The bench on the squad sheet
+         above names who was *available*, which is a different fact — printing
+         it here would claim substitutions that were never made. --}}
+    @if ($substitutions)
+        <table class="filing first">
+            <thead>
+                <tr><th class="band" colspan="6">Data Pergantian Pemain</th></tr>
+                <tr>
+                    <th class="side" colspan="3">{{ $home['team'] }}</th>
+                    <th class="side split" colspan="3">{{ $away['team'] }}</th>
+                </tr>
+                <tr>
+                    <th class="col" style="width: 26pt;">NPG</th>
+                    <th class="col">Masuk / Keluar</th>
+                    <th class="col" style="width: 34pt;">Menit</th>
+                    <th class="col split" style="width: 26pt;">NPG</th>
+                    <th class="col">Masuk / Keluar</th>
+                    <th class="col" style="width: 34pt;">Menit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for ($i = 0; $i < $substitutions; $i++)
+                    <tr>
+                        <td class="open npg"></td>
+                        <td class="open name"></td>
+                        <td class="open min"></td>
+                        <td class="open npg split"></td>
+                        <td class="open name"></td>
+                        <td class="open min"></td>
+                    </tr>
+                @endfor
+            </tbody>
+        </table>
+    @endif
+
+    {{-- Kartu kuning, kartu merah, pencetak gol. The names and shirts come from
+         the stats already recorded; the minute has no column anywhere, so it is
+         the one cell left ruled. Every table keeps printing its ruled rows past
+         the end of what the database holds — a card the stat editor never
+         received needs somewhere to go. --}}
+    @foreach ($incidents as $list)
+        <table class="filing @if (! $substitutions && $loop->first) first @endif">
+            <thead>
+                <tr><th class="band" colspan="6">{{ $list['title'] }}</th></tr>
+                <tr>
+                    <th class="side" colspan="3">{{ $home['team'] }}</th>
+                    <th class="side split" colspan="3">{{ $away['team'] }}</th>
+                </tr>
+                <tr>
+                    <th class="col">Nama Pemain</th>
+                    <th class="col" style="width: 26pt;">NPG</th>
+                    <th class="col" style="width: 34pt;">Menit</th>
+                    <th class="col split">Nama Pemain</th>
+                    <th class="col" style="width: 26pt;">NPG</th>
+                    <th class="col" style="width: 34pt;">Menit</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for ($i = 0; $i < $list['rows']; $i++)
+                    <tr>
+                        <td class="name {{ isset($list['home'][$i]) ? '' : 'open' }}">{{ $list['home'][$i]['name'] ?? '' }}</td>
+                        <td class="npg {{ isset($list['home'][$i]) ? '' : 'open' }}">{{ $list['home'][$i]['number'] ?? '' }}</td>
+                        <td class="open min"></td>
+                        <td class="name split {{ isset($list['away'][$i]) ? '' : 'open' }}">{{ $list['away'][$i]['name'] ?? '' }}</td>
+                        <td class="npg {{ isset($list['away'][$i]) ? '' : 'open' }}">{{ $list['away'][$i]['number'] ?? '' }}</td>
+                        <td class="open min"></td>
+                    </tr>
+                @endfor
+            </tbody>
+        </table>
+    @endforeach
+
     {{-- Catatan wasit: no column anywhere, and the one thing a referee always
          wants room for. --}}
     <div class="section">
@@ -345,17 +457,36 @@
         </table>
     </div>
 
-    {{-- Four signatures. The name lines are blank for the same reason the team
-         sheet's are: whoever signs at the table is not necessarily the person
-         the system has on file, and printing a name over the line would make
-         this document claim something it does not know. --}}
+    {{-- Signatures. Two officials, then each team signing twice — manager and
+         captain — under a heading naming the team, as the paper form has it.
+         Every name line is blank for the same reason the team sheet's are:
+         whoever signs at the table is not necessarily the person the system has
+         on file, and printing a name over the line would make this document
+         claim something it does not know. --}}
     <table class="signatures">
         <tbody>
             <tr>
-                @foreach (['Wasit', 'Pengawas pertandingan', 'Manajer '.$home['team'], 'Manajer '.$away['team']] as $who)
+                @foreach (['Pengawas pertandingan', 'Wasit'] as $who)
                     <td>
                         <div class="sign-line"></div>
                         <div class="sign-label">{{ $who }}</div>
+                    </td>
+                @endforeach
+                @foreach ([$home['team'], $away['team']] as $team)
+                    <td>
+                        <div class="sign-who">{{ $team }}</div>
+                        <table class="sign-pair">
+                            <tbody>
+                                <tr>
+                                    @foreach (['Manajer', 'Kapten'] as $who)
+                                        <td>
+                                            <div class="sign-line"></div>
+                                            <div class="sign-label">{{ $who }}</div>
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            </tbody>
+                        </table>
                     </td>
                 @endforeach
             </tr>

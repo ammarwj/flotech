@@ -416,6 +416,172 @@ class MatchReportTest extends TestCase
         $this->assertStringNotContainsString('K = ', $collided);
     }
 
+    /**
+     * The three filing tables under the squads: cards and scorers, each split
+     * home | away, filled from what was recorded and ruled blank below that.
+     *
+     * Every assertion is a pair, because this table's whole risk is a column
+     * that prints the same list twice: a name on the home side has to be
+     * asserted *absent* from the away side of the very same table, and an
+     * aggregate of 2 has to be compared against an aggregate of 1 — a template
+     * that printed one line per row would be green on the second alone.
+     */
+    public function test_the_card_and_scorer_lists_fill_from_the_stats_and_keep_the_two_sides_apart(): void
+    {
+        Notification::fake();
+
+        $scene = $this->scene();
+        $this->finish($scene, home: 2, away: 1);
+
+        $homeStriker = collect($scene['home']['team']['players'])->firstWhere('jersey_number', '9');
+        $homeKeeper = collect($scene['home']['team']['players'])->firstWhere('jersey_number', '1');
+        $awayStriker = collect($scene['away']['team']['players'])->firstWhere('jersey_number', '9');
+
+        $this->actingAs($scene['owner'], 'api')
+            ->putJson("/api/v1/organizations/{$scene['org']->id}/matches/{$scene['match']}/stats", [
+                'stats' => [
+                    ['player_id' => $homeStriker['id'], 'stat_key' => 'goals', 'value' => 2],
+                    // Two yellows in one match: one row, two incidents. The list
+                    // has to expand it; the squad table above still prints "2".
+                    ['player_id' => $homeStriker['id'], 'stat_key' => 'yellow_cards', 'value' => 2],
+                    ['player_id' => $homeKeeper['id'], 'stat_key' => 'yellow_cards', 'value' => 1],
+                    ['player_id' => $awayStriker['id'], 'stat_key' => 'red_cards', 'value' => 1],
+                ],
+            ])
+            ->assertOk();
+
+        $html = app(MatchReportService::class)->html(GameMatch::findOrFail($scene['match']));
+
+        foreach (['Daftar Kartu Kuning', 'Daftar Kartu Merah', 'Daftar Pencetak Gol'] as $title) {
+            $this->assertStringContainsString($title, $html);
+        }
+
+        $yellow = $this->tableFor($html, 'Daftar Kartu Kuning');
+        $red = $this->tableFor($html, 'Daftar Kartu Merah');
+        $scorers = $this->tableFor($html, 'Daftar Pencetak Gol');
+
+        // The aggregate is expanded, and the comparison is what proves it: the
+        // striker's row of 2 becomes two lines while the keeper's 1 becomes one.
+        $this->assertSame(2, substr_count($yellow, 'Home Striker'));
+        $this->assertSame(1, substr_count($yellow, 'Home Keeper'));
+
+        // A card belongs to the side that got it. Asserting its presence alone
+        // passes on a table that prints the same list in both columns.
+        $this->assertStringContainsString('Away Striker', $red);
+        $this->assertStringNotContainsString('Home Striker', $red);
+        $this->assertStringNotContainsString('Away Striker', $yellow);
+
+        // And the lists do not share a source: the scorer is in the goal table
+        // and nowhere near the cards, the card-only keeper the other way round.
+        $this->assertStringContainsString('Home Striker', $scorers);
+        $this->assertStringNotContainsString('Home Keeper', $scorers);
+    }
+
+    /**
+     * The substitution table is always blank, and that is the point: nothing in
+     * the schema records who came off for whom. Compared against the card
+     * tables on the same sheet, which do fill — otherwise an assertion that it
+     * is empty would also hold on a template that printed nothing at all.
+     */
+    public function test_the_substitution_table_is_ruled_and_blank_while_the_lists_beside_it_fill(): void
+    {
+        Notification::fake();
+
+        $scene = $this->scene();
+        $this->finish($scene, home: 1, away: 0);
+
+        $striker = collect($scene['home']['team']['players'])->firstWhere('jersey_number', '9');
+
+        // Named on the sheet *and* on the scoresheet: the bench is known, so a
+        // template that guessed substitutions from the lineup would have a name
+        // to print here.
+        $this->actingAs($scene['home']['manager'], 'api')
+            ->putJson("/api/v1/my-teams/{$scene['home']['team']['id']}/matches/{$scene['match']}/lineup", [
+                'players' => [['player_id' => $striker['id'], 'role' => 'substitute']],
+                'officials' => [],
+            ])
+            ->assertOk();
+
+        $this->actingAs($scene['owner'], 'api')
+            ->putJson("/api/v1/organizations/{$scene['org']->id}/matches/{$scene['match']}/stats", [
+                'stats' => [['player_id' => $striker['id'], 'stat_key' => 'goals', 'value' => 1]],
+            ])
+            ->assertOk();
+
+        $html = app(MatchReportService::class)->html(GameMatch::findOrFail($scene['match']));
+
+        $this->assertStringContainsString('Data Pergantian Pemain', $html);
+        $this->assertStringNotContainsString('Home Striker', $this->tableFor($html, 'Data Pergantian Pemain'));
+        // The pair: the same player, on the same sheet, does reach the list the
+        // database can actually answer.
+        $this->assertStringContainsString('Home Striker', $this->tableFor($html, 'Daftar Pencetak Gol'));
+    }
+
+    /**
+     * A sport with no card columns gets no card tables — the lists are keyed off
+     * `sport_stats.role`, so they follow the catalogue rather than a hardcoded
+     * key. Compared against football on the same assertion, because "no card
+     * table" is also true of a template that never had one.
+     */
+    public function test_a_sport_without_cards_prints_no_card_tables(): void
+    {
+        Notification::fake();
+
+        $scene = $this->scene();
+        $this->finish($scene);
+
+        $football = app(MatchReportService::class)->html(GameMatch::findOrFail($scene['match']));
+        $this->assertStringContainsString('Daftar Kartu Kuning', $football);
+
+        // Drop the card columns the way an admin would at /admin/sports.
+        $sport = Sport::where('slug', $scene['event']->sport_type)->firstOrFail();
+        $sport->stats()->whereIn('role', ['yellow', 'red'])->delete();
+        Catalog::flush();
+
+        $cardless = app(MatchReportService::class)->html(GameMatch::findOrFail($scene['match'])->fresh());
+
+        $this->assertStringNotContainsString('Daftar Kartu Kuning', $cardless);
+        $this->assertStringNotContainsString('Daftar Kartu Merah', $cardless);
+        // Scoring survives: the gate is per role, not a blanket switch.
+        $this->assertStringContainsString('Daftar Pencetak Gol', $cardless);
+    }
+
+    /**
+     * Four signatures, and the two team blocks say whose they are. The paper
+     * form has the manager and the captain of each side signing under their own
+     * team's name; "Manajer" twice with no heading is the same page and a
+     * useless one.
+     */
+    public function test_each_team_signs_under_its_own_name(): void
+    {
+        Notification::fake();
+
+        $scene = $this->scene();
+        $this->finish($scene);
+
+        $html = app(MatchReportService::class)->html(GameMatch::findOrFail($scene['match']));
+        $block = substr($html, (int) strpos($html, 'Pengawas pertandingan'));
+
+        $this->assertStringContainsString('Wasit', $block);
+        // One pair per side, named — the count is what distinguishes this from
+        // a single unlabelled pair of lines.
+        $this->assertSame(2, substr_count($block, 'Manajer'));
+        $this->assertSame(2, substr_count($block, 'Kapten'));
+        $this->assertStringContainsString('Home FC', $block);
+        $this->assertStringContainsString('Away FC', $block);
+    }
+
+    /** The filing table a band titles — from its heading to its `</table>`. */
+    private function tableFor(string $html, string $title): string
+    {
+        $at = strpos($html, $title);
+        $this->assertNotFalse($at, "Tabel {$title} tidak ada di lembar.");
+
+        $close = strpos($html, '</table>', $at);
+
+        return substr($html, $at, $close - $at);
+    }
+
     /** The table row a name sits in — everything between its `<tr>` and `</tr>`. */
     private function rowFor(string $html, string $name): string
     {
