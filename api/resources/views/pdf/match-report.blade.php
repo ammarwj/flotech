@@ -66,7 +66,14 @@
            reads: one row per period, no column headings needed because the side
            a number is on says whose it is. */
         .score td { vertical-align: middle; padding: 2pt 3pt; }
-        .score .team { font-size: 12pt; font-weight: bold; }
+        /* The two name cells are pinned to a width — without one, dompdf grows
+           them to fit the longest name and drags the big numbers and the period
+           grid off the middle of the page, so the scoreline stops being
+           symmetric exactly when one side has a long name. 547pt of content
+           (A4 portrait less the 24pt @page margins) minus 34 + 184 + 34 for the
+           fixed middle, halved. The names wrap instead, and break mid-word for
+           the single-token names no amount of wrapping would fit. */
+        .score .team { width: 146pt; font-size: 12pt; font-weight: bold; word-wrap: break-word; }
         .score .team.right { text-align: right; }
         .score .num { font-size: 26pt; font-weight: bold; width: 34pt; text-align: center; }
         .periods { width: 184pt; }
