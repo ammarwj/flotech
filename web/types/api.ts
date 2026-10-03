@@ -727,6 +727,12 @@ export interface Standing {
   team: MatchTeamRef;
   /** Group the team was drawn into (hybrid); null for a single table. */
   group_name: string | null;
+  /**
+   * The slot the team drew inside its group. Published because the server ranks
+   * the lot on it, so a table nobody has played yet reads A1→A4 instead of an
+   * order no one chose; null for a category that never ran a pot draw.
+   */
+  seed_pot: number | null;
   played: number;
   won: number;
   drawn: number;

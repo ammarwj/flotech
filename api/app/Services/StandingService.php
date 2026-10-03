@@ -236,13 +236,16 @@ class StandingService
         $teams = $category->teams()
             ->where('status', 'approved')
             ->orderBy('name')
-            ->get(['id', 'name', 'logo_url', 'group_name']);
+            ->get(['id', 'name', 'logo_url', 'group_name', 'seed_pot']);
 
         $rows = [];
         foreach ($teams as $team) {
             $rows[$team->id] = [
                 'team' => ['id' => $team->id, 'name' => $team->name, 'logo_url' => $team->logo_url],
                 'group_name' => $team->group_name,
+                // The slot this team drew into its group, read by the
+                // `drawing_lots` comparator only — see lotOf().
+                'seed_pot' => $team->seed_pot === null ? null : (int) $team->seed_pot,
                 'played' => 0,
                 'won' => 0,
                 'drawn' => 0,
@@ -812,8 +815,9 @@ class StandingService
             // one has been played and confirmed, which is what leaves the pair
             // on the lot below in the meantime.
             'playoff' => ($deciders[$idB][$idA] ?? 0) <=> ($deciders[$idA][$idB] ?? 0),
-            // A stable "draw": random-looking but the same every time it's shown.
-            'drawing_lots' => $this->lot($category, $idA) <=> $this->lot($category, $idB),
+            // A stable "draw": the slot the team actually drew where one was
+            // drawn, and a random-looking but repeatable hash where none was.
+            'drawing_lots' => $this->lotOf($a, $category) <=> $this->lotOf($b, $category),
             default => 0,
         };
     }
@@ -916,6 +920,32 @@ class StandingService
         }
 
         return $out;
+    }
+
+    /**
+     * What the lot ranks a row on.
+     *
+     * `seed_pot` *is* the draw: it is the slot the organizer drew the team into
+     * its group, and "Undian" is the label this comparator already carries. A
+     * table where nothing has been played yet is entirely the lot's doing, so
+     * reading the real draw is the difference between A1→A4 and an order no
+     * one chose. Teams drawn into a slot rank ahead of teams without one, in
+     * slot order; the rest fall back to the hash, which keeps a category that
+     * never ran a pot draw ordered exactly as before.
+     *
+     * Returned as a tuple so one comparison covers all three tiers — a second
+     * comparator for the pot would have to be kept in step with this one, and
+     * the catalog row it would need reorders the default tiebreakers of every
+     * context that already works.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{int, int, int}
+     */
+    protected function lotOf(array $row, EventCategory $category): array
+    {
+        $pot = $row['seed_pot'] ?? null;
+
+        return [$pot === null ? 1 : 0, (int) $pot, $this->lot($category, $row['team']['id'])];
     }
 
     /** Deterministic lot for a team within a category. */

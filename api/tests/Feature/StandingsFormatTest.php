@@ -477,4 +477,127 @@ class StandingsFormatTest extends TestCase
         $byGoals = $rank();
         $this->assertLessThan($byGoals['Alfa'], $byGoals['Bravo']);
     }
+
+    /**
+     * Before a ball is kicked every row is level on every criterion, so the
+     * whole table is the lot's doing — and `seed_pot` is the lot: the slot the
+     * organizer drew the team into. A table that ignores it reads in an order
+     * nobody chose, which is what the organizer saw on a 24-team group draw.
+     *
+     * Asserted by *comparing* a drawn category with an undrawn one built from
+     * the same names: "the drawn group reads A1→A4" proves nothing on its own
+     * if the fallback quietly sorts alphabetically too, and that fallback is
+     * what keeps every category that never ran a pot draw where it was.
+     */
+    public function test_an_unplayed_table_reads_in_the_order_the_teams_were_drawn(): void
+    {
+        $org = $this->org(User::factory()->create());
+
+        // Slots deliberately against the alphabet, so neither the stored order
+        // nor the name can explain the result.
+        $slots = ['Delta' => 1, 'Bravo' => 2, 'Alfa' => 3, 'Charlie' => 4];
+
+        $category = function (bool $drawn) use ($org, $slots) {
+            $event = $org->events()->create([
+                'plan_id' => $this->planId(),
+                'name' => 'Piala Undian',
+                'slug' => 'undian-'.uniqid(),
+                'sport_type' => 'football',
+                'status' => 'ongoing',
+                'start_date' => '2026-08-01',
+                'end_date' => '2026-08-30',
+            ]);
+
+            $model = $event->categories()->create([
+                'name' => 'Umum',
+                'slug' => 'umum',
+                'participant_type' => 'team',
+                'tournament_format' => 'league',
+                'registration_fee' => 0,
+                'sort_order' => 0,
+            ]);
+
+            foreach ($slots as $name => $slot) {
+                $event->teams()->create([
+                    'category_id' => $model->id,
+                    'name' => $name,
+                    'status' => 'approved',
+                    'seed_pot' => $drawn ? $slot : null,
+                ]);
+            }
+
+            return $model;
+        };
+
+        $order = fn ($model) => collect(app(StandingService::class)->compute($model))
+            ->pluck('team.name')
+            ->all();
+
+        // Nothing played: the draw is the only thing that can order this.
+        $this->assertSame(['Delta', 'Bravo', 'Alfa', 'Charlie'], $order($category(true)));
+
+        // Same names, no draw: the stable hash, which is not the slot order and
+        // is not the alphabet either — only that it is unchanged matters here.
+        $this->assertNotSame(['Delta', 'Bravo', 'Alfa', 'Charlie'], $order($category(false)));
+    }
+
+    /**
+     * The lot is the *last* resort, so reading the draw must not let it reach
+     * past a criterion that has an answer. Compared against the test above: a
+     * drawn table where results exist is ranked by the results.
+     */
+    public function test_the_draw_never_outranks_a_result(): void
+    {
+        $org = $this->org(User::factory()->create());
+
+        $event = $org->events()->create([
+            'plan_id' => $this->planId(),
+            'name' => 'Piala Undian',
+            'slug' => 'undian-'.uniqid(),
+            'sport_type' => 'football',
+            'status' => 'ongoing',
+            'start_date' => '2026-08-01',
+            'end_date' => '2026-08-30',
+        ]);
+
+        $category = $event->categories()->create([
+            'name' => 'Umum',
+            'slug' => 'umum',
+            'participant_type' => 'team',
+            'tournament_format' => 'league',
+            'registration_fee' => 0,
+            'sort_order' => 0,
+        ]);
+
+        // Alfa drew the last slot, Bravo the first.
+        $teams = [];
+        foreach (['Alfa' => 4, 'Bravo' => 1] as $name => $slot) {
+            $teams[$name] = $event->teams()->create([
+                'category_id' => $category->id,
+                'name' => $name,
+                'status' => 'approved',
+                'seed_pot' => $slot,
+            ])->id;
+        }
+
+        $event->matches()->create([
+            'category_id' => $category->id,
+            'round' => 1,
+            'leg' => 1,
+            'order' => 1,
+            'home_team_id' => $teams['Alfa'],
+            'away_team_id' => $teams['Bravo'],
+            'home_score' => 2,
+            'away_score' => 0,
+            'status' => 'finished',
+            'confirmed_at' => now(),
+        ]);
+
+        $ranks = collect(app(StandingService::class)->compute($category->fresh()))
+            ->pluck('rank', 'team.name')
+            ->all();
+
+        // Alfa won, so Alfa is top despite holding the worse slot.
+        $this->assertLessThan($ranks['Bravo'], $ranks['Alfa']);
+    }
 }
