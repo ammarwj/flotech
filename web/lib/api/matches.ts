@@ -14,6 +14,7 @@ import type {
   PublicMatchStats,
   PublicScoreboard,
   Standing,
+  SwissState,
   Team,
 } from "@/types/api";
 
@@ -249,6 +250,56 @@ export async function shuffleBracket(
 ): Promise<Match[]> {
   const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
     `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/bracket/shuffle`
+  );
+  return data.data;
+}
+
+/**
+ * Whether another Swiss round can be built. The server's verdict, not a second
+ * copy of the rules behind it — see swissReadiness() in lib/swiss.ts.
+ */
+export async function getSwissState(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<SwissState> {
+  const { data } = await apiClient.get<ApiEnvelope<SwissState>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/swiss`
+  );
+  return data.data;
+}
+
+/**
+ * Build the next Swiss round, paired from the standings as they stand now.
+ *
+ * `round` is the round the client believed it was owed. Sending it is what stops
+ * a double-clicked button from building two rounds off one table, the second
+ * paired from results nobody has played.
+ */
+export async function generateSwissRound(
+  orgId: string,
+  eventId: string,
+  categoryId: string,
+  options?: ScheduleOptions & { round?: number }
+): Promise<Match[]> {
+  const { data } = await apiClient.post<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/swiss/rounds`,
+    options ?? {}
+  );
+  return data.data;
+}
+
+/**
+ * Drop the last Swiss round — the last one only, and only while it is free of
+ * results. Its bye row goes with it; that row is worth a win and three points.
+ */
+export async function deleteLastSwissRound(
+  orgId: string,
+  eventId: string,
+  categoryId: string
+): Promise<Match[]> {
+  const { data } = await apiClient.delete<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/events/${eventId}/categories/${categoryId}/swiss/rounds/last`
   );
   return data.data;
 }

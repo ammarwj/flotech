@@ -6,6 +6,7 @@ use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
+use App\Support\SwissPairing;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -67,6 +68,199 @@ class ScheduleService
         }
 
         return $created;
+    }
+
+    /**
+     * Create one Swiss round from a standings order — and nothing else.
+     *
+     * Unlike every other generator here this one **does not delete**: a Swiss
+     * category is built a round at a time, and the rounds behind it have already
+     * been played. Round 1 is generated from a shuffled entry list, round N from
+     * the table as it stands when the organizer asks for it.
+     *
+     * The pairing rules themselves live in {@see SwissPairing}, with no database
+     * in sight; everything this method adds is the history those rules read —
+     * who has met whom, who has already rested, who has been nominally at home.
+     *
+     * An odd field produces a bye row: one side, **null scores**, finished and
+     * confirmed. Not a fabricated 1-0 — goals, sets and points each have a
+     * tiebreaker hanging off them, so an invented scoreline would rank the
+     * resting entrant above teams that actually won something. StandingService
+     * reads the row for what it is and awards the win on its own.
+     *
+     * @param  array<int, string>  $order  standings order, best first
+     * @return array{created: int, rematches: int, bye: string|null}
+     */
+    public function generateSwissRound(EventCategory $category, int $round, array $order): array
+    {
+        $order = array_values(array_filter($order));
+
+        if (count($order) < 2) {
+            return ['created' => 0, 'rematches' => 0, 'bye' => null];
+        }
+
+        $byeCounts = $this->swissByeCounts($category);
+        $homeCounts = $this->swissHomeCounts($category);
+
+        $bye = SwissPairing::byeTeam($order, $byeCounts);
+
+        if ($bye !== null) {
+            $order = array_values(array_diff($order, [$bye]));
+        }
+
+        $paired = SwissPairing::pair($order, $this->swissMeetings($category));
+
+        $start = $this->swissRoundStart($category, $round);
+        $created = 0;
+        $slot = 0;
+
+        foreach ($paired['pairs'] as [$better, $worse]) {
+            [$home, $away] = SwissPairing::sides($better, $worse, $homeCounts);
+
+            GameMatch::create([
+                'event_id' => $category->event_id,
+                'category_id' => $category->id,
+                'stage' => 'swiss',
+                'round' => $round,
+                'leg' => 1,
+                'order' => $slot++,
+                'home_team_id' => $home,
+                'away_team_id' => $away,
+                'scheduled_at' => $start->copy()->utc(),
+                'status' => 'scheduled',
+            ]);
+            $created++;
+
+            // Within the round too, so a round that hands the same entrant two
+            // fixtures cannot hand it two home ones.
+            $homeCounts[$home] = ($homeCounts[$home] ?? 0) + 1;
+        }
+
+        if ($bye !== null) {
+            GameMatch::create([
+                'event_id' => $category->event_id,
+                'category_id' => $category->id,
+                'stage' => 'swiss',
+                'round' => $round,
+                'leg' => 1,
+                'order' => $slot,
+                'home_team_id' => $bye,
+                'away_team_id' => null,
+                'home_score' => null,
+                'away_score' => null,
+                'scheduled_at' => $start->copy()->utc(),
+                // Nothing is going to be played, so nothing is pending: a bye
+                // left 'scheduled' would hold the next round's gate shut forever.
+                'status' => 'finished',
+                'confirmed_at' => now(),
+            ]);
+            $created++;
+        }
+
+        return ['created' => $created, 'rematches' => $paired['rematches'], 'bye' => $bye];
+    }
+
+    /**
+     * Every meeting this category has already staged, as SwissPairing keys.
+     *
+     * Stage null counts alongside 'swiss' on purpose: a fixture the organizer
+     * added by hand carries no stage, and two entrants who have played are two
+     * entrants who have played regardless of which button produced the row.
+     * Cancelled ties are the one exception — that meeting did not happen, and
+     * refusing to re-pair over it would shrink the field for no reason.
+     *
+     * @return array<string, bool>
+     */
+    protected function swissMeetings(EventCategory $category): array
+    {
+        $rows = $category->matches()
+            ->where(fn ($q) => $q->whereNull('stage')->orWhere('stage', 'swiss'))
+            ->where('status', '!=', 'cancelled')
+            ->whereNotNull('home_team_id')
+            ->whereNotNull('away_team_id')
+            ->get(['home_team_id', 'away_team_id']);
+
+        $met = [];
+        foreach ($rows as $row) {
+            $met[SwissPairing::pairKey($row->home_team_id, $row->away_team_id)] = true;
+        }
+
+        return $met;
+    }
+
+    /**
+     * Byes already handed out: entrant id => count.
+     *
+     * A bye row is the one fixture with a home side and no away side, which is
+     * also how StandingService finds them — one shape, two readers.
+     *
+     * @return array<string, int>
+     */
+    protected function swissByeCounts(EventCategory $category): array
+    {
+        return $category->matches()
+            ->where('stage', 'swiss')
+            ->whereNotNull('home_team_id')
+            ->whereNull('away_team_id')
+            ->where('status', '!=', 'cancelled')
+            ->get(['home_team_id'])
+            ->groupBy('home_team_id')
+            ->map->count()
+            ->all();
+    }
+
+    /**
+     * Home fixtures so far, so the next round can even them out.
+     *
+     * @return array<string, int>
+     */
+    protected function swissHomeCounts(EventCategory $category): array
+    {
+        return $category->matches()
+            ->where(fn ($q) => $q->whereNull('stage')->orWhere('stage', 'swiss'))
+            ->whereNotNull('home_team_id')
+            ->whereNotNull('away_team_id')
+            ->get(['home_team_id'])
+            ->groupBy('home_team_id')
+            ->map->count()
+            ->all();
+    }
+
+    /**
+     * Placeholder day for a new Swiss round: the day after the last day any
+     * earlier round is scheduled on, in the venue's zone.
+     *
+     * Same reasoning as knockoutStart(), and the same reason it is a calendar
+     * question asked in the venue's zone rather than UTC: a 21:00 WIB kickoff is
+     * stored as 14:00Z the same day while a 07:00 WIB one is 00:00Z, so reading
+     * them in UTC puts two fixtures from the same evening on different days.
+     *
+     * Only *earlier* rounds count. Reading the maximum over the whole category
+     * would push each regenerated round one day further every time, and reading
+     * the event start date would stack every round on day one.
+     *
+     * And the range the organizer typed wins: a one-day event has nowhere for
+     * "the day after" to land, so rounds share the day rather than being
+     * scheduled past the end date, where no reader of the schedule would look
+     * for them.
+     */
+    protected function swissRoundStart(EventCategory $category, int $round): Carbon
+    {
+        $tz = $category->timezone;
+
+        $last = $category->matches()
+            ->where('stage', 'swiss')
+            ->where('round', '<', $round)
+            ->max('scheduled_at');
+
+        if (! $last) {
+            return $this->categoryStart($category);
+        }
+
+        $next = Carbon::parse($last, 'UTC')->setTimezone($tz)->startOfDay()->addDay();
+        $end = $this->localDay($category->end_date, $tz);
+
+        return $end && $next->greaterThan($end) ? $end->copy() : $next;
     }
 
     /**
@@ -1123,16 +1317,26 @@ class ScheduleService
      * @param  string|null  $stage  limit to one stage of a hybrid category
      * @param  array<int, int>  $lockedOrders  first-round slots the organizer timed
      *                                         themselves, which keep their kickoff and venue
+     * @param  int|null  $round  limit to one round as well as one stage
+     *
+     * A Swiss category is the reason $round exists. Its rounds are generated one
+     * at a time, days apart, and `stage = 'swiss'` alone would hand every round
+     * already played back to the allocator — re-timing finished fixtures onto new
+     * days and courts, with no error anywhere to say it happened.
      */
     public function applySchedule(
         EventCategory $category,
         array $opts = [],
         ?string $stage = null,
         array $lockedOrders = [],
+        ?int $round = null,
     ): void {
         $query = $category->matches();
         if ($stage !== null) {
             $query->where('stage', $stage);
+        }
+        if ($round !== null) {
+            $query->where('round', $round);
         }
 
         // Group stage before knockout; single-stage categories have a null stage.
@@ -1152,10 +1356,13 @@ class ScheduleService
         // fixture would then show up at 22:00.
         $tz = $category->timezone;
 
-        $startDate = $this->localDay($opts['start_date'] ?? null, $tz)
-            ?? ($stage === 'knockout'
-                ? $this->knockoutStart($category)->startOfDay()
-                : $this->categoryStart($category));
+        $startDate = $this->localDay($opts['start_date'] ?? null, $tz) ?? match (true) {
+            $stage === 'knockout' => $this->knockoutStart($category)->startOfDay(),
+            // One Swiss round, placed after the rounds behind it rather than on
+            // the category's first day — which is where every round would land.
+            $stage === 'swiss' && $round !== null => $this->swissRoundStart($category, $round),
+            default => $this->categoryStart($category),
+        };
         $endDate = $this->localDay($category->end_date, $tz);
 
         $startMin = $this->minutesOfDay($opts['daily_start'] ?? '15:00');
@@ -1167,7 +1374,13 @@ class ScheduleService
         $courts = array_values(array_filter($opts['courts'] ?? [], fn ($c) => filled($c)));
         $venues = count($courts) > 0 ? count($courts) : max(1, (int) ($opts['venues'] ?? 1));
         $maxPerDay = isset($opts['max_per_day']) ? max(1, (int) $opts['max_per_day']) : null;
-        $spread = (bool) ($opts['spread'] ?? true);
+        // Spreading exists to lay a whole competition across an event's window.
+        // Asked for one round it does the opposite of what it is for: a round
+        // that needs two days would put the first fixture on the opening day and
+        // the last on the closing one, and the round after it — which starts the
+        // day after the last day already scheduled — would land past the end
+        // date. One round is one block of days.
+        $spread = $round === null && (bool) ($opts['spread'] ?? true);
 
         // Kickoff times within the daily window.
         $times = [];
@@ -1201,7 +1414,13 @@ class ScheduleService
         // 3-round group stage silently ran 4-6 Oct for an event that ends on
         // the 4th, and nothing on the page said why.
         $capacityDays = (int) ceil($matches->count() / $perDay);
-        $availableDays = $endDate ? ((int) $startDate->diffInDays($endDate)) + 1 : $idealDays;
+        // An end date behind the start date is no range at all — diffInDays()
+        // would answer 0 and cap the whole thing at a single day. That happens
+        // routinely for a Swiss round generated after the event's last day, and
+        // for a knockout stage whose group matches overran.
+        $availableDays = $endDate && $endDate->greaterThanOrEqualTo($startDate)
+            ? ((int) $startDate->diffInDays($endDate)) + 1
+            : $idealDays;
         $dayCount = max($capacityDays, min($idealDays, max(1, $availableDays)));
 
         $days = $this->scheduleDays($startDate, $endDate, $dayCount, $spread);

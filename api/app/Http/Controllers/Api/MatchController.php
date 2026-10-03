@@ -20,6 +20,7 @@ use App\Services\MatchStatService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
 use App\Services\StandingService;
+use App\Services\SwissService;
 use App\Support\ApiResponse;
 use App\Support\BracketSeeding;
 use App\Support\HybridConfig;
@@ -47,6 +48,7 @@ class MatchController extends Controller
         protected KnockoutPlanService $plans,
         protected DisciplineService $discipline,
         protected MatchStatService $statSheet,
+        protected SwissService $swiss,
     ) {}
 
     /**
@@ -107,6 +109,33 @@ class MatchController extends Controller
             if ($count === -1) {
                 return ApiResponse::error('Double elimination butuh jumlah tim kelipatan dua (4, 8, 16, …).', ['feature' => 'schedule_format'], 422);
             }
+        } elseif ($engine === 'swiss') {
+            // Swiss is built a round at a time, so "Buat Jadwal" means round 1
+            // and nothing else. Every other engine wipes and rebuilds here; this
+            // one refuses once anything has been played, because the rounds
+            // behind it are what the pairing of the next one was derived from.
+            //
+            // Keyed on *scores*, not status: a bye row is stored finished and
+            // confirmed, so a status check would let one bye lock the category
+            // out of its own first round forever.
+            $withResults = $categoryModel->matches()
+                ->where('stage', 'swiss')
+                ->where(fn ($q) => $q->whereNotNull('home_score')->orWhereNotNull('away_score')->orWhereNotNull('sets'))
+                ->count();
+
+            if ($withResults > 0) {
+                return ApiResponse::error(
+                    'Sudah ada hasil pertandingan Swiss — hapus ronde terakhir satu per satu, jangan buat ulang seluruh jadwal.',
+                    ['feature' => 'swiss_regenerate'],
+                    422,
+                );
+            }
+
+            $categoryModel->matches()->where('stage', 'swiss')->delete();
+
+            $result = $this->schedule->generateSwissRound($categoryModel, 1, $this->swiss->pairingOrder($categoryModel));
+            $count = $result['created'];
+            $swissRound = 1;
         } else {
             return ApiResponse::error('Pembuatan jadwal otomatis mendukung format Liga dan Knockout.', ['feature' => 'schedule_format'], 422);
         }
@@ -120,12 +149,174 @@ class MatchController extends Controller
         $options['courts'] = $categoryModel->event?->courts ?? [];
 
         // Assign concrete date/time (and venue lane) to each fixture.
-        $this->schedule->applySchedule($categoryModel, $options, null, $lockedOrders);
+        $this->schedule->applySchedule(
+            $categoryModel,
+            $options,
+            $engine === 'swiss' ? 'swiss' : null,
+            $lockedOrders,
+            $swissRound ?? null,
+        );
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($categoryModel)),
             "Jadwal dibuat: {$count} pertandingan",
             201,
+        );
+    }
+
+    /**
+     * Readiness of a Swiss category: how many rounds are planned, how many exist,
+     * and whether another one can be added.
+     *
+     * Read by the schedule page to label the progress line and to decide whether
+     * the "Tambah Ronde" button is live — the same payload the POST below gates
+     * on, so the button and the endpoint cannot disagree about what is pending.
+     */
+    public function swissState(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'swiss') {
+            return ApiResponse::error('Ronde Swiss hanya untuk format Swiss System.', null, 422);
+        }
+
+        return ApiResponse::success($this->swiss->state($categoryModel));
+    }
+
+    /**
+     * Add the next Swiss round, paired from the standings as they stand now.
+     *
+     * Deliberately not idempotent-by-accident: `round` is optional, but when it
+     * is sent it has to be the round this category is actually owed. A
+     * double-clicked button would otherwise generate two rounds off one table,
+     * the second of them paired from results that have not been played.
+     */
+    public function generateSwissRound(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'swiss') {
+            return ApiResponse::error('Ronde Swiss hanya untuk format Swiss System.', null, 422);
+        }
+
+        $options = $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'daily_start' => ['nullable', 'date_format:H:i'],
+            'daily_end' => ['nullable', 'date_format:H:i'],
+            'match_minutes' => ['nullable', 'integer', 'min:10', 'max:600'],
+            'break_minutes' => ['nullable', 'integer', 'min:0', 'max:240'],
+            'venues' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'max_per_day' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'round' => ['nullable', 'integer', 'min:1', 'max:64'],
+        ]);
+
+        if (! empty($options['daily_start']) && ! empty($options['daily_end'])
+            && $options['daily_end'] <= $options['daily_start']) {
+            return ApiResponse::error('Jam selesai harus setelah jam mulai.', [
+                'daily_end' => ['Jam selesai harus setelah jam mulai.'],
+            ], 422);
+        }
+
+        $state = $this->swiss->state($categoryModel);
+        $next = $state['next_round'];
+
+        if (isset($options['round']) && (int) $options['round'] !== $next) {
+            return ApiResponse::error(
+                "Ronde berikutnya adalah ronde {$next}.",
+                ['feature' => 'swiss_round_mismatch'],
+                422,
+            );
+        }
+
+        if (! $state['can_add_round']) {
+            $blocker = $this->swiss->blocker($categoryModel);
+
+            return ApiResponse::error($blocker['message'], $blocker['errors'], 422);
+        }
+
+        $result = $this->schedule->generateSwissRound(
+            $categoryModel,
+            $next,
+            $this->swiss->pairingOrder($categoryModel),
+        );
+
+        if ($result['created'] === 0) {
+            return ApiResponse::error('Butuh minimal 2 tim yang disetujui untuk membuat jadwal.', null, 422);
+        }
+
+        unset($options['round']);
+        $options['courts'] = $categoryModel->event?->courts ?? [];
+
+        $this->schedule->applySchedule($categoryModel, $options, 'swiss', [], $next);
+
+        // The bye and the repeats are said out loud rather than left to be found
+        // in the fixture list: both are decisions the organizer may want to
+        // overrule, and neither is visible from a count of matches.
+        $message = "Ronde {$next} dibuat: {$result['created']} pertandingan";
+
+        if ($result['bye'] !== null) {
+            $byeName = $categoryModel->teams()->whereKey($result['bye'])->value('name');
+            $message .= " (bye: {$byeName})";
+        }
+
+        if ($result['rematches'] > 0) {
+            $message .= " — {$result['rematches']} pasangan terpaksa diulang karena lawan baru sudah habis";
+        }
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($categoryModel)),
+            $message,
+            201,
+        );
+    }
+
+    /**
+     * Drop the last Swiss round.
+     *
+     * The last one only: an earlier round is what the rounds after it were
+     * paired from, so removing it would leave fixtures whose reason for existing
+     * is gone. The round number is derived here rather than taken from the
+     * request for the same reason.
+     *
+     * Its bye row goes with it — that row is worth a win and three points, and
+     * leaving it behind would keep an entrant paid for a round that no longer
+     * exists.
+     */
+    public function destroySwissRound(Request $request, string $organization, string $event, string $category): JsonResponse
+    {
+        $categoryModel = $this->category($request, $event, $category);
+
+        if ($categoryModel->engine() !== 'swiss') {
+            return ApiResponse::error('Ronde Swiss hanya untuk format Swiss System.', null, 422);
+        }
+
+        $last = (int) $categoryModel->matches()->where('stage', 'swiss')->max('round');
+
+        if ($last === 0) {
+            return ApiResponse::error('Belum ada ronde Swiss untuk dihapus.', null, 422);
+        }
+
+        // Scores again, not status: the bye row in this very round is finished
+        // and confirmed, and it must not be what blocks its own round's removal.
+        $withResults = $categoryModel->matches()
+            ->where('stage', 'swiss')
+            ->where('round', $last)
+            ->where(fn ($q) => $q->whereNotNull('home_score')->orWhereNotNull('away_score')->orWhereNotNull('sets'))
+            ->count();
+
+        if ($withResults > 0) {
+            return ApiResponse::error(
+                "Ronde {$last} sudah punya hasil — hapus dulu skornya kalau ronde ini memang salah.",
+                ['feature' => 'swiss_round_has_results'],
+                422,
+            );
+        }
+
+        $deleted = $categoryModel->matches()->where('stage', 'swiss')->where('round', $last)->delete();
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($categoryModel)),
+            "Ronde {$last} dihapus: {$deleted} pertandingan",
         );
     }
 

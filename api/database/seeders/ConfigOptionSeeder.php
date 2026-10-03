@@ -24,6 +24,14 @@ class ConfigOptionSeeder extends Seeder
                 'meta' => ['engine' => 'knockout_double']],
             ['group' => 'tournament_format', 'key' => 'hybrid', 'label' => 'Grup + Knockout (Hybrid)',
                 'meta' => ['engine' => 'hybrid']],
+            // Swiss gets buchholz first via meta.defaults rather than by its
+            // position in the tiebreaker list below — see the comment on that
+            // row for why the catalog order could not be used.
+            ['group' => 'tournament_format', 'key' => 'swiss', 'label' => 'Swiss System',
+                'meta' => ['engine' => 'swiss', 'defaults' => [
+                    'points' => ['win' => 3, 'draw' => 1, 'lose' => 0],
+                    'tiebreakers' => ['buchholz', 'head_to_head', 'goal_difference', 'goals_scored', 'drawing_lots'],
+                ]]],
 
             // ---- Tiebreakers (meta.comparator + meta.applies_to) ----
             //
@@ -71,6 +79,16 @@ class ConfigOptionSeeder extends Seeder
                 'meta' => ['comparator' => 'playoff', 'applies_to' => ['set', 'rubber']]],
             ['group' => 'tiebreaker', 'key' => 'drawing_lots', 'label' => 'Undian',
                 'meta' => ['comparator' => 'drawing_lots']],
+            // Strength of schedule, for Swiss. No `applies_to`: points exist in
+            // every standings context, so this one is computable everywhere.
+            //
+            // Seeded LAST on purpose. Catalog order *is* the default tiebreaker
+            // priority for a category that never configured one, so putting
+            // buchholz any earlier would silently re-rank every league and
+            // hybrid group already running. Swiss puts it first through its own
+            // `meta.defaults`, the same mechanism "Liga 2 Putaran" uses for legs.
+            ['group' => 'tiebreaker', 'key' => 'buchholz', 'label' => 'Buchholz (Poin Lawan)',
+                'meta' => ['comparator' => 'buchholz']],
 
             // ---- Group draw methods (meta.strategy) ----
             ['group' => 'draw_method', 'key' => 'random', 'label' => 'Undian Acak',

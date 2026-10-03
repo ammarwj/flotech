@@ -248,8 +248,22 @@ const POINTS: StandingColumn = { key: "points", short: "Poin", legend: "poin", c
  * Football keeps its familiar one-number-per-column layout; the set-based
  * shapes pair for/against into a single cell ("12-8"), which is how a badminton
  * table is actually printed.
+ *
+ * Buchholz is the one column that follows the *engine* rather than the sport: a
+ * Swiss category needs it in every shape, and no other format has any use for
+ * it. That is why it arrives as an option instead of a fourth context — three
+ * shapes times two engines is six branches of the same words.
  */
-export function standingsColumns(context: StandingsContext): StandingColumn[] {
+export function standingsColumns(
+  context: StandingsContext,
+  opts: { buchholz?: boolean } = {}
+): StandingColumn[] {
+  // Last, after the columns the table already ranks on: it is a tiebreaker, and
+  // nobody scans for it the way they scan for Poin.
+  const extra: StandingColumn[] = opts.buchholz
+    ? [{ key: "buchholz", short: "BH", legend: "buchholz (poin lawan)", cell: (s) => String(s.buchholz) }]
+    : [];
+
   if (context === "rubber") {
     return [
       PLAYED,
@@ -261,6 +275,7 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
       { key: "rubbers", short: "Partai", legend: "partai menang-kalah", cell: (s) => pair(s.goals_for, s.goals_against) },
       { key: "games", short: "Game", legend: "game menang-kalah", cell: (s) => pair(s.sets_for, s.sets_against) },
       { key: "score", short: "Skor", legend: "poin menang-kalah", cell: (s) => pair(s.points_for, s.points_against) },
+      ...extra,
     ];
   }
 
@@ -275,6 +290,7 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
       { key: "score", short: "Skor", legend: "poin menang-kalah", cell: (s) => pair(s.points_for, s.points_against) },
       { key: "game_diff", short: "±G", legend: "selisih game", cell: (s) => signed(s.goal_diff) },
       { key: "score_diff", short: "±S", legend: "selisih poin", cell: (s) => signed(s.points_diff) },
+      ...extra,
     ];
   }
 
@@ -287,6 +303,7 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
     { key: "goals_for", short: "GM", legend: "gol masuk", cell: (s) => String(s.goals_for) },
     { key: "goals_against", short: "GK", legend: "gol kemasukan", cell: (s) => String(s.goals_against) },
     { key: "goal_diff", short: "SG", legend: "selisih gol", cell: (s) => signed(s.goal_diff) },
+    ...extra,
   ];
 }
 
@@ -294,8 +311,11 @@ export function standingsColumns(context: StandingsContext): StandingColumn[] {
  * The legend under a standings table, spelling out the headers above it —
  * except Poin, whose header is already the whole word.
  */
-export function standingsLegend(context: StandingsContext): string {
-  return `${standingsColumns(context)
+export function standingsLegend(
+  context: StandingsContext,
+  opts: { buchholz?: boolean } = {}
+): string {
+  return `${standingsColumns(context, opts)
     .filter((c) => c.key !== "points")
     .map((c) => `${c.short}: ${c.legend}`)
     .join(" · ")}.`;

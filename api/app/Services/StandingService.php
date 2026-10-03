@@ -50,6 +50,14 @@ class StandingService
     protected array $pendingCache = [];
 
     /**
+     * The byes behind the same table — see byes(). Cleared alongside the rest,
+     * for the same reason: a Swiss category gains one every odd round.
+     *
+     * @var array<string, array<int, string>> category id => team ids, one per bye
+     */
+    protected array $byeCache = [];
+
+    /**
      * Drop the memoized fixtures. Called at the top of every public entry
      * point, because the service can outlive the results it read: one instance
      * answers the knockout plan both before a ball is kicked and after the
@@ -64,6 +72,7 @@ class StandingService
     {
         $this->matchCache = [];
         $this->pendingCache = [];
+        $this->byeCache = [];
     }
 
     /**
@@ -257,6 +266,9 @@ class StandingService
                 'points_diff' => 0,
                 'points' => 0,
                 'fair_play' => 0,
+                // The points this team's opponents ended on — filled last,
+                // because it reads other rows' finished totals.
+                'buchholz' => 0,
                 // Nothing in the config could separate this team from the one
                 // beside it, so its place is currently the lot's guess. Stamped
                 // by rank(), which is the only thing that knows the pair.
@@ -271,6 +283,12 @@ class StandingService
 
             $this->applyResult($rows[$m->home_team_id], $m->home_score, $m->away_score, $config);
             $this->applyResult($rows[$m->away_team_id], $m->away_score, $m->home_score, $config);
+        }
+
+        foreach ($this->byes($category) as $teamId) {
+            if (isset($rows[$teamId])) {
+                $this->applyBye($rows[$teamId], $config);
+            }
         }
 
         foreach ($this->fairPlayPoints($category) as $teamId => $points) {
@@ -289,8 +307,73 @@ class StandingService
             $row['set_diff'] = $row['sets_for'] - $row['sets_against'];
             $row['points_diff'] = $row['points_for'] - $row['points_against'];
         }
+        unset($row);
+
+        // Last, and that ordering is load-bearing: buchholz sums the points its
+        // opponents *ended* with, so running it any earlier reads a half-filled
+        // table and scores everyone against zero.
+        $this->applyBuchholz($category, $rows);
 
         return $rows;
+    }
+
+    /**
+     * Teams that sat out a round, one entry per bye taken.
+     *
+     * A bye is stored as a finished, confirmed fixture with one side and no
+     * score — null rather than a token 1-0, because a fabricated scoreline would
+     * land in goals_for and make a free round look like a win by a goal.
+     * countingMatches() therefore cannot see it, and this is what pays for it.
+     *
+     * @return array<int, string> team ids, repeated per bye
+     */
+    protected function byes(EventCategory $category): array
+    {
+        return $this->byeCache[$category->id] ??= $category->matches()
+            ->where('status', 'finished')
+            ->whereNotNull('confirmed_at')
+            ->where($this->tableStages())
+            ->whereNotNull('home_team_id')
+            ->whereNull('away_team_id')
+            ->pluck('home_team_id')
+            ->all();
+    }
+
+    /**
+     * What a bye is worth: a played match and a win, and nothing else.
+     *
+     * Not applyResult() with an invented score — the goals, sets and raw points
+     * tiers all have tiebreakers hanging off them, and a round nobody played
+     * must not move any of them.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function applyBye(array &$row, HybridConfig $config): void
+    {
+        $row['played']++;
+        $row['won']++;
+        $row['points'] += $config->pointsWin;
+    }
+
+    /**
+     * Strength of schedule: each team's opponents' final points.
+     *
+     * Byes contribute nothing — there was no opponent to have points. Read off
+     * the same fixtures the table counts, so a team cannot be credited for an
+     * opponent whose result is not in the table yet.
+     *
+     * @param  array<string, array<string, mixed>>  $rows
+     */
+    protected function applyBuchholz(EventCategory $category, array &$rows): void
+    {
+        foreach ($this->countingMatches($category) as $m) {
+            if (! isset($rows[$m->home_team_id], $rows[$m->away_team_id])) {
+                continue;
+            }
+
+            $rows[$m->home_team_id]['buchholz'] += $rows[$m->away_team_id]['points'];
+            $rows[$m->away_team_id]['buchholz'] += $rows[$m->home_team_id]['points'];
+        }
     }
 
     /**
@@ -345,6 +428,26 @@ class StandingService
     }
 
     /**
+     * The stages whose fixtures belong in a table, as a where-closure.
+     *
+     * Null is in there because a league or single-knockout fixture normally
+     * carries no stage at all; 'group' is the hybrid group phase; 'swiss' is a
+     * Swiss round, which is a table phase for the same reason a group is.
+     *
+     * One helper rather than one predicate per reader: a difference between two
+     * readers of `stage` has already been a real bug here (158 hand-entered
+     * group fixtures stored `stage = null`, so the table was right while the
+     * bracket gate saw zero group matches and refused to build). The column
+     * name is a parameter only because fairPlayPoints() reads it across a join.
+     *
+     * @return \Closure(\Illuminate\Contracts\Database\Query\Builder): mixed
+     */
+    protected function tableStages(string $column = 'stage'): \Closure
+    {
+        return fn ($q) => $q->whereNull($column)->orWhereIn($column, ['group', 'swiss']);
+    }
+
+    /**
      * Confirmed, played matches that count toward the table. The knockout stage
      * of a hybrid category never does.
      *
@@ -363,7 +466,7 @@ class StandingService
             ->whereNotNull('confirmed_at')
             ->whereNotNull('home_score')
             ->whereNotNull('away_score')
-            ->where(fn ($q) => $q->whereNull('stage')->orWhere('stage', 'group'))
+            ->where($this->tableStages())
             ->get();
     }
 
@@ -385,7 +488,13 @@ class StandingService
 
         $matches = $category->matches()
             ->where('status', '!=', 'cancelled')
-            ->where(fn ($q) => $q->whereNull('stage')->orWhere('stage', 'group'))
+            ->where($this->tableStages())
+            // A bye has no opponent, and its scoreline stays null on purpose —
+            // which makes it match the "not played yet" predicate below exactly.
+            // Without this the team that sat out is pending forever and
+            // markUndecided() can never speak for it again.
+            ->whereNotNull('home_team_id')
+            ->whereNotNull('away_team_id')
             ->where(fn ($q) => $q->where('status', '!=', 'finished')
                 ->orWhereNull('confirmed_at')
                 ->orWhereNull('home_score')
@@ -430,7 +539,7 @@ class StandingService
         $rows = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
             ->where('matches.category_id', $category->id)
-            ->where(fn ($q) => $q->whereNull('matches.stage')->orWhere('matches.stage', 'group'))
+            ->where($this->tableStages('matches.stage'))
             ->whereIn('player_match_stats.stat_key', array_keys($weights))
             ->groupBy('player_match_stats.team_id', 'player_match_stats.stat_key')
             ->select(
@@ -695,6 +804,10 @@ class StandingService
             'point_difference', 'rubber_points' => $b['points_diff'] <=> $a['points_diff'],
             // Fewer disciplinary points ranks higher.
             'fair_play' => $a['fair_play'] <=> $b['fair_play'],
+            // Strength of schedule: the points their opponents ended up with.
+            // Higher is better — 3-0 against the top of the field beats 3-0
+            // against the bottom of it.
+            'buchholz' => $b['buchholz'] <=> $a['buchholz'],
             // The extra tie the two played to settle exactly this. Silent until
             // one has been played and confirmed, which is what leaves the pair
             // on the lot below in the meantime.

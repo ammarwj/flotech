@@ -34,6 +34,7 @@ import { InfoHint } from "@/components/ui/info-hint";
 import { SectionHeader } from "@/components/event/section-header";
 import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { LeagueConfigCard } from "@/components/event/standings-rules";
+import { SwissConfigCard } from "@/components/event/swiss-config-card";
 import { rupiah } from "@/lib/labels";
 import { TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -245,6 +246,7 @@ function CategoryEditor({
   canRemove,
   isHybrid,
   isLeague,
+  isSwiss,
   isSingleElim,
   sport,
   teamsCap,
@@ -265,6 +267,8 @@ function CategoryEditor({
   locked: boolean;
   /** A standalone league: no groups and no bracket, but it does have a table. */
   isLeague: boolean;
+  /** Swiss: a table, no bracket, and a round count of its own. */
+  isSwiss: boolean;
   /** Single elimination has no config card, but it can still play for third. */
   isSingleElim: boolean;
   nameError?: string;
@@ -388,6 +392,17 @@ function CategoryEditor({
         <LeagueConfigCard
           value={cat.bracket_config}
           context={context}
+          onChange={(config) => onChange({ bracket_config: config })}
+        />
+      )}
+
+      {/* Swiss ranks on a table too, plus the one setting that is its own: how
+          many rounds the field plays. No bracket to seed. */}
+      {isSwiss && (
+        <SwissConfigCard
+          value={cat.bracket_config}
+          context={context}
+          teams={cat._teamsCount ?? 0}
           onChange={(config) => onChange({ bracket_config: config })}
         />
       )}
@@ -1045,6 +1060,9 @@ export function EventForm({
                   }
                   isLeague={
                     engineOf(c.tournament_format || fallbackFormat) === "league"
+                  }
+                  isSwiss={
+                    engineOf(c.tournament_format || fallbackFormat) === "swiss"
                   }
                   isSingleElim={
                     engineOf(c.tournament_format || fallbackFormat) ===

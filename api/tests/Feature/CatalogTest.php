@@ -40,8 +40,8 @@ class CatalogTest extends TestCase
             collect($data['sports'])->firstWhere('slug', 'badminton')['participant_modes'],
         );
 
-        $this->assertCount(4, $data['tournament_formats']);
-        $this->assertCount(12, $data['tiebreakers']);
+        $this->assertCount(5, $data['tournament_formats']);
+        $this->assertCount(13, $data['tiebreakers']);
         $this->assertCount(4, $data['sponsor_tiers']);
         $this->assertSame('hybrid', collect($data['tournament_formats'])->firstWhere('key', 'hybrid')['meta']['engine']);
     }
@@ -150,23 +150,36 @@ class CatalogTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'super_admin']);
 
+        // Compared against a format whose engine *does* exist, below: asserting
+        // only the rejection would still pass if the whitelist rejected
+        // everything, including the engines that ship with the app.
         $this->actingAs($admin, 'api')
             ->postJson('/api/v1/admin/config-options', [
                 'group' => 'tournament_format',
-                'key' => 'swiss',
-                'label' => 'Swiss System',
-                'meta' => ['engine' => 'swiss'], // nothing implements this
+                'key' => 'ladder',
+                'label' => 'Ladder / Challenge',
+                'meta' => ['engine' => 'ladder'], // nothing implements this
             ])
             ->assertStatus(422);
 
         $this->actingAs($admin, 'api')
             ->postJson('/api/v1/admin/config-options', [
                 'group' => 'tournament_format',
-                'key' => 'swiss',
-                'label' => 'Swiss System',
+                'key' => 'ladder',
+                'label' => 'Ladder / Challenge',
             ])
             ->assertStatus(422)
             ->assertJsonStructure(['errors' => ['meta.engine']]);
+
+        // Same shape, real engine: a preset over `swiss` is accepted.
+        $this->actingAs($admin, 'api')
+            ->postJson('/api/v1/admin/config-options', [
+                'group' => 'tournament_format',
+                'key' => 'swiss_fast',
+                'label' => 'Swiss 3 Ronde',
+                'meta' => ['engine' => 'swiss'],
+            ])
+            ->assertCreated();
     }
 
     public function test_sport_slug_is_locked_once_events_use_it(): void

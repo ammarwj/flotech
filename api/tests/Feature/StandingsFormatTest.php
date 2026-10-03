@@ -159,8 +159,12 @@ class StandingsFormatTest extends TestCase
         // The order every existing event already runs on, with the decider now
         // seated where a real competition puts it: the last thing tried before
         // giving up and drawing a name out of a hat.
+        // Buchholz trails the lot, which is what makes it harmless to every
+        // category that never configured an order: drawing_lots is already a
+        // total order, so nothing behind it is ever reached. That position comes
+        // from its sort_order in the catalog — see ConfigOptionSeeder.
         $this->assertSame(
-            ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots'],
+            ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots', 'buchholz'],
             $football->tiebreakers,
         );
         $this->assertSame([3, 1, 0], [$football->pointsWin, $football->pointsDraw, $football->pointsLose]);
@@ -171,7 +175,7 @@ class StandingsFormatTest extends TestCase
         // it does have, under its own name: there is no shootout to hold, so it
         // simply replays the match.
         $this->assertSame(
-            ['head_to_head', 'game_difference', 'rubber_points', 'games_won', 'decider_match', 'drawing_lots'],
+            ['head_to_head', 'game_difference', 'rubber_points', 'games_won', 'decider_match', 'drawing_lots', 'buchholz'],
             $badminton->tiebreakers,
         );
         // A singles match cannot end level, so there is no draw to pay for.
@@ -196,7 +200,7 @@ class StandingsFormatTest extends TestCase
         $config = HybridConfig::fromCategory($category);
 
         $this->assertSame(
-            ['head_to_head', 'rubber_difference', 'rubber_games', 'rubber_points', 'decider_match', 'drawing_lots'],
+            ['head_to_head', 'rubber_difference', 'rubber_games', 'rubber_points', 'decider_match', 'drawing_lots', 'buchholz'],
             $config->tiebreakers,
         );
         // A tie *can* finish 1-1, so a draw is still worth paying for here.

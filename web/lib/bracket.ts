@@ -15,6 +15,10 @@ export function isHybrid(engine: FormatEngine | null | undefined): boolean {
   return engine === "hybrid";
 }
 
+export function isSwiss(engine: FormatEngine | null | undefined): boolean {
+  return engine === "swiss";
+}
+
 /**
  * Bracket size for a field of `teams`: the next power of two, at least 2.
  * Mirrors BracketSeeding::sizeFor() — single elimination has no knockout-plan
@@ -96,6 +100,10 @@ export function phaseLabel(m: Match, all: Match[], knockout = false): string {
   if (isDecider(m)) {
     return m.group_name ? `${DECIDER_LABEL} · Grup ${m.group_name}` : DECIDER_LABEL;
   }
+  // After the two above — a Swiss category can hold a decider too, and that
+  // fixture is not part of any round — but before `group_name`: Swiss draws no
+  // groups, so a stray value there would mislabel a round as one.
+  if (m.stage === "swiss") return `Ronde ${m.round}`;
   if (m.group_name) return `Grup ${m.group_name}`;
 
   if (!knockout && m.stage !== "knockout") return `Pekan ${m.round}`;
@@ -191,14 +199,35 @@ export function groupByRound(matches: Match[]): [number, Match[]][] {
 /**
  * Build labelled match sections for the schedule list. Double elimination is
  * split by bracket (Winners / Losers / Grand Final), hybrid by stage (group
- * matchdays, then the knockout rounds); other formats group by round.
+ * matchdays, then the knockout rounds), Swiss by round; other formats group by
+ * round.
  */
 export function buildMatchSections(
   matches: Match[],
   knockout: boolean,
   doubleElim: boolean,
-  hybrid = false
+  hybrid = false,
+  swiss = false
 ): [string, Match[]][] {
+  if (swiss) {
+    const out: [string, Match[]][] = [];
+
+    for (const [round, list] of groupByRound(matches.filter((m) => m.stage === "swiss"))) {
+      out.push([`Ronde ${round}`, list]);
+    }
+
+    // Same gap as hybrid: a hand-added fixture carries no stage, and a decider
+    // carries one of its own. Neither belongs to a round, and without this they
+    // would vanish from the list rather than appear in the wrong place.
+    const deciders = matches.filter(isDecider);
+    if (deciders.length) out.push([DECIDER_LABEL, deciders]);
+
+    const loose = matches.filter((m) => m.stage !== "swiss" && !isDecider(m));
+    if (loose.length) out.push(["Pertandingan Tambahan", loose]);
+
+    return out;
+  }
+
   if (hybrid) {
     const out: [string, Match[]][] = [];
 

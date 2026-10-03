@@ -39,6 +39,13 @@ class HybridConfig
         public readonly bool $thirdPlace = false,
         /** @var array<int, string> */
         public readonly array $tiebreakers = ['head_to_head', 'goal_difference', 'goals_scored', 'fair_play', 'penalty_shootout', 'drawing_lots'],
+        /**
+         * Rounds a Swiss category plans to play, or null to derive it from the
+         * field size. Null rather than a number because the sensible answer
+         * moves with the entry list, which is still filling when the category
+         * is created.
+         */
+        public readonly ?int $swissRounds = null,
     ) {}
 
     public static function fromCategory(EventCategory $category): self
@@ -111,6 +118,11 @@ class HybridConfig
                 : ($drawMethods[0] ?? 'random'),
             tiebreakers: $tiebreakers ?: $known,
             thirdPlace: (bool) ($raw['third_place'] ?? false),
+            // 0 and absent both mean "derive it": a Swiss event with zero
+            // rounds is not a thing an organizer meant to configure.
+            swissRounds: (int) ($raw['swiss_rounds'] ?? 0) > 0
+                ? max(1, min(32, (int) $raw['swiss_rounds']))
+                : null,
         );
     }
 
@@ -156,6 +168,18 @@ class HybridConfig
         return $size;
     }
 
+    /**
+     * Rounds to play in a Swiss category.
+     *
+     * The classic answer is ceil(log2(teams)) — enough rounds for one entrant to
+     * separate from the rest — with a floor of 3, because a two-round "Swiss"
+     * is a pair of friendlies with a table on top.
+     */
+    public function swissRoundCount(int $teams): int
+    {
+        return $this->swissRounds ?? max(3, (int) ceil(log(max(2, $teams), 2)));
+    }
+
     /** Group labels: A, B, C, … */
     public function groupNames(): array
     {
@@ -186,6 +210,7 @@ class HybridConfig
             'bracket_config.knockout_start' => ['nullable', 'in:'.implode(',', array_keys(Catalog::roundSizes()))],
             'bracket_config.draw_method' => ['nullable', 'in:'.implode(',', Catalog::keys('draw_method'))],
             'bracket_config.third_place' => ['nullable', 'boolean'],
+            'bracket_config.swiss_rounds' => ['nullable', 'integer', 'min:1', 'max:32'],
             'bracket_config.tiebreakers' => ['nullable', 'array'],
             'bracket_config.tiebreakers.*' => ['in:'.implode(',', Catalog::keys('tiebreaker'))],
         ];

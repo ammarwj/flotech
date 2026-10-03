@@ -390,6 +390,13 @@ Route::prefix('v1')->group(function () {
             // since each category (U17, Woman, …) runs its own format.
             Route::post('events/{event}/categories/{category}/schedule', [MatchController::class, 'generate']);
             Route::post('events/{event}/categories/{category}/draw', [MatchController::class, 'drawGroups']);
+            // Swiss is generated a round at a time: POST schedule above builds
+            // round 1, these build and unbuild the ones after it. Readiness is
+            // read from the server rather than re-derived in the client, so the
+            // button and the endpoint gate on the same two numbers.
+            Route::get('events/{event}/categories/{category}/swiss', [MatchController::class, 'swissState']);
+            Route::post('events/{event}/categories/{category}/swiss/rounds', [MatchController::class, 'generateSwissRound']);
+            Route::delete('events/{event}/categories/{category}/swiss/rounds/last', [MatchController::class, 'destroySwissRound']);
             // The bracket drawn in slots ("Juara Grup A" v "Runner-up Grup B")
             // before the groups finish; POST knockout below activates it.
             Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);

@@ -293,7 +293,12 @@ export type Tiebreaker = string;
 export type DrawMethod = string;
 
 /** The engines the backend can actually run a format on. */
-export type FormatEngine = "league" | "knockout_single" | "knockout_double" | "hybrid";
+export type FormatEngine =
+  | "league"
+  | "knockout_single"
+  | "knockout_double"
+  | "hybrid"
+  | "swiss";
 
 /**
  * What shape a category's table has — and so which columns it shows, which
@@ -442,6 +447,12 @@ export interface BracketConfig {
   third_place?: boolean;
   draw_method?: DrawMethod;
   tiebreakers?: Tiebreaker[];
+  /**
+   * How many Swiss rounds the category plans to play. Null/omitted = derive it
+   * from the field (ceil(log2(teams)), at least 3) — which is why the form
+   * shows the derived number as a *placeholder* rather than writing it in.
+   */
+  swiss_rounds?: number | null;
 }
 export type EventStatus =
   | "draft"
@@ -473,8 +484,12 @@ export type BracketSide = "winners" | "losers" | "grand_final" | "third_place";
  * `playoff` belongs to neither stage and to every format that has a table: it
  * is a decider, played only to separate two teams no criterion could, and the
  * stage is exactly what keeps its result out of the standings it settles.
+ *
+ * `swiss` is stamped on every Swiss fixture — not left null — because a round
+ * is built, and torn off, one at a time: it is what tells one round from the
+ * league fixtures a category could also hold.
  */
-export type MatchStage = "group" | "knockout" | "playoff" | null;
+export type MatchStage = "group" | "knockout" | "playoff" | "swiss" | null;
 
 export interface Match {
   id: string;
@@ -732,11 +747,39 @@ export interface Standing {
   /** Disciplinary points: 1 per yellow, 3 per red. Lower is better. */
   fair_play: number;
   /**
+   * Sum of the points this row's opponents finished on — strength of schedule.
+   * Swiss ranks on it because the record alone lies: with every entrant playing
+   * a different set of opponents, 3-0 against the bottom of the field is not
+   * 3-0 against the top. A bye contributes nothing; there was no opponent.
+   */
+  buchholz: number;
+  /**
    * No criterion could separate this row from its neighbour, so what put it
    * where it is was the lot — the two are owed a decider. Only ever true when
    * the category still ranks on one, since otherwise playing it changes nothing.
    */
   needs_decider: boolean;
+}
+
+/**
+ * Whether another Swiss round can be built, answered by the server.
+ *
+ * The client reads this rather than re-deriving the gate, because readiness
+ * needs *two* numbers: "0 pending" means either the round is over or no round
+ * exists yet, and those are opposite answers. See web/lib/swiss.ts.
+ */
+export interface SwissState {
+  /** Rounds the category intends to play — stored, or derived from the field. */
+  rounds_planned: number;
+  rounds_created: number;
+  last_round: number;
+  round_matches_total: number;
+  round_matches_pending: number;
+  teams: number;
+  next_round: number;
+  can_add_round: boolean;
+  /** Indonesian, ready to show in a tooltip; null when nothing blocks. */
+  blocked_reason: string | null;
 }
 
 /** A stat column of a sport, as the API hands it to the editors. */

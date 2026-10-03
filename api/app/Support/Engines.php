@@ -15,7 +15,7 @@ namespace App\Support;
 class Engines
 {
     /** Scheduling/standings engines, keyed to the branches in MatchController. */
-    public const FORMATS = ['league', 'knockout_single', 'knockout_double', 'hybrid'];
+    public const FORMATS = ['league', 'knockout_single', 'knockout_double', 'hybrid', 'swiss'];
 
     /**
      * Comparators implemented by StandingService::compareBy().
@@ -34,6 +34,10 @@ class Engines
         // categories as well. Kept so rows seeded earlier still validate.
         'rubber_points',
         'fair_play',
+        // Strength of schedule: the sum of your opponents' points. Swiss needs
+        // it because a 3-0 record against the bottom of the field is not the
+        // same achievement as a 3-0 record against the top of it.
+        'buchholz',
         // The extra tie played to separate two entrants nothing else could —
         // football settles it on penalties, a racket sport just replays it.
         'playoff',

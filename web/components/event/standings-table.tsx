@@ -24,6 +24,7 @@ export function StandingsTable({
   standings,
   highlight = 0,
   context = "goal",
+  buchholz = false,
   onDecide,
 }: {
   standings: Standing[];
@@ -31,13 +32,19 @@ export function StandingsTable({
   /** The table's shape: counts gol, game, or partai. */
   context?: StandingsContext;
   /**
+   * Show the strength-of-schedule column. Follows the *engine*, not the sport —
+   * only Swiss ranks on it — which is why it is a flag beside `context` rather
+   * than a shape of its own.
+   */
+  buchholz?: boolean;
+  /**
    * Offer to schedule the decider these rows are owed. Handed every team in the
    * deadlock — usually two, but three can be level all round — plus the group
    * whose table it settles.
    */
   onDecide?: (teams: MatchTeamRef[], group: string | null) => void;
 }) {
-  const columns = standingsColumns(context);
+  const columns = standingsColumns(context, { buchholz });
   const blocks = deadlocks(standings);
 
   if (standings.length === 0) {

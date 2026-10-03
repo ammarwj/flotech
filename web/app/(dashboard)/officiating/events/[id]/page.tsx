@@ -27,6 +27,7 @@ import {
   isDecider,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  isSwiss as isSwissFormat,
   isKnockout as isKnockoutFormat,
   isThirdPlace,
   matchWinnerId,
@@ -136,6 +137,7 @@ function OfficiatingEventView() {
     knockout,
     isDoubleElim(engine),
     isHybridFormat(engine),
+    isSwissFormat(engine),
   );
 
   // Only when it says something the section heading doesn't — same rule as the

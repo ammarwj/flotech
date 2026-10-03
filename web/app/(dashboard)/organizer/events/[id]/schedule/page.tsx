@@ -14,6 +14,7 @@ import {
   CalendarRange,
   Plus,
   Trash2,
+  Repeat,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,6 +35,9 @@ import {
   updateMatchTeams,
   createMatch,
   deleteMatch,
+  getSwissState,
+  generateSwissRound,
+  deleteLastSwissRound,
   type DrawPayload,
   type ScheduleOptions,
   type CreateMatchPayload,
@@ -49,11 +53,13 @@ import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  isSwiss as isSwissFormat,
   isDecider,
   isThirdPlace,
   phaseLabel,
 } from "@/lib/bracket";
 import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
+import { swissReadiness } from "@/lib/swiss";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import {
   dateKeyOf,
@@ -197,6 +203,7 @@ function ScheduleView() {
   const isKnockout = isKnockoutFormat(engine);
   const isDouble = isDoubleElim(engine);
   const isHybrid = isHybridFormat(engine);
+  const isSwiss = isSwissFormat(engine);
   const setBased = isSetBased(eventQuery.data);
   // The table's shape — and with it the tiebreaker vocabulary — follows the
   // sport, so both the standings and the config below read this one answer.
@@ -219,6 +226,17 @@ function ScheduleView() {
     queryFn: () => getKnockoutPlan(orgId!, eventId, catId!),
     enabled: !!orgId && isHybrid && !!catId,
   });
+  /**
+   * Whether another Swiss round is owed — the server's own verdict, never a
+   * second copy of the five rules behind it. See swissReadiness().
+   */
+  const swissQuery = useQuery({
+    queryKey: ["swiss", orgId, eventId, catId],
+    queryFn: () => getSwissState(orgId!, eventId, catId!),
+    enabled: !!orgId && isSwiss && !!catId,
+  });
+  const swiss = swissReadiness(swissQuery.data);
+
   const approvedTeams = (teamsQuery.data ?? []).filter(
     (t) => t.status === "approved" && t.category_id === catId,
   );
@@ -229,6 +247,9 @@ function ScheduleView() {
     qc.invalidateQueries({ queryKey: ["discipline", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["knockout-plan", orgId, eventId] });
+    // Confirming one result is what opens the next round, so the gate has to be
+    // re-asked after every write on this page — not only after a round is built.
+    qc.invalidateQueries({ queryKey: ["swiss", orgId, eventId] });
   };
 
   const closeManual = () => {
@@ -396,6 +417,38 @@ function ScheduleView() {
       toast.error(parseApiError(err, "Gagal menghapus bracket.").message),
   });
 
+  /**
+   * The next Swiss round, paired from the table as it stands right now.
+   *
+   * `round` is the round the button believed it was owed: sending it is what
+   * stops a double-click from building two rounds off one table, the second
+   * paired from results nobody has played.
+   */
+  const addRound = useMutation({
+    mutationFn: () =>
+      generateSwissRound(orgId!, eventId, catId!, { round: swiss.nextRound }),
+    onSuccess: (created) => {
+      toast.success(`Ronde ${swiss.nextRound} dibuat: ${created.length} pertandingan`, {
+        description: "Pasangan diambil dari klasemen saat ini, menghindari tim yang sudah pernah bertemu.",
+      });
+      refreshEventData();
+    },
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menambah ronde.").message),
+  });
+
+  const dropRound = useMutation({
+    mutationFn: () => deleteLastSwissRound(orgId!, eventId, catId!),
+    onSuccess: () => {
+      toast.success("Ronde terakhir dihapus", {
+        description: "Ronde sebelumnya dan hasilnya tidak ikut terhapus.",
+      });
+      refreshEventData();
+    },
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal menghapus ronde.").message),
+  });
+
   const addManual = useMutation({
     mutationFn: (payload: CreateMatchPayload) =>
       createMatch(orgId!, eventId, catId!, payload),
@@ -413,7 +466,7 @@ function ScheduleView() {
       toast.error(parseApiError(err, "Gagal menambah pertandingan.").message),
   });
 
-  const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid);
+  const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid, isSwiss);
 
   // Only when it says something the section heading doesn't: a matchday mixes
   // the groups, and a knockout round number isn't a name. A league fixture's
@@ -530,6 +583,46 @@ function ScheduleView() {
                   Undian Grup
                 </Button>
               )}
+              {/* Swiss is built a round at a time, so the next round is an
+                  action of its own rather than a regenerate. Disabled from the
+                  server's verdict, with its reason in the tooltip — the five
+                  rules behind it are not re-derived here. */}
+              {isSwiss && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => addRound.mutate()}
+                    disabled={!swiss.ready || addRound.isPending || dropRound.isPending}
+                    title={swiss.reason ?? undefined}
+                  >
+                    <Repeat className="h-4 w-4" />
+                    {addRound.isPending ? "Membuat…" : `Tambah Ronde ${swiss.nextRound}`}
+                  </Button>
+                  {(swissQuery.data?.rounds_created ?? 0) > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const last = swissQuery.data?.last_round ?? 0;
+                        void confirm({
+                          title: `Hapus ronde ${last}?`,
+                          description:
+                            "Seluruh pertandingan ronde terakhir dihapus, termasuk baris bye-nya — poin bye itu ikut hilang.",
+                          consequences:
+                            "Hanya ronde terakhir yang bisa dihapus, dan hanya selama belum ada skor yang diisi.",
+                          confirmLabel: "Hapus ronde",
+                          tone: "danger",
+                          icon: Trash2,
+                        }).then((ok) => ok && dropRound.mutate());
+                      }}
+                      disabled={dropRound.isPending || addRound.isPending}
+                      className="text-muted-foreground hover:text-[var(--danger)]"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {dropRound.isPending ? "Menghapus…" : "Hapus Ronde Terakhir"}
+                    </Button>
+                  )}
+                </>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setManualDialog(true)}
@@ -548,8 +641,12 @@ function ScheduleView() {
                   : matches.length > 0
                     ? isHybrid
                       ? "Buat Ulang Jadwal Grup"
-                      : "Buat Ulang Jadwal"
-                    : "Buat Jadwal"}
+                      : isSwiss
+                        ? "Buat Ulang Ronde 1"
+                        : "Buat Ulang Jadwal"
+                    : isSwiss
+                      ? "Buat Jadwal Ronde 1"
+                      : "Buat Jadwal"}
               </Button>
             </div>
           }
@@ -581,6 +678,18 @@ function ScheduleView() {
           />
         </div>
 
+        {/* Where the field is up to, said once: the button beside it only names
+            the round it would build next. */}
+        {isSwiss && swiss.progress && (
+          <Card className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
+            <span className="font-semibold">{swiss.progress}</span>
+            <span className="text-xs text-muted-foreground">
+              {swiss.reason ??
+                "Semua hasil ronde ini sudah dikonfirmasi — ronde berikutnya siap dibuat."}
+            </span>
+          </Card>
+        )}
+
         {matchesQuery.isLoading ? (
           <div className="grid gap-3">
             {[0, 1, 2].map((i) => (
@@ -598,7 +707,9 @@ function ScheduleView() {
                 ? "Buat bracket knockout otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
                 : isHybrid
                   ? `Tim diundi ke ${config.groups} grup, lalu jadwal fase grup dibuat otomatis. Bracket knockout menyusul setelah grup selesai.`
-                  : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
+                  : isSwiss
+                    ? "Buat jadwal ronde 1 dari tim yang sudah disetujui. Ronde berikutnya ditambahkan satu per satu setelah semua hasil ronde sebelumnya dikonfirmasi."
+                    : "Buat jadwal round-robin otomatis dari tim yang sudah disetujui. Butuh minimal 2 tim."
             }
             action={
               <div className="flex flex-wrap items-center justify-center gap-2">
@@ -898,6 +1009,7 @@ function ScheduleView() {
                 standings={standingsQuery.data ?? []}
                 highlight={1}
                 context={context}
+                buchholz={isSwiss}
                 onDecide={openDecider}
               />
             )}
@@ -907,7 +1019,7 @@ function ScheduleView() {
                   its own tiebreaker order, so both of these belong to the
                   standalone league only. */}
                 {!isHybrid && "Baris hijau = juara klasemen. "}
-                {standingsLegend(context)}
+                {standingsLegend(context, { buchholz: isSwiss })}
                 {!isHybrid && config.tiebreakers.length > 0 && (
                   <> Tie breaker: {config.tiebreakers.map(catalog.tiebreakerLabel).join(" → ")}.</>
                 )}

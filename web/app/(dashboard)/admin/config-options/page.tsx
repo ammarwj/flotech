@@ -54,8 +54,9 @@ const EMPTY = { key: "", label: "", meta: "", is_active: true, sort_order: 0 };
  *
  * A format, tiebreaker or draw method is a *preset over an engine that exists in
  * code* — so a new row must name one. That's why "Liga 2 Putaran" is possible
- * (engine `league`, defaults `legs: 2`) but "Swiss System" is not: nothing can
- * run it.
+ * (engine `league`, defaults `legs: 2`) but "Ladder / Challenge" is not: nothing
+ * can run it. ("Swiss System" used to be the example here, until the engine was
+ * written — which is exactly how this list is meant to grow.)
  */
 export default function AdminConfigOptionsPage() {
   const qc = useQueryClient();

@@ -32,6 +32,10 @@ export const DEFAULT_HYBRID: HybridConfig = {
   third_place: false,
   draw_method: "random",
   tiebreakers: [],
+  // Null = derive the count from the field. The key has to *exist* here even so:
+  // the spread below is the whitelist, the same way HybridConfig::fromArray()
+  // is on the API, and a key missing from it is dropped without a word.
+  swiss_rounds: null,
 };
 
 /**
@@ -77,6 +81,7 @@ export function hybridConfig(
     points: { ...defaultPoints(context), ...points },
     qualification: { ...DEFAULT_HYBRID.qualification, ...raw?.qualification },
     knockout_start: raw?.knockout_start ?? null,
+    swiss_rounds: raw?.swiss_rounds ?? null,
     tiebreakers: stored.length ? stored : tiebreakers,
   };
 }

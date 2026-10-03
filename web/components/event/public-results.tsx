@@ -13,6 +13,7 @@ import {
   isKnockout as isKnockoutFormat,
   isDoubleElim,
   isHybrid as isHybridFormat,
+  isSwiss as isSwissFormat,
   phaseLabel,
   playableMatches,
 } from "@/lib/bracket";
@@ -81,6 +82,9 @@ export function PublicResults({
   const isKnockout = isKnockoutFormat(engine);
   const isDouble = isDoubleElim(engine);
   const isHybrid = isHybridFormat(engine);
+  // Swiss ranks on strength of schedule, so the public table shows that column
+  // too: it is the reason two unbeaten teams are in the order they are in.
+  const isSwiss = isSwissFormat(engine);
   const config = hybridConfig(
     bracketConfig,
     catalog.tiebreakersFor(context ?? "goal").map((t) => t.key),
@@ -223,12 +227,13 @@ export function PublicResults({
                 standings={standingsQuery.data ?? []}
                 highlight={1}
                 context={context}
+                buchholz={isSwiss}
               />
             )}
             {(standingsQuery.data?.length ?? 0) > 0 && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {!isHybrid && "Baris hijau = juara klasemen. "}
-                {standingsLegend(context ?? "goal")}
+                {standingsLegend(context ?? "goal", { buchholz: isSwiss })}
               </p>
             )}
           </div>
