@@ -16,8 +16,21 @@ use App\Exceptions\PaymentException;
  */
 class PaymentFeeCalculator
 {
-    /** Participant paying an organizer: tickets and registration fees. */
-    public const AUDIENCE_PARTICIPANT = 'service_fee_amount';
+    /**
+     * Participant buying tickets from an organizer. Charged per seat, so a
+     * basket of three carries three of them.
+     */
+    public const AUDIENCE_TICKET = 'ticket_service_fee_amount';
+
+    /**
+     * Participant paying a team's registration fee to an organizer. Charged
+     * once per team — the roster size never multiplies it.
+     *
+     * Separate from AUDIENCE_TICKET although both are participants paying an
+     * organizer: a registration costs many times a ticket and is bought once,
+     * so a rate that suits either is wrong for the other.
+     */
+    public const AUDIENCE_REGISTRATION = 'registration_service_fee_amount';
 
     /** Organizer paying the platform: event plan purchases and upgrades. */
     public const AUDIENCE_ORGANIZER = 'plan_service_fee_amount';
@@ -26,10 +39,10 @@ class PaymentFeeCalculator
      * Breakdown for one channel. Throws when the channel is unknown or has
      * been disabled (e.g. `retail` before it's turned on).
      *
-     * `$audience` picks which platform margin applies — the two are set
+     * `$audience` picks which platform margin applies — the three are set
      * independently in /admin/settings. It has no default on purpose: a new
-     * payment flow has to state which side of the platform it sits on rather
-     * than quietly inheriting the other side's rate.
+     * payment flow has to state which one it is rather than quietly inheriting
+     * another flow's rate.
      *
      * @return array{channel: string, label: string, gateway_fee: float, gateway_fee_base: float, gateway_tax: float, tax_percent: float, service_fee: float, service_fee_unit: float, units: int, total: float, midtrans_payments: array<int, string>}
      */

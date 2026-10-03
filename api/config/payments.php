@@ -29,11 +29,16 @@ return [
     'manual_order_ttl_hours' => (int) env('PAYMENTS_MANUAL_ORDER_TTL_HOURS', 24),
 
     // The platform's own margin, on top of the gateway's own fee, charged to
-    // whoever is paying. Flat rupiah, not a percentage — split in two because
-    // the parties differ: a participant buying a ticket from an organizer,
-    // versus an organizer buying a plan from us. See config/payment_fees.php
-    // for the gateway fee itself.
-    'service_fee_amount' => (float) env('PAYMENTS_SERVICE_FEE_AMOUNT', 0),
+    // whoever is paying. Flat rupiah, not a percentage — split three ways, and
+    // the split follows two different seams. The first is who pays: a
+    // participant paying an organizer is not an organizer paying us. The second
+    // is what is being bought: a ticket is sold per seat and priced in tens of
+    // thousands, a team registration is sold once per team at ten times that,
+    // so one rate that suits either is wrong for the other. Any of the three
+    // may sit at 0 without dragging the others. See config/payment_fees.php for
+    // the gateway fee itself.
+    'ticket_service_fee_amount' => (float) env('PAYMENTS_TICKET_SERVICE_FEE_AMOUNT', 0),
+    'registration_service_fee_amount' => (float) env('PAYMENTS_REGISTRATION_SERVICE_FEE_AMOUNT', 0),
     'plan_service_fee_amount' => (float) env('PAYMENTS_PLAN_SERVICE_FEE_AMOUNT', 0),
 
 ];

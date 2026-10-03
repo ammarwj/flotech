@@ -6,6 +6,7 @@ use App\Mail\TicketPurchasedMail;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
+use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
 use App\Services\PlatformSettings;
@@ -232,7 +233,7 @@ class TicketTest extends TestCase
      */
     public function test_stored_order_charges_the_service_fee_per_ticket_not_per_transaction(): void
     {
-        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::put(['ticket_service_fee_amount' => 2000], null);
         PlatformSettings::flush();
 
         $user = User::factory()->create();
@@ -277,7 +278,7 @@ class TicketTest extends TestCase
      */
     public function test_channel_preview_quotes_the_same_per_ticket_fee_the_order_charges(): void
     {
-        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::put(['ticket_service_fee_amount' => 2000], null);
         PlatformSettings::flush();
 
         $user = User::factory()->create();
@@ -287,7 +288,7 @@ class TicketTest extends TestCase
         $event = $this->event($org);
         $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
 
-        $preview = collect($this->getJson('/api/v1/public/payment-channels?amount=150000&audience=participant&units=3')
+        $preview = collect($this->getJson('/api/v1/public/payment-channels?amount=150000&audience=ticket&units=3')
             ->assertOk()
             ->json('data'))
             ->firstWhere('channel', 'va');
@@ -316,15 +317,126 @@ class TicketTest extends TestCase
      */
     public function test_channel_preview_without_units_quotes_a_single_fee(): void
     {
-        PlatformSettings::put(['service_fee_amount' => 2000], null);
+        PlatformSettings::put(['ticket_service_fee_amount' => 2000], null);
         PlatformSettings::flush();
 
-        $preview = collect($this->getJson('/api/v1/public/payment-channels?amount=150000&audience=participant')
+        $preview = collect($this->getJson('/api/v1/public/payment-channels?amount=150000&audience=ticket')
             ->assertOk()
             ->json('data'))
             ->firstWhere('channel', 'va');
 
         $this->assertSame(1, $preview['units']);
         $this->assertEqualsWithDelta(2000.0, (float) $preview['service_fee'], 0.0001);
+    }
+
+    /**
+     * The two participant-facing flows must read their own rate. Both are
+     * exercised through the real endpoints on **one event**, so the plan, the
+     * organization and the rail cannot explain the difference — the only
+     * variable left is which settings key each call site names.
+     *
+     * Asserting either number alone would still pass while both call sites read
+     * one shared key, which is exactly what they used to do. Only the
+     * comparison proves the split reached the controllers rather than stopping
+     * at the calculator.
+     */
+    public function test_ticket_and_registration_each_charge_their_own_service_fee(): void
+    {
+        PlatformSettings::put([
+            'ticket_service_fee_amount' => 2000,
+            'registration_service_fee_amount' => 7000,
+        ], null);
+        PlatformSettings::flush();
+
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, [
+            'qr_tickets' => 'true',
+            'payment_gateway' => 'true',
+            'online_registration' => 'true',
+            'max_teams_per_category' => '-1',
+        ]);
+        $event = $this->event($org);
+
+        $ticketCategory = $event->ticketCategories()->create([
+            'name' => 'Reguler', 'price' => 50000, 'is_active' => true,
+        ]);
+        $teamCategory = $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => 500000, 'sort_order' => 0,
+        ]);
+
+        $order = TicketOrder::findOrFail(
+            $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+                'ticket_category_id' => $ticketCategory->id,
+                'quantity' => 1,
+                'buyer_name' => 'Budi',
+                'buyer_email' => 'budi@test.com',
+                'payment_channel' => 'va',
+            ])->assertCreated()->json('data.order.id')
+        );
+
+        $team = Team::findOrFail(
+            $this->actingAs(User::factory()->create(), 'api')
+                ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                    'category_id' => $teamCategory->id,
+                    'name' => 'Garuda FC',
+                    'contact_name' => 'Andi',
+                    'contact_phone' => '08123456789',
+                    'payment_channel' => 'va',
+                ])->assertCreated()->json('data.team.id')
+        );
+
+        $this->assertEqualsWithDelta(2000.0, (float) $order->service_fee, 0.0001);
+        $this->assertEqualsWithDelta(7000.0, (float) $team->service_fee, 0.0001);
+
+        // Stated as a difference too, so a future refactor that collapses the
+        // two keys back into one fails here and not only on the two numbers
+        // above — which a careless rebase could update together.
+        $this->assertNotEquals((float) $order->service_fee, (float) $team->service_fee);
+    }
+
+    /**
+     * A registration is billed once per team however long the roster is. The
+     * ticket flow multiplies by basket size through the same calculator, so
+     * this is the half that has to stay un-multiplied — compared against the
+     * single-ticket fee charged on the same event to rule out the rate itself
+     * being the explanation.
+     */
+    public function test_registration_service_fee_is_not_multiplied_by_roster_size(): void
+    {
+        PlatformSettings::put(['registration_service_fee_amount' => 7000], null);
+        PlatformSettings::flush();
+
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, [
+            'payment_gateway' => 'true',
+            'online_registration' => 'true',
+            'max_teams_per_category' => '-1',
+        ]);
+        $event = $this->event($org);
+        $category = $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum', 'tournament_format' => 'league',
+            'registration_fee' => 500000, 'sort_order' => 0,
+        ]);
+
+        $register = fn (string $name, int $players) => Team::findOrFail(
+            $this->actingAs(User::factory()->create(), 'api')
+                ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/register", [
+                    'category_id' => $category->id,
+                    'name' => $name,
+                    'contact_name' => 'Andi',
+                    'contact_phone' => '08123456789',
+                    'payment_channel' => 'va',
+                    'players' => collect(range(1, $players))
+                        ->map(fn (int $i) => ['full_name' => "Player {$i}", 'jersey_number' => (string) $i])
+                        ->all(),
+                ])->assertCreated()->json('data.team.id')
+        );
+
+        $small = $register('Dua Orang', 2);
+        $large = $register('Sebelas Orang', 11);
+
+        $this->assertEqualsWithDelta(7000.0, (float) $small->service_fee, 0.0001);
+        $this->assertEqualsWithDelta((float) $small->service_fee, (float) $large->service_fee, 0.0001);
     }
 }

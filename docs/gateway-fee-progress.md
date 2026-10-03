@@ -30,10 +30,12 @@ pembelian **paket event** (§11), bukan cuma tiket/pendaftaran.
       paket — organizer bayar ke platform). Dua pihak berbeda, jadi dua tuas berbeda; salah
       satu boleh 0 sementara yang lain tidak.
       **`PaymentFeeCalculator::forChannel()/allChannels()` menerima `$audience` tanpa
-      default** (`AUDIENCE_PARTICIPANT`/`AUDIENCE_ORGANIZER`) — alur pembayaran baru
-      terpaksa menyatakan ia di sisi mana, tidak bisa diam-diam mewarisi tarif sisi lain.
+      default** — alur pembayaran baru terpaksa menyatakan ia di sisi mana, tidak bisa
+      diam-diam mewarisi tarif sisi lain.
       Fee gateway-nya sendiri **tidak** dibedakan (itu biaya bank, bukan margin kita).
       Frontend: prop `audience` di `ChannelPicker` juga required, dan ikut masuk query key.
+      **Sudah jadi tiga** — lihat "Fee peserta dipecah lagi" di bawah; `AUDIENCE_PARTICIPANT`
+      tidak ada lagi.
 - [x] `PaymentFeeCalculator` (`forChannel()`, `allChannels()`) — tanpa `round()` di mana pun
 - [x] `PublicPaymentController::channels()` + route `GET public/payment-channels`
 - [x] `PublicEventResource::requires_payment_channel`
@@ -178,6 +180,67 @@ keduanya sekarang menjawab pertanyaan yang sama secara independen.
       `payment_gateway_enabled` dan cek checkout paket jatuh ke manual) — butuh
       `bun run dev` + sandbox Midtrans, belum dijalankan
 
+### Tambahan — fee peserta dipecah lagi: tiket vs pendaftaran tim (2026-10-03)
+
+Tuas "ke peserta" di atas dipakai **dua alur yang beda basket**, jadi satu nominal memaksa
+kompromi: fee yang pantas untuk tiket Rp 25.000 terlalu kecil untuk pendaftaran tim
+Rp 500.000. Sekarang **tiga** margin independen, masing-masing boleh 0 tanpa menyeret yang
+lain.
+
+- [x] **Pembaginya dua seam, bukan satu.** Yang pertama *siapa yang membayar* (peserta ke
+      organizer vs organizer ke platform, pemecahan lama di atas). Yang kedua *apa yang
+      dibeli*: tiket dijual per lembar, pendaftaran sekali per tim dengan harga berkali-kali
+      lipat. `config/payments.php` → `ticket_service_fee_amount`,
+      `registration_service_fee_amount`, `plan_service_fee_amount`; tiga entri senada di
+      `PlatformSettings::BASE_DEFINITIONS`.
+- [x] **`AUDIENCE_PARTICIPANT` DIHAPUS**, bukan dibiarkan jadi alias ke salah satunya. Const
+      yang tertinggal akan tetap dipakai call site yang lupa dipindah dan diam-diam menagih
+      tarif alur lain — persis yang dicegah aturan "`$audience` tanpa default". Penggantinya
+      `AUDIENCE_TICKET` + `AUDIENCE_REGISTRATION`. `compute()` tidak berubah sama sekali:
+      `$audience` memang cuma nama key setelan, jadi key ketiga masuk tanpa cabang baru.
+- [x] **Fee pendaftaran tetap 1 unit per tim** — jumlah pemain di roster tidak pernah
+      mengalikannya. Hanya alur tiket yang mengirim `units` (= `quantity`).
+- [x] `PublicPaymentController::channels()` — `audience` jadi **`required`**
+      (`in:ticket,registration,organizer`), `nullable` + `?? 'participant'` dibuang. Default
+      di endpoint preview adalah lubang yang sama dengan default di calculator: alur yang
+      lupa mengirimnya dikutip tarif tiket, dan baru ketahuan saat order path menagih angka
+      lain.
+- [x] Migrasi data `2026_10_03_110000_split_participant_service_fee_setting` — rename
+      `service_fee_amount` → `ticket_service_fee_amount`, lalu **salin nilainya** ke
+      `registration_service_fee_amount`. Menyalin, bukan membiarkannya jatuh ke default 0:
+      nominal yang berlaku hari ini harus tetap berlaku di **kedua** alur sesudah deploy.
+      Idempoten dua arah. **`id` UUID wajib ditulis eksplisit** di `insert()` — PK-nya diisi
+      trait `HasUuids` di model, dan query builder tidak lewat sana (gagal
+      `not-null violation` saat pertama dijalankan).
+- [x] `/admin/settings` — filter grup fee **tidak lagi hardcode daftar key**, sekarang
+      `s.key.endsWith("service_fee_amount")`. Key yang tidak masuk grup mana pun tidak
+      dirender sama sekali padahal tetap ikut terkirim di `submit()`, jadi daftar hardcode
+      adalah cara setelan keempat besok hilang dari layar tanpa error.
+- [x] Frontend: `FeeAudience = "ticket" | "registration" | "organizer"`; default
+      `audience` di `ServiceFeeExplainer` **dibuang** (required, seperti `ChannelPicker`),
+      label `per` jadi map tiga arah ("per pembelian paket" / "per pendaftaran tim" /
+      `per ${unitLabel}`).
+- [x] **Test pembanding**, bukan assert satu sisi:
+      `PaymentFeeCalculatorTest::test_each_audience_reads_its_own_platform_margin` (tiga
+      nominal berbeda, channel & amount sama, plus assert fee gateway ketiganya **sama** —
+      itu biaya bank, bukan margin kita);
+      `TicketTest::test_ticket_and_registration_each_charge_their_own_service_fee` (**satu
+      event**, dua endpoint sungguhan, assert `ticket_orders.service_fee` ≠
+      `teams.service_fee` — ini yang membuktikan kedua call site berpindah, bukan cuma
+      calculator-nya);
+      `TicketTest::test_registration_service_fee_is_not_multiplied_by_roster_size` (2 vs 11
+      pemain, fee harus identik);
+      `PlatformSettingTest::test_all_three_service_fee_margins_are_editable_independently`
+      (tiga nominal berbeda dalam satu round-trip, lalu nolkan **satu** saja dan assert dua
+      lainnya tidak bergerak).
+- [x] Suite target hijau: `102 passed (510 assertions)` —
+      `--filter='PaymentFeeCalculator|TicketTest|Registration|PlatformSetting|PlanOrderBilling'`
+      (2026-10-03). Migrasi `rollback` → `migrate` dicek: nilai terbawa utuh.
+- [ ] Manual end-to-end (`bun run dev`): set tiga nominal di `/admin/settings`, beli 3 tiket
+      (picker harus menulis "Rp 2.000 × 3 tiket"), daftar tim di **event yang sama** (hint
+      harus berbunyi "per pendaftaran tim"), checkout paket organizer tidak terpengaruh
+      keduanya.
+
 ---
 
 ## Catatan implementasi penting (biar tidak diulang)
@@ -194,3 +257,10 @@ keduanya sekarang menjawab pertanyaan yang sama secara independen.
 - **`platform_fee` kolom tidak dihapus**, selalu ditulis `0` untuk order gateway baru —
   jangan menghapusnya dari migration/model, dan jangan kaget melihatnya masih ada di
   `$fillable`/schema.
+- **Tiga tuas fee platform, dan `$audience` tetap tanpa default.** `AUDIENCE_TICKET`,
+  `AUDIENCE_REGISTRATION`, `AUDIENCE_ORGANIZER` — menambah alur pembayaran keempat berarti
+  menambah key ke `config/payments.php` **dan** `PlatformSettings::BASE_DEFINITIONS`
+  (nilai tanpa definisi tidak pernah tampil di `/admin/settings`), lalu menyebut
+  audience-nya di call site. Jangan menambahkan default di `forChannel()`/`allChannels()`
+  atau di validasi `GET public/payment-channels`: itu cara alur baru dikutip satu tarif
+  lalu ditagih tarif lain.

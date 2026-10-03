@@ -356,7 +356,7 @@ class PlanOrderBillingTest extends TestCase
         // for participants buying tickets. Both are set, differently, so
         // reading the wrong one shows up as a wrong number.
         PlatformSettings::put([
-            'service_fee_amount' => 9000,
+            'ticket_service_fee_amount' => 9000,
             'plan_service_fee_amount' => 1500,
         ], null);
         PlatformSettings::flush();

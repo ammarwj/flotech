@@ -142,6 +142,7 @@ export default function ETicketPage() {
               value={rupiah(order.service_fee)}
               hint={
                 <ServiceFeeExplainer
+                  audience="ticket"
                   unit={order.quantity > 0 ? order.service_fee / order.quantity : order.service_fee}
                 />
               }

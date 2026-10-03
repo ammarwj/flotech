@@ -293,7 +293,7 @@ export default function ManageTeamPage() {
             <CardContent className="pt-0">
               <ChannelPicker
                 amount={team.payment_amount}
-                audience="participant"
+                audience="registration"
                 value={channel}
                 onChange={setChannel}
               />

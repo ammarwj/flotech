@@ -13,14 +13,15 @@ import { InfoHint } from "@/components/ui/info-hint";
  * the price being paid — the fee breakdown for each channel is fetched for it,
  * so callers must not render this until `amount > 0`.
  *
- * `audience` says which side of the platform this payment sits on, because the
- * platform's own margin is set separately for each; it is required rather than
- * defaulted so a new checkout flow cannot quietly bill the other side's rate.
+ * `audience` says which of the three flows this payment is — buying tickets,
+ * paying a team's registration fee, or buying a plan from us — because the
+ * platform's own margin is set separately for each. It is required rather than
+ * defaulted so a new checkout flow cannot quietly bill another flow's rate.
  *
- * `units` is the basket size. The platform's service fee is charged per unit
- * bought, so a cart of three tickets carries three of them — it is part of the
- * query key because a quantity change moves the total the buyer is quoted.
- * Every flow except ticket purchase buys exactly one thing, hence the default.
+ * `units` is the basket size. The ticket fee is charged per seat, so a cart of
+ * three carries three of them — it is part of the query key because a quantity
+ * change moves the total the buyer is quoted. The other two flows buy exactly
+ * one thing, hence the default.
  */
 export function ChannelPicker({
   amount,
@@ -167,15 +168,21 @@ export function ChannelPicker({
 export function ServiceFeeExplainer({
   unit,
   unitLabel = "tiket",
-  audience = "participant",
+  audience,
 }: {
   /** Per-unit rate. Pass 0 when only the total is known (a stored order). */
   unit?: number;
   unitLabel?: string;
-  audience?: FeeAudience;
+  /** Required, like ChannelPicker's: a default would let one of the three
+      flows describe its fee with another flow's wording. */
+  audience: FeeAudience;
 }) {
   const per =
-    audience === "organizer" ? "per pembelian paket" : `per ${unitLabel}`;
+    audience === "organizer"
+      ? "per pembelian paket"
+      : audience === "registration"
+        ? "per pendaftaran tim"
+        : `per ${unitLabel}`;
 
   return (
     <>

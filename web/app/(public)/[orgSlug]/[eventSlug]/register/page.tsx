@@ -600,7 +600,7 @@ function RegisterTeamPage() {
           <DialogBody>
             <ChannelPicker
               amount={fee}
-              audience="participant"
+              audience="registration"
               value={channel}
               onChange={setChannel}
             />

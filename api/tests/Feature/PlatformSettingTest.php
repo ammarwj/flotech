@@ -166,4 +166,40 @@ class PlatformSettingTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors('wallet_hold_days');
     }
+
+    /**
+     * Three independent participant/organizer margins, all three editable here.
+     *
+     * Written as one round-trip of three different numbers rather than three
+     * separate assertions: the whole point of the split is that one may move
+     * without dragging the others, and a test that set them to the same value —
+     * or checked only that each key is listed — would stay green if `put()`
+     * started writing all three to one row.
+     */
+    public function test_all_three_service_fee_margins_are_editable_independently(): void
+    {
+        $payload = $this->actingAs($this->admin, 'api')
+            ->putJson('/api/v1/admin/settings', [
+                'ticket_service_fee_amount' => 2000,
+                'registration_service_fee_amount' => 7000,
+                'plan_service_fee_amount' => 1500,
+            ])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertEqualsWithDelta(2000.0, (float) $this->setting($payload, 'ticket_service_fee_amount')['value'], 0.0001);
+        $this->assertEqualsWithDelta(7000.0, (float) $this->setting($payload, 'registration_service_fee_amount')['value'], 0.0001);
+        $this->assertEqualsWithDelta(1500.0, (float) $this->setting($payload, 'plan_service_fee_amount')['value'], 0.0001);
+
+        // Zero is a legitimate rate, and it has to be reachable for one flow
+        // alone — a free ticket fee must not make registrations free too.
+        $payload = $this->actingAs($this->admin, 'api')
+            ->putJson('/api/v1/admin/settings', ['ticket_service_fee_amount' => 0])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertEqualsWithDelta(0.0, (float) $this->setting($payload, 'ticket_service_fee_amount')['value'], 0.0001);
+        $this->assertEqualsWithDelta(7000.0, (float) $this->setting($payload, 'registration_service_fee_amount')['value'], 0.0001);
+        $this->assertEqualsWithDelta(1500.0, (float) $this->setting($payload, 'plan_service_fee_amount')['value'], 0.0001);
+    }
 }

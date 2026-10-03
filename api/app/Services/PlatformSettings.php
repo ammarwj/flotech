@@ -67,24 +67,35 @@ class PlatformSettings
             'label' => 'Tambahan masa tahan di atas batas 01:00 (hari)',
             'description' => 'Dana masuk cair otomatis setelah lewat jam 01:00 WIB berikutnya. Isi 0 untuk batas 01:00 terdekat, atau tambahkan hari untuk menahannya lebih lama.',
         ],
-        // Two margins, not one rate applied twice. The money moves between
-        // different parties in each case — a participant paying an organizer,
-        // versus an organizer paying us — so they are priced independently and
-        // one can be zero while the other is not. PaymentFeeCalculator takes
-        // the key as an argument rather than picking it, so a call site that
-        // forgets to say which one it is cannot silently inherit the other.
+        // Three margins, not one rate applied three times, and the split
+        // follows two different seams. The first is who pays: a participant
+        // paying an organizer is not an organizer paying us. The second is what
+        // is bought — a ticket is sold per seat, a team registration once per
+        // team at many times the price — so a rate that suits one is wrong for
+        // the other. All three are priced independently and any may be zero
+        // while the others are not. PaymentFeeCalculator takes the key as an
+        // argument rather than picking it, so a call site that forgets to say
+        // which one it is cannot silently inherit another flow's rate.
         // Flat rupiah, not a percentage — a fixed cost per unit rather than one
         // that scales with the ticket/plan price. Per *unit*, not per checkout:
         // PaymentFeeCalculator multiplies it by the basket size, so three
         // tickets in one order carry three fees while the gateway's own
         // per-transaction charge is counted once.
-        'service_fee_amount' => [
-            'config' => 'payments.service_fee_amount',
+        'ticket_service_fee_amount' => [
+            'config' => 'payments.ticket_service_fee_amount',
             'type' => 'money',
             'min' => 0,
             'max' => 100_000,
-            'label' => 'Fee platform ke peserta (Rp / tiket)',
-            'description' => 'Margin platform pada pembayaran peserta ke organizer — tiket dan biaya pendaftaran. Nominal tetap per tiket (beli 3 tiket = 3x fee), ditambahkan ke tagihan peserta di atas fee gateway. Biaya pendaftaran tim dihitung satu unit.',
+            'label' => 'Fee platform ke peserta — tiket (Rp / tiket)',
+            'description' => 'Margin platform pada pembelian tiket oleh peserta. Nominal tetap per tiket (beli 3 tiket = 3x fee), ditambahkan ke tagihan peserta di atas fee gateway.',
+        ],
+        'registration_service_fee_amount' => [
+            'config' => 'payments.registration_service_fee_amount',
+            'type' => 'money',
+            'min' => 0,
+            'max' => 100_000,
+            'label' => 'Fee platform ke peserta — pendaftaran tim (Rp)',
+            'description' => 'Margin platform pada biaya pendaftaran tim. Nominal tetap satu kali per tim — jumlah pemain di roster tidak menambah fee — ditambahkan ke tagihan peserta di atas fee gateway.',
         ],
         'plan_service_fee_amount' => [
             'config' => 'payments.plan_service_fee_amount',

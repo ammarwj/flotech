@@ -64,8 +64,8 @@ export default function BuyTicketsPage() {
   // channel is picked. `total` alone is the ticket price only and omits the
   // platform's service fee, so it understated what the buyer pays.
   const channelsQuery = useQuery({
-    queryKey: ["payment-channels", total, "participant", quantity],
-    queryFn: () => getPaymentChannels(total, "participant", quantity),
+    queryKey: ["payment-channels", total, "ticket", quantity],
+    queryFn: () => getPaymentChannels(total, "ticket", quantity),
     enabled: requiresChannel,
   });
   const selectedBreakdown = channelsQuery.data?.find((c) => c.channel === channel) ?? null;
@@ -271,7 +271,7 @@ export default function BuyTicketsPage() {
               {requiresChannel && (
                 <ChannelPicker
                   amount={total}
-                  audience="participant"
+                  audience="ticket"
                   units={quantity}
                   unitLabel="tiket"
                   value={channel}

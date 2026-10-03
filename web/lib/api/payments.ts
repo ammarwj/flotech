@@ -18,11 +18,13 @@ export interface PaymentChannel {
 }
 
 /**
- * Which platform margin applies. The two are set independently in
- * /admin/settings: a participant paying an organizer (tickets, registration)
- * is not the same transaction as an organizer paying the platform (plans).
+ * Which platform margin applies. The three are set independently in
+ * /admin/settings, along two seams. Who pays: a participant paying an organizer
+ * is not an organizer paying the platform (plans). And what is bought: a ticket
+ * is sold per seat for tens of thousands, a team registration once per team for
+ * many times that, so one rate cannot suit both.
  */
-export type FeeAudience = "participant" | "organizer";
+export type FeeAudience = "ticket" | "registration" | "organizer";
 
 /**
  * Fee breakdown per enabled Midtrans channel for a given amount — the channel

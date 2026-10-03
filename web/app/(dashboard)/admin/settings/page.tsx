@@ -118,9 +118,11 @@ export default function AdminSettingsPage() {
   // toggles (`gateway_fee_enabled_va`, `ppn_enabled_va`, …) are pulled out and
   // re-paired by channel below instead of rendered in this bucket directly.
   const walletSettings = settings.filter((s) => s.key.startsWith("wallet_"));
-  const feeSettings = settings.filter(
-    (s) =>
-      s.key === "service_fee_amount" || s.key === "plan_service_fee_amount",
+  // Matched by suffix, not by an explicit list: a key that lands in none of
+  // these buckets renders nowhere at all while `submit()` still posts it, so a
+  // hardcoded list is how the next rate added here goes missing without error.
+  const feeSettings = settings.filter((s) =>
+    s.key.endsWith("service_fee_amount"),
   );
   const gatewaySetting = settings.find(
     (s) => s.key === "payment_gateway_enabled",

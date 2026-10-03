@@ -120,7 +120,7 @@ class PublicTicketController extends Controller
             $breakdown = $this->fees->forChannel(
                 $data['payment_channel'],
                 $total,
-                PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
+                PaymentFeeCalculator::AUDIENCE_TICKET,
                 (int) $data['quantity'],
             );
             $channel = $breakdown['channel'];

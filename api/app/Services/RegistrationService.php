@@ -92,7 +92,7 @@ class RegistrationService
             $breakdown = $this->fees->forChannel(
                 $channel,
                 $amount,
-                PaymentFeeCalculator::AUDIENCE_PARTICIPANT,
+                PaymentFeeCalculator::AUDIENCE_REGISTRATION,
             );
             $gatewayFee = $breakdown['gateway_fee'];
             $gatewayTax = $breakdown['gateway_tax'];
