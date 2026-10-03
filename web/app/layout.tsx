@@ -1,26 +1,41 @@
 import type { Metadata } from "next";
-import { Outfit, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { Providers } from "@/components/providers";
 import type { SiteSettings } from "@/types/api";
 import "./globals.css";
 
-const display = Outfit({
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
+/**
+ * Self-hosted, deliberately — `next/font/google` downloads the woff2 from
+ * fonts.googleapis.com *at build time*, so a build host that cannot reach
+ * Google fails the whole image. It fails as a module-resolution error on
+ * `@vercel/turbopack-next/internal/font/google/font`, which names neither the
+ * network nor the font, and it reproduces nowhere a developer can reach Google
+ * — i.e. never locally. The files in `fonts/` are the same latin woff2 Google
+ * would have served; keeping them in the repo makes the build hermetic.
+ *
+ * All three are variable fonts, hence one file per family covering every
+ * weight: `weight` below is the supported range, not a static cut.
+ *
+ * Deliberately NOT under `public/`: that would also serve them at a second,
+ * unhashed URL with no immutable cache headers.
+ */
+const display = localFont({
+  src: "../fonts/outfit-latin.woff2",
+  weight: "100 900",
   variable: "--font-display",
   display: "swap",
 });
 
-const body = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const body = localFont({
+  src: "../fonts/inter-latin.woff2",
+  weight: "100 900",
   variable: "--font-body",
   display: "swap",
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: "../fonts/jetbrains-mono-latin.woff2",
+  weight: "100 800",
   variable: "--font-mono",
   display: "swap",
 });
