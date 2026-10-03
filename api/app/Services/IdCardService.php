@@ -8,6 +8,7 @@ use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\Alignment;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\ImageManager;
@@ -283,9 +284,17 @@ class IdCardService
         if ($bytes !== null) {
             try {
                 $photo = $this->manager()->decodeBinary($bytes);
+                // TOP, not the default CENTER: these are headshots, and a
+                // centred crop on a photo taller than its box takes its slice
+                // out of the middle of the frame — where the chin is, not the
+                // head. Trimming the bottom loses shoulders; trimming the top
+                // loses the face, and a card exists to be matched to one.
+                // Horizontally it still centres, which is what a portrait
+                // dropped into a wide box wants. Same reasoning as
+                // PdfImageService::dataUri()'s `photo` shape.
                 $photo = ($field['fit'] ?? 'cover') === 'contain'
                     ? $photo->contain($boxW, $boxH)
-                    : $photo->cover($boxW, $boxH);
+                    : $photo->cover($boxW, $boxH, Alignment::TOP);
             } catch (Throwable $e) {
                 report($e);
                 $photo = null;

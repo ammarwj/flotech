@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\PngEncoder;
+use Intervention\Image\Geometry\Factories\RectangleFactory;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Interfaces\ImageInterface;
 use Tests\Concerns\CreatesPlannedEvents;
@@ -48,6 +49,22 @@ class IdCardRenderTest extends TestCase
         $png = (new ImageManager(new GdDriver))->createImage($w, $h)->fill($colour)->encode(new PngEncoder);
 
         Storage::disk('public')->put($key, (string) $png);
+
+        return Storage::disk('public')->url($key);
+    }
+
+    /** The same, but banded: top third red, rest blue, so a crop is visible. */
+    private function bandedImage(string $key, int $w, int $h): string
+    {
+        $png = (new ImageManager(new GdDriver))->createImage($w, $h)->fill('0000ff');
+
+        $png->drawRectangle(function (RectangleFactory $r) use ($w, $h) {
+            $r->at(0, 0);
+            $r->size($w, (int) round($h / 3));
+            $r->background('ff0000');
+        });
+
+        Storage::disk('public')->put($key, (string) $png->encode(new PngEncoder));
 
         return Storage::disk('public')->url($key);
     }
@@ -168,5 +185,61 @@ class IdCardRenderTest extends TestCase
         // assertion every time and the second never.
         $this->assertNotSame($at($first), $at($second));
         $this->assertSame($at($first), $at($again));
+    }
+
+    public function test_a_tall_photo_is_cropped_from_the_bottom_so_the_head_survives(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $template = $this->template($org, 85.6, 54, [
+            ['key' => 'photo', 'x' => 6, 'y' => 8, 'w' => 28, 'h' => 62, 'fit' => 'cover', 'radius' => 0],
+        ]);
+
+        // 300x600 into a 283x396 box: the photo scales to 283x566 and 170 rows
+        // have to go. Top-anchored they all come off the bottom, so the red
+        // band runs to row 188 of the box; centred it would start 85 rows in
+        // and end at 103.
+        $card = $this->decode($this->service()->render($template, $this->person([
+            'photo_url' => $this->bandedImage('personnel/tall.png', 300, 600),
+        ])));
+
+        $isRed = fn (int $x, int $y) => $card->colorAt($x, $y)->toHex(true) === '#ff0000';
+
+        // The pair is the test: red at the very top stays true under either
+        // anchor, because the band starts at row 0 either way. Row 150 is what
+        // separates them.
+        $this->assertTrue($isRed(201, 61), 'top of the frame should be kept');
+        $this->assertTrue($isRed(201, 201), 'a centred crop cut 85 rows off the head');
+        $this->assertFalse($isRed(201, 301), 'the band should still end inside the box');
+    }
+
+    public function test_contain_keeps_the_whole_photo_rather_than_anchoring_it(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        // The other branch, so the anchor added to cover() cannot leak into it:
+        // `contain` exists to lose nothing, and a top-anchored crop here would
+        // be the bug it is there to avoid. Same photo, same box, one differing
+        // field — asserting cover() alone would stay green either way.
+        $fields = fn (string $fit) => [
+            ['key' => 'photo', 'x' => 6, 'y' => 8, 'w' => 28, 'h' => 62, 'fit' => $fit, 'radius' => 0],
+        ];
+
+        $url = $this->bandedImage('personnel/tall-2.png', 300, 600);
+
+        $covered = $this->decode($this->service()->render(
+            $this->template($org, 85.6, 54, $fields('cover')),
+            $this->person(['photo_url' => $url]),
+        ));
+
+        $contained = $this->decode($this->service()->render(
+            $this->template($org, 85.6, 54, $fields('contain')),
+            $this->person(['photo_url' => $url]),
+        ));
+
+        // Contained, the whole 600 rows squeeze into 396, so the band ends
+        // around row 132 and row 201 is already blue — exactly where the
+        // top-anchored crop is still red.
+        $this->assertSame('#ff0000', $covered->colorAt(201, 201)->toHex(true));
+        $this->assertNotSame('#ff0000', $contained->colorAt(201, 201)->toHex(true));
     }
 }

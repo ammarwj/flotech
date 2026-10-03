@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Intervention\Image\Alignment;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
@@ -33,7 +34,12 @@ class PdfImageService
      * arrives is what gets stretched into the box in the stylesheet.
      *
      *  - `photo` crops to the 3x4 a photo box is drawn at, so a square-ish
-     *    selfie is trimmed instead of squashed.
+     *    selfie is trimmed instead of squashed. The crop is anchored to the
+     *    TOP, not centred: these are headshots, and a centred crop on a
+     *    wider-than-3x4 upload takes its slice out of the middle of the frame
+     *    — which is where the subject's chin is, not their head. Trimming the
+     *    bottom of a photo loses shoulders; trimming the top loses the face,
+     *    and the sheet exists to identify people by their faces.
      *  - `logo` is padded onto a square canvas instead, since cropping a crest
      *    would cut it. The padding is white, which is also what a transparent
      *    PNG flattens to on the way into a JPEG, so it is invisible on the
@@ -56,7 +62,7 @@ class PdfImageService
             $image = (new ImageManager(new GdDriver))->decodeBinary($bytes);
 
             $image = $shape === 'photo'
-                ? $image->cover(300, 400)
+                ? $image->cover(300, 400, Alignment::TOP)
                 : $image->contain(400, 400, background: 'ffffff');
 
             $jpeg = (string) $image->encode(new JpegEncoder(quality: 82));
