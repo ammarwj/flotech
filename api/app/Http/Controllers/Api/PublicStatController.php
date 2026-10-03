@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Event;
-use App\Models\GameMatch;
-use App\Models\Team;
-use App\Models\Ticket;
+use App\Services\LandingStatService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * The four counters in the landing page's "Proof" strip. Public — anyone
- * reading the marketing site sees them.
+ * The counters in the landing page's "Proof" strip. Public — anyone reading the
+ * marketing site sees them.
+ *
+ * A list, not a flat object: which counters show, what they are called and in
+ * what order are all super-admin settings now, so the client renders whatever it
+ * receives. The catalog and its defaults live in App\Support\LandingMetrics.
  *
  * Raw numbers only: "38rb" is presentation and lives in web/lib/landing.ts,
  * the same split as formatPlanFeature().
@@ -22,25 +23,25 @@ use Illuminate\Support\Facades\Cache;
  * rememberForever + an explicit flush. That pattern does not fit here: these
  * numbers move on every registration, ticket and finished match, so the flush
  * hooks would have to sit in a dozen write paths and one of them would be
- * missed. Landing figures being ten minutes stale costs nobody anything.
+ * missed. Landing figures being ten minutes stale costs nobody anything. (An
+ * admin editing the catalog DOES flush — see LandingStatService::put() — so the
+ * TTL only ever delays numbers, never a setting.)
+ *
+ * The TTL stopped being merely cosmetic once a traffic metric joined the strip:
+ * `event_view_daily` is summed with no WHERE clause, which no index helps, so
+ * this cache is what stands between a cold landing hit and a full scan. Don't
+ * shorten it.
  */
 class PublicStatController extends Controller
 {
-    public function __invoke(): JsonResponse
+    public function __invoke(LandingStatService $stats): JsonResponse
     {
         return ApiResponse::success(
-            Cache::remember('public_stats', now()->addMinutes(10), fn () => [
-                // Events that actually ran. A draft or an open registration is
-                // not a tournament that happened, and a cancelled one never was.
-                'tournaments' => Event::whereIn('status', ['ongoing', 'finished'])->count(),
-                // Teams that were once accepted; pending and rejected entries
-                // never became participants.
-                'teams' => Team::whereIn('status', ['approved', 'disqualified', 'withdrawn'])->count(),
-                // Rows in `tickets` only exist for paid orders (TicketService::markPaid),
-                // so this is already "sold" without a join.
-                'tickets' => Ticket::count(),
-                'matches' => GameMatch::where('status', 'finished')->count(),
-            ])
+            Cache::remember(
+                LandingStatService::CACHE_KEY,
+                now()->addMinutes(10),
+                fn () => $stats->publicList(),
+            )
         );
     }
 }

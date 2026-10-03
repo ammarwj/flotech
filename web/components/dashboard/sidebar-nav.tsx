@@ -26,6 +26,7 @@ import {
   Palette,
   Activity,
   BarChart3,
+  Gauge,
   Globe,
   type LucideIcon,
 } from "lucide-react";
@@ -205,6 +206,10 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/admin/testimonials", label: "Testimoni", icon: MessageSquareQuote },
       { href: "/admin/faqs", label: "FAQ", icon: HelpCircle },
+      // Gauge, not BarChart3: that one is /admin/visitors under Sistem, and the
+      // two pages are easy to confuse — this one sets which counters show, that
+      // one reads the traffic behind one of them.
+      { href: "/admin/landing-stats", label: "Counter Landing", icon: Gauge },
       { href: "/admin/site-settings", label: "Pengaturan Situs", icon: Palette },
     ],
   },

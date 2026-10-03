@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { usePublicCta } from "@/components/auth/public-auth-actions";
@@ -273,12 +274,22 @@ export function Hero() {
 }
 
 export function Proof() {
-  // These four were hardcoded ("1.200+", "38rb", "540rb", plus a 99,9% uptime
-  // figure nothing measured) — the same drift the sports count above already
-  // avoids, and the last hardcoded content left on the landing page. Uptime is
-  // gone: it isn't in the database, so it was a claim, not a number.
+  // These were hardcoded ("1.200+", "38rb", "540rb", plus a 99,9% uptime figure
+  // nothing measured) — the same drift the sports count above already avoids.
+  // Uptime is gone: it isn't in the database, so it was a claim, not a number.
+  //
+  // Which counters show, what they are called and in what order are all
+  // super-admin settings (/admin/landing-stats), so this renders whatever the
+  // endpoint sends rather than naming any metric itself. A counter that is
+  // genuinely 0 still prints "0"; the server does not hide zeroes, because that
+  // would change the column count from one visitor to the next.
   const query = useQuery({ queryKey: ["public-stats"], queryFn: getPublicStats });
   const stats = query.data;
+
+  // An empty list means loaded-and-all-off, which is not the same as loading.
+  // Either way nothing is rendered at all: .proof carries a border and padding,
+  // so a strip holding only its label reads as a visible seam.
+  if (!stats || stats.length === 0) return null;
 
   return (
     <section className="proof">
@@ -289,26 +300,17 @@ export function Proof() {
         {/* Rendered only once the counters land: a landing page that briefly
             says "0 Turnamen terselenggara" is worse than one that says nothing
             for a moment. */}
-        {stats && (
-          <div className="stat-row">
-            <div className="stat">
-              <b>{compactCount(stats.tournaments)}</b>
-              <span>Turnamen terselenggara</span>
+        <div
+          className="stat-row"
+          style={{ "--stat-count": stats.length } as CSSProperties}
+        >
+          {stats.map((stat) => (
+            <div className="stat" key={stat.key}>
+              <b>{compactCount(stat.value)}</b>
+              <span>{stat.label}</span>
             </div>
-            <div className="stat">
-              <b>{compactCount(stats.teams)}</b>
-              <span>Tim terdaftar</span>
-            </div>
-            <div className="stat">
-              <b>{compactCount(stats.tickets)}</b>
-              <span>Tiket terjual</span>
-            </div>
-            <div className="stat">
-              <b>{compactCount(stats.matches)}</b>
-              <span>Pertandingan dimainkan</span>
-            </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
     </section>
   );

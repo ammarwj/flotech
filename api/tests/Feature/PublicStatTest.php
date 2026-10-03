@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\LandingStatService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\Concerns\CreatesPlannedEvents;
@@ -66,11 +67,16 @@ class PublicStatTest extends TestCase
     }
 
     /**
+     * The endpoint ships a list of `{key, label, value}`; the counter tests below
+     * only care about the numbers, so they read it keyed.
+     *
      * @return array<string, int>
      */
     private function stats(): array
     {
-        return $this->getJson('/api/v1/stats')->assertOk()->json('data');
+        return collect($this->getJson('/api/v1/stats')->assertOk()->json('data'))
+            ->pluck('value', 'key')
+            ->all();
     }
 
     public function test_only_events_that_actually_ran_count_as_tournaments(): void
@@ -153,14 +159,27 @@ class PublicStatTest extends TestCase
             ]);
         }
 
-        $this->assertSame(2, $this->stats()['tickets']);
+        // Off by default, so the strip never shows it — but a super admin can
+        // switch it on, and the counter behind it still has to be right.
+        $this->assertSame(2, $this->valueOf('tickets'));
+    }
+
+    /** One metric's number regardless of whether it is active. */
+    private function valueOf(string $key): int
+    {
+        return collect(app(LandingStatService::class)->effectiveWithValues())
+            ->firstWhere('key', $key)['value'];
     }
 
     public function test_endpoint_is_public_and_returns_raw_numbers(): void
     {
         $stats = $this->stats();
 
-        $this->assertSame(['tournaments', 'teams', 'tickets', 'matches'], array_keys($stats));
+        // The default set, in catalog sort order. Compared as a whole rather than
+        // metric by metric: the point of the swap is that `page_views` arrived
+        // AND `tickets` left, and asserting either alone passes on a strip that
+        // shows all six.
+        $this->assertSame(['tournaments', 'teams', 'page_views', 'matches'], array_keys($stats));
 
         // Raw integers: formatting ("38rb") belongs to the web app.
         foreach ($stats as $value) {

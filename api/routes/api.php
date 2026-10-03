@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
+use App\Http\Controllers\Api\Admin\LandingStatController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
@@ -576,6 +577,12 @@ Route::prefix('v1')->group(function () {
             // Contact & socials: one row, so a settings pair instead of a resource.
             Route::get('site-settings', [SiteSettingController::class, 'index']);
             Route::put('site-settings', [SiteSettingController::class, 'update']);
+
+            // Landing proof counters: a settings pair for the same reason — the
+            // catalog in App\Support\LandingMetrics decides which metrics exist,
+            // so only their label, order and visibility are editable.
+            Route::get('landing-stats', [LandingStatController::class, 'index']);
+            Route::put('landing-stats', [LandingStatController::class, 'update']);
             // The platform favicon. Guarded, unlike the uploads/* routes the
             // public registration form posts to — only this CMS uploads one.
             Route::post('uploads/favicon', [UploadController::class, 'favicon']);

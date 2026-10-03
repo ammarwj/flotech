@@ -156,15 +156,34 @@ export interface SiteSettings {
 }
 
 /**
- * The four counters in the landing page's proof strip, counted from the
- * database on every read — see GET /stats. Raw numbers: the compact form
- * ("38rb") is presentation and lives in lib/landing.ts.
+ * One counter in the landing page's proof strip — see GET /stats, which returns
+ * however many a super admin left switched on, already in display order.
+ *
+ * Raw numbers: the compact form ("38rb") is presentation and lives in
+ * lib/landing.ts. A value of 0 is shipped as 0 and printed as "0"; the server
+ * deliberately does not hide zeroes, because that would change the column count
+ * from request to request.
  */
-export interface PlatformStats {
-  tournaments: number;
-  teams: number;
-  tickets: number;
-  matches: number;
+export interface LandingStat {
+  key: string;
+  label: string;
+  value: number;
+}
+
+/**
+ * The same counter seen from /admin/landing-stats: every metric in the catalog,
+ * inactive ones included, with its number so the page can preview what switching
+ * one on would show.
+ *
+ * `label` is always the effective one; `default_label` is what the catalog in the
+ * API says, and it is the placeholder the input shows — an emptied label means
+ * "inherit", not "blank heading". `is_overridden` is whether a row exists at all.
+ */
+export interface LandingStatSetting extends LandingStat {
+  default_label: string;
+  is_active: boolean;
+  sort_order: number;
+  is_overridden: boolean;
 }
 
 export interface Organization {

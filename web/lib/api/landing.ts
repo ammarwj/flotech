@@ -2,7 +2,8 @@ import { apiClient } from "./client";
 import type {
   ApiEnvelope,
   Faq,
-  PlatformStats,
+  LandingStat,
+  LandingStatSetting,
   SiteSettings,
   Testimonial,
 } from "@/types/api";
@@ -24,8 +25,8 @@ export async function getPublicSiteSettings(): Promise<SiteSettings> {
   return data.data;
 }
 
-export async function getPublicStats(): Promise<PlatformStats> {
-  const { data } = await apiClient.get<ApiEnvelope<PlatformStats>>("/stats");
+export async function getPublicStats(): Promise<LandingStat[]> {
+  const { data } = await apiClient.get<ApiEnvelope<LandingStat[]>>("/stats");
   return data.data;
 }
 
@@ -107,5 +108,32 @@ export async function uploadFavicon(file: File): Promise<string> {
 
 export async function updateSiteSettings(payload: SiteSettingsInput): Promise<SiteSettings> {
   const { data } = await apiClient.put<ApiEnvelope<SiteSettings>>("/admin/site-settings", payload);
+  return data.data;
+}
+
+export async function getAdminLandingStats(): Promise<LandingStatSetting[]> {
+  const { data } = await apiClient.get<ApiEnvelope<LandingStatSetting[]>>("/admin/landing-stats");
+  return data.data;
+}
+
+/**
+ * One entry per metric the admin actually touched. `null` on any field means
+ * "inherit the API's catalog", which is also how a row stops existing — so an
+ * emptied label must be sent as null, never as "".
+ */
+export interface LandingStatInput {
+  metric_key: string;
+  label?: string | null;
+  is_active?: boolean | null;
+  sort_order?: number | null;
+}
+
+export async function updateLandingStats(
+  metrics: LandingStatInput[]
+): Promise<LandingStatSetting[]> {
+  const { data } = await apiClient.put<ApiEnvelope<LandingStatSetting[]>>(
+    "/admin/landing-stats",
+    { metrics }
+  );
   return data.data;
 }
