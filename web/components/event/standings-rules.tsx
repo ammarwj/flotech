@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 import { ArrowDown, ArrowUp, ListOrdered } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +31,22 @@ export function Sub({ title, children }: { title: string; children: React.ReactN
   );
 }
 
+/**
+ * A number input that is allowed to be *empty while being typed into*.
+ *
+ * Clamping to `min` on every keystroke — which is what a plain controlled
+ * `Number(e.target.value) || min` does — makes the field impossible to clear:
+ * deleting the last digit puts `min` straight back, and the next digit lands
+ * *after* it, so clearing "1" to type "4" yields "14". On a laptop the habit of
+ * select-all-then-type hides it; on a phone the caret lands at the end and
+ * there is no way out of the field at all.
+ *
+ * So the draft is local and may be empty, and the clamp happens on blur — the
+ * one moment the value has stopped changing. The parent still only ever sees a
+ * number inside [min, max]. `value` is echoed back into the draft whenever it
+ * changes from outside (clamp on blur, a preset, a reset), so the two cannot
+ * drift.
+ */
 export function NumField({
   label,
   hint,
@@ -46,16 +64,46 @@ export function NumField({
   disabled?: boolean;
   onChange: (n: number) => void;
 }) {
+  const [draft, setDraft] = React.useState(String(value));
+  const [seen, setSeen] = React.useState(value);
+
+  if (seen !== value) {
+    setSeen(value);
+    setDraft(String(value));
+  }
+
+  const commit = (raw: string) => {
+    const n = Number(raw);
+    const next = raw.trim() === "" || Number.isNaN(n) ? min : Math.max(min, Math.min(max, n));
+    setDraft(String(next));
+    setSeen(next);
+    if (next !== value) onChange(next);
+  };
+
   return (
     <div className="grid gap-1.5">
       <Label className="font-semibold">{label}</Label>
       <Input
         type="number"
+        inputMode="numeric"
         min={min}
         max={max}
-        value={value}
+        value={draft}
         disabled={disabled}
-        onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || min)))}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setDraft(raw);
+          // An empty or half-typed field has no number to report; the parent
+          // keeps the last good one until blur.
+          const n = Number(raw);
+          if (raw.trim() === "" || Number.isNaN(n)) return;
+          const next = Math.max(min, Math.min(max, n));
+          if (next === n && next !== value) {
+            setSeen(next);
+            onChange(next);
+          }
+        }}
+        onBlur={(e) => commit(e.target.value)}
       />
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>

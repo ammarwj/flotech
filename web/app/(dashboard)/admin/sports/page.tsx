@@ -46,7 +46,13 @@ type SportForm = {
   icon: string;
   scoring: "goal" | "set";
   participant_modes: ParticipantType[];
-  default_match_minutes: number;
+  /**
+   * Held as a string so the box can be *emptied while being retyped*. Folding a
+   * blank straight back to 60 on each keystroke makes the field impossible to
+   * clear — the caret then types behind the restored digits and 90 becomes
+   * "6090". Coerced back to a number in `save`.
+   */
+  default_match_minutes: string;
   /** Card thresholds this sport's events inherit; {} = platform defaults. */
   discipline_config: DisciplineRuleValues;
   /** Babak this sport's events inherit; {} = platform defaults (2 × 45 "Babak"). */
@@ -68,7 +74,7 @@ const EMPTY: SportForm = {
   scoring: "goal",
   // Every sport fields a squad; racket sports add the other two.
   participant_modes: ["team"],
-  default_match_minutes: 60,
+  default_match_minutes: "60",
   discipline_config: {},
   period_config: {},
   squad_config: {},
@@ -112,8 +118,15 @@ export default function AdminSportsPage() {
     setEditingId(null);
   };
 
+  // `default_match_minutes` lives in the form as a string so the box can be
+  // cleared; the API wants the number, and an empty box means the default.
+  const payload = () => ({
+    ...form,
+    default_match_minutes: Number(form.default_match_minutes) || 60,
+  });
+
   const save = useMutation({
-    mutationFn: () => (editingId ? updateSport(editingId, form) : createSport(form)),
+    mutationFn: () => (editingId ? updateSport(editingId, payload()) : createSport(payload())),
     onSuccess: () => {
       toast.success(editingId ? "Cabang olahraga diperbarui" : "Cabang olahraga dibuat");
       reset();
@@ -183,7 +196,7 @@ export default function AdminSportsPage() {
       icon: sport.icon ?? "",
       scoring: sport.scoring,
       participant_modes: participantModes(sport),
-      default_match_minutes: sport.default_match_minutes,
+      default_match_minutes: String(sport.default_match_minutes),
       discipline_config: sport.discipline_config ?? {},
       // Null di server berarti "cabang set, tidak berjam" — bentuk yang di form
       // sudah dijawab `scoring`, jadi di sini ia cuma jatuh ke {}.
@@ -398,7 +411,7 @@ export default function AdminSportsPage() {
               min={5}
               value={form.default_match_minutes}
               onChange={(e) =>
-                setForm({ ...form, default_match_minutes: Number(e.target.value) || 60 })
+                setForm({ ...form, default_match_minutes: e.target.value })
               }
             />
           </div>

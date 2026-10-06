@@ -113,9 +113,20 @@ function DrawDialog({ teams, config, hasMatches, pending, onClose, onSubmit }: D
                         max={16}
                         value={pots[t.id] ?? ""}
                         placeholder="Pot"
-                        onChange={(e) =>
-                          setPots((p) => ({ ...p, [t.id]: Math.max(1, Number(e.target.value) || 1) }))
-                        }
+                        onChange={(e) => {
+                          // Clearing the box has to leave it *empty*: folding
+                          // the blank back to 1 on every keystroke puts a "1"
+                          // the caret then types behind, so pot 2 becomes 12.
+                          // The pot is optional anyway — an unset row drops out
+                          // of `pots` entirely.
+                          const raw = e.target.value;
+                          setPots((p) => {
+                            const next = { ...p };
+                            if (raw.trim() === "") delete next[t.id];
+                            else next[t.id] = Math.max(1, Math.min(16, Number(raw)));
+                            return next;
+                          });
+                        }}
                         className="h-9 w-20"
                         aria-label={`Pot ${t.name}`}
                       />

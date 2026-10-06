@@ -73,8 +73,13 @@
            (A4 portrait less the 24pt @page margins) minus 34 + 184 + 34 for the
            fixed middle, halved. The names wrap instead, and break mid-word for
            the single-token names no amount of wrapping would fit. */
-        .score .team { width: 146pt; font-size: 12pt; font-weight: bold; word-wrap: break-word; }
-        .score .team.right { text-align: right; }
+        /* Centred, not flush to the outer edges: a short name rendered flush
+           left/right sits a whole column away from its own number while the
+           long one opposite reaches across, which reads as the two halves being
+           laid out by different rules. Centring keeps each name over its own
+           number whatever its length, and the fixed width above is what keeps
+           the pair symmetric. */
+        .score .team { width: 146pt; font-size: 12pt; font-weight: bold; word-wrap: break-word; text-align: center; }
         .score .num { font-size: 26pt; font-weight: bold; width: 34pt; text-align: center; }
         .periods { width: 184pt; }
         .periods td { border: 0.75pt solid #000; padding: 1.6pt 3pt; font-size: 7.5pt; text-align: center; }
@@ -234,7 +239,7 @@
                     @endif
                 </td>
                 <td class="num">{{ $match->away_score ?? '–' }}</td>
-                <td class="team right">{{ $away['team'] }}</td>
+                <td class="team">{{ $away['team'] }}</td>
             </tr>
         </tbody>
     </table>

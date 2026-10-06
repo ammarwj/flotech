@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { Scale } from "lucide-react";
 
@@ -111,7 +117,10 @@ export function StandingsTable({
                 className="px-2 py-3 text-center font-mono text-muted-foreground"
                 style={
                   highlight > 0 && s.rank <= highlight
-                    ? { boxShadow: "inset 3px 0 0 var(--success)", color: "var(--success)" }
+                    ? {
+                        boxShadow: "inset 3px 0 0 var(--success)",
+                        color: "var(--success)",
+                      }
                     : undefined
                 }
               >
@@ -124,7 +133,11 @@ export function StandingsTable({
                     <DeciderMark
                       onClick={
                         onDecide
-                          ? () => onDecide(blocks.get(s.team.id) ?? [s.team], s.group_name)
+                          ? () =>
+                              onDecide(
+                                blocks.get(s.team.id) ?? [s.team],
+                                s.group_name,
+                              )
                           : undefined
                       }
                     />
@@ -137,10 +150,18 @@ export function StandingsTable({
                   className={`whitespace-nowrap px-2 py-3 text-center${
                     c.key === "points" ? " font-extrabold" : ""
                   }`}
-                  style={c.key === "points" ? { fontFamily: "var(--font-display)" } : undefined}
+                  style={
+                    c.key === "points"
+                      ? { fontFamily: "var(--font-display)" }
+                      : undefined
+                  }
                 >
                   {c.key === "adjustment" ? (
-                    <AdjustmentCell row={s} text={c.cell(s)} onAdjust={onAdjust} />
+                    <AdjustmentCell
+                      row={s}
+                      text={c.cell(s)}
+                      onAdjust={onAdjust}
+                    />
                   ) : (
                     c.cell(s)
                   )}
@@ -275,7 +296,10 @@ function AdjustmentCell({
                 <li key={i} className="flex gap-2">
                   <span
                     className="shrink-0 font-semibold tabular-nums"
-                    style={{ color: note.points > 0 ? "var(--success)" : "var(--danger)" }}
+                    style={{
+                      color:
+                        note.points > 0 ? "var(--success)" : "var(--danger)",
+                    }}
                   >
                     {note.points > 0 ? `+${note.points}` : note.points}
                   </span>
@@ -283,15 +307,6 @@ function AdjustmentCell({
                 </li>
               ))}
             </ul>
-            {onAdjust && (
-              <button
-                type="button"
-                onClick={() => onAdjust(row.team)}
-                className="mt-2 font-semibold text-[var(--brand-600)] transition-opacity hover:opacity-75"
-              >
-                Ubah penyesuaian
-              </button>
-            )}
           </span>,
           document.body,
         )}
