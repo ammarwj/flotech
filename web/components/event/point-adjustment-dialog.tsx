@@ -334,8 +334,16 @@ function Dialog({
             ) : (
               <>
                 {/* One bordered sheet with ruled rows, not a stack of cards:
-                    the signed numbers are a column to be read down. */}
-                <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                    the signed numbers are a column to be read down.
+
+                    No `overflow-hidden` here, however much the rounded corners
+                    ask for it. It would make this list its own scroll
+                    container, and a scroll container's `min-height: auto`
+                    collapses to zero — so as a grid item it got squeezed to
+                    fit, clipping its own rows away while the body above had
+                    nothing left to scroll. Nothing here paints to the corners
+                    anyway. */}
+                <ul className="divide-y divide-border rounded-lg border border-border">
                   {rows.map((row) => (
                     <LedgerRow
                       key={row.id}
