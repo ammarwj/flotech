@@ -245,7 +245,7 @@ const POINTS: StandingColumn = { key: "points", short: "Poin", legend: "poin", c
 const ADJUSTMENT: StandingColumn = {
   key: "adjustment",
   short: "Adj",
-  legend: "penyesuaian poin manual (aturan penyelenggara)",
+  legend: "penyesuaian poin manual",
   cell: (s) => signed(s.adjustment),
 };
 

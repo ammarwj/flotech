@@ -86,74 +86,71 @@ export function StandingsTable({
   }
 
   return (
-    <>
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[var(--surface-2)] text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="w-10 px-2 py-3 text-center font-semibold">#</th>
-              <th className="px-3 py-3 text-left font-semibold">Tim</th>
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-[var(--surface-2)] text-xs uppercase tracking-wide text-muted-foreground">
+            <th className="w-10 px-2 py-3 text-center font-semibold">#</th>
+            <th className="px-3 py-3 text-left font-semibold">Tim</th>
+            {columns.map((c) => (
+              <th
+                key={c.key}
+                className={`whitespace-nowrap px-2 py-3 text-center font-semibold${
+                  c.key === "points" ? " text-foreground" : ""
+                }`}
+              >
+                {c.short}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {standings.map((s) => (
+            <tr key={s.team.id} className="border-t border-border">
+              <td
+                className="px-2 py-3 text-center font-mono text-muted-foreground"
+                style={
+                  highlight > 0 && s.rank <= highlight
+                    ? { boxShadow: "inset 3px 0 0 var(--success)", color: "var(--success)" }
+                    : undefined
+                }
+              >
+                {s.rank}
+              </td>
+              <td className="px-3 py-3 font-semibold">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {s.team.name}
+                  {s.needs_decider && (
+                    <DeciderMark
+                      onClick={
+                        onDecide
+                          ? () => onDecide(blocks.get(s.team.id) ?? [s.team], s.group_name)
+                          : undefined
+                      }
+                    />
+                  )}
+                </span>
+              </td>
               {columns.map((c) => (
-                <th
+                <td
                   key={c.key}
-                  className={`whitespace-nowrap px-2 py-3 text-center font-semibold${
-                    c.key === "points" ? " text-foreground" : ""
+                  className={`whitespace-nowrap px-2 py-3 text-center${
+                    c.key === "points" ? " font-extrabold" : ""
                   }`}
+                  style={c.key === "points" ? { fontFamily: "var(--font-display)" } : undefined}
                 >
-                  {c.short}
-                </th>
+                  {c.key === "adjustment" ? (
+                    <AdjustmentCell row={s} text={c.cell(s)} onAdjust={onAdjust} />
+                  ) : (
+                    c.cell(s)
+                  )}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {standings.map((s) => (
-              <tr key={s.team.id} className="border-t border-border">
-                <td
-                  className="px-2 py-3 text-center font-mono text-muted-foreground"
-                  style={
-                    highlight > 0 && s.rank <= highlight
-                      ? { boxShadow: "inset 3px 0 0 var(--success)", color: "var(--success)" }
-                      : undefined
-                  }
-                >
-                  {s.rank}
-                </td>
-                <td className="px-3 py-3 font-semibold">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {s.team.name}
-                    {s.needs_decider && (
-                      <DeciderMark
-                        onClick={
-                          onDecide
-                            ? () => onDecide(blocks.get(s.team.id) ?? [s.team], s.group_name)
-                            : undefined
-                        }
-                      />
-                    )}
-                  </span>
-                </td>
-                {columns.map((c) => (
-                  <td
-                    key={c.key}
-                    className={`whitespace-nowrap px-2 py-3 text-center${
-                      c.key === "points" ? " font-extrabold" : ""
-                    }`}
-                    style={c.key === "points" ? { fontFamily: "var(--font-display)" } : undefined}
-                  >
-                    {c.key === "adjustment" ? (
-                      <AdjustmentCell row={s} text={c.cell(s)} onAdjust={onAdjust} />
-                    ) : (
-                      c.cell(s)
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-    </>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

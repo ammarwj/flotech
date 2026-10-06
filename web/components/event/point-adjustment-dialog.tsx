@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { SlidersHorizontal, Trash2, X } from "lucide-react";
+import { History, Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,12 @@ function Dialog({
 }: PointAdjustmentDialogProps) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+
+  // Two panes, not one scroll: the form is a thing you fill in, the ledger is a
+  // thing you read, and stacking them put the submit button in the middle of a
+  // list of entries. Opens on the form — the dialog is reached from a button
+  // that says "add".
+  const [tab, setTab] = useState<"add" | "history">("add");
 
   const [team, setTeam] = useState(teamId ?? "");
   // Kept as a string: an empty number input is not 0, and "-" is a legitimate
@@ -174,124 +180,134 @@ function Dialog({
           </button>
         </div>
 
+        <div className="border-b border-border px-5 pt-4">
+          <PillTabs
+            items={[
+              { key: "add", label: "Tambah", icon: Plus },
+              {
+                key: "history",
+                label: rows.length ? `Riwayat (${rows.length})` : "Riwayat",
+                icon: History,
+              },
+            ]}
+            activeKey={tab}
+            onSelect={(key) => setTab(key as "add" | "history")}
+          />
+        </div>
+
         <div className="grid gap-4 overflow-y-auto p-5">
-          <div className="grid gap-1.5">
-            <Label htmlFor="adj-team" className="font-semibold">
-              Tim<span className="text-[var(--danger)]"> *</span>
-            </Label>
-            <TeamCombobox
-              id="adj-team"
-              orgId={orgId}
-              eventId={eventId}
-              categoryId={categoryId}
-              value={team}
-              onChange={setTeam}
-            />
-            <FieldError error={fieldErrors.team_id} />
-          </div>
+          {tab === "add" ? (
+            <>
+              <div className="grid gap-1.5">
+                <Label htmlFor="adj-team" className="font-semibold">
+                  Tim<span className="text-[var(--danger)]"> *</span>
+                </Label>
+                <TeamCombobox
+                  id="adj-team"
+                  orgId={orgId}
+                  eventId={eventId}
+                  categoryId={categoryId}
+                  value={team}
+                  onChange={setTeam}
+                />
+                <FieldError error={fieldErrors.team_id} />
+              </div>
 
-          <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
-            <div className="grid gap-1.5">
-              <Label htmlFor="adj-points" className="font-semibold">
-                Poin<span className="text-[var(--danger)]"> *</span>
-              </Label>
-              <Input
-                id="adj-points"
-                type="number"
-                inputMode="numeric"
-                min={-99}
-                max={99}
-                placeholder="+2"
-                value={points}
-                onChange={(e) => setPoints(e.target.value)}
-              />
-              <FieldError error={fieldErrors.points} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="adj-reason" className="font-semibold">
-                Alasan<span className="text-[var(--danger)]"> *</span>
-              </Label>
-              <Input
-                id="adj-reason"
-                placeholder="Suporter lengkap matchday 3"
-                maxLength={255}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-              <FieldError error={fieldErrors.reason} />
-            </div>
-          </div>
+              <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="adj-points" className="font-semibold">
+                    Poin<span className="text-[var(--danger)]"> *</span>
+                  </Label>
+                  <Input
+                    id="adj-points"
+                    type="number"
+                    inputMode="numeric"
+                    min={-99}
+                    max={99}
+                    placeholder="+2"
+                    value={points}
+                    onChange={(e) => setPoints(e.target.value)}
+                  />
+                  <FieldError error={fieldErrors.points} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="adj-reason" className="font-semibold">
+                    Alasan<span className="text-[var(--danger)]"> *</span>
+                  </Label>
+                  <Input
+                    id="adj-reason"
+                    placeholder="Suporter lengkap matchday 3"
+                    maxLength={255}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                  <FieldError error={fieldErrors.reason} />
+                </div>
+              </div>
 
-          <p className="text-xs text-muted-foreground">
-            Alasan tampil di klasemen publik.
-          </p>
-
-          <Button
-            onClick={() => add.mutate()}
-            disabled={!canSave || add.isPending}
-            className="justify-self-start"
-          >
-            {add.isPending ? "Menyimpan…" : "Tambah penyesuaian"}
-          </Button>
-
-          <div className="border-t border-border pt-4">
-            <h3 className="mb-2 text-sm font-semibold">Riwayat penyesuaian</h3>
-
-            {query.isLoading ? (
-              <p className="text-sm text-muted-foreground">Memuat…</p>
-            ) : rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada penyesuaian di kategori ini.
+              <p className="text-xs text-muted-foreground">
+                Alasan tampil di klasemen publik.
               </p>
-            ) : (
-              <ul className="grid gap-2">
-                {rows.map((row) => (
-                  <li
-                    key={row.id}
-                    className="flex items-start gap-3 rounded-lg border border-border p-3"
+
+              <Button
+                onClick={() => add.mutate()}
+                disabled={!canSave || add.isPending}
+                className="justify-self-start"
+              >
+                {add.isPending ? "Menyimpan…" : "Tambah penyesuaian"}
+              </Button>
+            </>
+          ) : query.isLoading ? (
+            <p className="text-sm text-muted-foreground">Memuat…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Belum ada penyesuaian di kategori ini.
+            </p>
+          ) : (
+            <ul className="grid gap-2">
+              {rows.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex items-start gap-3 rounded-lg border border-border p-3"
+                >
+                  <span
+                    className="shrink-0 font-bold tabular-nums"
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      color: row.points > 0 ? "var(--success)" : "var(--danger)",
+                    }}
                   >
-                    <span
-                      className="shrink-0 font-bold tabular-nums"
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        color:
-                          row.points > 0 ? "var(--success)" : "var(--danger)",
-                      }}
-                    >
-                      {row.points > 0 ? `+${row.points}` : row.points}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">
-                        {row.team_name ?? "Tim dihapus"}
+                    {row.points > 0 ? `+${row.points}` : row.points}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">
+                      {row.team_name ?? "Tim dihapus"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{row.reason}</p>
+                    {row.created_by_name && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Dicatat {row.created_by_name}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {row.reason}
-                      </p>
-                      {row.created_by_name && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Dicatat {row.created_by_name}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        askRemove(
-                          row.id,
-                          `${row.team_name ?? "Tim"} · ${row.points > 0 ? "+" : ""}${row.points} — ${row.reason}`,
-                        )
-                      }
-                      disabled={remove.isPending}
-                      aria-label="Hapus penyesuaian"
-                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-[var(--danger)] disabled:opacity-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      askRemove(
+                        row.id,
+                        `${row.team_name ?? "Tim"} · ${row.points > 0 ? "+" : ""}${row.points} — ${row.reason}`,
+                      )
+                    }
+                    disabled={remove.isPending}
+                    aria-label="Hapus penyesuaian"
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-[var(--danger)] disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>
