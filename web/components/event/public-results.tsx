@@ -18,7 +18,7 @@ import {
   playableMatches,
 } from "@/lib/bracket";
 import { hybridConfig, knockoutMatches } from "@/lib/hybrid";
-import { standingsLegend, tracksDiscipline } from "@/lib/scoring";
+import { hasAdjustments, standingsLegend, tracksDiscipline } from "@/lib/scoring";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { defaultDateKey, fullDateLabel, groupByDate } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
@@ -233,7 +233,10 @@ export function PublicResults({
             {(standingsQuery.data?.length ?? 0) > 0 && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {!isHybrid && "Baris hijau = juara klasemen. "}
-                {standingsLegend(context ?? "goal", { buchholz: isSwiss })}
+                {standingsLegend(context ?? "goal", {
+                  buchholz: isSwiss,
+                  adjustment: hasAdjustments(standingsQuery.data ?? []),
+                })}
               </p>
             )}
           </div>

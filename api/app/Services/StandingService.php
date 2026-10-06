@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\EventCategory;
+use App\Models\StandingAdjustment;
 use App\Models\GameMatch;
 use App\Support\HybridConfig;
 use App\Support\MatchScoring;
@@ -22,6 +23,16 @@ use Illuminate\Support\Facades\DB;
  * are called: `goals_*` is the match score (gol, game menang, or partai
  * menang), `sets_*` the games behind a squad tie, `points_*` the raw points
  * behind the sets. A tier a context has no use for stays zero.
+ *
+ * A row's `points` is the number the table is ranked on, and it is not purely a
+ * function of the results: `match_points` is what the fixtures produced,
+ * `adjustment` is what the organizer's house rules added or took away ("suporter
+ * datang lengkap = +2"), and `points` is the sum. The split is published rather
+ * than resolved here because every reader needs the whole identity — the
+ * organizer asking why a row shows 11 points off three wins, and the public
+ * table asking exactly the same thing. The arithmetic stays on the server:
+ * rank() orders on its own sum, so a client adding the two itself would
+ * eventually print a table in an order qualifierSlots() disagrees with.
  *
  * A row also says whether its place is real: `needs_decider` means nothing in
  * the config could separate it from the others it is level with, so what put it
@@ -58,6 +69,15 @@ class StandingService
     protected array $byeCache = [];
 
     /**
+     * The manual adjustments behind the same table — see adjustments(). Cleared
+     * alongside the fixtures for the same reason: an organizer can type one
+     * between two reads of a single long-lived instance.
+     *
+     * @var array<string, array<string, int>> category id => team id => signed total
+     */
+    protected array $adjustmentCache = [];
+
+    /**
      * Drop the memoized fixtures. Called at the top of every public entry
      * point, because the service can outlive the results it read: one instance
      * answers the knockout plan both before a ball is kicked and after the
@@ -73,6 +93,7 @@ class StandingService
         $this->matchCache = [];
         $this->pendingCache = [];
         $this->byeCache = [];
+        $this->adjustmentCache = [];
     }
 
     /**
@@ -213,6 +234,12 @@ class StandingService
      * so it is skipped here — and so is the decider, which is only ever played
      * between two teams of the same group.
      *
+     * Manual adjustments reach this table too, and they do it without a line of
+     * code here: filtering drops two comparators but leaves `points` first, and
+     * the rows arrive already adjusted. Worth saying because this is rank()'s
+     * second caller, and someone comparing it against compute() will wonder
+     * whether the extra places were missed.
+     *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
@@ -268,6 +295,32 @@ class StandingService
                 'points_against' => 0,
                 'points_diff' => 0,
                 'points' => 0,
+                /**
+                 * `points` before any adjustment — what the fixtures alone
+                 * produced. Buchholz is summed over this one, which is what
+                 * keeps a house rule out of somebody else's strength of
+                 * schedule; see applyBuchholz().
+                 */
+                'match_points' => 0,
+                /**
+                 * What the organizer's house rules moved this row by, summed
+                 * over the category's ledger. Signed, and legitimately
+                 * negative. Published beside `points` rather than folded into
+                 * it, because the question an 11-point row off three wins
+                 * provokes is "why", and the answer has to be on the same line
+                 * as the number — on the public table too.
+                 */
+                'adjustment' => 0,
+                /**
+                 * The entries behind that total, oldest first — each a signed
+                 * number and the reason typed with it. Published because a ±2
+                 * nobody can explain is worse than no adjustment at all, and
+                 * the reader who most needs the explanation is the one on the
+                 * public table who cannot open the ledger.
+                 *
+                 * @var list<array{points: int, reason: string}>
+                 */
+                'adjustment_notes' => [],
                 'fair_play' => 0,
                 // The points this team's opponents ended on — filled last,
                 // because it reads other rows' finished totals.
@@ -309,13 +362,24 @@ class StandingService
         foreach ($rows as &$row) {
             $row['set_diff'] = $row['sets_for'] - $row['sets_against'];
             $row['points_diff'] = $row['points_for'] - $row['points_against'];
+            // Freeze what the fixtures produced, before an adjustment moves the
+            // total. This is the whole mechanism keeping a house rule out of
+            // buchholz: the alternative was an ordering rule ("adjust after
+            // buchholz") enforced by a comment a hundred lines from the thing
+            // it constrained — a second reader of "strength of schedule counts
+            // results only", and the kind that drifts unseen.
+            $row['match_points'] = $row['points'];
         }
         unset($row);
 
-        // Last, and that ordering is load-bearing: buchholz sums the points its
-        // opponents *ended* with, so running it any earlier reads a half-filled
-        // table and scores everyone against zero.
+        // Still before the adjustments, and still last among the things that
+        // read other rows: buchholz sums the totals its opponents *ended* with,
+        // so running it any earlier reads a half-filled table and scores
+        // everyone against zero. It no longer *depends* on running here, though
+        // — it reads match_points, which the loop above froze.
         $this->applyBuchholz($category, $rows);
+
+        $this->applyAdjustments($category, $rows);
 
         return $rows;
     }
@@ -365,6 +429,11 @@ class StandingService
      * the same fixtures the table counts, so a team cannot be credited for an
      * opponent whose result is not in the table yet.
      *
+     * Sums `match_points`, never `points`: strength of schedule is a statement
+     * about results, and an organizer's house rule is not a result. Reading
+     * `points` would let a +2 for a team's supporters raise the buchholz of
+     * everyone that team happened to play.
+     *
      * @param  array<string, array<string, mixed>>  $rows
      */
     protected function applyBuchholz(EventCategory $category, array &$rows): void
@@ -374,9 +443,80 @@ class StandingService
                 continue;
             }
 
-            $rows[$m->home_team_id]['buchholz'] += $rows[$m->away_team_id]['points'];
-            $rows[$m->away_team_id]['buchholz'] += $rows[$m->home_team_id]['points'];
+            $rows[$m->home_team_id]['buchholz'] += $rows[$m->away_team_id]['match_points'];
+            $rows[$m->away_team_id]['buchholz'] += $rows[$m->home_team_id]['match_points'];
         }
+    }
+
+    /**
+     * Fold the organizer's manual adjustments into the total.
+     *
+     * The only thing an adjustment is allowed to move is `points`, and through
+     * it the order of the rows. Not `played`, not `won`: nobody played a match.
+     * applyBye() carries the same rule for the same reason — the goals, sets
+     * and raw-points tiers all have tiebreakers hanging off them, and a figure
+     * nobody earned on the pitch must not move any of them.
+     *
+     * Not clamped at zero either. A squad docked more than it earned sits on a
+     * negative total; that is what the organizer typed, and a table showing it
+     * as 0 would hide the sanction this exists to publish.
+     *
+     * Head to head needs no guard here: miniLeague() builds its own points
+     * table from the matches the tied teams played against each other and never
+     * reads this row's `points` at all. That immunity is structural, which is
+     * why there is no code for it — only this paragraph, and the test that
+     * fails if the structure ever changes.
+     *
+     * Everything downstream follows without a second rule. rank() sorts on the
+     * adjusted total, so qualifierSlots(), qualifiers(), crossGroupOrder() and
+     * SwissService::pairingOrder() all see it; markUndecided() reads the same
+     * number, so an adjustment that breaks a tie clears the decider debt and
+     * one that creates a tie files it.
+     *
+     * @param  array<string, array<string, mixed>>  $rows
+     */
+    protected function applyAdjustments(EventCategory $category, array &$rows): void
+    {
+        foreach ($this->adjustments($category) as $teamId => $entry) {
+            if (isset($rows[$teamId])) {
+                $rows[$teamId]['adjustment'] = $entry['total'];
+                $rows[$teamId]['adjustment_notes'] = $entry['notes'];
+                $rows[$teamId]['points'] += $entry['total'];
+            }
+        }
+    }
+
+    /**
+     * Each team's adjustment total *and* the entries behind it.
+     *
+     * The entries are read rather than aggregated away because the reason is
+     * the whole value of the feature: a "+2" nobody can explain is worse than
+     * no adjustment at all, and the public table reads this same payload. One
+     * query either way — SUM() in SQL would save nothing and publish less.
+     *
+     * The casts are not cosmetic: the client is handed these numbers, so an
+     * integer in one environment and a string in another is a real difference.
+     *
+     * @return array<string, array{total: int, notes: list<array{points: int, reason: string}>}>
+     *                                                                                          team id => total + entries
+     */
+    protected function adjustments(EventCategory $category): array
+    {
+        return $this->adjustmentCache[$category->id] ??= $category->adjustments()
+            ->orderBy('created_at')
+            ->get(['team_id', 'points', 'reason'])
+            ->groupBy('team_id')
+            ->map(fn (Collection $rows) => [
+                'total' => (int) $rows->sum('points'),
+                'notes' => $rows
+                    ->map(fn (StandingAdjustment $row) => [
+                        'points' => (int) $row->points,
+                        'reason' => $row->reason,
+                    ])
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
     }
 
     /**

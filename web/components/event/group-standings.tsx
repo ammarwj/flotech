@@ -1,6 +1,7 @@
 "use client";
 
 import { StandingsTable } from "@/components/event/standings-table";
+import { hasAdjustments } from "@/lib/scoring";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { HybridConfig } from "@/lib/hybrid";
 import type { MatchTeamRef, StandingsContext, Standing } from "@/types/api";
@@ -15,6 +16,7 @@ export function GroupStandings({
   config,
   context = "goal",
   onDecide,
+  onAdjust,
 }: {
   standings: Standing[];
   config: HybridConfig;
@@ -22,8 +24,13 @@ export function GroupStandings({
   context?: StandingsContext;
   /** Passed straight through — see StandingsTable. */
   onDecide?: (teams: MatchTeamRef[], group: string | null) => void;
+  /** Passed straight through — see StandingsTable. */
+  onAdjust?: (team: MatchTeamRef) => void;
 }) {
   const { tiebreakerLabel } = useCatalog();
+  // Answered once for the whole category: derived per group it would print the
+  // Adj column above one table and not the one beside it.
+  const adjustment = hasAdjustments(standings);
   const groups = new Map<string, Standing[]>();
   for (const s of standings) {
     const key = s.group_name ?? "-";
@@ -55,6 +62,11 @@ export function GroupStandings({
             // A team not yet drawn into a group has no table to be deadlocked
             // in, so there is nothing there to schedule a decider for.
             onDecide={name === "-" ? undefined : onDecide}
+            // Unlike onDecide, this is *not* withheld from the undrawn group: a
+            // team with no group has no table to be deadlocked in, but it can
+            // perfectly well be owed +2 for its supporters.
+            onAdjust={onAdjust}
+            adjustment={adjustment}
           />
         </section>
       ))}

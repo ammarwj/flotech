@@ -768,7 +768,33 @@ export interface Standing {
   points_for: number;
   points_against: number;
   points_diff: number;
+  /**
+   * What the table is ranked on: `match_points` + `adjustment`. Not purely a
+   * function of the results, which is why the two parts travel with it.
+   *
+   * The server owns the arithmetic — adding the parts here instead would be a
+   * second reader of one rule, and it would eventually print a table in an
+   * order `qualifierSlots()` disagrees with.
+   */
   points: number;
+  /** What the fixtures alone produced. Buchholz is summed over this, not `points`. */
+  match_points: number;
+  /**
+   * What the organizer's house rules moved this row by ("suporter datang
+   * lengkap = +2 poin"), summed over the category's ledger. Signed, and
+   * legitimately negative: a sanction the table has to show.
+   *
+   * Published beside `points` instead of hidden inside it because an 11-point
+   * row off three wins provokes a question, and the public table reads this
+   * same payload — a ±2 nobody can explain is worse than none at all.
+   */
+  adjustment: number;
+  /**
+   * The entries behind that total, oldest first. Published so the number can
+   * be explained where it is read — the public table has no ledger to open,
+   * and a ±2 nobody can account for is worse than none at all.
+   */
+  adjustment_notes: { points: number; reason: string }[];
   /** Disciplinary points: 1 per yellow, 3 per red. Lower is better. */
   fair_play: number;
   /**
@@ -784,6 +810,26 @@ export interface Standing {
    * the category still ranks on one, since otherwise playing it changes nothing.
    */
   needs_decider: boolean;
+}
+
+/**
+ * One entry in a category's manual point ledger.
+ *
+ * Append-and-remove, never a full-list sync: entries accrue across a tournament
+ * from several people, so no client ever legitimately holds the whole list. And
+ * there is no edit — correcting one means deleting it and typing it again under
+ * your own name, so the author on a row is always the author of the statement.
+ */
+export interface StandingAdjustment {
+  id: string;
+  team_id: string;
+  team_name: string | null;
+  /** Signed: +2 for a bonus, -3 for a sanction. Never 0 — the API refuses it. */
+  points: number;
+  reason: string;
+  /** Null once the account is gone; the entry outlives it by design. */
+  created_by_name: string | null;
+  created_at: string;
 }
 
 /**

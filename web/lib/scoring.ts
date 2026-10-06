@@ -236,6 +236,18 @@ const DRAWN: StandingColumn = { key: "drawn", short: "S", legend: "seri", cell: 
 const LOST: StandingColumn = { key: "lost", short: "K", legend: "kalah", cell: (s) => String(s.lost) };
 /** Sits right after LOST, not at the far right: it is the number people scan for. */
 const POINTS: StandingColumn = { key: "points", short: "Poin", legend: "poin", cell: (s) => String(s.points) };
+/**
+ * Last column, past even buchholz: it is the rarest thing in the table and the
+ * only one whose meaning lives in prose rather than in the number, so it sits
+ * where it cannot push Poin and the goal columns off a phone screen. The
+ * reasons behind it print under the table — see StandingsTable.
+ */
+const ADJUSTMENT: StandingColumn = {
+  key: "adjustment",
+  short: "Adj",
+  legend: "penyesuaian poin manual (aturan penyelenggara)",
+  cell: (s) => signed(s.adjustment),
+};
 
 /**
  * The columns after "Tim", in order — Poin included.
@@ -253,11 +265,20 @@ const POINTS: StandingColumn = { key: "points", short: "Poin", legend: "poin", c
  * Swiss category needs it in every shape, and no other format has any use for
  * it. That is why it arrives as an option instead of a fourth context — three
  * shapes times two engines is six branches of the same words.
+ *
+ * Adjustment follows neither the sport nor the engine but the *data*: any
+ * format can carry a house rule, and a column of "+0" down a table nobody ever
+ * adjusted is noise. So the caller passes hasAdjustments(standings) — one
+ * answerer, shared by the organizer's table and the public one.
  */
 export function standingsColumns(
   context: StandingsContext,
-  opts: { buchholz?: boolean } = {}
+  opts: { buchholz?: boolean; adjustment?: boolean } = {}
 ): StandingColumn[] {
+  // Appended last in all three branches below, through this one array so the
+  // "only when some row has one" rule is not written out three times.
+  const adj: StandingColumn[] = opts.adjustment ? [ADJUSTMENT] : [];
+
   // Last, after the columns the table already ranks on: it is a tiebreaker, and
   // nobody scans for it the way they scan for Poin.
   const extra: StandingColumn[] = opts.buchholz
@@ -276,6 +297,7 @@ export function standingsColumns(
       { key: "games", short: "Game", legend: "game menang-kalah", cell: (s) => pair(s.sets_for, s.sets_against) },
       { key: "score", short: "Skor", legend: "poin menang-kalah", cell: (s) => pair(s.points_for, s.points_against) },
       ...extra,
+      ...adj,
     ];
   }
 
@@ -291,6 +313,7 @@ export function standingsColumns(
       { key: "game_diff", short: "±G", legend: "selisih game", cell: (s) => signed(s.goal_diff) },
       { key: "score_diff", short: "±S", legend: "selisih poin", cell: (s) => signed(s.points_diff) },
       ...extra,
+      ...adj,
     ];
   }
 
@@ -304,6 +327,7 @@ export function standingsColumns(
     { key: "goals_against", short: "GK", legend: "gol kemasukan", cell: (s) => String(s.goals_against) },
     { key: "goal_diff", short: "SG", legend: "selisih gol", cell: (s) => signed(s.goal_diff) },
     ...extra,
+    ...adj,
   ];
 }
 
@@ -313,12 +337,24 @@ export function standingsColumns(
  */
 export function standingsLegend(
   context: StandingsContext,
-  opts: { buchholz?: boolean } = {}
+  opts: { buchholz?: boolean; adjustment?: boolean } = {}
 ): string {
   return `${standingsColumns(context, opts)
     .filter((c) => c.key !== "points")
     .map((c) => `${c.short}: ${c.legend}`)
     .join(" · ")}.`;
+}
+
+/**
+ * Whether this table carries any manual adjustment at all.
+ *
+ * The one answerer, the way knockoutReadiness() and swissReadiness() are: the
+ * organizer's table, the public table and both legends each need it, and a
+ * second copy would drift into a column of "+0" on one surface and a missing
+ * column on another.
+ */
+export function hasAdjustments(standings: Standing[]): boolean {
+  return standings.some((s) => s.adjustment !== 0);
 }
 
 /** "Dimas / Ammar", falling back to a placeholder while the lineup is unset. */

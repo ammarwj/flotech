@@ -56,6 +56,7 @@ use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
+use App\Http\Controllers\Api\StandingAdjustmentController;
 use App\Http\Controllers\Api\TeamAlbumController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
@@ -416,6 +417,16 @@ Route::prefix('v1')->group(function () {
             // Manual fixture: organizers who already have their own schedule.
             Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);
             Route::get('events/{event}/categories/{category}/standings', [MatchController::class, 'standings']);
+            // Manual point adjustments: a house rule the fixtures cannot
+            // express ("suporter datang lengkap = +2"). A ledger, appended to
+            // and removed from one row at a time — never a full-list PUT,
+            // because several people type into it over a tournament and a stale
+            // client would delete entries it never saw. Plain `tenant` like the
+            // rest of this block: the operator running the table is who the
+            // organizer tells to give the two points.
+            Route::get('events/{event}/categories/{category}/adjustments', [StandingAdjustmentController::class, 'index']);
+            Route::post('events/{event}/categories/{category}/adjustments', [StandingAdjustmentController::class, 'store']);
+            Route::delete('adjustments/{adjustment}', [StandingAdjustmentController::class, 'destroy']);
             Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
             // Card accumulation and who it bars from the next fixture. A read,
             // and the operator typing results is exactly who needs it — so it

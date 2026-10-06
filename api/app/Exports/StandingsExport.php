@@ -12,6 +12,17 @@ use App\Services\StandingService;
  * (finished + confirmed), how hybrid groups are ranked, and how ties break —
  * duplicating any of that would give the spreadsheet a different table from the
  * screen, and the spreadsheet is the one that gets printed and argued over.
+ *
+ * `Adj` — the organizer's manual point adjustments — is printed unconditionally,
+ * even for a category that has none, and that is a decision rather than
+ * laziness. headings() and rows() compute independently, so a column whose
+ * presence depended on the data would have to ask the data twice (a second
+ * compute()), and the moment the two answers disagree the sheet prints *every*
+ * value one column to the left of its heading. pdf/export.blade.php is
+ * deliberately dumb and prints whatever pair it is handed, so this pair is the
+ * only thing holding the printed file together.
+ *
+ * One column, not two: `Poin` minus `Adj` is what the fixtures produced.
  */
 class StandingsExport extends EventExport
 {
@@ -33,7 +44,7 @@ class StandingsExport extends EventExport
     /** @return list<string> */
     public function headings(): array
     {
-        return ['#', 'Grup', 'Tim', 'Main', 'M', 'S', 'K', 'GM', 'GK', 'SG', 'Poin', 'Fair Play'];
+        return ['#', 'Grup', 'Tim', 'Main', 'M', 'S', 'K', 'GM', 'GK', 'SG', 'Poin', 'Adj', 'Fair Play'];
     }
 
     /** @return list<list<string|int|float|null>> */
@@ -51,6 +62,7 @@ class StandingsExport extends EventExport
             $r['goals_against'] ?? 0,
             $r['goal_diff'] ?? 0,
             $r['points'] ?? 0,
+            $r['adjustment'] ?? 0,
             $r['fair_play'] ?? 0,
         ], $this->standings->compute($this->category));
     }

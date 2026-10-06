@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
   Repeat,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,6 +70,7 @@ import {
 } from "@/lib/match-dates";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import {
+  hasAdjustments,
   isSetBased,
   standingsContextOf,
   standingsLegend,
@@ -84,6 +86,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
 import { GroupStandings } from "@/components/event/group-standings";
+import { PointAdjustmentDialog } from "@/components/event/point-adjustment-dialog";
 import { GroupDrawDialog } from "@/components/event/group-draw-dialog";
 import { KnockoutPlanView } from "@/components/event/knockout-plan-view";
 import { MatchDayTabs } from "@/components/event/match-day-tabs";
@@ -148,6 +151,10 @@ function ScheduleView() {
     away: string;
     group: string | null;
   } | null>(null);
+  // Open when the manual point ledger is being read or written. The team id is
+  // a seed, not a filter: the dialog lists the whole category either way.
+  const [adjustDialog, setAdjustDialog] = useState(false);
+  const [adjustTeam, setAdjustTeam] = useState<string | null>(null);
   const [planDialog, setPlanDialog] = useState(false);
   // The bracket slot being re-seated, plus any inline errors it came back with.
   const [slotMatch, setSlotMatch] = useState<Match | null>(null);
@@ -250,6 +257,9 @@ function ScheduleView() {
     // Confirming one result is what opens the next round, so the gate has to be
     // re-asked after every write on this page — not only after a round is built.
     qc.invalidateQueries({ queryKey: ["swiss", orgId, eventId] });
+    // The ledger carries team names, so a disqualification or a category switch
+    // changes what it should read — even though a result never touches it.
+    qc.invalidateQueries({ queryKey: ["adjustments", orgId, eventId] });
   };
 
   const closeManual = () => {
@@ -266,6 +276,12 @@ function ScheduleView() {
     if (teams.length < 2) return;
     setDeciderSeed({ home: teams[0].id, away: teams[1].id, group });
     setManualDialog(true);
+  };
+
+  /** Open the ledger with one row's team already picked. */
+  const openAdjust = (team: MatchTeamRef) => {
+    setAdjustTeam(team.id);
+    setAdjustDialog(true);
   };
 
   const generate = useMutation({
@@ -994,12 +1010,30 @@ function ScheduleView() {
           </div>
         ) : (
           <div className={isHybrid ? undefined : "max-w-3xl"}>
+            {/* Above the table, not under it: the Adj column does not exist
+                until the first entry, so this is the only way in. */}
+            {(standingsQuery.data?.length ?? 0) > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAdjustTeam(null);
+                  setAdjustDialog(true);
+                }}
+                className="mb-3"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Penyesuaian poin manual
+              </Button>
+            )}
             {isHybrid ? (
               <GroupStandings
                 standings={standingsQuery.data ?? []}
                 config={config}
                 context={context}
                 onDecide={openDecider}
+                onAdjust={openAdjust}
               />
             ) : (
               // A standalone league ends at the table — nothing follows it to
@@ -1011,6 +1045,7 @@ function ScheduleView() {
                 context={context}
                 buchholz={isSwiss}
                 onDecide={openDecider}
+                onAdjust={openAdjust}
               />
             )}
             {(standingsQuery.data?.length ?? 0) > 0 && (
@@ -1019,7 +1054,10 @@ function ScheduleView() {
                   its own tiebreaker order, so both of these belong to the
                   standalone league only. */}
                 {!isHybrid && "Baris hijau = juara klasemen. "}
-                {standingsLegend(context, { buchholz: isSwiss })}
+                {standingsLegend(context, {
+                  buchholz: isSwiss,
+                  adjustment: hasAdjustments(standingsQuery.data ?? []),
+                })}
                 {!isHybrid && config.tiebreakers.length > 0 && (
                   <> Tie breaker: {config.tiebreakers.map(catalog.tiebreakerLabel).join(" → ")}.</>
                 )}
@@ -1027,6 +1065,20 @@ function ScheduleView() {
             )}
           </div>
         )}
+
+        <PointAdjustmentDialog
+          // A fresh mount per open, so the form starts from whatever seeded it.
+          key={`${adjustDialog}-${adjustTeam ?? ""}`}
+          open={adjustDialog && !!catId}
+          orgId={orgId!}
+          eventId={eventId}
+          categoryId={catId!}
+          teamId={adjustTeam}
+          onClose={() => {
+            setAdjustDialog(false);
+            setAdjustTeam(null);
+          }}
+        />
 
         <ManualMatchDialog
           // A fresh mount per open, so the form always starts from whatever

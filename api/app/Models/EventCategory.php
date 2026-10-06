@@ -72,6 +72,16 @@ class EventCategory extends Model
     }
 
     /**
+     * The organizer's manual point adjustments for this table — a house rule
+     * the fixtures cannot express. Summed, never read one at a time, by
+     * StandingService::adjustments().
+     */
+    public function adjustments(): HasMany
+    {
+        return $this->hasMany(StandingAdjustment::class, 'category_id');
+    }
+
+    /**
      * The engine that runs this category's format. A format is a preset — several
      * may share one engine ("Liga" and "Liga 2 Putaran" are both `league`), so
      * scheduling and standings branch on this, never on `tournament_format`.
