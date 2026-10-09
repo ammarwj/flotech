@@ -46,6 +46,14 @@ export function Sub({ title, children }: { title: string; children: React.ReactN
  * number inside [min, max]. `value` is echoed back into the draft whenever it
  * changes from outside (clamp on blur, a preset, a reset), so the two cannot
  * drift.
+ *
+ * Leaving the field empty restores `anchor` — what it held when focus arrived —
+ * and *not* `min`, which is the same bug one layer along: deleting "8" would
+ * leave "1" behind, and the next digit lands after it. The anchor is needed
+ * because shortening "12" to "1" is indistinguishable from typing "1", so the
+ * live value has already followed the deletion down by the time the field goes
+ * empty. On a laptop select-all-then-type hides both; on a phone the keyboard
+ * blurs the field on every cleared digit, so this is the whole experience.
  */
 export function NumField({
   label,
@@ -66,6 +74,8 @@ export function NumField({
 }) {
   const [draft, setDraft] = React.useState(String(value));
   const [seen, setSeen] = React.useState(value);
+  /** What the field held when focus arrived; an emptied field falls back here. */
+  const anchor = React.useRef(value);
 
   if (seen !== value) {
     setSeen(value);
@@ -74,7 +84,10 @@ export function NumField({
 
   const commit = (raw: string) => {
     const n = Number(raw);
-    const next = raw.trim() === "" || Number.isNaN(n) ? min : Math.max(min, Math.min(max, n));
+    const next =
+      raw.trim() === "" || Number.isNaN(n)
+        ? Math.max(min, Math.min(max, anchor.current))
+        : Math.max(min, Math.min(max, n));
     setDraft(String(next));
     setSeen(next);
     if (next !== value) onChange(next);
@@ -90,6 +103,12 @@ export function NumField({
         max={max}
         value={draft}
         disabled={disabled}
+        onFocus={(e) => {
+          anchor.current = value;
+          // The caret landing at the end is what turns "clear then type 8" into
+          // "18" on a phone, where there is no select-all habit to hide it.
+          e.target.select();
+        }}
         onChange={(e) => {
           const raw = e.target.value;
           setDraft(raw);
