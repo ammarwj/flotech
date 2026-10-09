@@ -5,12 +5,12 @@ use App\Http\Controllers\Api\Admin\ConfigOptionController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
+use App\Http\Controllers\Api\Admin\LandingStatController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
-use App\Http\Controllers\Api\Admin\LandingStatController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
@@ -61,6 +61,7 @@ use App\Http\Controllers\Api\TeamAlbumController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\TicketOrderController;
 use App\Http\Controllers\Api\TicketPosterController;
+use App\Http\Controllers\Api\TicketSaleController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\Webhook\MidtransWebhookController;
@@ -482,6 +483,18 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
+
+            // Box office: the organizer selling at the venue. Plain `tenant` on
+            // purpose — the person staffing the till is a member `operator`, and
+            // they are exactly who this is for. Note the difference from
+            // `payments/.../approve` further down, where an operator is refused:
+            // there, accepting a receipt issues a ticket on somebody else's
+            // claim about money. Here the operator *is* who took the money.
+            Route::post('events/{event}/ticket-sales', [TicketSaleController::class, 'store']);
+            // Check in a whole paid order without scanning each QR — the holder
+            // is standing at the till. Same door for a gateway order that
+            // settled after the dialog was closed.
+            Route::post('ticket-orders/{ticketOrder}/check-in', [TicketSaleController::class, 'checkInOrder']);
 
             // Certificates. Gated on `certificate_generator` inside the
             // controllers (and `certificate_email` for the sending routes), the

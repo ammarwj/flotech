@@ -188,3 +188,32 @@ export function unitCountLabel(
 ): string {
   return `${seats * pricedDays(mode, dates)} tiket`;
 }
+
+/**
+ * The most seats one order may still take, given the days it covers.
+ *
+ * Capped by the *tightest* day picked, not by the category's own paid-unit
+ * count: the latter would offer seats no single day has, and the buyer would
+ * only find out through a 422 naming a date they already chose. Mirrors
+ * `ensureSeatsAvailable()` on the API side, which refuses per date for the same
+ * reason.
+ *
+ * `fallback` is what "unlimited" comes out as — the form still needs a number
+ * for its stepper. Dates empty on a day-selling category means nothing is
+ * picked yet, so every day it sells is considered.
+ */
+export function seatCeiling(
+  category: TicketCategory | null,
+  dates: string[],
+  fallback = 20,
+): number {
+  if (!category) return fallback;
+  if (!usesDays(category)) return category.remaining ?? fallback;
+
+  const limits = (category.days ?? [])
+    .filter((day) => dates.length === 0 || dates.includes(day.event_date))
+    .map((day) => day.remaining)
+    .filter((left): left is number => left !== null);
+
+  return limits.length > 0 ? Math.min(...limits) : fallback;
+}

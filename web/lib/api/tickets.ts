@@ -73,6 +73,73 @@ export async function deleteTicketCategory(orgId: string, categoryId: string): P
   await apiClient.delete(`/organizations/${orgId}/ticket-categories/${categoryId}`);
 }
 
+/**
+ * A box-office sale: the organizer issuing a ticket at the venue.
+ *
+ * Same shape as PurchasePayload — the staff fills in the form the buyer would
+ * have. Nothing more: the rail is the event's and the server derives it from
+ * PaymentRails::methodFor(), so there is nothing here to send.
+ */
+export interface TicketSalePayload {
+  ticket_category_id: string;
+  /** How many *people*. The server multiplies it by the days for a per-day category. */
+  quantity: number;
+  /** Days attended. Required for a per-day category, ignored for a pass. */
+  dates?: string[];
+  buyer_name: string;
+  buyer_email: string;
+  buyer_phone?: string;
+  holder_names?: string[];
+  /** Required when the event's rail is gateway and the total is > 0. */
+  payment_channel?: string;
+}
+
+/**
+ * Not a `PaymentStart`: there is no `bank_account` here and no `mock`.
+ *
+ * An event with no online rail becomes a *cash* box office rather than a manual
+ * one — the queue cannot wait for an org admin to verify a receipt — so `rail`
+ * comes back saying which of the two this sale turned out to be. And `settled`
+ * is the server's answer, not `mock`: an onsite sale is paid because the money
+ * is in hand, while `mock` only ever meant "no Midtrans server key".
+ */
+export interface TicketSaleResult {
+  order: TicketOrder;
+  snap_token: string | null;
+  /** Where the buyer pays. Null on an onsite sale — nothing left to pay. */
+  redirect_url: string | null;
+  /** Which rail the event turned out to be on — derived, never sent. */
+  rail: "gateway" | "onsite";
+  settled: boolean;
+}
+
+export async function sellTicket(
+  orgId: string,
+  eventId: string,
+  payload: TicketSalePayload
+): Promise<TicketSaleResult> {
+  const { data } = await apiClient.post<ApiEnvelope<TicketSaleResult>>(
+    `/organizations/${orgId}/events/${eventId}/ticket-sales`,
+    payload
+  );
+  return data.data;
+}
+
+/**
+ * Check in a whole paid order without scanning each QR — the holder is standing
+ * at the till. The day rule is the scanner's: a pass is admitted for today only,
+ * so `checked_in` is what this call actually changed.
+ */
+export async function checkInTicketOrder(
+  orgId: string,
+  orderId: string
+): Promise<{ checked_in: number; order: TicketOrder }> {
+  const { data } = await apiClient.post<ApiEnvelope<{ checked_in: number; order: TicketOrder }>>(
+    `/organizations/${orgId}/ticket-orders/${orderId}/check-in`
+  );
+  return data.data;
+}
+
 /** Buyer list for an event — owner/admin only (the rows carry buyer contacts). */
 export async function getTicketOrders(orgId: string, eventId: string): Promise<TicketOrder[]> {
   const { data } = await apiClient.get<ApiEnvelope<TicketOrder[]>>(

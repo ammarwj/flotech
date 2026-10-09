@@ -12,6 +12,20 @@ class TicketOrder extends Model
 {
     use HasManualPayment, HasUuids;
 
+    /**
+     * The rails an order can be taken on, as a human reads them.
+     *
+     * Three, not the two an event may choose from: `onsite` is cash at the box
+     * office and belongs to the order, never to the event. Spelled once here
+     * because the raw column value leaks into the buyer export otherwise, where
+     * "onsite" sits in a sheet an organizer hands to someone else.
+     */
+    public const METHOD_LABELS = [
+        'gateway' => 'Pembayaran online',
+        'manual' => 'Transfer manual',
+        'onsite' => 'Tunai di loket',
+    ];
+
     protected $fillable = [
         'event_id',
         'ticket_category_id',

@@ -18,6 +18,10 @@ use Illuminate\Support\Carbon;
  * An order whose buyer *has* uploaded proof is never touched: it is waiting on
  * the organizer, and expiring someone's paid seat because staff were slow would
  * be the worse failure.
+ *
+ * `onsite` is absent from the filter on purpose, not by omission: a box-office
+ * order is written paid the moment it is created, so it never sits `pending`
+ * and has no reserved quota to give back.
  */
 class ExpireManualOrders extends Command
 {

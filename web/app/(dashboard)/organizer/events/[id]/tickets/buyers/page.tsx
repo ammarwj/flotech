@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
 import {
@@ -12,13 +13,15 @@ import {
   Download,
   Mail,
   Phone,
+  ScanLine,
   Search,
   Ticket,
   Users,
 } from "lucide-react";
 
-import { getTicketOrders } from "@/lib/api/tickets";
-import { rupiah, TICKET_ORDER_STATUS_LABELS } from "@/lib/labels";
+import { checkInTicketOrder, getTicketOrders } from "@/lib/api/tickets";
+import { parseApiError } from "@/lib/api/errors";
+import { rupiah, TICKET_PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
 import { ExportButtons } from "@/components/event/export-buttons";
@@ -50,6 +53,7 @@ const fmtDateTime = (iso: string | null | undefined) =>
   iso ? format(parseISO(iso), "d MMM yyyy, HH:mm", { locale: idLocale }) : "—";
 
 export default function TicketBuyersPage() {
+  const qc = useQueryClient();
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { orgId } = useActiveOrg();
@@ -71,6 +75,24 @@ export default function TicketBuyersPage() {
     queryKey: ["ticket-orders", orgId, eventId],
     queryFn: () => getTicketOrders(orgId!, eventId),
     enabled: !!orgId && ticketing,
+  });
+
+  /**
+   * Check a paid order in without scanning each QR.
+   *
+   * The twin of the button in the box-office dialog, and the one that matters
+   * for a gateway sale: that order is not paid when it is created, so it
+   * settles after the dialog has been closed and the next person is being
+   * served. The day rule is the scanner's — a pass is admitted for today only.
+   */
+  const checkInMut = useMutation({
+    mutationFn: (orderId: string) => checkInTicketOrder(orgId!, orderId),
+    onSuccess: (res) => {
+      toast.success(`${res.checked_in} tiket di-check-in.`);
+      qc.invalidateQueries({ queryKey: ["ticket-orders", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["ticket-report", orgId, eventId] });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal check-in.").message),
   });
 
   const orders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
@@ -202,6 +224,8 @@ export default function TicketBuyersPage() {
                   order={order}
                   open={expanded === order.id}
                   onToggle={() => setExpanded(expanded === order.id ? null : order.id)}
+                  onCheckIn={() => checkInMut.mutate(order.id)}
+                  checkingIn={checkInMut.isPending && checkInMut.variables === order.id}
                 />
               ))}
             </div>
@@ -227,13 +251,21 @@ function BuyerCard({
   order,
   open,
   onToggle,
+  onCheckIn,
+  checkingIn,
 }: {
   order: TicketOrder;
   open: boolean;
   onToggle: () => void;
+  onCheckIn: () => void;
+  checkingIn?: boolean;
 }) {
   const tickets = order.tickets ?? [];
   const checkedIn = tickets.filter((t) => t.is_used).length;
+  // Offered only while there is somebody left to admit. An unpaid order has
+  // nobody yet, and a fully scanned one is already in — the server refuses both
+  // anyway, but a button that can only fail is worse than no button.
+  const canCheckIn = order.status === "paid" && checkedIn < tickets.length;
 
   return (
     <Card className="overflow-hidden">
@@ -247,6 +279,16 @@ function BuyerCard({
             <p className="truncate font-semibold">{order.buyer_name}</p>
             <TicketOrderStatusBadge status={order.status} />
             {order.category && <Badge variant="neutral">{order.category.name}</Badge>}
+            {/* Which rail took the money. Only for the two off-platform ones:
+                a gateway sale is the default and labelling every row with it
+                would be noise. Cash matters here because that revenue is real
+                but never reaches the wallet, and the buyer list is where an
+                organizer reconciles the two. */}
+            {order.payment_method !== "gateway" && (
+              <Badge variant="outline">
+                {TICKET_PAYMENT_METHOD_LABELS[order.payment_method]}
+              </Badge>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
@@ -315,6 +357,15 @@ function BuyerCard({
               {/* The buyer's own page, which needs no login — the order id is
                   the credential. This is the link to hand back to someone who
                   lost the email. */}
+              {/* Admit the holder standing right here, without routing them
+                  through the scanner to read a code off a screen they are
+                  already in front of. */}
+              {canCheckIn && (
+                <Button size="sm" onClick={onCheckIn} disabled={checkingIn}>
+                  <ScanLine className="h-4 w-4" />
+                  Check-in
+                </Button>
+              )}
               <CopyLinkButton path={`/tickets/${order.id}`} label="Salin tautan e-tiket" />
               <ParticipantDocumentButtons
                 subject={{ kind: "ticket-order", id: order.id }}

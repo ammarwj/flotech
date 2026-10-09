@@ -1327,6 +1327,18 @@ export interface Team extends ManualPaymentFields {
  */
 export type PaymentMethod = "gateway" | "manual";
 
+/**
+ * The rail a *ticket order* was taken on. One value wider than `PaymentMethod`:
+ * `onsite` is cash handed over at the box office, written paid on the spot and
+ * never credited to the wallet.
+ *
+ * A separate type rather than a wider `PaymentMethod`, because that union also
+ * types `EventInput["payment_method"]` — how an event sells online — and
+ * `onsite` is never a valid answer there. Widening it would let the event form's
+ * rail select offer a value the API refuses.
+ */
+export type TicketPaymentMethod = PaymentMethod | "onsite";
+
 /** Where a buyer must transfer for a manual payment. */
 /** Bank account or e-wallet — see `lib/payout.ts` for how the shared fields read. */
 export type PayoutAccountType = "bank" | "ewallet";
@@ -1549,7 +1561,9 @@ export interface Ticket {
   category?: { id: string; name: string };
 }
 
-export interface TicketOrder extends ManualPaymentFields {
+export interface TicketOrder extends Omit<ManualPaymentFields, "payment_method"> {
+  /** Three rails here, not two — see TicketPaymentMethod. */
+  payment_method: TicketPaymentMethod;
   id: string;
   event_id: string;
   buyer_name: string;

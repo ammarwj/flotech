@@ -165,12 +165,20 @@ class ParticipantDocumentService
      *
      * Derived from the channel rather than read from a `payment_type` column:
      * unlike EventPlanOrder these two have none, and the channel is what the
-     * buyer actually picked.
+     * buyer actually picked. The two off-platform rails answer before the
+     * lookup, because neither has a channel to name.
      */
     protected function methodLabel(TicketOrder|Team $order): string
     {
         if ($order->isManual()) {
             return 'Transfer manual (diverifikasi penyelenggara)';
+        }
+
+        // Cash taken at the venue. Without this arm `onsite` falls through to
+        // the channel lookup, finds no `payment_fees.channels.onsite`, and a
+        // cash receipt claims the money came through a payment gateway.
+        if ($order->payment_method === 'onsite') {
+            return 'Tunai di loket';
         }
 
         return config("payment_fees.channels.{$order->payment_channel}.label")

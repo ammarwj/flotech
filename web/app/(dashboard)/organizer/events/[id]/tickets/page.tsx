@@ -13,17 +13,22 @@ import {
   ArrowUpRight,
   Wallet,
   ScanLine,
+  Store,
   Users,
   TrendingUp,
 } from "lucide-react";
 
 import {
+  checkInTicketOrder,
   createTicketCategory,
   deleteTicketCategory,
   getTicketCategories,
   getTicketReport,
+  sellTicket,
   updateTicketCategory,
   type TicketCategoryInput,
+  type TicketSalePayload,
+  type TicketSaleResult,
 } from "@/lib/api/tickets";
 import { getEvent } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
@@ -39,6 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TicketCategoryForm } from "@/components/event/ticket-category-form";
+import { BoxOfficeDialog } from "@/components/event/box-office-dialog";
 import { rupiah } from "@/lib/labels";
 import type { TicketCategory } from "@/types/api";
 
@@ -52,6 +58,13 @@ export default function EventTicketsPage() {
   const [editing, setEditing] = useState<TicketCategory | null>(null);
   const [creating, setCreating] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  // The box office. `sale` is what flips the dialog from its form to its result
+  // pane, and `checkedIn` is how many tickets the last check-in admitted — null
+  // until one is done, because "0" is a refusal the server reports as an error.
+  const [boxOffice, setBoxOffice] = useState(false);
+  const [sale, setSale] = useState<TicketSaleResult | null>(null);
+  const [checkedIn, setCheckedIn] = useState<number | null>(null);
 
   // The entitlement belongs to this event, not to the organization — so the
   // event has to be loaded before we can say whether tickets are available.
@@ -77,6 +90,9 @@ export default function EventTicketsPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["ticket-categories", orgId, eventId] });
     qc.invalidateQueries({ queryKey: ["ticket-report", orgId, eventId] });
+    // A box-office sale lands in the buyer list too, and that page is where a
+    // gateway order settled after this dialog closed gets checked in.
+    qc.invalidateQueries({ queryKey: ["ticket-orders", orgId, eventId] });
   };
 
   const handleError = (err: unknown, fallback: string) => {
@@ -117,6 +133,36 @@ export default function EventTicketsPage() {
     onError: (err) => handleError(err, "Gagal menghapus kategori."),
   });
 
+  const sellMut = useMutation({
+    mutationFn: (payload: TicketSalePayload) => sellTicket(orgId!, eventId, payload),
+    onSuccess: (res) => {
+      toast.success(
+        res.settled ? "Tiket diterbitkan dan lunas." : "Pesanan dibuat. Minta pembeli bayar."
+      );
+      setFieldErrors({});
+      setSale(res);
+      invalidate();
+    },
+    onError: (err) => handleError(err, "Gagal menjual tiket."),
+  });
+
+  const checkInMut = useMutation({
+    mutationFn: (orderId: string) => checkInTicketOrder(orgId!, orderId),
+    onSuccess: (res) => {
+      toast.success(`${res.checked_in} tiket di-check-in.`);
+      setCheckedIn(res.checked_in);
+      invalidate();
+    },
+    onError: (err) => handleError(err, "Gagal check-in."),
+  });
+
+  const closeBoxOffice = () => {
+    setBoxOffice(false);
+    setSale(null);
+    setCheckedIn(null);
+    setFieldErrors({});
+  };
+
   // ---- Plan gate: ticketing not on this plan ----
   if (org && !ticketing) {
     return (
@@ -156,6 +202,10 @@ export default function EventTicketsPage() {
         backLabel="Daftar event"
         actions={
           <>
+            <Button onClick={() => setBoxOffice(true)} disabled={!categories?.length}>
+              <Store className="h-4 w-4" />
+              Jual di loket
+            </Button>
             <Button asChild variant="outline">
               <Link href={`/organizer/events/${eventId}/tickets/buyers`}>
                 <Users className="h-4 w-4" />
@@ -373,6 +423,32 @@ export default function EventTicketsPage() {
           )
         )}
       </div>
+
+      {/* Box office. Rendered conditionally rather than kept mounted with
+          `open={false}`: each open then mounts a fresh form, instead of an
+          effect resetting a stale one — same reasoning as ManualTeamDialog's
+          per-open `key`. The result pane unmounts the form for free, so "Jual
+          lagi" comes back empty. */}
+      {boxOffice && eventQuery.data && categories && (
+        <BoxOfficeDialog
+          open
+          categories={categories}
+          event={eventQuery.data}
+          pending={sellMut.isPending}
+          fieldErrors={fieldErrors}
+          result={sale}
+          checkingIn={checkInMut.isPending}
+          checkedIn={checkedIn}
+          onCheckIn={(orderId) => checkInMut.mutate(orderId)}
+          onSellAnother={() => {
+            setSale(null);
+            setCheckedIn(null);
+            setFieldErrors({});
+          }}
+          onClose={closeBoxOffice}
+          onSubmit={(payload) => sellMut.mutate(payload)}
+        />
+      )}
 
       {/* ===== Recent check-ins ===== */}
       {report && report.recent_checkins.length > 0 && (

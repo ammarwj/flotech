@@ -24,6 +24,7 @@ import {
   isSoldOut,
   priceUnitLabel,
   pricedDays,
+  seatCeiling,
   selectableDates,
   sellingDates,
   unitBreakdownLabel,
@@ -75,19 +76,10 @@ export default function BuyTicketsPage() {
   const needsDates = selectedCat?.day_mode === "per_day";
 
   // Seats are capped by the tightest day the buyer picked, not by the
-  // category's paid-unit count — the latter would offer seats no single day has.
-  const seatCeiling = (() => {
-    if (!selectedCat) return 20;
-    if (!usesDays(selectedCat)) return selectedCat.remaining ?? 20;
-
-    const limits = (selectedCat.days ?? [])
-      .filter((day) => orderDates.length === 0 || orderDates.includes(day.event_date))
-      .map((day) => day.remaining)
-      .filter((left): left is number => left !== null);
-
-    return limits.length > 0 ? Math.min(...limits) : 20;
-  })();
-  const maxQty = Math.max(1, Math.min(20, seatCeiling));
+  // category's paid-unit count — in lib/tickets.ts, because the box office
+  // bills on the same ceiling and two copies would offer seats the venue has
+  // not got.
+  const maxQty = Math.max(1, Math.min(20, seatCeiling(selectedCat, orderDates)));
 
   // Paid units, the mirror of the server's: seats times the days that are
   // priced. This is the one number the fee preview and the bill share.

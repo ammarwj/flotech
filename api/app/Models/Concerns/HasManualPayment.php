@@ -48,6 +48,20 @@ trait HasManualPayment
         return $this->payment_method === 'manual';
     }
 
+    /**
+     * Money that never passed through the platform — the wallet must not be
+     * credited for it.
+     *
+     * `manual` lands in the organizer's own bank account; `onsite` lands in the
+     * box-office staff's hand. One reader for both rails, so a third one cannot
+     * grow a second branch that has to be kept in step. Team and EventPlanOrder
+     * never carry `onsite`, so for them this is exactly isManual().
+     */
+    public function isOffPlatform(): bool
+    {
+        return in_array($this->payment_method, ['manual', 'onsite'], true);
+    }
+
     /** Proof uploaded, org admin hasn't ruled on it yet. */
     public function isAwaitingVerification(): bool
     {
@@ -66,7 +80,14 @@ trait HasManualPayment
             && $this->rejected_reason !== null;
     }
 
-    /** The verification queue: manual, unsettled, proof in hand. */
+    /**
+     * The verification queue: manual, unsettled, proof in hand.
+     *
+     * `onsite` is absent on purpose and not an oversight: a box-office order is
+     * born paid, so it is never unsettled, and there is no transfer receipt to
+     * rule on. Widening this to isOffPlatform() would queue up orders nobody
+     * can act on.
+     */
     public function scopeAwaitingVerification(Builder $query): Builder
     {
         return $query->where('payment_method', 'manual')

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Mail\TicketPurchasedMail;
+use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Models\TicketCategoryDay;
 use App\Models\TicketOrder;
@@ -150,10 +151,15 @@ class TicketService
             ]);
 
             // A manual transfer went straight into the organizer's own bank
-            // account — the money never passed through us, so crediting the
-            // wallet would make their balance claim funds we are not holding.
-            // Same reasoning as the offline team entry in RegistrationController.
-            if (! $order->isManual()) {
+            // account, and box-office cash never left the staff's hand — the
+            // money never passed through us, so crediting the wallet would make
+            // their balance claim funds we are not holding. Same reasoning as
+            // the offline team entry in RegistrationController.
+            //
+            // isOffPlatform(), not isManual(): `onsite` is the third rail and
+            // reading `manual` alone here would credit the wallet for cash the
+            // platform never touched, silently and with a green toast.
+            if (! $order->isOffPlatform()) {
                 $this->wallet->creditTicketOrder($order->load('event.organization'));
             }
         });
@@ -181,12 +187,71 @@ class TicketService
     }
 
     /**
+     * Mark one ticket used. The only place those three columns are written.
+     *
+     * Two doors check people in — the QR scanner at the gate and the box-office
+     * dialog that just sold the ticket — and they must write the same thing.
+     * Two copies would drift, and the drift would read as a ticket the scanner
+     * calls fresh and the buyer list calls used. Same reasoning as release()
+     * owning both void paths.
+     */
+    public function checkIn(Ticket $ticket, ?string $userId): void
+    {
+        $ticket->update([
+            'is_used' => true,
+            'used_at' => Carbon::now(),
+            'used_by' => $userId,
+        ]);
+    }
+
+    /**
+     * Check in every ticket of an order that is valid *today*.
+     *
+     * A dateless order (`event_dates` null — what a `none` category issues, and
+     * what every ticket predating per-day sales carries) admits all of its
+     * tickets at once: there is no other day for them to be valid on.
+     *
+     * A dated order admits only today's rows. A three-day pass sold at the gate
+     * on day one must not burn days two and three — the holder is standing here
+     * now, not three times. "Today" is today in the *event's* zone, not UTC, for
+     * the reason spelled out in ScanController: a WIB morning is still yesterday
+     * in the app timezone, so every check-in before 07:00 would find nothing.
+     *
+     * Already-used rows are skipped rather than refused, so the count is what
+     * this call actually changed — that is what lets the caller tell "nothing
+     * applies today" from "all of it was already in".
+     *
+     * @return int how many tickets this call checked in
+     */
+    public function checkInOrder(TicketOrder $order, ?string $userId): int
+    {
+        $order->loadMissing('event');
+
+        $tickets = $order->tickets()->where('is_used', false);
+
+        if ($order->event_dates !== null) {
+            $today = Carbon::now($order->event?->timezone ?? config('app.timezone'))->toDateString();
+            $tickets->whereDate('event_date', $today);
+        }
+
+        $rows = $tickets->get();
+
+        foreach ($rows as $ticket) {
+            $this->checkIn($ticket, $userId);
+        }
+
+        return $rows->count();
+    }
+
+    /**
      * The buyer uploads their transfer receipt for an org admin to check.
      *
      * @throws PaymentException
      */
     public function submitProof(TicketOrder $order, string $proofUrl): void
     {
+        // isManual(), not isOffPlatform(): a box-office order has no transfer to
+        // document, so refusing one here is the right answer, not an oversight.
         if (! $order->isManual()) {
             throw new PaymentException('Pesanan ini tidak dibayar lewat transfer manual.');
         }

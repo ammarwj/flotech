@@ -5,6 +5,7 @@ import type {
   PlanOrderStatus,
   TeamStatus,
   TicketOrderStatus,
+  TicketPaymentMethod,
   WalletTxCategory,
   WalletTxStatus,
   WithdrawalStatus,
@@ -51,6 +52,19 @@ export const PLAN_ORDER_STATUS_LABELS: Record<PlanOrderStatus, string> = {
   past_due: "Menunggu Pembayaran",
   paid: "Lunas",
   cancelled: "Dibatalkan",
+};
+
+/**
+ * The rail a ticket order was taken on, as a human reads it.
+ *
+ * Mirrors `TicketOrder::METHOD_LABELS` in the API, which the buyer export reads
+ * for the same reason: `onsite` in a column is a word nobody outside the code
+ * uses.
+ */
+export const TICKET_PAYMENT_METHOD_LABELS: Record<TicketPaymentMethod, string> = {
+  gateway: "Pembayaran online",
+  manual: "Transfer manual",
+  onsite: "Tunai di loket",
 };
 
 export const TICKET_ORDER_STATUS_LABELS: Record<TicketOrderStatus, string> = {

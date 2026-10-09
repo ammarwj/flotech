@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Ticket;
+use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,8 @@ use Illuminate\Support\Carbon;
 
 class ScanController extends Controller
 {
+    public function __construct(protected TicketService $tickets) {}
+
     /**
      * Validate a scanned QR code and check the holder in (one-time use).
      * Scoped to the event so a ticket from another event can't be used here.
@@ -74,11 +77,10 @@ class ScanController extends Controller
             }
         }
 
-        $ticket->update([
-            'is_used' => true,
-            'used_at' => Carbon::now(),
-            'used_by' => auth('api')->id(),
-        ]);
+        // Through the service, not inline: the box office checks people in too,
+        // and these three columns are written in one place so the two doors
+        // cannot disagree about what "used" means.
+        $this->tickets->checkIn($ticket, auth('api')->id());
 
         return ApiResponse::success([
             'result' => 'valid',
