@@ -27,6 +27,7 @@ import {
   selectableDates,
   sellingDates,
   unitBreakdownLabel,
+  unitCountLabel,
   usesDays,
 } from "@/lib/tickets";
 import { DayPickerChips } from "@/components/event/day-picker-chips";
@@ -298,40 +299,66 @@ export default function BuyTicketsPage() {
               )}
 
               {/* A pass is read-only: its days are the category's, so a chip
-                  strip here would invite a choice that changes nothing. */}
+                  strip here would invite a choice that changes nothing.
+                  Rendered in the picker's own slot — same label, same rhythm —
+                  rather than as a tinted box inside the card: a card within a
+                  card reads as a different kind of thing, when this is the
+                  same question already answered. */}
               {selectedCat.day_mode === "pass" && (
-                <div className="rounded-lg border border-border bg-[var(--bg-soft)] p-3">
-                  <p className="text-sm font-semibold">Tiket terusan</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Berlaku {dateRangeLabel(sellingDates(selectedCat))} — satu harga untuk semua
-                    hari, dan kamu dapat satu QR per hari.
+                <div>
+                  <Label>Tanggal kehadiran</Label>
+                  <p className="mt-2 text-sm font-semibold">
+                    {dateRangeLabel(sellingDates(selectedCat))}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Tiket terusan — satu harga untuk semua hari itu, dan kamu dapat satu QR per
+                    hari.
                   </p>
                 </div>
               )}
 
-              <div className="flex items-center justify-between">
-                <Label>Jumlah orang</Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    disabled={quantity <= 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <span className="w-8 text-center font-semibold">{quantity}</span>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                    disabled={quantity >= maxQty}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label>Jumlah orang</Label>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      disabled={quantity <= 1}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="w-8 text-center font-semibold">{quantity}</span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+                      disabled={quantity >= maxQty}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
+
+                {/* Where "6 tiket" comes from, next to the stepper that
+                    produced it. It used to sit at the foot of the card, below
+                    ChannelPicker's own "Total bayar" — an explanation arriving
+                    after the figure it explains, reading as a third total
+                    rather than as the arithmetic behind the first. No rule
+                    above it for the same reason: the border is what made it
+                    look like another block. */}
+                {pricedUnits > quantity && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {unitBreakdownLabel(selectedCat.day_mode, quantity, orderDates)} ={" "}
+                    <span className="font-semibold text-foreground">
+                      {unitCountLabel(selectedCat.day_mode, quantity, orderDates)}
+                    </span>
+                    {selectedCat.price > 0 && ` · ${rupiah(selectedCat.price)} per tiket`}
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -384,20 +411,6 @@ export default function BuyTicketsPage() {
                   channel is picked — this row would just repeat it. Only shown
                   when there's no channel breakdown to fall back on (free ticket,
                   or a rail that skips the picker). */}
-              {/* Spelled out whenever days multiply the price, above both the
-                  picker and the fallback total: a buyer billed six prices for
-                  two people must be able to see where the six came from. */}
-              {pricedUnits > quantity && (
-                <div className="flex items-center justify-between border-t border-border pt-4 text-sm">
-                  <span className="text-muted-foreground">
-                    {unitBreakdownLabel(selectedCat.day_mode, quantity, orderDates)}
-                  </span>
-                  <span className="font-semibold">
-                    {rupiah(selectedCat.price)} × {pricedUnits}
-                  </span>
-                </div>
-              )}
-
               {!requiresChannel && (
                 <div className="flex items-center justify-between border-t border-border pt-4">
                   <span className="text-sm text-muted-foreground">Total</span>

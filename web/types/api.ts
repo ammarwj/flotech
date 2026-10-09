@@ -1398,6 +1398,16 @@ export interface PublicEvent {
    * re-derive it from, on purpose.
    */
   registration_is_open: boolean;
+  /**
+   * Whether this event has a public registration form at all — the plan's
+   * `online_registration` on its own, without the window.
+   *
+   * Pairs with the flag above because the two closures read differently to a
+   * visitor: a closed window is worth saying ("Pendaftaran ditutup"), an event
+   * that never offered the form is not — nothing was closed, and naming a door
+   * that does not exist only raises a question.
+   */
+  online_registration_enabled: boolean;
   location_name: string | null;
   location_address: string | null;
   description: string | null;

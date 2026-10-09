@@ -410,6 +410,55 @@ class PerEventPlanTest extends TestCase
     }
 
     /**
+     * Why the door is shut, which the page says different things about.
+     *
+     * `registration_is_open` folds two reasons into one boolean on purpose, and
+     * that is exactly why `online_registration_enabled` has to ride alongside
+     * it: a closed *window* earns "Pendaftaran ditutup", while a plan without
+     * the form earns silence — nothing was ever closed there, and naming a door
+     * that does not exist only raises a question. Folding them was a real
+     * regression, and it read as a Pro event advertising a closed registration
+     * it never had.
+     *
+     * Three events, because two cannot tell the flags apart: the pair comes back
+     * (false, false) / (false, true) / (true, true), so no single event's shape
+     * is reachable by a field hardcoded either way.
+     */
+    public function test_the_public_payload_says_why_registration_is_shut(): void
+    {
+        $org = $this->orgFor($this->owner());
+
+        $open = ['registration_open' => now()->subDay(), 'registration_close' => now()->addDays(10)];
+        $past = ['registration_open' => now()->subDays(20), 'registration_close' => now()->subDay()];
+
+        // No form at all: the plan does not carry it, window irrelevant.
+        $noForm = $this->eventOn($org, $this->planWith([]), $open);
+        // Had a form, its window has closed.
+        $closed = $this->eventOn($org, $this->planWith(['online_registration' => 'true']), $past);
+        // Open for business.
+        $live = $this->eventOn($org, $this->planWith(['online_registration' => 'true']), $open);
+
+        $flags = fn (Event $e) => collect($this->getJson("/api/v1/public/events/{$org->slug}/{$e->slug}")
+            ->assertOk()
+            ->json('data'))
+            ->only(['registration_is_open', 'online_registration_enabled'])
+            ->all();
+
+        $this->assertSame(
+            ['registration_is_open' => false, 'online_registration_enabled' => false],
+            $flags($noForm),
+        );
+        $this->assertSame(
+            ['registration_is_open' => false, 'online_registration_enabled' => true],
+            $flags($closed),
+        );
+        $this->assertSame(
+            ['registration_is_open' => true, 'online_registration_enabled' => true],
+            $flags($live),
+        );
+    }
+
+    /**
      * The organizer's own door stays open regardless.
      *
      * `registrationIsPubliclyOpen()` narrows only the public form; folding the

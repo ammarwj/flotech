@@ -173,3 +173,18 @@ export function unitBreakdownLabel(
 
   return days > 1 ? `${seats} orang × ${days} hari` : `${seats} orang`;
 }
+
+/**
+ * "6 tiket" — the paid units a basket comes to, spelled as a count.
+ *
+ * Kept beside unitBreakdownLabel() rather than inlined: the two halves of the
+ * same sentence ("2 orang × 3 hari" = "6 tiket") would otherwise be worded in
+ * one place and counted in another.
+ */
+export function unitCountLabel(
+  mode: TicketDayMode,
+  seats: number,
+  dates: string[],
+): string {
+  return `${seats * pricedDays(mode, dates)} tiket`;
+}

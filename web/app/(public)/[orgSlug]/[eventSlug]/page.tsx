@@ -283,10 +283,27 @@ function PublicEventView() {
   // "Pendaftaran ditutup" hanya berarti sesuatu selama eventnya belum mulai.
   // Begitu berlangsung/selesai/batal, statusnya sudah tampil di badge hero dan
   // pill itu cuma jadi tombol mati di bawah judul.
+  //
+  // Dan `online_registration_enabled` adalah syarat ketiga: event yang paketnya
+  // tidak pernah punya form pendaftaran publik tidak pernah "ditutup", jadi
+  // mengumumkannya cuma menimbulkan pertanyaan soal pintu yang tidak ada.
+  // Diamnya yang benar — pesertanya datang lewat organizer.
   const showRegistrationClosed =
-    !ev.registration_is_open && !hasStarted(ev.status);
+    ev.online_registration_enabled &&
+    !ev.registration_is_open &&
+    !hasStarted(ev.status);
   const showHeroCta =
     ev.registration_is_open || showRegistrationClosed || ev.tickets_on_sale;
+  // Label badge status di hero. `EVENT_STATUS_LABELS` memetakan `open` ke
+  // "Pendaftaran Dibuka", yang cuma benar kalau pendaftarannya memang dibuka —
+  // untuk event yang paketnya tidak punya form publik, status `open` berarti
+  // "berjalan, peserta lewat organizer". "Terbuka" menyatakan itu tanpa
+  // menjanjikan pintu yang tidak ada.
+  const statusLabel = ev.registration_is_open
+    ? "Pendaftaran Dibuka"
+    : ev.status === "open"
+      ? "Terbuka"
+      : EVENT_STATUS_LABELS[ev.status];
 
   return (
     // Kickoff times render in the venue's zone, so every visitor reads the same
@@ -324,6 +341,14 @@ function PublicEventView() {
                 <span className="ehero-badge">
                   {categories.length} kategori
                 </span>
+                {/* Badge statusnya tetap tampil — berbeda dari pill CTA di
+                    bawah, yang hilang. Sebuah event selalu punya status, dan
+                    yang dibuang cuma klaim soal pendaftaran.
+
+                    `statusLabel` ada karena `EVENT_STATUS_LABELS.open` sendiri
+                    berbunyi "Pendaftaran Dibuka": dipakai apa adanya ia justru
+                    memasang klaim yang paling salah justru pada event yang
+                    paketnya tidak punya form sama sekali. */}
                 <span className="ehero-badge">
                   <span
                     style={{
@@ -336,9 +361,7 @@ function PublicEventView() {
                       display: "inline-block",
                     }}
                   />
-                  {ev.registration_is_open
-                    ? "Pendaftaran Dibuka"
-                    : EVENT_STATUS_LABELS[ev.status]}
+                  {statusLabel}
                 </span>
               </div>
 

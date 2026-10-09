@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Event;
 use App\Services\PaymentRails;
+use App\Services\PlanGate;
 use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -47,10 +48,19 @@ class PublicEventResource extends JsonResource
             //
             // Unlike EventResource this publishes no raw `plan`: a visitor has
             // no use for the catalogue, and a second field is a second thing to
-            // read by mistake. An event whose plan has no online registration
-            // reads as closed, which is what it is from the outside — the
-            // organizer entering teams themselves is a door they never saw.
+            // read by mistake.
             'registration_is_open' => $this->registrationIsPubliclyOpen(),
+            // Whether this event has a public registration form *at all*, which
+            // is not the same question as whether it is open right now.
+            //
+            // The pair exists because the page says something different about
+            // each: a closed window earns "Pendaftaran ditutup", and an event
+            // that never offered the form earns silence — nothing was ever
+            // closed, and announcing a door that does not exist is noise at
+            // best. Deriving this from the plan client-side is what the
+            // `registration_is_open` docblock refuses; a second boolean the
+            // server already knows is the cheaper answer.
+            'online_registration_enabled' => app(PlanGate::class)->allows($this->resource, 'online_registration'),
             // The *shape* of the form, which the public register page has to
             // have to render itself. The answers given to it stay organizer-side
             // — see the roster below, trimmed for the same reason: an address or
