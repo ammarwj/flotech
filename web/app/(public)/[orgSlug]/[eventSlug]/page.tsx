@@ -294,16 +294,6 @@ function PublicEventView() {
     !hasStarted(ev.status);
   const showHeroCta =
     ev.registration_is_open || showRegistrationClosed || ev.tickets_on_sale;
-  // Label badge status di hero. `EVENT_STATUS_LABELS` memetakan `open` ke
-  // "Pendaftaran Dibuka", yang cuma benar kalau pendaftarannya memang dibuka —
-  // untuk event yang paketnya tidak punya form publik, status `open` berarti
-  // "berjalan, peserta lewat organizer". "Terbuka" menyatakan itu tanpa
-  // menjanjikan pintu yang tidak ada.
-  const statusLabel = ev.registration_is_open
-    ? "Pendaftaran Dibuka"
-    : ev.status === "open"
-      ? "Terbuka"
-      : EVENT_STATUS_LABELS[ev.status];
 
   return (
     // Kickoff times render in the venue's zone, so every visitor reads the same
@@ -341,14 +331,13 @@ function PublicEventView() {
                 <span className="ehero-badge">
                   {categories.length} kategori
                 </span>
-                {/* Badge statusnya tetap tampil — berbeda dari pill CTA di
-                    bawah, yang hilang. Sebuah event selalu punya status, dan
-                    yang dibuang cuma klaim soal pendaftaran.
-
-                    `statusLabel` ada karena `EVENT_STATUS_LABELS.open` sendiri
-                    berbunyi "Pendaftaran Dibuka": dipakai apa adanya ia justru
-                    memasang klaim yang paling salah justru pada event yang
-                    paketnya tidak punya form sama sekali. */}
+                {/* Badge ini **status event**, bukan ajakan — jadi ia membaca
+                    `ev.status` dan tetap tampil apa pun paketnya, termasuk
+                    berbunyi "Pendaftaran Dibuka" pada event yang form publiknya
+                    tidak ada. Itu disengaja: di sini tidak ada yang bisa diklik,
+                    dan `status` memang `open`. Yang digerbang `online_registration`
+                    adalah hal yang mengajak orang bertindak — pill CTA di bawah,
+                    kartu Pendaftaran di sidebar, CTA bawah halaman. */}
                 <span className="ehero-badge">
                   <span
                     style={{
@@ -361,7 +350,9 @@ function PublicEventView() {
                       display: "inline-block",
                     }}
                   />
-                  {statusLabel}
+                  {ev.registration_is_open
+                    ? "Pendaftaran Dibuka"
+                    : EVENT_STATUS_LABELS[ev.status]}
                 </span>
               </div>
 
