@@ -17,6 +17,19 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ChannelPicker } from "@/components/payment/channel-picker";
 import { rupiah } from "@/lib/labels";
+import {
+  coveredDates,
+  dateRangeLabel,
+  dayModeLabel,
+  isSoldOut,
+  priceUnitLabel,
+  pricedDays,
+  selectableDates,
+  sellingDates,
+  unitBreakdownLabel,
+  usesDays,
+} from "@/lib/tickets";
+import { DayPickerChips } from "@/components/event/day-picker-chips";
 import { cn } from "@/lib/utils";
 import { useEventBase } from "@/lib/event-base";
 import "../../../event-shell.css";
@@ -29,6 +42,9 @@ export default function BuyTicketsPage() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  // Days the buyer attends. Reset whenever the category changes — a date one
+  // category sells is not necessarily a date the next one does.
+  const [dates, setDates] = useState<string[]>([]);
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
   const [channel, setChannel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,16 +62,36 @@ export default function BuyTicketsPage() {
   });
 
   const categories = catsQuery.data ?? [];
-  const onSale = categories.filter((c) => c.is_on_sale && (c.remaining === null || c.remaining > 0));
+  // isSoldOut(), not `remaining > 0`: a day-selling category's own counter
+  // answers the category's question, and a category whose every date is full is
+  // sold out however many paid units its quota still allows.
+  const onSale = categories.filter((c) => c.is_on_sale && !isSoldOut(c));
   const selectedCat = categories.find((c) => c.id === selected) ?? null;
 
-  const maxQty = Math.min(
-    20,
-    selectedCat?.remaining === null || selectedCat?.remaining === undefined
-      ? 20
-      : selectedCat.remaining
-  );
-  const total = (selectedCat?.price ?? 0) * quantity;
+  // The days this order will cover: what the buyer ticked for a per-day
+  // category, every date on sale for a pass, none at all otherwise.
+  const orderDates = selectedCat ? coveredDates(selectedCat, dates) : [];
+  const needsDates = selectedCat?.day_mode === "per_day";
+
+  // Seats are capped by the tightest day the buyer picked, not by the
+  // category's paid-unit count — the latter would offer seats no single day has.
+  const seatCeiling = (() => {
+    if (!selectedCat) return 20;
+    if (!usesDays(selectedCat)) return selectedCat.remaining ?? 20;
+
+    const limits = (selectedCat.days ?? [])
+      .filter((day) => orderDates.length === 0 || orderDates.includes(day.event_date))
+      .map((day) => day.remaining)
+      .filter((left): left is number => left !== null);
+
+    return limits.length > 0 ? Math.min(...limits) : 20;
+  })();
+  const maxQty = Math.max(1, Math.min(20, seatCeiling));
+
+  // Paid units, the mirror of the server's: seats times the days that are
+  // priced. This is the one number the fee preview and the bill share.
+  const pricedUnits = quantity * pricedDays(selectedCat?.day_mode ?? "none", orderDates);
+  const total = (selectedCat?.price ?? 0) * pricedUnits;
   const requiresChannel = Boolean(eventQuery.data?.requires_payment_channel) && total > 0;
 
   // Same query key ChannelPicker uses internally — quantity included, because
@@ -64,8 +100,8 @@ export default function BuyTicketsPage() {
   // channel is picked. `total` alone is the ticket price only and omits the
   // platform's service fee, so it understated what the buyer pays.
   const channelsQuery = useQuery({
-    queryKey: ["payment-channels", total, "ticket", quantity],
-    queryFn: () => getPaymentChannels(total, "ticket", quantity),
+    queryKey: ["payment-channels", total, "ticket", pricedUnits],
+    queryFn: () => getPaymentChannels(total, "ticket", pricedUnits),
     enabled: requiresChannel,
   });
   const selectedBreakdown = channelsQuery.data?.find((c) => c.channel === channel) ?? null;
@@ -76,6 +112,9 @@ export default function BuyTicketsPage() {
       purchaseTickets(params.orgSlug, params.eventSlug, {
         ticket_category_id: selected!,
         quantity,
+        // Only a per-day category's dates are the buyer's to choose; a pass
+        // covers its own, and the server resolves that itself.
+        dates: needsDates ? orderDates : undefined,
         buyer_name: buyer.name,
         buyer_email: buyer.email,
         buyer_phone: buyer.phone || undefined,
@@ -104,6 +143,7 @@ export default function BuyTicketsPage() {
     quantity > 0 &&
     buyer.name.trim() &&
     buyer.email.trim() &&
+    (!needsDates || orderDates.length > 0) &&
     (!requiresChannel || channel);
 
   if (eventQuery.isError) {
@@ -163,6 +203,7 @@ export default function BuyTicketsPage() {
                   onClick={() => {
                     setSelected(cat.id);
                     setQuantity(1);
+                    setDates([]);
                     setChannel(null);
                   }}
                   className={cn(
@@ -195,12 +236,32 @@ export default function BuyTicketsPage() {
                           ))}
                         </div>
                       )}
-                      {cat.remaining !== null && (
+                      {usesDays(cat) && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {dayModeLabel(cat.day_mode)} · {dateRangeLabel(sellingDates(cat))}
+                        </p>
+                      )}
+                      {!usesDays(cat) && cat.remaining !== null && (
                         <p className="mt-2 text-xs text-muted-foreground">Sisa {cat.remaining} tiket</p>
                       )}
                     </div>
-                    <span className="shrink-0 font-bold" style={{ fontFamily: "var(--font-display)" }}>
+                    <span className="shrink-0 text-right font-bold" style={{ fontFamily: "var(--font-display)" }}>
                       {cat.price > 0 ? rupiah(cat.price) : "Gratis"}
+                      {/* The unit is the whole point of a per-day category: the
+                          number beside it is what one day costs, not the trip. */}
+                      {cat.price > 0 && priceUnitLabel(cat.day_mode) && (
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {priceUnitLabel(cat.day_mode)}
+                        </span>
+                      )}
+                      {/* And a pass says so, since its price covers a range the
+                          buyer never picks — without this the two modes read as
+                          the same product at different prices. */}
+                      {cat.price > 0 && cat.day_mode === "pass" && (
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {sellingDates(cat).length} hari
+                        </span>
+                      )}
                     </span>
                   </div>
                 </button>
@@ -208,11 +269,48 @@ export default function BuyTicketsPage() {
             })}
           </div>
 
-          {/* Quantity + buyer */}
+          {/* Day picker, quantity + buyer */}
           {selectedCat && (
             <Card className="grid gap-4 p-5">
+              {needsDates && (
+                <div>
+                  <Label>Tanggal kehadiran</Label>
+                  <div className="mt-2">
+                    <DayPickerChips
+                      days={selectableDates(selectedCat, quantity).map((day) => ({
+                        ...day,
+                        reason: `Sisa tiket tanggal ini tidak cukup untuk ${quantity} orang.`,
+                      }))}
+                      selected={dates}
+                      onToggle={(date) =>
+                        setDates((current) =>
+                          current.includes(date)
+                            ? current.filter((d) => d !== date)
+                            : [...current, date].sort(),
+                        )
+                      }
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Tiap tanggal dihitung satu harga tiket. Pilih hanya hari yang kamu hadiri.
+                  </p>
+                </div>
+              )}
+
+              {/* A pass is read-only: its days are the category's, so a chip
+                  strip here would invite a choice that changes nothing. */}
+              {selectedCat.day_mode === "pass" && (
+                <div className="rounded-lg border border-border bg-[var(--bg-soft)] p-3">
+                  <p className="text-sm font-semibold">Tiket terusan</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Berlaku {dateRangeLabel(sellingDates(selectedCat))} — satu harga untuk semua
+                    hari, dan kamu dapat satu QR per hari.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
-                <Label>Jumlah tiket</Label>
+                <Label>Jumlah orang</Label>
                 <div className="flex items-center gap-3">
                   <Button
                     type="button"
@@ -272,7 +370,10 @@ export default function BuyTicketsPage() {
                 <ChannelPicker
                   amount={total}
                   audience="ticket"
-                  units={quantity}
+                  // Paid units, not seats: the service fee is charged per
+                  // ticket-day, so quoting `quantity` here would under-quote
+                  // exactly what the order then charges.
+                  units={pricedUnits}
                   unitLabel="tiket"
                   value={channel}
                   onChange={setChannel}
@@ -283,6 +384,20 @@ export default function BuyTicketsPage() {
                   channel is picked — this row would just repeat it. Only shown
                   when there's no channel breakdown to fall back on (free ticket,
                   or a rail that skips the picker). */}
+              {/* Spelled out whenever days multiply the price, above both the
+                  picker and the fallback total: a buyer billed six prices for
+                  two people must be able to see where the six came from. */}
+              {pricedUnits > quantity && (
+                <div className="flex items-center justify-between border-t border-border pt-4 text-sm">
+                  <span className="text-muted-foreground">
+                    {unitBreakdownLabel(selectedCat.day_mode, quantity, orderDates)}
+                  </span>
+                  <span className="font-semibold">
+                    {rupiah(selectedCat.price)} × {pricedUnits}
+                  </span>
+                </div>
+              )}
+
               {!requiresChannel && (
                 <div className="flex items-center justify-between border-t border-border pt-4">
                   <span className="text-sm text-muted-foreground">Total</span>

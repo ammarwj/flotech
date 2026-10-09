@@ -22,7 +22,7 @@ class TicketCategoryController extends Controller
     {
         $event = $this->findEvent($request, $event);
 
-        $categories = $event->ticketCategories()->latest()->get();
+        $categories = $event->ticketCategories()->with('days')->latest()->get();
 
         return ApiResponse::success(TicketCategoryResource::collection($categories));
     }
@@ -37,10 +37,25 @@ class TicketCategoryController extends Controller
         }
 
         $data = $request->validated();
+        $dates = $data['dates'] ?? [];
+        unset($data['dates']);
 
         $category = $event->ticketCategories()->create($data);
 
-        return ApiResponse::success(new TicketCategoryResource($category), 'Kategori tiket dibuat', 201);
+        if ($denied = $this->syncDays($category, $event, $dates)) {
+            // Nothing was sold yet, so the half-made category is safe to drop —
+            // leaving it behind would show the organizer a per-day category
+            // with no days, which is the one state nothing can sell from.
+            $category->delete();
+
+            return $denied;
+        }
+
+        return ApiResponse::success(
+            new TicketCategoryResource($category->fresh()->load('days')),
+            'Kategori tiket dibuat',
+            201,
+        );
     }
 
     public function update(UpdateTicketCategoryRequest $request, string $organization, string $ticketCategory): JsonResponse
@@ -52,9 +67,108 @@ class TicketCategoryController extends Controller
             return $denied;
         }
 
-        $category->update($request->validated());
+        $data = $request->validated();
+        $dates = array_key_exists('dates', $data) ? $data['dates'] ?? [] : null;
+        unset($data['dates']);
 
-        return ApiResponse::success(new TicketCategoryResource($category->fresh()), 'Kategori tiket diperbarui');
+        // The mode shapes the ticket rows that have already been issued, so it
+        // is frozen once anything sold — same snapshot reasoning as
+        // `participant_type`. `array_key_exists` is what keeps an organizer
+        // whose category is selling from being locked out of renaming it.
+        if (array_key_exists('day_mode', $data)
+            && $data['day_mode'] !== $category->day_mode
+            && $category->sold > 0) {
+            return ApiResponse::error(
+                'Mode hari tidak bisa diubah karena sudah ada tiket terjual.',
+                ['day_mode' => ['Sudah ada tiket terjual untuk kategori ini.']],
+                422,
+            );
+        }
+
+        $category->update($data);
+        $category->refresh();
+
+        if ($dates !== null && $denied = $this->syncDays($category, $category->event, $dates)) {
+            return $denied;
+        }
+
+        // A category switched to `none` keeps no days: its tickets carry no
+        // date, so a leftover row would be a date nothing can ever sell.
+        if (! $category->usesDays()) {
+            $category->days()->delete();
+        }
+
+        return ApiResponse::success(
+            new TicketCategoryResource($category->fresh()->load('days')),
+            'Kategori tiket diperbarui',
+        );
+    }
+
+    /**
+     * Bring a category's sold days in line with what the organizer picked.
+     *
+     * The same sync contract as syncPlayers(): a date that is sent is kept, one
+     * that is not is removed. Three refusals, each 422 on the `dates` field so
+     * the form can bind it inline:
+     *
+     * - a date outside the event's own range, which nothing could attend;
+     * - no dates at all on a day-selling category — "no dates" is zero days,
+     *   never "all of them", and a category with none can sell nothing;
+     * - dropping a date somebody already holds a ticket for. Adding a date is
+     *   always allowed, which is the half that makes this a lock and not a
+     *   freeze.
+     *
+     * @param  list<string>  $dates
+     */
+    protected function syncDays(TicketCategory $category, Event $event, array $dates): ?JsonResponse
+    {
+        if (! $category->usesDays()) {
+            $category->days()->delete();
+
+            return null;
+        }
+
+        $dates = array_values(array_unique($dates));
+        sort($dates);
+
+        if ($dates === []) {
+            return ApiResponse::error(
+                'Pilih tanggal yang dijual untuk kategori ini.',
+                ['dates' => ['Pilih minimal satu tanggal.']],
+                422,
+            );
+        }
+
+        if ($outside = array_diff($dates, $event->days())) {
+            return ApiResponse::error(
+                'Ada tanggal di luar rentang tanggal event.',
+                ['dates' => ['Tanggal '.implode(', ', $outside).' di luar rentang event.']],
+                422,
+            );
+        }
+
+        $existing = $category->days()->get();
+        $dropped = $existing->reject(fn ($day) => in_array($day->event_date->toDateString(), $dates, true));
+
+        $sold = $dropped->filter(fn ($day) => $day->sold > 0);
+
+        if ($sold->isNotEmpty()) {
+            $labels = $sold->map(fn ($day) => $day->event_date->toDateString())->implode(', ');
+
+            return ApiResponse::error(
+                'Ada tanggal yang sudah terjual dan tidak bisa dihapus.',
+                ['dates' => ['Tanggal '.$labels.' sudah ada tiket terjualnya.']],
+                422,
+            );
+        }
+
+        $dropped->each->delete();
+
+        foreach ($dates as $date) {
+            $category->days()->firstOrCreate(['event_date' => $date]);
+        }
+
+        return null;
     }
 
     public function destroy(Request $request, string $organization, string $ticketCategory): JsonResponse
@@ -100,7 +214,7 @@ class TicketCategoryController extends Controller
     protected function findCategory(Organization $org, string $categoryId): TicketCategory
     {
         return TicketCategory::whereHas('event', fn ($q) => $q->where('organization_id', $org->id))
-            ->with('event')
+            ->with(['event', 'days'])
             ->findOrFail($categoryId);
     }
 }

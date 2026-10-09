@@ -90,6 +90,33 @@ class ParticipantDocumentService
     }
 
     /**
+     * " — hari: 14, 15 Nov 2026" for an order that bought days, empty otherwise.
+     *
+     * Empty is the right answer for every order placed before per-day ticketing
+     * existed, and for every category that does not sell by the day: there is
+     * no day to name, and a document is not the place to explain that.
+     *
+     * Public for the reason TicketPosterService::html() is: dompdf output is
+     * compressed streams, so a test holding the bytes can only say that
+     * *something* rendered — and that assertion stays green when the document
+     * stops naming the right days, which is the one thing this adds.
+     */
+    public function ticketDaysNote(TicketOrder $order): string
+    {
+        $dates = $order->event_dates ?? [];
+
+        if ($dates === []) {
+            return '';
+        }
+
+        $days = collect($dates)
+            ->map(fn (string $date) => Carbon::parse($date)->locale('id')->translatedFormat('d M Y'))
+            ->implode(', ');
+
+        return ' — '.(count($dates) > 1 ? 'hari: ' : 'tanggal ').$days;
+    }
+
+    /**
      * Everything that differs between a ticket order and a registration fee.
      *
      * One method rather than two templates: the documents are the same
@@ -108,7 +135,13 @@ class ParticipantDocumentService
                 'payerName' => $order->buyer_name,
                 'payerLines' => array_values(array_filter([$order->buyer_email, $order->buyer_phone])),
                 'itemTitle' => $order->quantity.' × Tiket '.($order->category?->name ?? '—'),
-                'itemNote' => 'Harga satuan '.$this->rupiah($order->unit_price),
+                // The days, appended to the note rather than given a row of
+                // their own: the template renders three strings and must not
+                // have to know per-day ticketing exists — same reasoning as the
+                // reused `bank_accounts` columns. `quantity` already states the
+                // paid units, so what is missing is only *which* days they are.
+                'itemNote' => 'Harga satuan '.$this->rupiah($order->unit_price)
+                    .$this->ticketDaysNote($order),
                 'itemAmount' => (float) $order->total_price,
                 'methodLabel' => $this->methodLabel($order),
             ];

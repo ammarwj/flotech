@@ -49,7 +49,9 @@ class PublicEventController extends Controller
     {
         $page = Event::query()
             ->where('status', '!=', 'draft')
-            ->with(['organization', 'categories'])
+            // `plan` is what registrationIsPubliclyOpen() reads; without it the
+            // relation is lazy-loaded once per card.
+            ->with(['organization', 'categories', 'plan'])
             ->withCount(['teams as approved_teams_count' => fn ($q) => $q->where('status', 'approved')])
             ->withExists(['ticketCategories as tickets_on_sale' => fn ($q) => $q->where('is_active', true)])
             ->when($request->query('org'), fn ($q, $slug) => $q->whereHas(
@@ -92,6 +94,9 @@ class PublicEventController extends Controller
         $event->load([
             'organization',
             'categories',
+            // Read by registrationIsPubliclyOpen(), which decides whether this
+            // page shows a register button at all.
+            'plan',
             'teams' => fn ($q) => $q->where('status', 'approved')->orderBy('name'),
             // Which competition the squad entered. Already public — it is the
             // slug the schedule, the standings and the leaderboard are all

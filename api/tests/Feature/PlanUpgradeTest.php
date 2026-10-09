@@ -6,6 +6,7 @@ use App\Models\EventPlanOrder;
 use App\Models\Plan;
 use App\Models\User;
 use App\Services\EventPlanOrderService;
+use App\Services\PlanGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
@@ -352,22 +353,26 @@ class PlanUpgradeTest extends TestCase
      * them carried `platform_fee_percent`, once the one numeric key in the real
      * catalogue where a *smaller* number was the better deal (Starter 3%, Pro
      * 2%, Professional 1%). Read on the capacity scale that looked like a
-     * loss, and planCovers() refused Starter → Pro — the single most obvious
-     * upgrade there is. Twelve green tests said nothing about it. Gateway fees
-     * are buyer-paid now and that key is gone from the catalogue, but this
-     * test still asks the real seeded plans rather than synthetic ones — the
-     * next numeric key that runs backwards deserves the same catch.
+     * loss, and planCovers() refused the single most obvious upgrade there is.
+     * Twelve green tests said nothing about it. Gateway fees are buyer-paid now
+     * and that key is gone from the catalogue, but this test still asks the real
+     * seeded plans rather than synthetic ones — the next numeric key that runs
+     * backwards deserves the same catch.
+     *
+     * The chain is Pro → Professional, and `starter` is deliberately not in it:
+     * it is no longer sold, and it carries `online_registration` while Pro does
+     * not, so Starter → Pro genuinely is not an upgrade. Asking for it here
+     * would be asserting that a retired plan climbs to a cheaper-featured one.
      */
     public function test_the_real_catalogue_upgrades_in_the_order_its_prices_suggest(): void
     {
-        $starter = Plan::where('slug', 'starter')->firstOrFail();
         $pro = Plan::where('slug', 'pro')->firstOrFail();
         $professional = Plan::where('slug', 'professional')->firstOrFail();
 
         $owner = User::factory()->create();
         $org = $this->orgFor($owner);
-        $order = $this->creditFor($org, $starter);
-        $order->update(['amount' => $starter->price]);
+        $order = $this->creditFor($org, $pro);
+        $order->update(['amount' => $pro->price]);
 
         $offered = $this->actingAs($owner, 'api')
             ->getJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade-options")
@@ -375,11 +380,11 @@ class PlanUpgradeTest extends TestCase
             ->json('data');
 
         $this->assertSame(
-            [$pro->id, $professional->id],
+            [$professional->id],
             array_column(array_column($offered, 'plan'), 'id'),
         );
         $this->assertSame(
-            [(float) $pro->price - (float) $starter->price, (float) $professional->price - (float) $starter->price],
+            [(float) $professional->price - (float) $pro->price],
             array_map(fn ($o) => (float) $o['price_difference'], $offered),
         );
 
@@ -402,7 +407,7 @@ class PlanUpgradeTest extends TestCase
      */
     public function test_plancovers_treats_a_declared_lower_is_better_key_as_backwards(): void
     {
-        $prop = new \ReflectionProperty(\App\Services\PlanGate::class, 'lowerIsBetter');
+        $prop = new \ReflectionProperty(PlanGate::class, 'lowerIsBetter');
         $prop->setAccessible(true);
         $original = $prop->getValue();
         $prop->setValue(null, ['discount_percent']);
@@ -412,7 +417,7 @@ class PlanUpgradeTest extends TestCase
             $generous = $this->planWith(['discount_percent' => '20'], 'Generous');
             $stingy = $this->planWith(['discount_percent' => '5'], 'Stingy');
 
-            $gate = app(\App\Services\PlanGate::class);
+            $gate = app(PlanGate::class);
 
             // A bigger discount is worse for the platform — planCovers() must
             // read it as backwards, not as a capacity increase.
@@ -429,34 +434,48 @@ class PlanUpgradeTest extends TestCase
      *
      * Pricing each step against the order's own `amount` passes every
      * single-step test in this file and quietly overcharges the moment someone
-     * climbs twice: after Starter → Pro the holder carries only the 200.000
-     * top-up, so Professional would be billed at 800.000 − 200.000 and the
+     * climbs twice: after the first hop the holder carries only the 200.000
+     * top-up, so the top tier would be billed at 800.000 − 200.000 and the
      * organizer pays 950.000 for a plan sold at 800.000. Caught on the running
      * stack, not by any of the twelve tests written before it.
+     *
+     * Three rungs are needed to climb twice and the live catalogue now sells
+     * two (Pro → Professional), so these are synthetic — as most of this file's
+     * plans are. The arithmetic under test is the chain sum, which has nothing
+     * to do with which plans are on sale; the real catalogue is asserted on by
+     * the monotonicity test above, which is what it is there for.
      */
     public function test_climbing_twice_costs_the_same_as_buying_the_top_outright(): void
     {
-        $starter = Plan::where('slug', 'starter')->firstOrFail();
-        $pro = Plan::where('slug', 'pro')->firstOrFail();
-        $professional = Plan::where('slug', 'professional')->firstOrFail();
-
         $owner = User::factory()->create();
         $org = $this->orgFor($owner);
-        $order = $this->creditFor($org, $starter);
-        $order->update(['amount' => $starter->price]);
+
+        $small = $this->small();
+        $mid = $this->big();
+        $top = $this->priced($this->planWith([
+            'online_registration' => 'true',
+            'max_categories' => '-1',
+            'max_teams_per_category' => '-1',
+            'qr_tickets' => 'true',
+            'event_gallery' => 'true',
+            'max_gallery_photos' => '-1',
+        ], 'Puncak'), 800000);
+
+        $order = $this->creditFor($org, $small);
+        $order->update(['amount' => $small->price]);
 
         $url = fn (string $id) => "/api/v1/organizations/{$org->id}/plan-orders/{$id}/upgrade";
 
-        $first = $this->actingAs($owner, 'api')->postJson($url($order->id), ['plan_id' => $pro->id, 'payment_channel' => 'va'])
+        $first = $this->actingAs($owner, 'api')->postJson($url($order->id), ['plan_id' => $mid->id, 'payment_channel' => 'va'])
             ->assertCreated()->json('data.plan_order');
         $this->settle(EventPlanOrder::findOrFail($first['id']));
 
-        $second = $this->actingAs($owner, 'api')->postJson($url($first['id']), ['plan_id' => $professional->id, 'payment_channel' => 'va'])
+        $second = $this->actingAs($owner, 'api')->postJson($url($first['id']), ['plan_id' => $top->id, 'payment_channel' => 'va'])
             ->assertCreated()->json('data.plan_order');
 
         $total = (float) $order->amount + (float) $first['amount'] + (float) $second['amount'];
 
-        $this->assertSame((float) $professional->price, $total);
+        $this->assertSame((float) $top->price, $total);
     }
 
     public function test_operator_cannot_upgrade(): void

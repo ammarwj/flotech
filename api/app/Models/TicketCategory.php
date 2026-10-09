@@ -13,8 +13,28 @@ class TicketCategory extends Model
 {
     use HasUuids;
 
+    /**
+     * Whether this category speaks about days, and how.
+     *
+     * `none` is today's behaviour exactly — no day rows, tickets with a null
+     * `event_date`, no date comparison at the gate. See the migration for why
+     * this is one column and not two booleans.
+     */
+    public const DAY_MODES = ['none', 'per_day', 'pass'];
+
+    /**
+     * Mirrors the column default so a freshly created category answers
+     * usesDays() correctly *before* it is refreshed from the database. Without
+     * it `day_mode` is null on the new instance, null is not 'none', and
+     * creating a plain category walks straight into the day-sync refusal.
+     */
+    protected $attributes = [
+        'day_mode' => 'none',
+    ];
+
     protected $fillable = [
         'event_id',
+        'day_mode',
         'name',
         'description',
         'price',
@@ -86,6 +106,45 @@ class TicketCategory extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
+    }
+
+    /** The dates this category sells, earliest first. */
+    public function days(): HasMany
+    {
+        return $this->hasMany(TicketCategoryDay::class)->orderBy('event_date');
+    }
+
+    /** Whether this category sells by the day at all. */
+    public function usesDays(): bool
+    {
+        return $this->day_mode !== 'none';
+    }
+
+    /**
+     * How many ticket prices one seat costs for the given dates.
+     *
+     * The whole per-day/pass difference is this one number: a `per_day` buyer
+     * pays once per date, a `pass` buyer pays once for all of them, and a
+     * `none` category never had dates to begin with.
+     */
+    public function pricedDays(array $dates): int
+    {
+        return $this->day_mode === 'per_day' ? max(1, count($dates)) : 1;
+    }
+
+    /**
+     * Seats still free on one date, or null when unlimited.
+     *
+     * Deliberately separate from remaining(): that one answers the category's
+     * question (how many paid units are left) and this one answers the venue's
+     * (how many seats are left that day). Mixing them would let a sold-out
+     * Saturday be bought through on Sunday's spare capacity.
+     */
+    public function remainingOn(string $date): ?int
+    {
+        $day = $this->days->first(fn (TicketCategoryDay $d) => $d->event_date->toDateString() === $date);
+
+        return $day?->remaining($this->quota);
     }
 
     /** Tickets still available, or null when the quota is unlimited. */

@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Mail\TicketPurchasedMail;
-use App\Models\Organization;
 use App\Models\TicketCategory;
+use App\Models\TicketCategoryDay;
 use App\Models\TicketOrder;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -43,7 +43,7 @@ class TicketService
 
     /**
      * Create a pending order, reserve the quota and issue one QR ticket per
-     * seat. Runs in a transaction so quota and tickets stay consistent.
+     * seat per day. Runs in a transaction so quota and tickets stay consistent.
      *
      * `$paymentMethod` is snapshotted rather than resolved later: the gateway
      * can be switched back on at any time, and an order taken during an outage
@@ -54,16 +54,27 @@ class TicketService
      * orders, but the fee it used to hold is now the buyer-paid gateway/service
      * fee below, computed by the caller from PaymentFeeCalculator.
      *
+     * **`$buyer['quantity']` is paid units, `$seats` is people.** They are the
+     * same number for everything except a pass, which is paid once and admitted
+     * every day — see the migration's table. The caller works both out, because
+     * it is the only place that knows the category's day mode. `$dates` empty
+     * means a `none` category: one ticket per seat, no date on it, which is
+     * exactly the code this method has always run.
+     *
      * @param  array{buyer_name: string, buyer_email: string, buyer_phone?: string|null, quantity: int}  $buyer
      * @param  list<string|null>  $holderNames
+     * @param  list<string>  $dates  `Y-m-d`, the days this order covers
      */
-    public function purchase(TicketCategory $category, array $buyer, array $holderNames, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null, ?string $paymentChannel = null, float $gatewayFee = 0.0, float $serviceFee = 0.0, float $gatewayTax = 0.0): TicketOrder
+    public function purchase(TicketCategory $category, array $buyer, array $holderNames, string $orderId, ?string $userId, string $paymentMethod = 'gateway', ?Carbon $deadline = null, ?string $paymentChannel = null, float $gatewayFee = 0.0, float $serviceFee = 0.0, float $gatewayTax = 0.0, array $dates = [], ?int $seats = null): TicketOrder
     {
         $quantity = (int) $buyer['quantity'];
+        $seats = $seats ?? $quantity;
         $unitPrice = (float) $category->price;
 
-        return DB::transaction(function () use ($category, $buyer, $holderNames, $orderId, $userId, $quantity, $unitPrice, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee, $gatewayTax) {
+        return DB::transaction(function () use ($category, $buyer, $holderNames, $orderId, $userId, $quantity, $seats, $dates, $unitPrice, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee, $gatewayTax) {
             $category->increment('sold', $quantity);
+            // A pass bumps every date too: its holder occupies a seat each day.
+            $this->shiftDays($category->id, $dates, $seats);
 
             $order = $category->orders()->create([
                 'event_id' => $category->event_id,
@@ -72,6 +83,10 @@ class TicketService
                 'buyer_email' => $buyer['buyer_email'],
                 'buyer_phone' => $buyer['buyer_phone'] ?? null,
                 'quantity' => $quantity,
+                'seats' => $seats,
+                // Null rather than [] for a `none` order: "this order has no
+                // days" and "this order covers no days" are not the same claim.
+                'event_dates' => $dates === [] ? null : array_values($dates),
                 'unit_price' => $unitPrice,
                 'total_price' => $unitPrice * $quantity,
                 // A free ticket has no bill, so it gets no document — a Rp 0
@@ -90,13 +105,22 @@ class TicketService
                 'midtrans_order_id' => $orderId,
             ]);
 
-            for ($i = 0; $i < $quantity; $i++) {
-                $order->tickets()->create([
-                    'ticket_category_id' => $category->id,
-                    'event_id' => $category->event_id,
-                    'qr_code' => 'TIX-'.Str::lower(Str::ulid()),
-                    'holder_name' => $holderNames[$i] ?? $buyer['buyer_name'],
-                ]);
+            // One row per seat per day, so each day gets its own QR and its own
+            // check-in. `[null]` is what makes a `none` category fall through
+            // the same loop with no date — not a separate branch that could
+            // drift from this one.
+            foreach ($dates === [] ? [null] : $dates as $date) {
+                for ($seat = 0; $seat < $seats; $seat++) {
+                    $order->tickets()->create([
+                        'ticket_category_id' => $category->id,
+                        'event_id' => $category->event_id,
+                        'event_date' => $date,
+                        'qr_code' => 'TIX-'.Str::lower(Str::ulid()),
+                        // Keyed by seat, not by row: a buyer's three days are
+                        // three tickets belonging to the same person.
+                        'holder_name' => $holderNames[$seat] ?? $buyer['buyer_name'],
+                    ]);
+                }
             }
 
             return $order;
@@ -211,8 +235,7 @@ class TicketService
     {
         DB::transaction(function () use ($order) {
             $order->update(['status' => 'refunded']);
-            $order->category()->decrement('sold', $order->quantity);
-            $order->tickets()->delete();
+            $this->release($order);
         });
     }
 
@@ -227,8 +250,47 @@ class TicketService
 
         DB::transaction(function () use ($order, $status) {
             $order->update(['status' => $status]);
-            $order->category()->decrement('sold', $order->quantity);
-            $order->tickets()->delete();
+            $this->release($order);
         });
+    }
+
+    /**
+     * Give back everything an order was holding.
+     *
+     * Written once because there are two doors that void an order and they must
+     * release the same things: the category's paid-unit count, each day's seat
+     * count, and the issued tickets. Two copies would drift, and the drift
+     * would look like a date that reads sold out with nobody holding a ticket
+     * for it — same reasoning as MatchResultService owning both result doors.
+     */
+    protected function release(TicketOrder $order): void
+    {
+        $order->category()->decrement('sold', $order->quantity);
+        $this->shiftDays($order->ticket_category_id, $order->event_dates ?? [], -$order->seats);
+        $order->tickets()->delete();
+    }
+
+    /**
+     * Move each day's seat count by `$by` (negative to give seats back).
+     *
+     * Clamped at zero on the way down: a row that somehow went out of step
+     * should read "empty", never a negative capacity that makes remaining()
+     * larger than the quota.
+     *
+     * @param  list<string>  $dates
+     */
+    protected function shiftDays(string $categoryId, array $dates, int $by): void
+    {
+        if ($dates === [] || $by === 0) {
+            return;
+        }
+
+        foreach ($dates as $date) {
+            $day = TicketCategoryDay::where('ticket_category_id', $categoryId)
+                ->where('event_date', $date)
+                ->first();
+
+            $day?->update(['sold' => max(0, $day->sold + $by)]);
+        }
     }
 }

@@ -14,6 +14,7 @@ class Ticket extends Model
         'order_id',
         'ticket_category_id',
         'event_id',
+        'event_date',
         'qr_code',
         'holder_name',
         'is_used',
@@ -24,6 +25,11 @@ class Ticket extends Model
     protected function casts(): array
     {
         return [
+            // Null for a category that does not sell by the day, and for every
+            // ticket issued before per-day ticketing existed. ScanController
+            // skips its date comparison entirely on null, which is what keeps
+            // those tickets working without a second branch.
+            'event_date' => 'date',
             'is_used' => 'boolean',
             'used_at' => 'datetime',
         ];

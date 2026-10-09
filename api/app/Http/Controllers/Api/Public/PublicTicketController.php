@@ -9,6 +9,7 @@ use App\Http\Resources\TicketCategoryResource;
 use App\Http\Resources\TicketOrderResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\TicketCategory;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
 use App\Services\ParticipantDocumentService;
@@ -19,8 +20,8 @@ use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\Response;
 
 class PublicTicketController extends Controller
 {
@@ -41,6 +42,10 @@ class PublicTicketController extends Controller
         $event = $this->resolve($orgSlug, $eventSlug);
 
         $categories = $event->ticketCategories()
+            // `days` is what the buyer's date chips and their per-date
+            // remaining counts are drawn from — without it the resource ships
+            // an empty day list and a per-day category looks like a plain one.
+            ->with('days')
             ->where('is_active', true)
             ->orderBy('price')
             ->get();
@@ -73,7 +78,7 @@ class PublicTicketController extends Controller
 
         $data = $request->validated();
 
-        $category = $event->ticketCategories()->find($data['ticket_category_id']);
+        $category = $event->ticketCategories()->with('days')->find($data['ticket_category_id']);
         if (! $category) {
             return ApiResponse::error('Kategori tiket tidak ditemukan.', null, 404);
         }
@@ -82,12 +87,25 @@ class PublicTicketController extends Controller
             return ApiResponse::error('Kategori tiket ini sedang tidak dijual.', null, 422);
         }
 
-        $remaining = $category->remaining();
-        if ($remaining !== null && $remaining < $data['quantity']) {
-            return ApiResponse::error('Sisa tiket tidak mencukupi.', null, 422);
+        // `quantity` on the wire is what the buyer typed: how many people. The
+        // paid-unit count is derived from it below, because only this method
+        // knows the category's day mode.
+        $seats = (int) $data['quantity'];
+
+        $dates = $this->datesFor($category, $data['dates'] ?? null);
+        if ($dates instanceof JsonResponse) {
+            return $dates;
         }
 
-        $total = (float) $category->price * (int) $data['quantity'];
+        if ($denied = $this->ensureSeatsAvailable($category, $dates, $seats)) {
+            return $denied;
+        }
+
+        // The one number the rest of this method bills on. A pass pays once for
+        // every day; a per-day order pays once per day picked.
+        $pricedUnits = $seats * $category->pricedDays($dates);
+
+        $total = (float) $category->price * $pricedUnits;
 
         // Throws (422/403) when this organizer can't collect at all. A bank
         // account back means the gateway is off and the buyer transfers to the
@@ -121,7 +139,7 @@ class PublicTicketController extends Controller
                 $data['payment_channel'],
                 $total,
                 PaymentFeeCalculator::AUDIENCE_TICKET,
-                (int) $data['quantity'],
+                $pricedUnits,
             );
             $channel = $breakdown['channel'];
             $gatewayFee = $breakdown['gateway_fee'];
@@ -138,7 +156,7 @@ class PublicTicketController extends Controller
                 'buyer_name' => $data['buyer_name'],
                 'buyer_email' => $data['buyer_email'],
                 'buyer_phone' => $data['buyer_phone'] ?? null,
-                'quantity' => $data['quantity'],
+                'quantity' => $pricedUnits,
             ],
             $data['holder_names'] ?? [],
             $orderId,
@@ -149,6 +167,8 @@ class PublicTicketController extends Controller
             $gatewayFee,
             $serviceFee,
             $gatewayTax,
+            $dates,
+            $seats,
         );
 
         $snap = ['token' => null, 'redirect_url' => null, 'mock' => false];
@@ -260,6 +280,87 @@ class PublicTicketController extends Controller
             ])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
+    }
+
+    /**
+     * Which days this order covers, or the refusal that stops it.
+     *
+     * Three modes, one place: a `per_day` buyer must name their days and they
+     * must be days this category actually sells; a `pass` covers every day it
+     * sells, whatever the client sent; a `none` category has no days at all.
+     * Deriving this anywhere else would be a second reader of `day_mode`.
+     *
+     * @param  list<string>|null  $requested
+     * @return list<string>|JsonResponse
+     */
+    protected function datesFor(TicketCategory $category, ?array $requested): array|JsonResponse
+    {
+        $selling = $category->days->map(fn ($d) => $d->event_date->toDateString())->all();
+
+        if ($category->day_mode === 'pass') {
+            return $selling;
+        }
+
+        if ($category->day_mode !== 'per_day') {
+            return [];
+        }
+
+        $picked = array_values(array_unique($requested ?? []));
+
+        if ($picked === []) {
+            return ApiResponse::error(
+                'Pilih tanggal kehadiran dulu.',
+                ['dates' => ['Pilih minimal satu tanggal.']],
+                422,
+            );
+        }
+
+        // A date the category does not sell is not "sold out" — it was never on
+        // offer, so it gets its own sentence rather than the quota one below.
+        if ($unknown = array_diff($picked, $selling)) {
+            return ApiResponse::error(
+                'Ada tanggal yang tidak dijual untuk kategori ini.',
+                ['dates' => ['Tanggal '.implode(', ', $unknown).' tidak tersedia.']],
+                422,
+            );
+        }
+
+        sort($picked);
+
+        return $picked;
+    }
+
+    /**
+     * Refuse when any one day is short of seats, naming that day.
+     *
+     * Per-date capacity is the venue's, so a sold-out Saturday must not be
+     * buyable through Sunday's spare seats — which is exactly what reading the
+     * category's own `remaining()` would allow. The date is in the message
+     * because the buyer can act on it: pick another day rather than give up.
+     */
+    protected function ensureSeatsAvailable(TicketCategory $category, array $dates, int $seats): ?JsonResponse
+    {
+        if ($dates === []) {
+            $remaining = $category->remaining();
+
+            return $remaining !== null && $remaining < $seats
+                ? ApiResponse::error('Sisa tiket tidak mencukupi.', null, 422)
+                : null;
+        }
+
+        foreach ($dates as $date) {
+            $remaining = $category->remainingOn($date);
+
+            if ($remaining !== null && $remaining < $seats) {
+                return ApiResponse::error(
+                    'Sisa tiket untuk tanggal '.$date.' tidak mencukupi.',
+                    ['dates' => ['Sisa tiket tanggal '.$date.': '.$remaining.'.']],
+                    422,
+                );
+            }
+        }
+
+        return null;
     }
 
     /**

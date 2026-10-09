@@ -11,6 +11,8 @@ import { parseApiError } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QrCode } from "@/components/event/qr-code";
+import { dayFullLabel } from "@/lib/match-dates";
+import { dateRangeLabel } from "@/lib/tickets";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { ServiceFeeExplainer } from "@/components/payment/channel-picker";
 import { InfoHint } from "@/components/ui/info-hint";
@@ -130,7 +132,23 @@ export default function ETicketPage() {
         </div>
         <div className="mt-4 grid gap-1.5 border-t border-border pt-4 text-sm">
           <Row label="Kategori" value={order.category?.name ?? "-"} />
-          <Row label="Jumlah" value={`${order.quantity} tiket`} />
+          {/* Days first: on a per-day order it is what makes the ticket count
+              and the price add up, and a buyer looking for "which days did I
+              buy?" should not have to read it off the QR cards below. */}
+          {order.event_dates && order.event_dates.length > 0 && (
+            <Row
+              label={order.event_dates.length > 1 ? "Hari" : "Tanggal"}
+              value={dateRangeLabel(order.event_dates)}
+            />
+          )}
+          <Row
+            label="Jumlah"
+            value={
+              order.event_dates && order.event_dates.length > 1
+                ? `${order.seats} orang · ${order.tickets?.length ?? order.quantity} tiket`
+                : `${order.quantity} tiket`
+            }
+          />
           {order.total_price > 0 && <Row label="Harga tiket" value={rupiah(order.total_price)} />}
           {/* Split, not lumped: the platform fee is ours and scales with the
               quantity, the gateway's is the bank's and does not. One combined
@@ -205,6 +223,13 @@ export default function ETicketPage() {
             <div>
               <div className="font-semibold">{t.holder_name ?? `Tiket #${i + 1}`}</div>
               <div className="text-xs text-muted-foreground">{order.category?.name}</div>
+              {/* Which day this QR admits its holder. The gate refuses it on
+                  any other, so it belongs on the card and not only in the
+                  summary above — a holder with three QRs has to know which one
+                  to show today. */}
+              {t.event_date && (
+                <div className="mt-1 text-sm font-semibold">{dayFullLabel(t.event_date)}</div>
+              )}
               {paid && t.is_used && (
                 <Badge variant="danger" className="mt-2">
                   Sudah digunakan

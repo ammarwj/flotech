@@ -48,6 +48,32 @@ class ScanController extends Controller
             ], 409);
         }
 
+        // Last of the three guards on purpose: a ticket already used on its own
+        // day must still read "sudah digunakan", not "salah hari".
+        //
+        // A null `event_date` skips this entirely — that is what a category not
+        // selling by the day issues, and what every ticket predating this
+        // feature carries. No second branch keeps those working.
+        //
+        // "Today" is today in the *event's* zone. Carbon::now() would be UTC
+        // (the app timezone), where a WIB morning is still yesterday — so every
+        // ticket scanned before 07:00 would be refused, and only then. A bug
+        // that depends on the hour passes every test that never names one.
+        if ($ticket->event_date) {
+            $today = Carbon::now($event->timezone)->toDateString();
+
+            if ($ticket->event_date->toDateString() !== $today) {
+                return ApiResponse::error(
+                    'Tiket ini untuk tanggal '.$ticket->event_date->translatedFormat('j F Y').', bukan hari ini.',
+                    [
+                        'result' => 'wrong_day',
+                        'ticket' => $this->ticketPayload($ticket),
+                    ],
+                    409,
+                );
+            }
+        }
+
         $ticket->update([
             'is_used' => true,
             'used_at' => Carbon::now(),
@@ -87,6 +113,23 @@ class ScanController extends Controller
                 'checked_in' => $c->checked_in_count,
             ]);
 
+        // Per-day breakdown. `checkin.total` counts ticket-days now, and an
+        // organizer reading it without this split would read it as a head
+        // count: a three-day buyer is one person and three rows. Only days
+        // that actually have tickets appear, so a `none`-only event gets an
+        // empty list and the client shows nothing extra.
+        $byDate = $event->tickets()
+            ->whereNotNull('event_date')
+            ->selectRaw('event_date, count(*) as issued, sum(case when is_used then 1 else 0 end) as checked_in')
+            ->groupBy('event_date')
+            ->orderBy('event_date')
+            ->get()
+            ->map(fn ($row) => [
+                'event_date' => Carbon::parse($row->event_date)->toDateString(),
+                'issued' => (int) $row->issued,
+                'checked_in' => (int) $row->checked_in,
+            ]);
+
         $recent = $event->tickets()
             ->where('is_used', true)
             ->with('category')
@@ -116,6 +159,7 @@ class ScanController extends Controller
                 'remaining' => max(0, $totalTickets - $checkedIn),
             ],
             'categories' => $categories,
+            'by_date' => $byDate,
             'recent_checkins' => $recent,
         ]);
     }
@@ -129,6 +173,10 @@ class ScanController extends Controller
             'id' => $ticket->id,
             'holder_name' => $ticket->holder_name,
             'category' => $ticket->category?->name,
+            // Null for a ticket with no day. The scanner renders it on every
+            // result, not just the refusals: the gate staff's next question
+            // after "salah hari" is "then which day?".
+            'event_date' => $ticket->event_date?->toDateString(),
             'used_at' => $ticket->used_at,
         ];
     }

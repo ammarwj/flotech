@@ -89,6 +89,83 @@ export function tabDateLabel(iso: string | null, tz: string): string {
   });
 }
 
+/**
+ * Every calendar day an event runs, inclusive, as `YYYY-MM-DD` strings.
+ *
+ * Mirrors `Event::days()` on the API, which validates a ticket category's dates
+ * against the same list — a client that enumerated the range differently would
+ * offer a day the server then refuses.
+ *
+ * No timezone parameter, unlike everything else in this file: both columns are
+ * plain dates with no time, so this is calendar arithmetic over strings and a
+ * zone has nothing to shift. Parsed at UTC noon so a local-midnight parse can
+ * never land the result on the previous day.
+ *
+ * An end before the start is no range at all, so it answers the start day alone
+ * rather than nothing — same guard as the server's.
+ */
+export function eventDays(
+  start?: string | null,
+  end?: string | null,
+): string[] {
+  if (!start) return [];
+
+  const last = end && end >= start ? end : start;
+  const cursor = new Date(`${start}T12:00:00Z`);
+  const stop = new Date(`${last}T12:00:00Z`);
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(stop.getTime())) return [];
+
+  const days: string[] = [];
+  // 400 is a ceiling against a typo'd year, not a product rule: a tournament
+  // that long does not exist, and an unbounded loop here would hang the form.
+  while (cursor <= stop && days.length < 400) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return days;
+}
+
+/**
+ * Whole days in an event's range, inclusive (same day = 1), or null when there
+ * is no range to measure.
+ *
+ * Derived from eventDays() rather than from its own subtraction, so the count
+ * shown on the form can never disagree with the list of days the buyer is
+ * offered.
+ */
+export function durationDays(
+  start?: string | null,
+  end?: string | null,
+): number | null {
+  if (!start || !end || end < start) return null;
+
+  const days = eventDays(start, end).length;
+
+  return days === 0 ? null : days;
+}
+
+/** A bare `YYYY-MM-DD` as "Sab, 14 Nov". */
+export function dayChipLabel(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("id-ID", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/** A bare `YYYY-MM-DD` as "Sabtu, 14 November 2026". */
+export function dayFullLabel(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("id-ID", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 /** ISO instant → value for <input type="datetime-local">, read in the event's zone. */
 export function toEventInput(iso: string | null, tz: string): string {
   if (!iso) return "";

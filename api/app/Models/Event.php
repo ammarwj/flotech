@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Catalog;
+use App\Services\PlanGate;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -163,6 +164,42 @@ class Event extends Model
         return $this->hasMany(EventViewDaily::class);
     }
 
+    /**
+     * Every calendar day this event runs, inclusive, as `Y-m-d` strings.
+     *
+     * The single answer to "which days does this event have?" — ticket
+     * categories validate their dates against it, a `pass` covers all of them,
+     * and the buyer's day chips come from the same range (web/lib/match-dates
+     * mirrors it). Both columns are plain `date` with no time component, so
+     * this is calendar arithmetic and the event's timezone does not enter into
+     * it; the only place a *clock* matters is deciding what "today" is at the
+     * gate, which ScanController does in the event's own zone.
+     *
+     * An end date behind the start date is no range at all, so it answers the
+     * start day alone rather than an empty list — same guard, same reason as
+     * ScheduleService's `$availableDays`.
+     *
+     * @return list<string>
+     */
+    public function days(): array
+    {
+        if (! $this->start_date) {
+            return [];
+        }
+
+        $start = $this->start_date->copy()->startOfDay();
+        $end = $this->end_date && $this->end_date->greaterThanOrEqualTo($start)
+            ? $this->end_date->copy()->startOfDay()
+            : $start;
+
+        $days = [];
+        for ($day = $start; $day->lessThanOrEqualTo($end); $day->addDay()) {
+            $days[] = $day->toDateString();
+        }
+
+        return $days;
+    }
+
     /** Catalog entry for this event's sport (name, colour, scoring, stats). */
     public function sportDefinition(): ?array
     {
@@ -251,5 +288,32 @@ class Event extends Model
 
         return (! $this->registration_open || $this->registration_open->lte($now))
             && (! $this->registration_close || $this->registration_close->gte($now));
+    }
+
+    /**
+     * Whether a visitor may sign a team up right now: the window above AND the
+     * plan's `online_registration`.
+     *
+     * Both halves live here, in one method, for the reason PaymentRails::methodFor()
+     * exists — PublicEventController::register() enforces the pair, and a second
+     * reader that checked only the window is what put a live "Daftar" button on
+     * an event whose plan refuses the form. It drifted invisibly: the button
+     * worked, looked right, and 422'd on submit.
+     *
+     * Deliberately NOT a replacement for isRegistrationOpen(). The organizer's
+     * own door (RegistrationController) is ungated by design — an event without
+     * online registration still takes entries, typed by the organizer — and the
+     * dashboard has to keep saying the window is open while this says the public
+     * form is not.
+     *
+     * Reads the plan through the container like PublicEventResource does with
+     * PaymentRails; PlanGate memoizes by plan id, so a page of events on one
+     * plan costs one features query. Callers listing events should still
+     * `->with('plan')` or the relation is lazy-loaded per row.
+     */
+    public function registrationIsPubliclyOpen(): bool
+    {
+        return $this->isRegistrationOpen()
+            && app(PlanGate::class)->allows($this, 'online_registration');
     }
 }

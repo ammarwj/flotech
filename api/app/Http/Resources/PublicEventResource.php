@@ -38,7 +38,19 @@ class PublicEventResource extends JsonResource
             'timezone' => $this->timezone,
             'registration_open' => $this->registration_open,
             'registration_close' => $this->registration_close,
-            'registration_is_open' => $this->isRegistrationOpen(),
+            // The *effective* answer, schedule AND entitlement, combined here
+            // rather than client-side: PublicEventController::register() asks
+            // the plan before the window for a reason, and a visitor reading
+            // only the window got a live "Daftar" button that 422'd on submit.
+            // Two readers of one rule drift, and the drift looks like a working
+            // form — the same bug shape as effective_payment_method.
+            //
+            // Unlike EventResource this publishes no raw `plan`: a visitor has
+            // no use for the catalogue, and a second field is a second thing to
+            // read by mistake. An event whose plan has no online registration
+            // reads as closed, which is what it is from the outside — the
+            // organizer entering teams themselves is a door they never saw.
+            'registration_is_open' => $this->registrationIsPubliclyOpen(),
             // The *shape* of the form, which the public register page has to
             // have to render itself. The answers given to it stay organizer-side
             // — see the roster below, trimmed for the same reason: an address or

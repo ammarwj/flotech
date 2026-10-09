@@ -6,7 +6,10 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\User;
+use App\Notifications\PlanOrderPaid;
+use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
@@ -338,12 +341,12 @@ class PerEventPlanTest extends TestCase
 
         $register = fn (Event $e) => $this->actingAs($manager, 'api')
             ->postJson("/api/v1/public/events/{$org->slug}/{$e->slug}/register", [
-            'category_id' => $e->categories()->first()->id,
-            'name' => 'FC',
-            'contact_name' => 'Andi',
-            'contact_phone' => '08123456789',
-            'players' => [['full_name' => 'P', 'jersey_number' => '1']],
-        ]);
+                'category_id' => $e->categories()->first()->id,
+                'name' => 'FC',
+                'contact_name' => 'Andi',
+                'contact_phone' => '08123456789',
+                'players' => [['full_name' => 'P', 'jersey_number' => '1']],
+            ]);
 
         $buy = fn (Event $e) => $this->postJson("/api/v1/public/events/{$org->slug}/{$e->slug}/tickets/purchase", [
             'ticket_category_id' => $e->ticketCategories()->first()->id,
@@ -357,6 +360,86 @@ class PerEventPlanTest extends TestCase
 
         $buy($off)->assertStatus(422)->assertJsonPath('errors.feature', 'qr_tickets');
         $buy($on)->assertCreated();
+    }
+
+    /**
+     * The public payload says the door is shut, not just the endpoint.
+     *
+     * The gate above is the reactive half; this is the proactive one. Without it
+     * the event page read `registration_is_open` — the schedule window alone —
+     * and showed a live "Daftar" button, a "Pendaftaran Dibuka" badge and a CTA
+     * on an event whose plan refuses the form. The button worked, looked right,
+     * and 422'd on submit.
+     *
+     * Both events sit inside an open window on purpose, so the window cannot
+     * explain the difference: the only thing separating them is the plan. And
+     * both halves are asserted on each event — `true` for one alone would pass
+     * against a field hardcoded open, `false` alone against one hardcoded shut.
+     *
+     * The list endpoint is checked beside the detail one because its card
+     * carries the same pill, and the two resources derive it separately.
+     */
+    public function test_the_public_payload_closes_registration_when_the_plan_lacks_it(): void
+    {
+        $org = $this->orgFor($this->owner());
+
+        $dates = ['registration_open' => now()->subDay(), 'registration_close' => now()->addDays(10)];
+        $off = $this->eventOn($org, $this->planWith([]), $dates);
+        $on = $this->eventOn($org, $this->planWith(['online_registration' => 'true']), $dates);
+
+        // The window itself is open on both — the organizer's own door, which
+        // this change must not have touched.
+        $this->assertTrue($off->isRegistrationOpen());
+        $this->assertTrue($on->isRegistrationOpen());
+
+        $this->getJson("/api/v1/public/events/{$org->slug}/{$off->slug}")
+            ->assertOk()
+            ->assertJsonPath('data.registration_is_open', false);
+
+        $this->getJson("/api/v1/public/events/{$org->slug}/{$on->slug}")
+            ->assertOk()
+            ->assertJsonPath('data.registration_is_open', true);
+
+        $cards = collect($this->getJson("/api/v1/public/events?org={$org->slug}")
+            ->assertOk()
+            ->json('data.items'))
+            ->keyBy('slug');
+
+        $this->assertFalse($cards[$off->slug]['registration_is_open']);
+        $this->assertTrue($cards[$on->slug]['registration_is_open']);
+    }
+
+    /**
+     * The organizer's own door stays open regardless.
+     *
+     * `registrationIsPubliclyOpen()` narrows only the public form; folding the
+     * entitlement into `isRegistrationOpen()` instead would have locked the
+     * organizer out of typing entries for an event they are running — and the
+     * dashboard would have agreed with it, so nothing would have looked broken.
+     */
+    public function test_the_organizer_can_still_enter_teams_without_online_registration(): void
+    {
+        $user = $this->owner();
+        $org = $this->orgFor($user);
+
+        $event = $this->eventOn($org, $this->planWith([]), [
+            'registration_open' => now()->subDay(),
+            'registration_close' => now()->addDays(10),
+        ]);
+        $category = $event->categories()->create([
+            'name' => 'Umum', 'slug' => 'umum-'.uniqid(), 'tournament_format' => 'league',
+            'registration_fee' => 0, 'sort_order' => 0,
+        ]);
+
+        $this->actingAs($user, 'api')
+            ->postJson($this->url($org, $event, 'registrations'), [
+                'category_id' => $category->id,
+                'name' => 'FC Offline',
+                'contact_name' => 'Andi',
+                'contact_phone' => '08123456789',
+                'players' => [['full_name' => 'P', 'jersey_number' => '1']],
+            ])
+            ->assertCreated();
     }
 
     /**
@@ -543,14 +626,14 @@ class PerEventPlanTest extends TestCase
      */
     public function test_activate_is_idempotent_and_writes_nothing_to_the_organization(): void
     {
-        \Illuminate\Support\Facades\Notification::fake();
+        Notification::fake();
 
         $owner = $this->owner();
         $org = $this->orgFor($owner);
         $plan = $this->planWith([]);
         $plan->update(['price' => 150000]);
 
-        $service = app(\App\Services\EventPlanOrderService::class);
+        $service = app(EventPlanOrderService::class);
         $order = $service->checkout($org, $plan, 'va')['order'];
 
         $before = $org->fresh()->getAttributes();
@@ -569,9 +652,9 @@ class PerEventPlanTest extends TestCase
 
         $this->assertSame($before, $org->fresh()->getAttributes(), 'Nothing may be written to the organization.');
 
-        \Illuminate\Support\Facades\Notification::assertSentToTimes(
+        Notification::assertSentToTimes(
             $owner,
-            \App\Notifications\PlanOrderPaid::class,
+            PlanOrderPaid::class,
             1,
         );
     }

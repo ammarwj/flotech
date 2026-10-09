@@ -297,6 +297,40 @@ function RegisterTeamPage() {
     );
   }
 
+  // The form is closed, and this is its own route — hiding the buttons that
+  // link here leaves the URL open, and someone who bookmarked it or kept the tab
+  // would fill the whole thing in before the 422 told them. Below the success
+  // cards above so a team that just registered still sees its receipt when the
+  // window closes behind it.
+  //
+  // One flag covers both reasons it can be closed (the schedule, and a plan
+  // without online registration) because the server already merged them —
+  // see Event::registrationIsPubliclyOpen(). A visitor cannot act on the
+  // difference: either way the organizer is the one to ask.
+  if (event && !event.registration_is_open) {
+    return (
+      <div className="container" style={{ paddingBlock: 80, maxWidth: 520 }}>
+        <Card className="p-8 text-center sm:p-10">
+          <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-full bg-[var(--muted)] text-muted-foreground">
+            <AlertCircle className="h-7 w-7" />
+          </div>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
+            Pendaftaran online ditutup
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Event ini tidak menerima pendaftaran lewat halaman ini. Hubungi penyelenggara kalau
+            timmu masih ingin ikut — mereka bisa mendaftarkan timmu langsung.
+          </p>
+          <div className="mt-6">
+            <Button asChild size="lg" variant="outline">
+              <Link href={`/${params.orgSlug}/${params.eventSlug}`}>Ke halaman event</Link>
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   // Registration needs an account: the team is tied to whoever files it, and
   // that link is what puts it in their "Tim Saya" afterwards — where the roster
   // gets completed, documents uploaded and the fee paid. Sending them off with

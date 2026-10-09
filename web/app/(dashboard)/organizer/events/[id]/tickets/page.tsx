@@ -28,6 +28,8 @@ import {
 import { getEvent } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { isTicketingEnabled } from "@/lib/plan";
+import { dayFullLabel } from "@/lib/match-dates";
+import { dateRangeLabel, dayModeLabel, sellingDates, usesDays } from "@/lib/tickets";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
@@ -209,6 +211,29 @@ export default function EventTicketsPage() {
         </div>
       ) : null}
 
+      {/* Per-day split. The cards above count ticket-days once a category sells
+          by the day — a three-day buyer is one person and three tickets — so a
+          figure read as a head count needs this beside it. Absent entirely when
+          nothing sells by the day, rather than a row of one. */}
+      {report && report.by_date.length > 0 && (
+        <Card className="mb-6 p-5">
+          <h3 className="mb-3 text-sm font-semibold">Check-in per hari</h3>
+          <div className="grid gap-2">
+            {report.by_date.map((day) => (
+              <div
+                key={day.event_date}
+                className="flex items-center justify-between gap-4 text-sm"
+              >
+                <span className="text-muted-foreground">{dayFullLabel(day.event_date)}</span>
+                <span className="font-semibold">
+                  {day.checked_in} / {day.issued}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* ===== Category management ===== */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
@@ -227,6 +252,8 @@ export default function EventTicketsPage() {
           <h3 className="mb-4 font-semibold">Kategori baru</h3>
           <TicketCategoryForm
             tz={eventQuery.data!.timezone}
+            eventStart={eventQuery.data!.start_date}
+            eventEnd={eventQuery.data!.end_date}
             onSubmit={(payload) => createMut.mutate(payload)}
             onCancel={() => {
               setCreating(false);
@@ -268,6 +295,8 @@ export default function EventTicketsPage() {
               <TicketCategoryForm
                 initial={cat}
                 tz={eventQuery.data!.timezone}
+                eventStart={eventQuery.data!.start_date}
+                eventEnd={eventQuery.data!.end_date}
                 onSubmit={(payload) => updateMut.mutate({ id: cat.id, payload })}
                 onCancel={() => {
                   setEditing(null);
@@ -297,8 +326,15 @@ export default function EventTicketsPage() {
                   <span className="font-semibold text-foreground">{rupiah(cat.price)}</span>
                   <span>
                     Terjual {cat.sold}
-                    {cat.quota != null ? ` / ${cat.quota}` : " (tak terbatas)"}
+                    {cat.quota != null
+                      ? ` / ${cat.quota}${usesDays(cat) ? " per hari" : ""}`
+                      : " (tak terbatas)"}
                   </span>
+                  {usesDays(cat) && (
+                    <span>
+                      {dayModeLabel(cat.day_mode)} · {dateRangeLabel(sellingDates(cat))}
+                    </span>
+                  )}
                   {cat.benefits.length > 0 && <span>{cat.benefits.join(" · ")}</span>}
                 </div>
               </div>

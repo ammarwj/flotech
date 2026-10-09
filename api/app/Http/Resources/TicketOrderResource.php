@@ -22,7 +22,14 @@ class TicketOrderResource extends JsonResource
             'buyer_name' => $this->buyer_name,
             'buyer_email' => $this->buyer_email,
             'buyer_phone' => $this->buyer_phone,
+            // Paid units — what `total_price` is `unit_price` times. For a
+            // pass this is NOT the number of QRs: see TicketOrder's casts.
             'quantity' => $this->quantity,
+            // People, and the days they bought. Both published so the buyer's
+            // receipt can say "2 orang × 3 hari" rather than leaving them to
+            // work out why they were billed six.
+            'seats' => $this->seats,
+            'event_dates' => $this->event_dates,
             'unit_price' => (float) $this->unit_price,
             'total_price' => (float) $this->total_price,
             'platform_fee' => (float) $this->platform_fee,
@@ -61,6 +68,9 @@ class TicketOrderResource extends JsonResource
                 'id' => $this->event->id,
                 'name' => $this->event->name,
                 'start_date' => $this->event->start_date?->toDateString(),
+                // The e-ticket page labels each day's QR, so it needs the range
+                // and not just where it starts.
+                'end_date' => $this->event->end_date?->toDateString(),
                 'location_name' => $this->event->location_name,
             ]),
             'tickets' => TicketResource::collection($this->whenLoaded('tickets')),

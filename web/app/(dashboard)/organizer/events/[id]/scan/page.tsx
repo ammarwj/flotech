@@ -3,22 +3,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
-import { CheckCircle2, XCircle, AlertTriangle, Camera, CameraOff, ScanLine } from "lucide-react";
+import {
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  CalendarX,
+  Camera,
+  CameraOff,
+  ScanLine,
+} from "lucide-react";
 
 import { scanTicket } from "@/lib/api/tickets";
 import { parseApiError } from "@/lib/api/errors";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { dayFullLabel } from "@/lib/match-dates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/page-header";
-import type { ScanResponse } from "@/types/api";
+import type { ScanResponse, ScanResult } from "@/types/api";
 
 type Feedback = {
-  kind: "valid" | "used" | "unpaid" | "invalid";
+  kind: ScanResult;
   message: string;
   holder?: string | null;
   category?: string | null;
+  /** The day this ticket admits its holder; null when it has none. */
+  eventDate?: string | null;
 };
 
 const FEEDBACK_STYLE: Record<
@@ -29,6 +40,9 @@ const FEEDBACK_STYLE: Record<
   used: { icon: XCircle, color: "var(--danger)", title: "Sudah Digunakan" },
   unpaid: { icon: AlertTriangle, color: "var(--warning)", title: "Belum Dibayar" },
   invalid: { icon: XCircle, color: "var(--danger)", title: "Tiket Tidak Valid" },
+  // A warning, not a danger: the ticket is genuine and paid, it is just not
+  // today's. The holder comes back tomorrow rather than being turned away.
+  wrong_day: { icon: CalendarX, color: "var(--warning)", title: "Hari Tidak Sesuai" },
 };
 
 export default function ScanPage() {
@@ -64,16 +78,29 @@ export default function ScanPage() {
           message: "Persilakan masuk.",
           holder: res.ticket?.holder_name,
           category: res.ticket?.category,
+          eventDate: res.ticket?.event_date,
         });
       } catch (err) {
         const status = (err as { response?: { status?: number } })?.response?.status;
-        const data = (err as { response?: { data?: { errors?: { result?: string }; message?: string } } })
-          ?.response?.data;
+        const data = (err as {
+          response?: {
+            data?: {
+              errors?: { result?: string; ticket?: { holder_name?: string | null; category?: string | null; event_date?: string | null } };
+              message?: string;
+            };
+          };
+        })?.response?.data;
         const kind = (data?.errors?.result as Feedback["kind"]) ?? "invalid";
         const parsed = parseApiError(err, "Tiket tidak valid.");
         setFeedback({
           kind: status === 404 ? "invalid" : kind,
           message: parsed.message,
+          // The refusals carry the ticket too, and the gate's next question
+          // after "salah hari" is "then which day?" — so the holder and the
+          // date are rendered on every result, not only the valid one.
+          holder: data?.errors?.ticket?.holder_name,
+          category: data?.errors?.ticket?.category,
+          eventDate: data?.errors?.ticket?.event_date,
         });
       } finally {
         busyRef.current = false;
@@ -169,6 +196,11 @@ export default function ScanPage() {
               {feedback.holder && <p className="mt-1 font-medium">{feedback.holder}</p>}
               {feedback.category && (
                 <p className="text-sm text-muted-foreground">{feedback.category}</p>
+              )}
+              {feedback.eventDate && (
+                <p className="mt-1.5 text-sm font-semibold" style={{ color: fb.color }}>
+                  Berlaku {dayFullLabel(feedback.eventDate)}
+                </p>
               )}
               <p className="mt-2 text-sm text-muted-foreground">{feedback.message}</p>
             </Card>

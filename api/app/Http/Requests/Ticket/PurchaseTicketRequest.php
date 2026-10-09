@@ -18,7 +18,15 @@ class PurchaseTicketRequest extends FormRequest
     {
         return [
             'ticket_category_id' => ['required', 'string'],
+            // How many *people*, not how many ticket prices: a per-day order
+            // multiplies this by the days picked. The controller derives the
+            // paid-unit count, because only it knows the category's day mode.
             'quantity' => ['required', 'integer', 'min:1', 'max:20'],
+            // Which days the buyer attends. Required only for a `per_day`
+            // category, and ignored for a pass — enforced in the controller,
+            // for the same reason `payment_channel` below is.
+            'dates' => ['nullable', 'array', 'max:60'],
+            'dates.*' => ['date_format:Y-m-d'],
             'buyer_name' => ['required', 'string', 'max:255'],
             'buyer_email' => ['required', 'email', 'max:255'],
             'buyer_phone' => ['nullable', 'string', 'max:30'],

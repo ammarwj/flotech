@@ -1385,6 +1385,18 @@ export interface PublicEvent {
   timezone: string;
   registration_open: string | null;
   registration_close: string | null;
+  /**
+   * Whether a visitor may sign up right now — the window AND the plan's
+   * `online_registration`. Narrower than the identically named field on
+   * `SportEvent`, which answers only about the window because the organizer's
+   * own entry door is ungated.
+   *
+   * Merged on the server (Event::registrationIsPubliclyOpen) so the client never
+   * recombines it: the register endpoint enforces the pair, and a copy here that
+   * read only the window is exactly what put a live "Daftar" button on an event
+   * whose plan refuses the form. There is no `plan` on this payload to
+   * re-derive it from, on purpose.
+   */
   registration_is_open: boolean;
   location_name: string | null;
   location_address: string | null;
@@ -1439,6 +1451,8 @@ export interface PublicEventListItem {
   /** Cheapest / dearest category fee, for the "mulai Rp …" card label. */
   registration_fee_min?: number;
   registration_fee_max?: number;
+  /** Window AND plan entitlement, same as `PublicEvent` — the card's pill has
+   *  to agree with the page it links to. */
   registration_is_open: boolean;
   approved_teams_count: number;
   tickets_on_sale: boolean;
@@ -1472,9 +1486,31 @@ export interface PublicTeam {
 
 export type TicketOrderStatus = "pending" | "paid" | "cancelled" | "refunded";
 
+/**
+ * Whether a ticket category sells by the day, and how.
+ *
+ * - `none` — one ticket, the whole event. What every category was before.
+ * - `per_day` — the buyer picks days and pays one price per day.
+ * - `pass` — one price, every day the category sells.
+ *
+ * The only thing anything may branch on; never infer it from whether `days`
+ * happens to be non-empty. All the branching lives in lib/tickets.ts.
+ */
+export type TicketDayMode = "none" | "per_day" | "pass";
+
+/** One day a category sells, with that day's own capacity. */
+export interface TicketCategoryDay {
+  event_date: string;
+  /** Null = inherit the category's quota. */
+  quota: number | null;
+  sold: number;
+  remaining: number | null;
+}
+
 export interface TicketCategory {
   id: string;
   event_id: string;
+  day_mode: TicketDayMode;
   name: string;
   description: string | null;
   price: number;
@@ -1487,6 +1523,8 @@ export interface TicketCategory {
   is_transferable: boolean;
   is_active: boolean;
   is_on_sale: boolean;
+  /** The dates on sale. Empty for a `none` category, and for any endpoint that forgot to load them. */
+  days?: TicketCategoryDay[];
   created_at?: string;
 }
 
@@ -1494,6 +1532,8 @@ export interface Ticket {
   id: string;
   qr_code: string;
   holder_name: string | null;
+  /** Which day this QR admits its holder; null when the category has no days. */
+  event_date: string | null;
   is_used: boolean;
   used_at: string | null;
   category?: { id: string; name: string };
@@ -1505,7 +1545,12 @@ export interface TicketOrder extends ManualPaymentFields {
   buyer_name: string;
   buyer_email: string;
   buyer_phone: string | null;
+  /** Paid units — what `total_price` is `unit_price` times. For a pass this is NOT the number of QRs. */
   quantity: number;
+  /** People. Differs from `quantity` for a per-day order (seats x days) and a pass (paid once). */
+  seats: number;
+  /** Snapshot of the days this order bought; null for a dateless one. */
+  event_dates: string[] | null;
   unit_price: number;
   total_price: number;
   platform_fee: number;
@@ -1523,7 +1568,13 @@ export interface TicketOrder extends ManualPaymentFields {
   /** Where to transfer. Only sent while a manual order is still unpaid. */
   bank_account?: PublicBankAccount | null;
   category?: { id: string; name: string };
-  event?: { id: string; name: string; start_date: string | null; location_name: string | null };
+  event?: {
+    id: string;
+    name: string;
+    start_date: string | null;
+    end_date: string | null;
+    location_name: string | null;
+  };
   tickets?: Ticket[];
 }
 
@@ -1531,7 +1582,7 @@ export interface PurchaseResult extends PaymentStart {
   order: TicketOrder;
 }
 
-export type ScanResult = "valid" | "used" | "unpaid" | "invalid";
+export type ScanResult = "valid" | "used" | "unpaid" | "invalid" | "wrong_day";
 
 export interface ScanResponse {
   result: ScanResult;
@@ -1539,6 +1590,8 @@ export interface ScanResponse {
     id: string;
     holder_name: string | null;
     category: string | null;
+    /** Null for a dateless ticket. Shown on every result, not just wrong_day. */
+    event_date: string | null;
     used_at: string | null;
   };
 }
@@ -1561,6 +1614,12 @@ export interface TicketReport {
     price: number;
     quota: number | null;
     sold: number;
+    issued: number;
+    checked_in: number;
+  }[];
+  /** Per-day split. Empty when no category sells by the day. */
+  by_date: {
+    event_date: string;
     issued: number;
     checked_in: number;
   }[];

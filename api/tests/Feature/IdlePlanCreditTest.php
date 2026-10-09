@@ -6,6 +6,7 @@ use App\Models\EventPlanOrder;
 use App\Models\Plan;
 use App\Models\User;
 use App\Notifications\PlanOrderIdle;
+use App\Services\EventPlanOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\CreatesPlannedEvents;
@@ -67,17 +68,17 @@ class IdlePlanCreditTest extends TestCase
     {
         Notification::fake();
 
-        $starter = Plan::where('slug', 'starter')->firstOrFail();
         $pro = Plan::where('slug', 'pro')->firstOrFail();
+        $professional = Plan::where('slug', 'professional')->firstOrFail();
 
         $owner = User::factory()->create();
         $org = $this->orgFor($owner);
-        $order = $this->creditFor($org, $starter);
-        $order->update(['amount' => $starter->price, 'paid_at' => now()->subDays(40)]);
+        $order = $this->creditFor($org, $pro);
+        $order->update(['amount' => $pro->price, 'paid_at' => now()->subDays(40)]);
 
         $upgradeId = $this->actingAs($owner, 'api')
             ->postJson("/api/v1/organizations/{$org->id}/plan-orders/{$order->id}/upgrade", [
-                'plan_id' => $pro->id,
+                'plan_id' => $professional->id,
                 'payment_channel' => 'va',
             ])
             ->assertCreated()
@@ -85,7 +86,7 @@ class IdlePlanCreditTest extends TestCase
 
         $upgrade = EventPlanOrder::findOrFail($upgradeId);
         $upgrade->update(['status' => 'paid', 'paid_at' => now()->subDays(40)]);
-        app(\App\Services\EventPlanOrderService::class)->activate($upgrade->fresh());
+        app(EventPlanOrderService::class)->activate($upgrade->fresh());
 
         $this->artisan('plan-orders:remind-idle')->assertSuccessful();
 

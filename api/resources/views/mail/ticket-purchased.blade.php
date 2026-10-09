@@ -10,12 +10,27 @@ Halo **{{ $order->buyer_name }}**, tiketmu untuk **{{ $event->name }}** sudah ak
     // conditions as the PDF — a mail that totals differently from its own
     // attachment is worse than one that omits the split.
     $rp = fn ($n) => 'Rp '.number_format((float) $n, 0, ',', '.');
+    $dates = $order->event_dates ?? [];
+    $tickets = count($dates) > 0 ? max(1, (int) $order->seats) * count($dates) : (int) $order->quantity;
+
     $rows = [
         'Event' => $event->name,
-        'Tanggal' => $event->start_date?->translatedFormat('d F Y'),
+        // The days this order actually bought, not the event's own range: a
+        // buyer who picked only Sunday must not be told the event starts
+        // Friday. Falls back to the start date for a dateless order, which is
+        // every order placed before per-day ticketing existed.
+        'Tanggal' => $dates === []
+            ? $event->start_date?->translatedFormat('d F Y')
+            : collect($dates)
+                ->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->translatedFormat('d F Y'))
+                ->implode(' · '),
         'Lokasi' => $event->location_name ?: '—',
         'Kategori' => $category?->name ?? '—',
-        'Jumlah' => $order->quantity.' tiket',
+        // Seats and QRs, because for a per-day order they differ and the count
+        // of QRs is what the holder has to carry.
+        'Jumlah' => $dates === []
+            ? $order->quantity.' tiket'
+            : $order->seats.' orang · '.$tickets.' tiket',
         'Harga tiket' => $rp($order->total_price),
     ];
 
@@ -25,6 +40,8 @@ Halo **{{ $order->buyer_name }}**, tiketmu untuk **{{ $event->name }}** sudah ak
     // label — the labels are what test_mail_renders_every_row_inside_one_table
     // matches on to prove each row is still a table cell.
     if ((float) $order->service_fee > 0) {
+        // Paid units, which is what the fee was charged per — `quantity` is
+        // exactly that number, including for a per-day order.
         $units = max(1, (int) $order->quantity);
         $rows['Biaya layanan'] = $units > 1
             ? $rp($order->service_fee).' ('.$rp((float) $order->service_fee / $units).' × '.$units.' tiket)'

@@ -6,6 +6,7 @@ import type {
   ScanResponse,
   Team,
   TicketCategory,
+  TicketDayMode,
   TicketOrder,
   TicketReport,
 } from "@/types/api";
@@ -17,6 +18,10 @@ export interface PendingPayments {
 }
 
 export interface TicketCategoryInput {
+  /** Whether the category sells by the day — see lib/tickets.ts. */
+  day_mode?: TicketDayMode;
+  /** The dates it sells, `YYYY-MM-DD`. Required (non-empty) whenever day_mode is not "none". */
+  dates?: string[];
   name: string;
   description?: string | null;
   price: number;
@@ -136,7 +141,10 @@ export async function getPublicTicketCategories(
 
 export interface PurchasePayload {
   ticket_category_id: string;
+  /** How many *people*. The server multiplies it by the days for a per-day category. */
   quantity: number;
+  /** Days attended. Required for a per-day category, ignored for a pass. */
+  dates?: string[];
   buyer_name: string;
   buyer_email: string;
   buyer_phone?: string;

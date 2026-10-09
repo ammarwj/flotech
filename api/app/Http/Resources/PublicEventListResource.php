@@ -37,7 +37,10 @@ class PublicEventListResource extends JsonResource
             'categories_count' => $this->whenLoaded('categories', fn () => $this->categories->count()),
             'registration_fee_min' => $this->whenLoaded('categories', fn () => (float) $this->categories->min('registration_fee')),
             'registration_fee_max' => $this->whenLoaded('categories', fn () => (float) $this->categories->max('registration_fee')),
-            'registration_is_open' => $this->isRegistrationOpen(),
+            // Window AND entitlement, same as PublicEventResource — the catalog
+            // card carries a "Pendaftaran dibuka" pill, and it has to agree with
+            // the event page it links to.
+            'registration_is_open' => $this->registrationIsPubliclyOpen(),
             'approved_teams_count' => (int) $this->approved_teams_count,
             'tickets_on_sale' => (bool) $this->tickets_on_sale,
             'organization' => [

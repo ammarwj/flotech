@@ -7,11 +7,16 @@ use App\Models\PlanFeature;
 use Illuminate\Database\Seeder;
 
 /**
- * The plan catalogue: three plans, each bought once for one event.
+ * The plan catalogue: two plans, each bought once for one event.
  *
  * There is no free tier and no subscription. The cheapest way to run an event
- * is Starter at Rp 150.000, paid once; an event that spans a month boundary
- * costs exactly the same, because nothing here is measured in time.
+ * is Pro at Rp 350.000, paid once; an event that spans a month boundary costs
+ * exactly the same, because nothing here is measured in time.
+ *
+ * `starter` (Rp 150.000) is no longer sold and is gone from this list.
+ * align_plan_catalogue_with_production deactivates the row on databases that
+ * have one — deactivated rather than deleted, and with its feature rows intact,
+ * for the reasons written there.
  *
  * Features a plan does *not* include are deliberately left out rather than
  * written as `'false'`. PlanResource renders a missing value struck through
@@ -32,35 +37,23 @@ class PlanSeeder extends Seeder
     {
         $plans = [
             [
-                'name' => 'Starter',
-                'slug' => 'starter',
-                'description' => 'Turnamen internal atau komunitas — liga kantor, antar-kelas, fun match.',
-                'price' => 150000,
-                'sort_order' => 1,
-                'features' => [
-                    'online_registration' => 'true',
-                    'max_categories' => '1',
-                    'max_teams_per_category' => '32',
-                    'payment_gateway' => 'true',
-                    'qr_tickets' => 'true',
-                ],
-            ],
-            [
                 'name' => 'Pro',
                 'slug' => 'pro',
                 'description' => 'Kejuaraan antar-klub atau antar-sekolah tingkat kota dan kabupaten.',
                 'price' => 350000,
                 'sort_order' => 2,
+                // Four keys Professional carries are deliberately absent here —
+                // `online_registration`, `sponsor_logos`, `organizer_profile`
+                // and `id_card_generator`. They are what separates the two
+                // tiers, so adding one back is a pricing change, not a fix.
+                // align_plan_catalogue_with_production removes them from
+                // databases seeded before this list said so.
                 'features' => [
-                    'online_registration' => 'true',
                     'max_categories' => '4',
                     'max_teams_per_category' => '128',
                     'payment_gateway' => 'true',
                     'qr_tickets' => 'true',
                     'export_data' => 'true',
-                    'sponsor_logos' => 'true',
-                    'organizer_profile' => 'true',
-                    'id_card_generator' => 'true',
                 ],
             ],
             [

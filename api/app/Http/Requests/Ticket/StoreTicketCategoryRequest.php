@@ -2,10 +2,13 @@
 
 namespace App\Http\Requests\Ticket;
 
+use App\Http\Requests\Ticket\Concerns\ValidatesTicketDays;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreTicketCategoryRequest extends FormRequest
 {
+    use ValidatesTicketDays;
+
     public function authorize(): bool
     {
         return true;
@@ -27,6 +30,6 @@ class StoreTicketCategoryRequest extends FormRequest
             'benefits.*' => ['string', 'max:255'],
             'is_transferable' => ['boolean'],
             'is_active' => ['boolean'],
-        ];
+        ] + $this->dayRules();
     }
 }

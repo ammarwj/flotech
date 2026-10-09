@@ -20,6 +20,8 @@ class TicketOrder extends Model
         'buyer_email',
         'buyer_phone',
         'quantity',
+        'seats',
+        'event_dates',
         'unit_price',
         'total_price',
         'invoice_number',
@@ -45,7 +47,13 @@ class TicketOrder extends Model
     protected function casts(): array
     {
         return [
+            // `quantity` is paid units; `seats` is people. They differ for a
+            // pass (paid once, admitted every day) — see the migration table.
             'quantity' => 'integer',
+            'seats' => 'integer',
+            // Snapshot of the days this order bought, so a category changing
+            // which dates it sells never rewrites an order already taken.
+            'event_dates' => 'array',
             'unit_price' => 'decimal:2',
             'total_price' => 'decimal:2',
             'platform_fee' => 'decimal:2',

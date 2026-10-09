@@ -36,7 +36,7 @@ import { HybridConfigCard } from "@/components/event/hybrid-config-card";
 import { LeagueConfigCard } from "@/components/event/standings-rules";
 import { SwissConfigCard } from "@/components/event/swiss-config-card";
 import { rupiah } from "@/lib/labels";
-import { TIMEZONES } from "@/lib/match-dates";
+import { durationDays, TIMEZONES } from "@/lib/match-dates";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { planAllowsGateway } from "@/lib/plan";
@@ -99,17 +99,6 @@ function FieldError({ message }: { message?: string }) {
 /** Hint text under a field; rendered only when there's no error to show. */
 function FieldHint({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>;
-}
-
-/** Whole days between two YYYY-MM-DD dates, inclusive (e.g. same day = 1). */
-function durationDays(
-  start?: string | null,
-  end?: string | null,
-): number | null {
-  if (!start || !end || end < start) return null;
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (Number.isNaN(ms)) return null;
-  return Math.round(ms / 86_400_000) + 1;
 }
 
 const fmtDate = (d: string) =>
