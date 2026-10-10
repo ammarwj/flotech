@@ -148,7 +148,7 @@ function PublicEventView() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
   // Di custom domain event ini adalah root, jadi `base` kosong dan tautan yang
   // butuh domain utama (pendaftaran, beranda platform) jadi absolut.
-  const { base, onCustomDomain, mainUrl, homeUrl } = useEventBase();
+  const { base, onCustomDomain, mainUrl, homeUrl, catalogUrl } = useEventBase();
   // Tab dan kategori hidup di URL supaya refresh — atau back dari halaman
   // pendaftaran/tiket — mendarat di tempat yang sama, dan tautannya bisa
   // di-share. Kategori dikunci lewat slug, kosakata publik yang sama dengan
@@ -307,7 +307,7 @@ function PublicEventView() {
       <header className="ehero">
         <div className="container ehero-inner">
           <div className="ehero-top">
-            <Link href={homeUrl} className="ehero-back">
+            <Link href={catalogUrl} className="ehero-back">
               <ArrowLeft />
               <span className="min-w-0 truncate">Didukung flo-event</span>
             </Link>

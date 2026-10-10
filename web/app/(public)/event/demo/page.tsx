@@ -20,7 +20,9 @@ export default function EventPage() {
       <header className="ehero">
         <div className="container ehero-inner">
           <div className="ehero-top">
-            <Link href="/" className="ehero-back">
+            {/* Katalog, bukan `/` — mockup statis halaman event sungguhan,
+                yang panah-kirinya mendarat di `catalogUrl`. */}
+            <Link href="/event" className="ehero-back">
               <svg viewBox="0 0 24 24" fill="none">
                 <path
                   d="M19 12H5m6-6-6 6 6 6"

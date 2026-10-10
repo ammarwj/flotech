@@ -42,8 +42,8 @@ export function useEventBase() {
    * untuk semua yang **wajib** mendarat di domain utama: pendaftaran tim (butuh
    * sesi, dan refresh cookie terikat `.floevent.id` sehingga tidak bisa ikut
    * pindah), halaman pesanan tiket, serta tautan "Didukung flo-event" — di
-   * custom domain `/` adalah halaman event itu sendiri, jadi tautan relatif ke
-   * beranda akan berputar kembali ke dirinya sendiri.
+   * custom domain `/event` adalah sub-halaman event itu sendiri, jadi tautan
+   * relatif ke katalog akan berputar kembali ke dalam dirinya sendiri.
    */
   const platformUrl = (to: string) => (customDomain ? `${APP_URL}${to}` : to);
 
@@ -61,5 +61,14 @@ export function useEventBase() {
     mainUrl: (suffix = "") => platformUrl(`${path}${suffix}`),
     /** Beranda platform, yang di custom domain bukan `/`. */
     homeUrl: platformUrl("/"),
+    /**
+     * Katalog event platform. Tujuan tautan balik "Didukung flo-event", bukan
+     * `homeUrl`: panah-kiri itu dibaca sebagai "keluar ke daftarnya", dan
+     * mendarat di landing menyuruh pengunjung yang baru saja melihat satu
+     * turnamen menggulir sebuah halaman jualan untuk menemukan turnamen
+     * berikutnya. `homeUrl` tetap dipakai yang memang berarti beranda: logo
+     * footer dan tombol "Ke beranda" di halaman 404.
+     */
+    catalogUrl: platformUrl("/event"),
   };
 }
