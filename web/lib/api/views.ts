@@ -5,6 +5,7 @@ import type {
   EventViewStats,
   OrgViewBreakdown,
   OrgViewStats,
+  ViewBreakdownPage,
 } from "@/types/api";
 
 /**
@@ -59,20 +60,28 @@ export async function getAdminViewStats(): Promise<EventViewStats> {
   return data.data;
 }
 
-export async function getAdminViewsByOrganization(limit = 20): Promise<OrgViewBreakdown[]> {
-  const { data } = await apiClient.get<ApiEnvelope<{ items: OrgViewBreakdown[] }>>(
+/**
+ * Both breakdowns are capped lists, and they return `has_more` so the page can
+ * say so. `q` is sent to the server for the same reason the cap exists:
+ * filtering the rows already fetched would only ever search the busiest ones,
+ * which are the rows that never needed searching.
+ */
+export async function getAdminViewsByOrganization(
+  params: { limit?: number; q?: string } = {}
+): Promise<ViewBreakdownPage<OrgViewBreakdown>> {
+  const { data } = await apiClient.get<ApiEnvelope<ViewBreakdownPage<OrgViewBreakdown>>>(
     "/admin/view-stats/organizations",
-    { params: { limit } }
+    { params: { limit: 20, ...params } }
   );
-  return data.data.items;
+  return data.data;
 }
 
 export async function getAdminViewsByEvent(
-  params: { limit?: number; organization_id?: string } = {}
-): Promise<EventViewBreakdown[]> {
-  const { data } = await apiClient.get<ApiEnvelope<{ items: EventViewBreakdown[] }>>(
+  params: { limit?: number; organization_id?: string; q?: string } = {}
+): Promise<ViewBreakdownPage<EventViewBreakdown>> {
+  const { data } = await apiClient.get<ApiEnvelope<ViewBreakdownPage<EventViewBreakdown>>>(
     "/admin/view-stats/events",
     { params: { limit: 20, ...params } }
   );
-  return data.data.items;
+  return data.data;
 }

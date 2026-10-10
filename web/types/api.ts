@@ -542,6 +542,13 @@ export interface Match {
   scheduled_at: string | null;
   venue: string | null;
   /**
+   * Catatan bebas organizer tentang laga ini — "dipindah ke lapangan 2", "WO
+   * karena tim tamu tidak hadir". Terbit juga ke halaman publik, yang merender
+   * barisnya **hanya** saat terisi; null berarti tidak ada catatan, bukan blok
+   * kosong. Nullable, bukan opsional, alasan yang sama dengan `clock` di bawah.
+   */
+  notes: string | null;
+  /**
    * Babak & jam yang sedang berjalan, atau null saat laga ini tidak berjam —
    * cabang berskor set dan tie beregu. **Nullable, bukan opsional**: `?` membuat
    * komponen yang lupa mengoper prop-nya lolos review diam-diam, alasan yang
@@ -2217,4 +2224,17 @@ export interface EventViewBreakdown {
   organization_name: string;
   views: number;
   unique_visitors: number;
+}
+
+/**
+ * One capped page of an admin traffic breakdown.
+ *
+ * `has_more` is carried alongside the rows rather than inferred from
+ * `items.length === limit`: a list whose last page happens to fill exactly
+ * would keep offering a "lebih banyak" that returns nothing. The server knows,
+ * because it asks for one row more than it returns.
+ */
+export interface ViewBreakdownPage<T> {
+  items: T[];
+  has_more: boolean;
 }

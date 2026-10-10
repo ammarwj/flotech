@@ -38,6 +38,9 @@ class GameMatch extends Model
         'sets',
         'scheduled_at',
         'venue',
+        // Catatan bebas organizer, terbit ke halaman publik saat terisi. Ditulis
+        // hanya lewat `MatchController::updateSchedule()`.
+        'notes',
         'status',
         'confirmed_at',
         // Jam pertandingan. Tanpa baris ini `$model->update()` menelannya tanpa

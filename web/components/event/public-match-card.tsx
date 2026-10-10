@@ -167,6 +167,15 @@ export function PublicMatchCard({
         {/* Renders nothing when nobody is suspended. Text and badges only — the
             card is a button, and this must not become a nested control. */}
         <MatchDisciplineNotice bans={bans} sport={sport} rules={disciplineRules} />
+        {/* The organizer's own word on this fixture — only when they wrote one.
+            Below the suspensions on purpose: those are facts the system derived,
+            this is a remark about them, and a remark reads as a footnote to the
+            list rather than the other way round.
+
+            Plain text, like the notice above it: the card is a button, so this
+            must not become a nested control, however much a long note might
+            want a "selengkapnya". */}
+        {m.notes && <p className="match-note">{m.notes}</p>}
       </div>
       <div className="match-meta">
         <PublicStatusBadge status={m.status} />

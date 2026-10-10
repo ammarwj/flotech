@@ -440,9 +440,15 @@ export async function getDiscipline(
 export interface MatchSchedulePayload {
   scheduled_at: string | null;
   venue?: string | null;
+  /**
+   * Catatan organizer. Hanya di sini — `MatchResultPayload`/`CreateMatchPayload`
+   * sengaja tidak membawanya, supaya catatan punya satu pintu tulis saja (lihat
+   * docblock `MatchController::updateSchedule`).
+   */
+  notes?: string | null;
 }
 
-/** Update only kickoff time / venue, leaving any result untouched. */
+/** Update only kickoff time / venue / notes, leaving any result untouched. */
 export async function updateMatchSchedule(
   orgId: string,
   matchId: string,

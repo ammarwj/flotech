@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Monitor, X } from "lucide-react";
+import { MapPin, Monitor, StickyNote, X } from "lucide-react";
 
 import { getPublicMatchStats } from "@/lib/api/matches";
 import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
@@ -107,6 +107,18 @@ export function MatchDetailDialog({
                 </span>
               )}
             </div>
+            {/* A line of its own, not another chip in the row above: a note runs
+                a sentence long, and inside that wrapping row it would push the
+                date and the venue onto lines of their own. */}
+            {match.notes && (
+              <p
+                className="mt-1 flex items-start gap-1.5 text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0">{match.notes}</span>
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}

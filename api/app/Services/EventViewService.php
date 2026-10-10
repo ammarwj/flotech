@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Event;
 use App\Models\Organization;
+use App\Support\Search;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -185,32 +187,37 @@ class EventViewService
     /**
      * Platform-wide traffic per organization, busiest first.
      *
-     * @return list<array<string, mixed>>
+     * `$search` matches the organizer name, and it has to run on the server:
+     * these lists are capped (see page()), so filtering the page the client
+     * already holds would only ever search the busiest rows — exactly the ones
+     * whose traffic made them easy to find in the first place.
+     *
+     * @return array{items: list<array<string, mixed>>, has_more: bool}
      */
-    public function breakdownByOrganization(int $limit = 20): array
+    public function breakdownByOrganization(int $limit = 20, ?string $search = null): array
     {
-        return DB::table('event_view_daily')
+        $query = DB::table('event_view_daily')
             ->join('organizations', 'organizations.id', '=', 'event_view_daily.organization_id')
+            ->when(filled($search), fn ($q) => Search::anyColumn($q, ['organizations.name'], (string) $search))
             ->groupBy('organizations.id', 'organizations.name', 'organizations.slug')
             ->orderByDesc('views')
-            ->limit($limit)
-            ->get([
-                'organizations.id as organization_id',
-                'organizations.name',
-                'organizations.slug',
-                DB::raw('sum(event_view_daily.views) as views'),
-                DB::raw('sum(event_view_daily.unique_visitors) as unique_visitors'),
-                DB::raw('count(distinct event_view_daily.event_id) as events_count'),
-            ])
-            ->map(fn ($row) => [
-                'organization_id' => $row->organization_id,
-                'name' => $row->name,
-                'slug' => $row->slug,
-                'views' => (int) $row->views,
-                'unique_visitors' => (int) $row->unique_visitors,
-                'events_count' => (int) $row->events_count,
-            ])
-            ->all();
+            ->orderBy('organizations.name');
+
+        return $this->page($query, $limit, [
+            'organizations.id as organization_id',
+            'organizations.name',
+            'organizations.slug',
+            DB::raw('sum(event_view_daily.views) as views'),
+            DB::raw('sum(event_view_daily.unique_visitors) as unique_visitors'),
+            DB::raw('count(distinct event_view_daily.event_id) as events_count'),
+        ], fn ($row) => [
+            'organization_id' => $row->organization_id,
+            'name' => $row->name,
+            'slug' => $row->slug,
+            'views' => (int) $row->views,
+            'unique_visitors' => (int) $row->unique_visitors,
+            'events_count' => (int) $row->events_count,
+        ]);
     }
 
     /**
@@ -218,42 +225,77 @@ class EventViewService
      * id narrows it, which is how the admin table drills down from a row of
      * breakdownByOrganization() without a separate endpoint.
      *
-     * @return list<array<string, mixed>>
+     * `$search` matches the event name *or* its organizer's, because the admin
+     * looking for one tournament knows it by either.
+     *
+     * @return array{items: list<array<string, mixed>>, has_more: bool}
      */
-    public function breakdownByEvent(?string $organizationId = null, int $limit = 20): array
+    public function breakdownByEvent(?string $organizationId = null, int $limit = 20, ?string $search = null): array
     {
-        return DB::table('event_view_daily')
+        $query = DB::table('event_view_daily')
             ->join('events', 'events.id', '=', 'event_view_daily.event_id')
             ->join('organizations', 'organizations.id', '=', 'event_view_daily.organization_id')
             ->when($organizationId, fn ($q, $id) => $q->where('event_view_daily.organization_id', $id))
+            ->when(filled($search), fn ($q) => Search::anyColumn(
+                $q,
+                ['events.name', 'organizations.name'],
+                (string) $search,
+            ))
             ->groupBy('events.id', 'events.name', 'events.slug', 'organizations.id', 'organizations.name')
             ->orderByDesc('views')
-            ->limit($limit)
-            ->get([
-                'events.id as event_id',
-                'events.name',
-                'events.slug',
-                'organizations.id as organization_id',
-                'organizations.name as organization_name',
-                DB::raw('sum(event_view_daily.views) as views'),
-                DB::raw('sum(event_view_daily.unique_visitors) as unique_visitors'),
-            ])
-            ->map(fn ($row) => [
-                'event_id' => $row->event_id,
-                'name' => $row->name,
-                'slug' => $row->slug,
-                'organization_id' => $row->organization_id,
-                'organization_name' => $row->organization_name,
-                'views' => (int) $row->views,
-                'unique_visitors' => (int) $row->unique_visitors,
-            ])
-            ->all();
+            ->orderBy('events.name');
+
+        return $this->page($query, $limit, [
+            'events.id as event_id',
+            'events.name',
+            'events.slug',
+            'organizations.id as organization_id',
+            'organizations.name as organization_name',
+            DB::raw('sum(event_view_daily.views) as views'),
+            DB::raw('sum(event_view_daily.unique_visitors) as unique_visitors'),
+        ], fn ($row) => [
+            'event_id' => $row->event_id,
+            'name' => $row->name,
+            'slug' => $row->slug,
+            'organization_id' => $row->organization_id,
+            'organization_name' => $row->organization_name,
+            'views' => (int) $row->views,
+            'unique_visitors' => (int) $row->unique_visitors,
+        ]);
     }
 
     // ---- Internals ---------------------------------------------------------
 
     /**
-     * @param  \Illuminate\Database\Query\Builder  $query
+     * One page of a breakdown, plus whether anything was left behind.
+     *
+     * `has_more` is derived by asking for one row more than the caller wants
+     * and dropping it, not by a second COUNT over the same grouped query: both
+     * breakdowns aggregate the whole of `event_view_daily`, which has no index
+     * that helps, so the count would double the cost of every keystroke.
+     *
+     * The flag exists because a silently truncated list reads as missing data —
+     * an event with 18 views sat at rank 23 of a 20-row table and looked like
+     * traffic that was never recorded.
+     *
+     * @param  Builder  $query
+     * @param  array<int, mixed>  $columns
+     * @param  callable(object): array<string, mixed>  $shape
+     * @return array{items: list<array<string, mixed>>, has_more: bool}
+     */
+    private function page($query, int $limit, array $columns, callable $shape): array
+    {
+        $rows = $query->limit($limit + 1)->get($columns);
+        $hasMore = $rows->count() > $limit;
+
+        return [
+            'items' => $rows->take($limit)->map($shape)->values()->all(),
+            'has_more' => $hasMore,
+        ];
+    }
+
+    /**
+     * @param  Builder  $query
      * @return array{views: int, unique_visitors: int}
      */
     private function totalsFrom($query): array
@@ -276,7 +318,7 @@ class EventViewService
      * here. Handing the chart only the days that happened would squash the
      * time axis and draw a trend that never occurred.
      *
-     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  Builder  $query
      * @return list<array{date: string, views: int, unique_visitors: int}>
      */
     private function trendFrom($query, int $days): array

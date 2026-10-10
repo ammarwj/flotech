@@ -990,8 +990,22 @@ class MatchController extends Controller
     }
 
     /**
-     * Set when/where a fixture is played, without touching its result. Safe to
-     * call on finished matches (kickoff time only; scores stay intact).
+     * Set when/where a fixture is played — and what to say about it — without
+     * touching its result. Safe to call on finished matches (kickoff time only;
+     * scores stay intact).
+     *
+     * **Satu-satunya pintu tulis `notes`.** `MatchResultService::payloadFrom()`
+     * sengaja tidak memvalidasinya: ia menulis payload-nya apa adanya, jadi
+     * catatan yang tidak ada di sana tetap utuh saat skor disimpan. Pintu kedua
+     * atas satu field akan membawa semantik "absen berarti apa"-nya sendiri —
+     * bentuk bug yang sama dengan dua pembaca `stage`.
+     *
+     * Semantiknya full-replace, dan `?? null` di bawah adalah aturan itu: key
+     * yang absen **menghapus** nilainya. Itu yang sudah berlaku untuk `venue`
+     * sejak awal, dan `MatchScheduleEditor` — pemanggil tunggalnya — selalu
+     * mengirim ketiganya. Guard `array_key_exists` (pola `officials`) justru
+     * yang dihindari di sini: dua aturan absen-berarti-apa di satu method akan
+     * berselisih.
      */
     public function updateSchedule(Request $request, string $organization, string $match): JsonResponse
     {
@@ -1000,11 +1014,13 @@ class MatchController extends Controller
         $data = $request->validate([
             'scheduled_at' => ['nullable', 'date'],
             'venue' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         $matchModel->update([
             'scheduled_at' => $data['scheduled_at'] ?? null,
             'venue' => $data['venue'] ?? null,
+            'notes' => $data['notes'] ?? null,
         ]);
 
         return ApiResponse::success(

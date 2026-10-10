@@ -46,6 +46,11 @@ class MatchResource extends JsonResource
             'confirmed' => $this->confirmed_at !== null,
             'scheduled_at' => $this->scheduled_at?->toIso8601String(),
             'venue' => $this->venue,
+            // Catatan organizer. Tidak ada MatchResource publik tersendiri, dan
+            // itu memang yang diinginkan: "tampil kalau terisi" diputuskan saat
+            // render — null tidak merender apa pun — bukan dengan menahan
+            // field-nya, persis cara `venue` di atas sudah berperilaku.
+            'notes' => $this->notes,
             // Babak & jam, atau null untuk cabang set dan tie beregu yang tidak
             // punya babak. Diturunkan tiap pembacaan, tidak pernah disimpan —
             // lihat MatchClockService. Di-resolve lewat `app()` karena
