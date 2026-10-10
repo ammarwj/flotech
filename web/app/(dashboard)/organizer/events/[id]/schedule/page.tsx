@@ -989,7 +989,12 @@ function ScheduleView() {
                 exportFor={{
                   orgId: orgId ?? undefined,
                   eventId,
-                  categoryId,
+                  // `catId`, not the raw `category` query param: an absent tab
+                  // means "the default category", so the param is "" while the
+                  // table above it is already showing the first category. Sent
+                  // as "" the export lands on the 422 that asks for a category
+                  // — a download that fails on exactly the page that renders.
+                  categoryId: catId!,
                   enabled: isExportEnabled(eventQuery.data),
                 }}
               />
