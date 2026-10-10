@@ -38,11 +38,13 @@ export function MatchDisciplineNotice({
 
   return (
     <div className="grid gap-1">
-      {/* items-start, not items-center on both rows: the list is grouped by
-          team and runs to several lines, and a badge centred against it floats
-          away from the line it labels. */}
+      {/* Badge di barisnya sendiri, bukan di samping daftarnya. Berdampingan,
+          ia mendorong nama pertama masuk sementara nama-nama berikutnya rata
+          kiri penuh — pembacanya lalu menyangka baris pertama bagian dari
+          badge. Di atas, ia jadi judul yang jelas dan daftarnya punya satu
+          tepi kiri. */}
       {upcoming.length > 0 && (
-        <div className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded-lg bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] px-2 py-1.5 text-xs">
+        <div className="grid gap-1.5 rounded-lg bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] px-2.5 py-2 text-xs">
           <Badge variant="warning" dot>
             Larangan bermain
           </Badge>
@@ -51,7 +53,7 @@ export function MatchDisciplineNotice({
       )}
 
       {served.length > 0 && (
-        <div className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded-lg bg-[var(--bg-soft)] px-2 py-1.5 text-xs">
+        <div className="grid gap-1.5 rounded-lg bg-[var(--bg-soft)] px-2.5 py-2 text-xs">
           <Badge variant="neutral">Menjalani larangan</Badge>
           <BanList bans={served} sport={sport} rules={rules} played />
         </div>
@@ -74,6 +76,13 @@ export function MatchDisciplineNotice({
  * home side's names come first whenever its players were carded first. Not
  * sorted home-then-away: this component is also rendered on cards whose
  * opponent is still TBD, where there is no second side to order against.
+ *
+ * One player per line, never a run of names separated by dots. Every entry here
+ * is "name — reason", so a flowing paragraph wraps *inside* an entry: the
+ * reason ends up on the line below its player, directly above the next player's
+ * name, and the two read as one sentence that was never written. A line each
+ * also means the eye scans one column of names instead of hunting separators,
+ * which is the whole job this row has.
  *
  * `bans_remaining` counts the fixture it is reported on, which reads correctly
  * on one that has yet to be played ("sisa 2 laga", this one included) and
@@ -101,25 +110,39 @@ function BanList({
   }
 
   return (
-    <div className="grid gap-0.5 text-muted-foreground">
+    <div className="grid gap-2">
       {teams.map((team) => (
-        <div key={team.id}>
-          <span className="font-semibold text-foreground">{team.name}</span>
-          <span className="mx-1 opacity-50">·</span>
-          {team.bans.map((ban, i) => (
-            <span key={ban.player_id}>
-              {i > 0 && <span className="mx-1 opacity-50">·</span>}
-              <span className="font-medium text-foreground">
-                {ban.player_name}
-                {ban.jersey_number && ` (#${ban.jersey_number})`}
-              </span>{" "}
-              — {banReasonLabel(ban.reason, sport, rules)}
-              {ban.bans_remaining > 1 &&
-                (played
-                  ? `, sisa ${ban.bans_remaining - 1} laga lagi`
-                  : `, sisa ${ban.bans_remaining} laga`)}
-            </span>
-          ))}
+        <div key={team.id} className="grid gap-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {team.name}
+          </div>
+          <ul className="grid gap-0.5">
+            {team.bans.map((ban) => (
+              <li key={ban.player_id} className="flex items-baseline gap-1.5">
+                {/* Bullet, not a leading dot in the text: it keeps the name
+                    column aligned when a long reason wraps, which is exactly
+                    when a reader needs the names to still line up. */}
+                <span
+                  aria-hidden
+                  className="mt-[0.45em] h-1 w-1 shrink-0 rounded-full bg-current opacity-40"
+                />
+                <span className="min-w-0">
+                  <span className="font-medium text-foreground">
+                    {ban.player_name}
+                    {ban.jersey_number && ` (#${ban.jersey_number})`}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" — "}
+                    {banReasonLabel(ban.reason, sport, rules)}
+                    {ban.bans_remaining > 1 &&
+                      (played
+                        ? `, sisa ${ban.bans_remaining - 1} laga lagi`
+                        : `, sisa ${ban.bans_remaining} laga`)}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       ))}
     </div>

@@ -62,27 +62,27 @@ test("papan skor ikut ke custom domain, /scoreboard telanjang tidak", async () =
   expect(bare.headers.get("location")).toBe("https://floevent.id/scoreboard");
 });
 
-test("papan skor di domain utama 301 ke custom domain dengan match id-nya", async () => {
+test("papan skor di domain utama 302 ke custom domain dengan match id-nya", async () => {
   // Perbandingannya dengan /tickets, karena keduanya lewat cabang yang sama dan
   // yang dibuktikan di sini adalah suffix-nya ikut utuh: mengembalikan "/" saja
   // tetap hijau untuk halaman event, lalu membuang layar ke beranda event.
   const board = await go("https://floevent.id/jkt/cup/scoreboard/m-1");
   const shop = await go("https://floevent.id/jkt/cup/tickets");
 
-  expect(board.status).toBe(301);
+  expect(board.status).toBe(302);
   expect(board.headers.get("location")).toBe("https://eventa.id/scoreboard/m-1");
-  expect(shop.status).toBe(301);
+  expect(shop.status).toBe(302);
   expect(shop.headers.get("location")).toBe("https://eventa.id/tickets");
 });
 
-test("halaman event lama 301 ke custom domain — tapi /register tidak pernah", async () => {
+test("halaman event lama 302 ke custom domain — tapi /register tidak pernah", async () => {
   // Perbandingan inilah intinya. Assert redirect-nya saja akan tetap hijau walau
   // /register ikut terseret, dan itu berarti loop login: refresh cookie terikat
   // .floevent.id sehingga tidak bisa menyeberang.
   const page = await go("https://floevent.id/jkt/cup");
   const register = await go("https://floevent.id/jkt/cup/register");
 
-  expect(page.status).toBe(301);
+  expect(page.status).toBe(302);
   expect(page.headers.get("location")).toBe("https://eventa.id/");
   expect(register.status).toBe(200);
   expect(register.headers.get("location")).toBeNull();
@@ -93,6 +93,24 @@ test("event tanpa custom domain tetap dilayani di domain utama", async () => {
 
   expect(res.status).toBe(200);
   expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+});
+
+test("redirect ke custom domain sementara, redirect pulang ke platform permanen", async () => {
+  // Dibandingkan, bukan diperiksa satu-satu: keduanya redirect, dan satu angka
+  // yang disamakan dengan tetangganya "supaya konsisten" adalah persis cara bug
+  // ini lahir. Umurnya memang beda.
+  //
+  // Ke custom domain = pemetaan yang bisa dicabut: super_admin menekan "Cabut",
+  // peta benar dalam semenit, tapi 301 yang telanjur disimpan browser tetap
+  // melempar pengunjung ke hostname mati — cache-nya di mesin pengunjung, di
+  // luar jangkauan deploy mana pun. Pulang ke platform = aturan arsitektur yang
+  // tidak bisa dicabut (`/pricing` tidak akan pernah jadi milik sebuah event),
+  // jadi di sana permanen memang benar.
+  const toDomain = await go("https://floevent.id/jkt/cup");
+  const toPlatform = await go("https://eventa.id/pricing");
+
+  expect(toDomain.status).toBe(302);
+  expect(toPlatform.status).toBe(301);
 });
 
 test("header custom domain tidak bisa dipalsukan lewat request", async () => {

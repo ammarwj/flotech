@@ -143,6 +143,17 @@ export async function proxy(request: NextRequest) {
 
   // Di domain utama, event yang punya domain aktif disajikan dari sana.
   // `/register` tidak pernah dialihkan: di sanalah sesinya hidup.
+  //
+  // **302, bukan 301.** Pemetaan ini bisa dicabut kapan saja (super_admin
+  // menekan "Cabut", atau sertifikatnya kedaluwarsa), dan 301 itu permanen
+  // menurut spesifikasi: browser menyimpannya tanpa batas waktu dan **tidak
+  // pernah bertanya lagi** ke server. Jadi URL platform sebuah event yang
+  // domainnya sudah dicabut tetap melempar pengunjung ke hostname yang sudah
+  // mati — dan cache-nya ada di mesin tiap pengunjung, di luar jangkauan
+  // deploy, flush cache, atau apa pun yang bisa kita tekan dari sini. Ini
+  // sudah terjadi. Pencabutan membuat peta di atas benar dalam semenit (TTL-nya
+  // 60 detik), jadi satu-satunya yang menahan adalah redirect yang telanjur
+  // disimpan browser. 302 membuat peta inilah yang menjawab, tiap kali.
   const segments = path.split("/").filter(Boolean);
   const own =
     segments.length === 2 ||
@@ -159,7 +170,7 @@ export async function proxy(request: NextRequest) {
       // Yang di belakang slug event, apa adanya: "" untuk halaman event,
       // "/tickets", atau "/scoreboard/{matchId}".
       const suffix = segments.length === 2 ? "/" : `/${segments.slice(2).join("/")}`;
-      return NextResponse.redirect(`https://${domain}${suffix}${request.nextUrl.search}`, 301);
+      return NextResponse.redirect(`https://${domain}${suffix}${request.nextUrl.search}`, 302);
     }
   }
 
