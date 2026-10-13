@@ -92,6 +92,53 @@ export interface FeatureDefinition {
   sort_order: number;
 }
 
+export type DiscountType = "percent" | "fixed";
+
+/**
+ * A discount code for plan checkout, managed in /admin/discount-codes.
+ *
+ * `plan_ids` EMPTY means every plan — the code is unrestricted, not inert.
+ * `redeemed_count` and `reserved_count` are derived from the orders themselves
+ * (there is no counter column), which is why deleting a code is safe.
+ */
+export interface DiscountCode {
+  id: string;
+  code: string;
+  description: string | null;
+  discount_type: DiscountType;
+  discount_value: number;
+  /** Ceiling for percent codes; null = uncapped, ignored for fixed ones. */
+  max_discount: number | null;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  /** null = no quota. */
+  max_redemptions: number | null;
+  once_per_organization: boolean;
+  redeemed_count: number;
+  /** Unpaid invoices holding a quota slot. They expire on their own. */
+  reserved_count: number;
+  plan_ids?: string[];
+  created_at?: string;
+}
+
+/**
+ * What a code would do to a plan's price, straight from the server.
+ *
+ * The client never computes a discount: this `amount` is what the fee preview
+ * in the channel picker is built from and what the checkout will charge.
+ */
+export interface DiscountPreview {
+  code: string;
+  description: string | null;
+  discount_type: DiscountType;
+  discount_value: number;
+  discount_amount: number;
+  /** The catalogue price the discount came off. */
+  price: number;
+  amount: number;
+}
+
 /** Avatar gradients are looked up in `lib/landing.ts`; the API only stores the key. */
 export type AvatarPreset = "brand" | "purple" | "pink" | "success" | "amber" | "blue";
 
@@ -113,6 +160,56 @@ export interface Faq {
   answer: string;
   is_active: boolean;
   sort_order: number;
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  sort_order: number;
+  /**
+   * Only present where the endpoint counted them. On the public endpoint it is
+   * a count of *published* posts, which is also why a zero-count category is
+   * never returned at all — a filter chip leading to an empty grid is a dead
+   * end the visitor only discovers by clicking it.
+   */
+  posts_count?: number;
+}
+
+/** Card shape. No `body`: a nine-article index would otherwise ship nine articles. */
+export interface BlogPostSummary {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  cover_url: string | null;
+  author_name: string;
+  read_minutes: number;
+  is_featured: boolean;
+  views: number;
+  /** Null = draft. A future date = scheduled; neither is ever public. */
+  published_at: string | null;
+  category?: BlogCategory;
+}
+
+/**
+ * The full article. `body` is HTML, already sanitised by the API on write
+ * (App\Support\HtmlSanitizer) — that is what makes it safe to render with
+ * dangerouslySetInnerHTML, and it is only true because one service owns every
+ * write to the column.
+ */
+export interface BlogPost extends BlogPostSummary {
+  blog_category_id: string | null;
+  body: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BlogArticle {
+  post: BlogPost;
+  /** Up to three more to read next; same category first, newest otherwise. */
+  related: BlogPostSummary[];
 }
 
 export type SocialPlatform = "instagram" | "youtube" | "x" | "tiktok" | "facebook";
@@ -254,7 +351,17 @@ export interface EventPlanOrder extends ManualPaymentFields {
   invoice_number: string | null;
   /** Issued on payment — only paid orders have one. */
   receipt_number: string | null;
+  /** Net of any discount — what was actually billed. */
   amount: number;
+  /**
+   * The discount redeemed at checkout, snapshotted onto the order. These stay
+   * truthful after a super admin edits or deletes the code row, which is why
+   * nothing reads the code back. Null / 0 when no code was used.
+   */
+  discount_code: string | null;
+  discount_type: DiscountType | null;
+  discount_value: number | null;
+  discount_amount: number;
   status: PlanOrderStatus;
   /** The event this credit was spent on; null while it is still unspent. */
   event_id: string | null;

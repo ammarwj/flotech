@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             PlanSeeder::class,
             TestimonialSeeder::class,
             FaqSeeder::class,
+            BlogSeeder::class,
             SiteSettingSeeder::class,
         ]);
 

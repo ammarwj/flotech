@@ -16,6 +16,10 @@
         // Not a Midtrans payment type: written by EventPlanOrderService when a
         // super admin accepts a transfer receipt while the gateway is off.
         'manual_transfer' => 'Transfer manual (diverifikasi admin)',
+        // Likewise not Midtrans: a discount code covered the whole price, so the
+        // order settled without a payment. Without a label here the fallback
+        // prints the raw column value.
+        'discount' => 'Kode diskon (tanpa pembayaran)',
     ];
 @endphp
 

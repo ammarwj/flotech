@@ -9,6 +9,7 @@ import {
   Users,
   Compass,
   Ticket,
+  TicketPercent,
   Award,
   ClipboardList,
   IdCard,
@@ -22,6 +23,7 @@ import {
   BadgeCheck,
   ReceiptText,
   MessageSquareQuote,
+  Newspaper,
   HelpCircle,
   Palette,
   Activity,
@@ -184,6 +186,7 @@ export const ADMIN_NAV: NavSection[] = [
       },
       { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
       { href: "/admin/plan-orders", label: "Pembelian Paket", icon: BadgeCheck },
+      { href: "/admin/discount-codes", label: "Kode Diskon", icon: TicketPercent },
     ],
   },
   {
@@ -204,6 +207,7 @@ export const ADMIN_NAV: NavSection[] = [
     id: "admin-landing",
     label: "Konten Landing",
     items: [
+      { href: "/admin/blog", label: "Blog", icon: Newspaper },
       { href: "/admin/testimonials", label: "Testimoni", icon: MessageSquareQuote },
       { href: "/admin/faqs", label: "FAQ", icon: HelpCircle },
       // Gauge, not BarChart3: that one is /admin/visitors under Sistem, and the

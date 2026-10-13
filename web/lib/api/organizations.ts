@@ -3,6 +3,7 @@ import { downloadBlob, fileNameFromDisposition } from "@/lib/download";
 import type {
   ApiEnvelope,
   CheckoutResult,
+  DiscountPreview,
   Organization,
   PublicOrganization,
   SocialLinks,
@@ -68,11 +69,31 @@ export async function updateOrganization(
 export async function checkoutPlan(
   orgId: string,
   planId: string,
-  paymentChannel?: string
+  paymentChannel?: string,
+  discountCode?: string
 ): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
     `/organizations/${orgId}/plan-orders/checkout`,
-    { plan_id: planId, payment_channel: paymentChannel }
+    { plan_id: planId, payment_channel: paymentChannel, discount_code: discountCode }
+  );
+  return data.data;
+}
+
+/**
+ * What a discount code does to this plan's price, before buying.
+ *
+ * Same resolver the checkout runs, so a code accepted here cannot be refused at
+ * the till. Refusals come back 422 with a `discount_code` field error — render
+ * them inline under the input, not as a toast.
+ */
+export async function previewDiscount(
+  orgId: string,
+  planId: string,
+  code: string
+): Promise<DiscountPreview> {
+  const { data } = await apiClient.post<ApiEnvelope<DiscountPreview>>(
+    `/organizations/${orgId}/plan-orders/discount-preview`,
+    { plan_id: planId, discount_code: code }
   );
   return data.data;
 }

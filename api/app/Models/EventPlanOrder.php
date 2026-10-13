@@ -26,6 +26,11 @@ class EventPlanOrder extends Model
     protected $fillable = [
         'organization_id',
         'plan_id',
+        'discount_code_id',
+        'discount_code',
+        'discount_type',
+        'discount_value',
+        'discount_amount',
         'event_id',
         'consumed_at',
         'idle_reminded_at',
@@ -55,6 +60,11 @@ class EventPlanOrder extends Model
     {
         return [
             'amount' => 'decimal:2',
+            // Snapshot of the discount taken at checkout. `amount` is already
+            // net of it, so nothing downstream adds or subtracts these — the
+            // PDF reconstructs the catalogue price as amount + discount_amount.
+            'discount_value' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'gateway_fee' => 'decimal:2',
             // The tax already counted inside gateway_fee — a display split, so
             // it must never be added into gross_amount.
@@ -136,6 +146,12 @@ class EventPlanOrder extends Model
      *
      * A backfilled order contributes 0, so an event that was never paid for
      * still pays the full price — which is the point.
+     *
+     * A discounted order contributes what was actually *received*, not the
+     * catalogue price, so a discount given at checkout is made back on the
+     * first upgrade and total spend lands exactly on the target plan's price.
+     * That is this method's promise, not a leak; it is also why
+     * `plan-orders/{order}/upgrade` takes no discount code.
      */
     public function paidTowardsPlan(): float
     {
@@ -167,6 +183,16 @@ class EventPlanOrder extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
+    }
+
+    /**
+     * The code redeemed at checkout, if any — null once that code row is
+     * deleted. The `discount_*` columns on this row stay either way: they are
+     * what the invoice already said, and a document never changes its contents.
+     */
+    public function discountCode(): BelongsTo
+    {
+        return $this->belongsTo(DiscountCode::class);
     }
 
     /** The event this credit was spent on, or null while it is still unspent. */

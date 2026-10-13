@@ -26,6 +26,11 @@ class CheckoutRequest extends FormRequest
             // manual/outage), which only EventPlanOrderService::resolvePayment()
             // knows — same reason PurchaseTicketRequest leaves it nullable here.
             'payment_channel' => ['nullable', 'string'],
+            // Existence, window, quota and plan restriction are all decided by
+            // DiscountCodeService, which the preview endpoint calls too — a rule
+            // here would be a second reader of the same thing, and the two would
+            // disagree the day one of them is loosened.
+            'discount_code' => ['nullable', 'string', 'max:40'],
         ];
     }
 

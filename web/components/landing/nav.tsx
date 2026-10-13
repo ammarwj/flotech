@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/#cara-kerja", label: "Cara Kerja" },
   { href: "/#harga", label: "Harga" },
   { href: "/event", label: "Jelajahi Event" },
+  { href: "/blog", label: "Blog" },
 ];
 
 /** Where the desktop nav links take over from the hamburger. */

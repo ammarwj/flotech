@@ -1349,3 +1349,121 @@ img { max-width: 100%; display: block; }
    ============================================================ */
 .pill-strip { scrollbar-width: none; }
 .pill-strip::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   Article body (.blog-prose) — the public article page and the
+   admin editor wear the same class, which is the point: what the
+   editor shows is what the page renders. A second rule set for
+   the editor would drift, and the drift would only surface after
+   publishing.
+
+   The element selectors are deliberate. The HTML comes from the
+   API as one sanitised string, so there is nowhere to hang a
+   utility class — and the tag set is fixed by HTML.Allowed in
+   App\Support\HtmlSanitizer, which is what keeps this list from
+   having to grow.
+   ============================================================ */
+.blog-prose {
+  color: var(--text-2);
+  font-size: 17px;
+  line-height: 1.75;
+  /* Long URLs and Indonesian compound words are the two things that push an
+     article wider than its column on a phone. */
+  overflow-wrap: break-word;
+}
+.blog-prose > :first-child { margin-top: 0; }
+.blog-prose > :last-child { margin-bottom: 0; }
+
+.blog-prose p { margin: 0 0 1.15em; }
+
+.blog-prose h2,
+.blog-prose h3,
+.blog-prose h4 {
+  font-family: var(--font-display);
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.3;
+  /* Asymmetric on purpose: a heading belongs to the text below it, so it sits
+     closer to that than to the paragraph it follows. */
+  margin: 1.9em 0 0.6em;
+  scroll-margin-top: 90px; /* clears the sticky nav when an #anchor is opened */
+}
+.blog-prose h2 { font-size: 1.55em; }
+.blog-prose h3 { font-size: 1.25em; }
+.blog-prose h4 { font-size: 1.1em; }
+
+.blog-prose strong { color: var(--text); font-weight: 700; }
+
+.blog-prose a {
+  color: var(--brand-600);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.blog-prose a:hover { text-decoration-thickness: 2px; }
+
+/* The `list-style` declarations are not decoration: Tailwind's preflight sets
+   `list-style: none` on every ul/ol, so without them an article's lists render
+   as unmarked indented text in both the editor and the published page. */
+.blog-prose ul,
+.blog-prose ol { margin: 0 0 1.15em; padding-left: 1.4em; }
+.blog-prose ul { list-style-type: disc; }
+.blog-prose ol { list-style-type: decimal; }
+/* Tiptap wraps each item's text in its own <p>, which would otherwise inherit
+   the paragraph margin and space a tight list out like body copy. */
+.blog-prose li > p { margin: 0; }
+.blog-prose li { margin: 0.35em 0; }
+.blog-prose li::marker { color: var(--brand-600); }
+
+.blog-prose blockquote {
+  margin: 1.5em 0;
+  padding: 2px 0 2px 18px;
+  border-left: 3px solid var(--brand-500);
+  color: var(--text);
+  font-style: italic;
+}
+
+.blog-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+.blog-prose pre {
+  margin: 1.5em 0;
+  padding: 14px 16px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+/* Inside a block the chip styling would draw a box inside a box. */
+.blog-prose pre code { background: none; border: 0; padding: 0; font-size: 0.9em; }
+
+.blog-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.6em 0;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
+.blog-prose hr {
+  margin: 2.2em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* The editor only. Tiptap renders an empty document as one empty <p>, which
+   has no height of its own and gives the admin nothing to aim at. */
+.blog-prose.ProseMirror p.is-editor-empty:first-child::before,
+.blog-prose.ProseMirror:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

@@ -31,7 +31,14 @@ class EventPlanOrderResource extends JsonResource
             'plan_id' => $this->plan_id,
             'invoice_number' => $this->invoice_number,
             'receipt_number' => $this->receipt_number,
+            // Net of any discount — what was actually billed. The snapshot
+            // beside it is what the PDF and the billing page print, and it
+            // survives the code row being edited or deleted.
             'amount' => (float) $this->amount,
+            'discount_code' => $this->discount_code,
+            'discount_type' => $this->discount_type,
+            'discount_value' => $this->discount_value === null ? null : (float) $this->discount_value,
+            'discount_amount' => (float) $this->discount_amount,
             'status' => $this->status,
 
             // The consumption ledger. A paid order with `event_id: null` is a

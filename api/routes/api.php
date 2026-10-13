@@ -1,7 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\ActiveSessionController;
+use App\Http\Controllers\Api\Admin\BlogCategoryController;
+use App\Http\Controllers\Api\Admin\BlogPostController;
 use App\Http\Controllers\Api\Admin\ConfigOptionController;
+use App\Http\Controllers\Api\Admin\DiscountCodeController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
@@ -47,6 +50,7 @@ use App\Http\Controllers\Api\PaymentVerificationController;
 use App\Http\Controllers\Api\PlanOrderController;
 use App\Http\Controllers\Api\Public\DomainController;
 use App\Http\Controllers\Api\Public\EventViewController;
+use App\Http\Controllers\Api\Public\PublicBlogController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
@@ -126,6 +130,16 @@ Route::prefix('v1')->group(function () {
 
     // Landing page proof counters (turnamen, tim, tiket, laga).
     Route::get('/stats', PublicStatController::class);
+
+    // Blog, written by super_admin under /admin/blog. Only published articles
+    // leave here — drafts and scheduled ones are filtered by scopePublished(),
+    // including on the detail route, whose slug is guessable.
+    //
+    // `categories` sits above `{slug}` so the literal segment is never
+    // swallowed by the placeholder.
+    Route::get('/blog', [PublicBlogController::class, 'index']);
+    Route::get('/blog/categories', [PublicBlogController::class, 'categories']);
+    Route::get('/blog/{slug}', [PublicBlogController::class, 'show']);
 
     // Admin-managed vocabulary: sports (+ stat columns), formats, tiebreakers,
     // draw methods, knockout rounds, sponsor tiers. Read by the whole web app.
@@ -323,6 +337,10 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/', [OrganizationController::class, 'update']);
                 Route::get('plan-orders', [PlanOrderController::class, 'index']);
                 Route::post('plan-orders/checkout', [PlanOrderController::class, 'checkout']);
+                // Declared ahead of every `plan-orders/{planOrder}/...` route:
+                // a literal segment registered after them is swallowed by the
+                // binding and resolves as an order id.
+                Route::post('plan-orders/discount-preview', [PlanOrderController::class, 'discountPreview']);
                 Route::post('plan-orders/{planOrder}/pay', [PlanOrderController::class, 'pay']);
                 // Upgrade only — there is no downgrade route, and the absence is
                 // enforced in PlanGate::planCovers() rather than by leaving one out.
@@ -595,8 +613,22 @@ Route::prefix('v1')->group(function () {
             Route::get('view-stats/events', [AdminViewStatController::class, 'events']);
 
             // Landing page content.
+            // Plan checkout discount codes. No in-use guard on delete — orders
+            // snapshot the code they redeemed, so nothing reads these back.
+            Route::apiResource('discount-codes', DiscountCodeController::class)
+                ->parameters(['discount-codes' => 'discount_code'])
+                ->except(['show']);
             Route::apiResource('testimonials', TestimonialController::class)->except(['show']);
             Route::apiResource('faqs', FaqController::class)->except(['show']);
+
+            // Blog. `show` is kept here, unlike the two above: the editor loads
+            // one article by id, and the public route only serves published
+            // ones — a draft could not be reopened through it.
+            Route::apiResource('blog-categories', BlogCategoryController::class)
+                ->parameters(['blog-categories' => 'blog_category'])
+                ->except(['show']);
+            Route::apiResource('blog-posts', BlogPostController::class)
+                ->parameters(['blog-posts' => 'blog_post']);
 
             // Contact & socials: one row, so a settings pair instead of a resource.
             Route::get('site-settings', [SiteSettingController::class, 'index']);

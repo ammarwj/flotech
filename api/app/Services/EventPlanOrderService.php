@@ -39,6 +39,7 @@ class EventPlanOrderService
         protected PaymentRails $rails,
         protected PlanGate $gate,
         protected PaymentFeeCalculator $fees,
+        protected DiscountCodeService $discounts,
     ) {}
 
     /**
@@ -56,11 +57,20 @@ class EventPlanOrderService
      * is required exactly when resolvePayment() decides this is going out on the
      * gateway rail for a non-zero amount.
      *
+     * A discount code, when given, comes off the price *here* — before
+     * resolvePayment(). Gateway fees are a percentage of `$amount`
+     * (PaymentFeeCalculator) and the rail itself branches on `$amount <= 0`
+     * (PaymentRails::platformDestination), so discounting afterwards would
+     * leave `gateway_fee` disagreeing with what Midtrans is actually asked for.
+     *
      * @return array{order: EventPlanOrder, snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: SiteSetting|null}
+     *
+     * @throws \Illuminate\Validation\ValidationException  when the code is refused
      */
-    public function checkout(Organization $org, Plan $plan, ?string $channel = null): array
+    public function checkout(Organization $org, Plan $plan, ?string $channel = null, ?string $discountCode = null): array
     {
-        $amount = (float) $plan->price;
+        $discount = $this->discounts->resolve($discountCode, $org, $plan);
+        $amount = $discount === null ? (float) $plan->price : $discount['amount'];
 
         // Asked *before* the row exists: a refused checkout must not burn an
         // invoice number, and nextNumber() has no way to hand one back.
@@ -70,6 +80,14 @@ class EventPlanOrderService
             'plan_id' => $plan->id,
             'invoice_number' => $this->nextNumber('invoice'),
             'amount' => $amount,
+            // The FK is the usage ledger; the three values beside it are a
+            // snapshot, so editing or deleting the code later cannot rewrite an
+            // invoice that has already gone out.
+            'discount_code_id' => $discount === null ? null : $discount['code']->id,
+            'discount_code' => $discount === null ? null : $discount['code']->code,
+            'discount_type' => $discount === null ? null : $discount['code']->discount_type,
+            'discount_value' => $discount === null ? null : $discount['code']->discount_value,
+            'discount_amount' => $discount === null ? 0 : $discount['discount'],
             'status' => 'past_due', // awaiting payment; flips to paid on settlement
             'payment_method' => $payment['bank'] !== null ? 'manual' : 'gateway',
             'payment_channel' => $payment['channel'],
@@ -257,6 +275,24 @@ class EventPlanOrderService
      */
     protected function start(EventPlanOrder $order, ?SiteSetting $bank, array $enabledPayments = []): array
     {
+        // Nothing left to collect — a 100% code, or a fixed one worth at least
+        // the plan. Settling here rather than in checkout() covers pay() too,
+        // and it has to happen before openSnap(), which would otherwise post
+        // `gross_amount: 0` to Midtrans. No new client branch is needed:
+        // checkoutOutcome() already reads the order's own status.
+        if ($bank === null && $order->gross_amount <= 0) {
+            $this->activate($order, 'discount');
+
+            return [
+                'order' => $order->load('plan.features'),
+                'snap_token' => null,
+                'redirect_url' => null,
+                'mock' => false,
+                'payment_method' => 'gateway',
+                'bank_account' => null,
+            ];
+        }
+
         if ($bank === null) {
             return $this->openSnap($order, $enabledPayments);
         }

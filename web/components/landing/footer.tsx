@@ -25,7 +25,7 @@ const COLUMNS = [
     title: "Perusahaan",
     links: [
       { href: "#", label: "Tentang Kami" },
-      { href: "#", label: "Blog" },
+      { href: "/blog", label: "Blog" },
       { href: "#", label: "Karier" },
       // Resolved to a mailto once super_admin fills in the contact email.
       { href: "#", label: "Kontak", contact: true },

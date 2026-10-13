@@ -101,7 +101,24 @@
                 </td>
                 {{-- A credit that has not been spent yet is still a valid document. --}}
                 <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
-                <td class="right">{{ $money($order->amount) }}</td>
+                {{-- The catalogue price, reconstructed: `amount` is already net
+                     of the discount, and a discount line needs something above
+                     it to be a discount *off*. Without a code the two are equal. --}}
+                <td class="right">{{ $money($order->amount + ($order->discount_amount ?? 0)) }}</td>
+            </tr>
+        @endif
+        {{-- Only plan orders carry a discount; the null-coalesce is what keeps
+             this one shared layout printing ticket and registration documents
+             that have no such column. --}}
+        @if (($order->discount_amount ?? 0) > 0)
+            <tr>
+                <td colspan="2">
+                    Diskon {{ $order->discount_code }}
+                    @if ($order->discount_type === 'percent')
+                        <div class="muted">{{ rtrim(rtrim(number_format((float) $order->discount_value, 2, ',', '.'), '0'), ',') }}% dari harga paket</div>
+                    @endif
+                </td>
+                <td class="right">&minus;{{ $money($order->discount_amount) }}</td>
             </tr>
         @endif
         @if ($order->service_fee > 0)

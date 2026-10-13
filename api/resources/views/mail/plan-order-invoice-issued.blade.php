@@ -11,8 +11,13 @@ Selesaikan pembayaran sebelum **{{ $dueAt->timezone(config('wallet.timezone'))->
 | | |
 |:--- |:--- |
 | **Nomor** | {{ $order->invoice_number }} |
-| **Paket** | Rp {{ number_format((float) $order->amount, 0, ',', '.') }} |
+{{-- The catalogue price, like the PDF: `amount` is already net of the
+     discount, and the row below has to be a discount *off* something. --}}
+| **Paket** | Rp {{ number_format((float) $order->amount + (float) $order->discount_amount, 0, ',', '.') }} |
 | **Berlaku untuk** | 1 event |
+@if ((float) $order->discount_amount > 0)
+| **Diskon {{ $order->discount_code }}** | &minus;Rp {{ number_format((float) $order->discount_amount, 0, ',', '.') }} |
+@endif
 {{-- Same rows, same order, same conditions as the PDF: an email that totalled
      differently from its own attachment is worse than one that omits the split. --}}
 @if ((float) $order->service_fee > 0)

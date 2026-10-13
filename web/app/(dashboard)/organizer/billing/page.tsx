@@ -212,8 +212,10 @@ export default function BillingPage() {
                   <div className="min-w-0">
                     <p className="font-semibold">{order.plan?.name ?? "Paket dihapus"}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {rupiah(order.amount)} &middot; dibeli {dateTime(order.paid_at)} &middot; belum
-                      dipakai
+                      {rupiah(order.amount)}
+                      {order.discount_amount > 0 &&
+                        ` (diskon ${order.discount_code} −${rupiah(order.discount_amount)})`}{" "}
+                      &middot; dibeli {dateTime(order.paid_at)} &middot; belum dipakai
                     </p>
                   </div>
                 </div>
@@ -264,6 +266,13 @@ export default function BillingPage() {
                       awaitingVerification={order.awaiting_verification}
                     />
                     <span className="font-semibold tabular-nums">{rupiah(order.amount)}</span>
+                    {/* The code is a snapshot on the order, so this keeps
+                        reading correctly after the code row is edited or gone. */}
+                    {order.discount_amount > 0 && (
+                      <span className="rounded-full bg-[color-mix(in_srgb,var(--success)_14%,transparent)] px-2 py-0.5 text-xs text-[var(--success)]">
+                        Diskon {order.discount_code} &minus;{rupiah(order.discount_amount)}
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {order.invoice_number ?? "—"} &middot;{" "}

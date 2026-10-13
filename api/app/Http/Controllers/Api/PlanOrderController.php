@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\SiteSetting;
 use App\Services\BillingDocumentService;
+use App\Services\DiscountCodeService;
 use App\Services\EventPlanOrderService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
@@ -34,6 +35,7 @@ class PlanOrderController extends Controller
         protected EventPlanOrderService $orders,
         protected BillingDocumentService $documents,
         protected PlanGate $gate,
+        protected DiscountCodeService $discounts,
     ) {}
 
     /**
@@ -67,9 +69,53 @@ class PlanOrderController extends Controller
         $org = $request->attributes->get('organization');
         $plan = Plan::findOrFail($request->input('plan_id'));
 
-        $result = $this->orders->checkout($org, $plan, $request->string('payment_channel')->toString() ?: null);
+        $result = $this->orders->checkout(
+            $org,
+            $plan,
+            $request->string('payment_channel')->toString() ?: null,
+            $request->string('discount_code')->toString() ?: null,
+        );
 
         return ApiResponse::success($this->checkoutPayload($result), 'Checkout dibuat', 201);
+    }
+
+    /**
+     * What a discount code would do to this plan's price, before committing to
+     * a purchase.
+     *
+     * Same DiscountCodeService::resolve() the checkout runs, so a code accepted
+     * here can never be refused at the till — and the amount returned is what
+     * the fee preview in the channel picker must be built from, since the client
+     * never computes a discount itself.
+     */
+    public function discountPreview(Request $request): JsonResponse
+    {
+        /** @var Organization $org */
+        $org = $request->attributes->get('organization');
+
+        $data = $request->validate([
+            'plan_id' => ['required', 'uuid', Rule::exists('plans', 'id')->where('is_active', true)],
+            // `filled`, not just `required`: a code of nothing but spaces passes
+            // `required`, normalizes to '' and comes back from resolve() as
+            // "no code given" — which has no row to read a discount off.
+            'discount_code' => ['required', 'string', 'filled', 'max:40'],
+        ], [
+            'plan_id.exists' => 'Paket itu sudah tidak tersedia.',
+            'discount_code.required' => 'Masukkan kode diskon.',
+        ]);
+
+        $plan = Plan::findOrFail($data['plan_id']);
+        $resolution = $this->discounts->resolve($data['discount_code'], $org, $plan);
+
+        return ApiResponse::success([
+            'code' => $resolution['code']->code,
+            'description' => $resolution['code']->description,
+            'discount_type' => $resolution['code']->discount_type,
+            'discount_value' => (float) $resolution['code']->discount_value,
+            'discount_amount' => $resolution['discount'],
+            'price' => (float) $plan->price,
+            'amount' => $resolution['amount'],
+        ], 'Kode diskon dipakai');
     }
 
     /**
