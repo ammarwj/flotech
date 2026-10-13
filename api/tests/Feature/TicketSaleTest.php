@@ -564,4 +564,54 @@ class TicketSaleTest extends TestCase
         $cash = $this->cashEvent($org);
         $this->sell($user, $org, $cash, $this->category($cash))->assertCreated();
     }
+
+    /**
+     * The report counts tickets that were paid for, not tickets that exist.
+     *
+     * `TicketService::purchase()` writes the QR rows inside the same
+     * transaction that creates the *pending* order, so every abandoned
+     * checkout leaves ticket rows behind — an unfiltered count reports them as
+     * sales, and the check-in denominator grows a remainder that can never
+     * reach zero because `checkIn()` refuses an unpaid QR outright.
+     *
+     * Written as a comparison of the same event with and without the pending
+     * order: asserting `tickets_sold === 2` alone stays green with no filter at
+     * all, since there is nothing in that number to say which rows it skipped.
+     */
+    public function test_report_counts_only_tickets_from_paid_orders(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithTickets($user);
+        // A gateway event, not the cash till: an onsite sale settles on the
+        // spot, so there would be no pending order left to leave out.
+        $event = $this->event($org);
+        $category = $this->category($event);
+
+        // Two seats sold and settled.
+        $paid = $this->sell($user, $org, $event, $category, 2)->json('data.order.id');
+        TicketOrder::find($paid)->update(['status' => 'paid']);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/ticket-report";
+
+        $before = $this->actingAs($user, 'api')->getJson($url)->assertOk();
+        $before->assertJsonPath('data.finance.tickets_sold', 2)
+            ->assertJsonPath('data.checkin.total', 2)
+            ->assertJsonPath('data.categories.0.issued', 2);
+
+        // A third seat checked out but never paid: three ticket rows now exist
+        // for this event, and `sold` on the category is 3 — that column is the
+        // quota reservation and a pending checkout really is holding a seat.
+        // Set back to `pending` by hand: with no Midtrans server key the sale
+        // takes the `mock` branch and settles, which is a dev convenience and
+        // not what an abandoned checkout looks like in production.
+        $pending = $this->sell($user, $org, $event, $category, 1)->assertCreated()->json('data.order.id');
+        TicketOrder::find($pending)->update(['status' => 'pending']);
+        $this->assertSame(3, $event->tickets()->count());
+        $this->assertSame(3, $category->fresh()->sold);
+
+        $after = $this->actingAs($user, 'api')->getJson($url)->assertOk();
+        $after->assertJsonPath('data.finance.tickets_sold', 2)
+            ->assertJsonPath('data.checkin.total', 2)
+            ->assertJsonPath('data.categories.0.issued', 2);
+    }
 }

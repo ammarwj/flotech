@@ -96,13 +96,28 @@ class ScanController extends Controller
         $event = $this->findEvent($request, $event);
 
         $paidOrders = $event->ticketOrders()->where('status', 'paid');
-        $totalTickets = $event->tickets()->count();
-        $checkedIn = $event->tickets()->where('is_used', true)->count();
+
+        // Ticket rows are written at purchase, not at payment (TicketService
+        // issues the QRs inside the same transaction that creates the pending
+        // order), so an unfiltered count reports every abandoned and expired
+        // checkout as a sale. Scoped to paid orders here and in every figure
+        // derived from it: checkIn() refuses an unpaid QR outright, so an
+        // unpaid ticket in the check-in denominator is a remainder that can
+        // never reach zero.
+        $paidTickets = fn () => $event->tickets()
+            ->whereHas('order', fn ($q) => $q->where('status', 'paid'));
+
+        $totalTickets = $paidTickets()->count();
+        $checkedIn = $paidTickets()->where('is_used', true)->count();
 
         $categories = $event->ticketCategories()
             ->withCount([
-                'tickets as issued_count',
-                'tickets as checked_in_count' => fn ($q) => $q->where('is_used', true),
+                // Same paid-only scope as the cards above. `sold` is left
+                // alone on purpose: that column is the quota reservation, and
+                // a pending checkout really is holding a seat.
+                'tickets as issued_count' => fn ($q) => $q->whereHas('order', fn ($o) => $o->where('status', 'paid')),
+                'tickets as checked_in_count' => fn ($q) => $q->where('is_used', true)
+                    ->whereHas('order', fn ($o) => $o->where('status', 'paid')),
             ])
             ->get()
             ->map(fn ($c) => [
@@ -120,7 +135,7 @@ class ScanController extends Controller
         // count: a three-day buyer is one person and three rows. Only days
         // that actually have tickets appear, so a `none`-only event gets an
         // empty list and the client shows nothing extra.
-        $byDate = $event->tickets()
+        $byDate = $paidTickets()
             ->whereNotNull('event_date')
             ->selectRaw('event_date, count(*) as issued, sum(case when is_used then 1 else 0 end) as checked_in')
             ->groupBy('event_date')
