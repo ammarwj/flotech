@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Banknote, X } from "lucide-react";
+import { useState } from "react";
+import { Banknote } from "lucide-react";
 
 import type { FieldErrors } from "@/lib/api/errors";
 import type { BankAccount, Wallet } from "@/types/api";
 import { angka, rupiah } from "@/lib/labels";
 import { payoutLabels } from "@/lib/payout";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,15 +43,6 @@ export function WithdrawDialog({
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const { minimum_withdrawal: minimum, admin_fee: fee } = wallet.rules;
   const waived = wallet.balance_minimum_waived;
   const value = Number(amount) || 0;
@@ -60,41 +58,21 @@ export function WithdrawDialog({
   const canSubmit = value > 0 && !belowMinimum && !overBalance && !pending;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
-      >
-        <div className="flex items-start gap-3 border-b border-border p-5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
-            <Banknote className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2
-              className="text-base font-bold"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              Tarik Dana
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Dana masuk ke rekeningmu maksimal 1x24 jam sejak diajukan.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Tutup"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    // The shared shell rather than a hand-rolled one. Its `max-h-[85vh]` panel
+    // with a scrolling body is the whole fix for the phone: this form is taller
+    // than a short viewport once the summary and the error line appear, and an
+    // unbounded panel pushed the footer — the submit button — off the screen
+    // with nothing to scroll it back. A bottom sheet, since that is what the
+    // other long forms here use at this width.
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent placement="sheet">
+        <DialogHeader
+          icon={Banknote}
+          title="Tarik Dana"
+          description="Dana masuk ke rekeningmu maksimal 1x24 jam sejak diajukan."
+        />
 
-        <div className="grid gap-4 p-5">
+        <DialogBody>
           <div className="rounded-lg border border-border bg-[var(--bg-alt)] p-3 text-sm">
             <p className="font-semibold">{bank.bank_name}</p>
             <p className="text-muted-foreground">
@@ -180,9 +158,9 @@ export function WithdrawDialog({
               placeholder="Mis. untuk pembayaran vendor"
             />
           </div>
-        </div>
+        </DialogBody>
 
-        <div className="flex justify-end gap-2 border-t border-border p-5">
+        <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             Batal
           </Button>
@@ -192,8 +170,8 @@ export function WithdrawDialog({
           >
             {pending ? "Mengirim…" : "Ajukan penarikan"}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
