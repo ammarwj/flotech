@@ -12,8 +12,8 @@ use App\Models\User;
 use App\Services\PlatformSettings;
 use App\Services\TicketService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 class TicketTest extends TestCase
@@ -130,6 +130,111 @@ class TicketTest extends TestCase
             ->assertJsonPath('errors.result', 'used');
     }
 
+    /**
+     * The gate's bulk mode: a party of 20 bought together and arrives holding
+     * one phone, so one scan admits the order.
+     *
+     * Written as a comparison because neither half proves the flag: two orders
+     * on the same category, same size, same scan — one with `whole_order`, one
+     * without. Asserting "20 checked in" alone would stay green if the flag
+     * were ignored and every scan admitted the whole order, which is the bug
+     * that matters (a lone visitor's ticket would open their neighbour's).
+     */
+    public function test_whole_order_admits_the_party_while_a_plain_scan_admits_one(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+        $category = $event->ticketCategories()->create(['name' => 'Gratis', 'price' => 0, 'is_active' => true]);
+
+        $buy = fn () => $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+            'ticket_category_id' => $category->id,
+            'quantity' => 20,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+        ])->assertCreated()->json('data.order.id');
+
+        $bulkId = $buy();
+        $soloId = $buy();
+
+        $firstQr = fn (string $orderId) => $this->getJson("/api/v1/ticket-orders/{$orderId}")
+            ->json('data.tickets.0.qr_code');
+
+        $scan = fn (string $qr, bool $whole) => $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/scan", [
+                'qr_code' => $qr,
+                'whole_order' => $whole,
+            ]);
+
+        $scan($firstQr($bulkId), true)
+            ->assertOk()
+            ->assertJsonPath('data.result', 'valid')
+            ->assertJsonPath('data.checked_in', 20)
+            ->assertJsonPath('data.order.checked_in', 20)
+            ->assertJsonPath('data.order.total', 20);
+
+        $scan($firstQr($soloId), false)
+            ->assertOk()
+            ->assertJsonPath('data.checked_in', 1)
+            // The denominator is the order's, so the same payload reads 1 of 20
+            // here — that is what tells the staff a party is still outside.
+            ->assertJsonPath('data.order.checked_in', 1)
+            ->assertJsonPath('data.order.total', 20);
+
+        $this->assertSame(20, TicketOrder::findOrFail($bulkId)->tickets()->where('is_used', true)->count());
+        $this->assertSame(1, TicketOrder::findOrFail($soloId)->tickets()->where('is_used', true)->count());
+    }
+
+    /**
+     * Bulk mode loosens no guard. The four checks in ScanController ask about
+     * *the scanned ticket*, and a used code must keep refusing even when the
+     * rest of its order is still outside — otherwise one QR becomes a reusable
+     * key to an order, which is exactly what the one-time rule exists to stop.
+     *
+     * Compared against a fresh code from the same order on the same call, so
+     * the refusal cannot be explained by bulk mode being broken outright.
+     */
+    public function test_a_used_code_still_refuses_in_bulk_mode(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+        $category = $event->ticketCategories()->create(['name' => 'Gratis', 'price' => 0, 'is_active' => true]);
+
+        $orderId = $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+            'ticket_category_id' => $category->id,
+            'quantity' => 3,
+            'buyer_name' => 'Budi',
+            'buyer_email' => 'budi@test.com',
+        ])->assertCreated()->json('data.order.id');
+
+        $qrs = $this->getJson("/api/v1/ticket-orders/{$orderId}")->json('data.tickets.*.qr_code');
+
+        $scan = fn (string $qr) => $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/scan", [
+                'qr_code' => $qr,
+                'whole_order' => true,
+            ]);
+
+        // One plain check-in first, so the first code is spent without its
+        // order being finished.
+        $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/scan", ['qr_code' => $qrs[0]])
+            ->assertOk();
+
+        $scan($qrs[0])->assertStatus(409)->assertJsonPath('errors.result', 'used');
+
+        // Only 1 of 3 is in: the refusal admitted nobody.
+        $this->assertSame(1, TicketOrder::findOrFail($orderId)->tickets()->where('is_used', true)->count());
+
+        // A fresh code from the same order still opens the rest — 2 left, not 3:
+        // checkInOrder() skips rows already in, so nobody is counted twice.
+        $scan($qrs[1])
+            ->assertOk()
+            ->assertJsonPath('data.checked_in', 2)
+            ->assertJsonPath('data.order.checked_in', 3);
+    }
+
     public function test_buyer_gets_a_confirmation_mail_once_the_order_is_paid(): void
     {
         Mail::fake();
@@ -176,11 +281,14 @@ class TicketTest extends TestCase
         $this->actingAs($user, 'api')
             ->getJson("/api/v1/organizations/{$org->id}/events/{$event->id}/ticket-orders")
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.buyer_name', 'Budi')
-            ->assertJsonPath('data.0.buyer_email', 'budi@test.com')
-            ->assertJsonPath('data.0.status', 'paid')
-            ->assertJsonCount(2, 'data.0.tickets');
+            // Paginated — see TicketBuyerListTest for the filters and the
+            // summary cards that share this envelope.
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.meta.total', 1)
+            ->assertJsonPath('data.items.0.buyer_name', 'Budi')
+            ->assertJsonPath('data.items.0.buyer_email', 'budi@test.com')
+            ->assertJsonPath('data.items.0.status', 'paid')
+            ->assertJsonCount(2, 'data.items.0.tickets');
     }
 
     public function test_operator_cannot_read_the_buyer_list(): void
@@ -438,5 +546,55 @@ class TicketTest extends TestCase
 
         $this->assertEqualsWithDelta(7000.0, (float) $small->service_fee, 0.0001);
         $this->assertEqualsWithDelta((float) $small->service_fee, (float) $large->service_fee, 0.0001);
+    }
+
+    /**
+     * What limits an order is the quota, and a category without one has no
+     * limit — only TicketService's loop guard.
+     *
+     * Compared as a pair in one test, because either half alone passes against
+     * the build this replaced: a 40-seat order asserted on its own would have
+     * been refused by the old flat `max:20`, and a refusal asserted on its own
+     * would still pass if that 20 had merely been renamed. The quota branch is
+     * the third leg — an unlimited ceiling that also ignored a quota of 5 would
+     * oversell every category that has one.
+     */
+    public function test_unlimited_category_sells_past_the_old_cap_while_a_quota_still_binds(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user, ['qr_tickets' => 'true']);
+        $event = $this->event($org);
+
+        $unlimited = $event->ticketCategories()->create([
+            'name' => 'Gratis', 'price' => 0, 'is_active' => true, 'quota' => null,
+        ]);
+        $scarce = $event->ticketCategories()->create([
+            'name' => 'VIP', 'price' => 0, 'is_active' => true, 'quota' => 5,
+        ]);
+
+        $buy = fn (string $categoryId, int $quantity) => $this->postJson(
+            "/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase",
+            [
+                'ticket_category_id' => $categoryId,
+                'quantity' => $quantity,
+                'buyer_name' => 'Budi',
+                'buyer_email' => 'budi@test.com',
+            ],
+        );
+
+        // No quota, so 40 seats is a sale — and one ticket row per seat.
+        $buy($unlimited->id, 40)->assertCreated()->assertJsonPath('data.order.quantity', 40);
+        $this->assertDatabaseCount('tickets', 40);
+
+        // The quota still refuses, and it says so as a quota rather than as a
+        // validation error on `quantity`.
+        $buy($scarce->id, 6)->assertStatus(422);
+
+        // And the guard is a guard: above it, nothing is written at all.
+        $buy($unlimited->id, TicketService::MAX_SEATS_PER_ORDER + 1)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('quantity');
+
+        $this->assertDatabaseCount('tickets', 40);
     }
 }

@@ -8,6 +8,8 @@ import type {
   TicketCategory,
   TicketDayMode,
   TicketOrder,
+  TicketOrderPage,
+  TicketOrderStatus,
   TicketReport,
 } from "@/types/api";
 
@@ -140,10 +142,36 @@ export async function checkInTicketOrder(
   return data.data;
 }
 
-/** Buyer list for an event — owner/admin only (the rows carry buyer contacts). */
-export async function getTicketOrders(orgId: string, eventId: string): Promise<TicketOrder[]> {
-  const { data } = await apiClient.get<ApiEnvelope<TicketOrder[]>>(
-    `/organizations/${orgId}/events/${eventId}/ticket-orders`
+export interface TicketOrderQuery {
+  status?: TicketOrderStatus | "";
+  category_id?: string;
+  /** Both inclusive, on the ticket's attendance day, as YYYY-MM-DD. */
+  from?: string;
+  to?: string;
+  /** Buyer name, email, phone, or a ticket holder's name. */
+  q?: string;
+  page?: number;
+}
+
+/**
+ * Buyer list for an event — owner/admin only (the rows carry buyer contacts).
+ *
+ * Paginated and filtered server-side. The page used to download every order and
+ * filter in the browser, so the search box could only match rows it already
+ * had, and a run selling thousands of passes loaded all of them to show twenty.
+ *
+ * `summary` covers the whole filtered set rather than the page, and
+ * `categories` are the event's own — a category nobody has bought from yet
+ * still belongs in the dropdown.
+ */
+export async function getTicketOrders(
+  orgId: string,
+  eventId: string,
+  params: TicketOrderQuery = {}
+): Promise<TicketOrderPage> {
+  const { data } = await apiClient.get<ApiEnvelope<TicketOrderPage>>(
+    `/organizations/${orgId}/events/${eventId}/ticket-orders`,
+    { params }
   );
   return data.data;
 }
@@ -182,14 +210,24 @@ export async function getTicketReport(orgId: string, eventId: string): Promise<T
   return data.data;
 }
 
+/**
+ * Validate a QR at the gate and admit its holder.
+ *
+ * `wholeOrder` admits the rest of that ticket's order in the same call — a
+ * group that bought 20 seats arrives as one party holding one phone. It is the
+ * gate's mode, sent per scan, so the staff can turn it off for the next lone
+ * visitor without reloading. It does not loosen a single guard: an unpaid,
+ * used or wrong-day code refuses exactly as it does alone.
+ */
 export async function scanTicket(
   orgId: string,
   eventId: string,
-  qrCode: string
+  qrCode: string,
+  wholeOrder = false
 ): Promise<ScanResponse> {
   const { data } = await apiClient.post<ApiEnvelope<ScanResponse>>(
     `/organizations/${orgId}/events/${eventId}/scan`,
-    { qr_code: qrCode }
+    { qr_code: qrCode, whole_order: wholeOrder }
   );
   return data.data;
 }

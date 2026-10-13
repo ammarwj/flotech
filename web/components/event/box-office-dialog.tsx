@@ -6,8 +6,6 @@ import {
   Banknote,
   CheckCircle2,
   Loader2,
-  Minus,
-  Plus,
   QrCode as QrCodeIcon,
   Store,
 } from "lucide-react";
@@ -33,6 +31,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ChannelPicker } from "@/components/payment/channel-picker";
 import { DayPickerChips } from "@/components/event/day-picker-chips";
+import { SeatStepper } from "@/components/ticket/seat-stepper";
 import { QrCode } from "@/components/event/qr-code";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { rupiah } from "@/lib/labels";
@@ -179,7 +178,10 @@ function SaleForm({
   const orderDates = category ? coveredDates(category, dates) : [];
   const needsDates = category?.day_mode === "per_day";
 
-  const maxQty = Math.max(1, Math.min(20, seatCeiling(category, orderDates)));
+  // The tightest day picked, already clamped to the API's per-order guard — the
+  // public shop reads the same answer, so the till can never offer a quantity
+  // the shop refuses.
+  const maxQty = seatCeiling(category, orderDates);
   const pricedUnits =
     quantity * pricedDays(category?.day_mode ?? "none", orderDates);
   const total = (category?.price ?? 0) * pricedUnits;
@@ -308,28 +310,10 @@ function SaleForm({
 
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
-            <Label className="font-semibold">Jumlah orang</Label>
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                disabled={quantity <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="w-8 text-center font-semibold">{quantity}</span>
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                disabled={quantity >= maxQty}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            <Label htmlFor="bo-qty" className="font-semibold">
+              Jumlah orang
+            </Label>
+            <SeatStepper id="bo-qty" value={quantity} max={maxQty} onChange={setQuantity} />
           </div>
           {/* Where "6 tiket" comes from, beside the stepper that produced it. */}
           {category && pricedUnits > quantity && (

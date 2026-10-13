@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Ticket\Concerns;
 
 use App\Models\TicketCategory;
+use App\Services\TicketService;
 use Illuminate\Validation\Rule;
 
 /**
@@ -26,7 +27,9 @@ trait ValidatesTicketDays
     {
         return [
             'day_mode' => ['sometimes', Rule::in(TicketCategory::DAY_MODES)],
-            'dates' => ['nullable', 'array', 'max:60'],
+            // Same ceiling the two ticket doors enforce: a category selling more
+            // days than an order may cover would offer a pass nobody can buy.
+            'dates' => ['nullable', 'array', 'max:'.TicketService::MAX_DAYS_PER_ORDER],
             'dates.*' => ['date_format:Y-m-d'],
         ];
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,7 +17,15 @@ import { cn } from "@/lib/utils";
  * only, and a floating-position engine is a heavy dependency for a panel that
  * never needs to flip or collide-detect. `align` covers the one real case, a
  * field sitting in the last column.
+ *
+ * What it does need is a horizontal clamp. `max-w` caps the panel's *width*,
+ * never where it starts: an icon sitting ~100px in — the fee rows in
+ * `ChannelPicker`, any label in the second column of a form — still hangs a
+ * 256px panel past the right edge, and on a phone that widens the document and
+ * the whole page gains a sideways scroll. So the panel is measured once it
+ * opens and shifted back inside a 12px gutter.
  */
+const GUTTER = 12;
 export function InfoHint({
   label,
   align = "start",
@@ -30,8 +38,35 @@ export function InfoHint({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0);
   const id = useId();
   const ref = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLSpanElement>(null);
+
+  // Measured from the unshifted panel, so `shift` is never read back as input —
+  // the transform is applied separately and the rect below is the natural one.
+  const clamp = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    const overflowRight = rect.right - shift - (window.innerWidth - GUTTER);
+    const overflowLeft = GUTTER - (rect.left - shift);
+
+    // Right edge first: a panel too wide for the viewport would otherwise be
+    // pushed off the left instead, which is the same bug mirrored.
+    setShift(overflowRight > 0 ? -overflowRight : overflowLeft > 0 ? overflowLeft : 0);
+  }, [shift]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setShift(0);
+      return;
+    }
+    clamp();
+    window.addEventListener("resize", clamp);
+    return () => window.removeEventListener("resize", clamp);
+  }, [open, clamp]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,10 +113,14 @@ export function InfoHint({
 
       {open && (
         <span
+          ref={panelRef}
           id={id}
           role="tooltip"
+          // Width capped to the viewport minus both gutters, so the clamp has
+          // something it can actually fit; the shift then slides it in.
+          style={{ transform: shift ? `translateX(${shift}px)` : undefined }}
           className={cn(
-            "absolute top-full z-20 mt-2 w-64 max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover p-3 text-xs font-normal leading-relaxed text-muted-foreground shadow-[var(--shadow-md)]",
+            "absolute top-full z-20 mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-border bg-popover p-3 text-xs font-normal leading-relaxed text-muted-foreground shadow-[var(--shadow-md)]",
             align === "end" ? "right-0" : "left-0"
           )}
         >

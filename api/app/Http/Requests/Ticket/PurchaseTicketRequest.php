@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Ticket;
 
+use App\Services\TicketService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class PurchaseTicketRequest extends FormRequest
@@ -21,11 +22,16 @@ class PurchaseTicketRequest extends FormRequest
             // How many *people*, not how many ticket prices: a per-day order
             // multiplies this by the days picked. The controller derives the
             // paid-unit count, because only it knows the category's day mode.
-            'quantity' => ['required', 'integer', 'min:1', 'max:20'],
+            //
+            // The ceiling is TicketService's loop guard, not a sales cap: what
+            // limits an order is the quota, checked per date by
+            // ensureSeatsAvailable(). An unlimited category sells as many as
+            // asked.
+            'quantity' => ['required', 'integer', 'min:1', 'max:'.TicketService::MAX_SEATS_PER_ORDER],
             // Which days the buyer attends. Required only for a `per_day`
             // category, and ignored for a pass — enforced in the controller,
             // for the same reason `payment_channel` below is.
-            'dates' => ['nullable', 'array', 'max:60'],
+            'dates' => ['nullable', 'array', 'max:'.TicketService::MAX_DAYS_PER_ORDER],
             'dates.*' => ['date_format:Y-m-d'],
             'buyer_name' => ['required', 'string', 'max:255'],
             'buyer_email' => ['required', 'email', 'max:255'],

@@ -9,6 +9,7 @@ use App\Models\TicketCategory;
 use App\Models\TicketCategoryDay;
 use App\Models\TicketOrder;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +26,48 @@ use Throwable;
  */
 class TicketService
 {
+    /**
+     * The most seats one order may take, whatever the category's quota says.
+     *
+     * A loop guard, not a product cap — the same role as
+     * `LineupService::MAX_PLAYERS`. What limits a sale is the quota: an
+     * unlimited category is genuinely unlimited, and a party of 80 buys 80 in
+     * one go. The ceiling is there because `purchase()` writes one ticket row
+     * and one QR per seat *per day* inside a single transaction, so seats and
+     * days multiply: 100 seats across a 60-day pass is already 6.000 rows. A
+     * group past it checks out more than once, which is the right failure — the
+     * refusal is a 422 on `quantity`, a field that is on screen.
+     *
+     * The ceiling is here rather than in the two FormRequests that enforce it
+     * because two copies of a number nobody re-reads would drift, and the drift
+     * would read as a quantity the public shop accepts and the box office
+     * refuses.
+     */
+    public const MAX_SEATS_PER_ORDER = 100;
+
+    /**
+     * The most days one order may cover, the other half of the guard above.
+     *
+     * Enforced on the `dates` array by both ticket doors and by the category
+     * form that decides which days exist at all.
+     */
+    public const MAX_DAYS_PER_ORDER = 60;
+
+    /**
+     * The most paid units one order can possibly come to — seats times days.
+     *
+     * **Derived, never typed**, and not interchangeable with the seat count
+     * above however close the two numbers look. The fee preview is quoted paid
+     * units, and it carried its own flat `max:100` — which a 34-seat order on a
+     * three-day event already breaches. A cap on the preview that is tighter
+     * than what the order path accepts is invisible from the server's side: the
+     * picker simply renders no channels, and the buyer meets a form that cannot
+     * be submitted and says nothing about why. Any second reader of this
+     * ceiling asks for this constant, so that lowering the seat count lowers
+     * this with it and can never leave it behind.
+     */
+    public const MAX_PAID_UNITS_PER_ORDER = self::MAX_SEATS_PER_ORDER * self::MAX_DAYS_PER_ORDER;
+
     public function __construct(
         protected PlanGate $gate,
         protected WalletService $wallet,
@@ -116,7 +159,7 @@ class TicketService
                         'ticket_category_id' => $category->id,
                         'event_id' => $category->event_id,
                         'event_date' => $date,
-                        'qr_code' => 'TIX-'.Str::lower(Str::ulid()),
+                        'qr_code' => 'TIX-' . Str::lower(Str::ulid()),
                         // Keyed by seat, not by row: a buyer's three days are
                         // three tickets belonging to the same person.
                         'holder_name' => $holderNames[$seat] ?? $buyer['buyer_name'],
@@ -225,22 +268,41 @@ class TicketService
      */
     public function checkInOrder(TicketOrder $order, ?string $userId): int
     {
-        $order->loadMissing('event');
-
-        $tickets = $order->tickets()->where('is_used', false);
-
-        if ($order->event_dates !== null) {
-            $today = Carbon::now($order->event?->timezone ?? config('app.timezone'))->toDateString();
-            $tickets->whereDate('event_date', $today);
-        }
-
-        $rows = $tickets->get();
+        $rows = $this->ticketsValidToday($order)->where('is_used', false)->get();
 
         foreach ($rows as $ticket) {
             $this->checkIn($ticket, $userId);
         }
 
         return $rows->count();
+    }
+
+    /**
+     * The order's tickets that admit someone *today* — used or not.
+     *
+     * Extracted because the gate asks the same question twice and must get the
+     * same answer: checkInOrder() narrows it to the unused rows it is about to
+     * admit, and the scanner's "20 of 20" denominator counts all of them. A
+     * second copy of "which day is this" would drift from this one, and the
+     * drift would show as a party told 20 of 5 — the same class of bug as two
+     * readers of `stage`.
+     *
+     * A dateless order (`event_dates` null — what a `none` category issues, and
+     * what every ticket predating per-day sales carries) matches everything it
+     * has: there is no other day for those rows to be valid on.
+     */
+    public function ticketsValidToday(TicketOrder $order): HasMany
+    {
+        $order->loadMissing('event');
+
+        $tickets = $order->tickets();
+
+        if ($order->event_dates !== null) {
+            $today = Carbon::now($order->event?->timezone ?? config('app.timezone'))->toDateString();
+            $tickets->whereDate('event_date', $today);
+        }
+
+        return $tickets;
     }
 
     /**

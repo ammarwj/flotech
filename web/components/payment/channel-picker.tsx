@@ -52,6 +52,32 @@ export function ChannelPicker({
   }
 
   const channels = query.data ?? [];
+
+  // A failed fetch and an empty list have to say something, because the caller
+  // gates its submit button on a channel being picked: rendering the heading
+  // over nothing leaves the buyer on a form that cannot be submitted, with no
+  // field marked and nothing to read. That is how a too-tight `units` cap on
+  // the preview endpoint presented itself — a 101-seat basket quietly showed no
+  // payment methods at all. The retry is here rather than a toast because the
+  // failure belongs to this block and nothing else on the page is broken.
+  if (query.isError || channels.length === 0) {
+    return (
+      <div className="grid gap-2">
+        <span className="text-sm font-medium">Metode pembayaran</span>
+        <p className="text-sm text-[var(--danger)]">
+          Metode pembayaran gagal dimuat. Coba lagi, atau kurangi jumlah tiket
+          kalau pesanannya sangat besar.
+        </p>
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          className="justify-self-start text-sm font-medium text-[var(--brand-600)] underline"
+        >
+          Muat ulang
+        </button>
+      </div>
+    );
+  }
   const selected = channels.find((c) => c.channel === value) ?? null;
 
   return (

@@ -545,4 +545,141 @@ class TicketDayTest extends TestCase
         $this->assertEqualsWithDelta((float) $order->service_fee, (float) $preview['service_fee'], 0.0001);
         $this->assertEqualsWithDelta((float) $order->gross_amount, (float) $preview['total'], 0.0001);
     }
+
+    /**
+     * The fee preview must accept every basket the order path accepts.
+     *
+     * A ceiling on the preview that is tighter than the order's is invisible
+     * from the server: the picker fetches nothing, renders nothing, and the
+     * buyer sits on a form whose submit button waits for a channel that was
+     * never offered. A flat `max:100` on `units` did exactly that, and the sale
+     * itself was perfectly legal.
+     *
+     * 34 seats is the number that makes the point, not a bigger one: it is well
+     * inside the seat cap, so an order of 34 people is unremarkable — and ×3
+     * days it is 102 paid units, which the old preview cap refused. The two
+     * ceilings are not interchangeable however close they look, and a test
+     * written at the seat cap would have proved only that the two numbers
+     * happened to differ.
+     *
+     * Compared as a pair, because either half passes alone: the order asserted
+     * on its own was already fine before this was fixed, and the preview
+     * asserted on its own would still pass if the cap had merely been raised to
+     * some other number the order path can exceed.
+     */
+    public function test_the_fee_preview_accepts_every_basket_the_order_path_does(): void
+    {
+        PlatformSettings::put(['ticket_service_fee_amount' => 2000], null);
+        PlatformSettings::flush();
+
+        $user = User::factory()->create();
+        $org = $this->orgWithTickets($user);
+        $event = $this->event($org);
+        $days = ['2026-11-14', '2026-11-15', '2026-11-16'];
+        $category = $this->category($event, 'per_day', $days, ['price' => 50000]);
+
+        $seats = 34;
+
+        // The premise, stated rather than assumed: this is an ordinary order,
+        // and if the seat cap is ever lowered below it the failure should read
+        // as "this test's premise is gone" and not as a broken fee preview.
+        $this->assertLessThanOrEqual(TicketService::MAX_SEATS_PER_ORDER, $seats);
+
+        $order = TicketOrder::findOrFail(
+            $this->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/tickets/purchase", [
+                'ticket_category_id' => $category->id,
+                'quantity' => $seats,
+                'dates' => $days,
+                'buyer_name' => 'Budi',
+                'buyer_email' => 'budi@test.com',
+                'payment_channel' => 'va',
+            ])->assertCreated()->json('data.order.id')
+        );
+
+        // 34 seats × 3 days = 102 paid units: what the picker asks about, what
+        // the order was billed on, and two past the cap this replaced.
+        $units = $seats * count($days);
+        $amount = 50000 * $units;
+
+        $preview = collect(
+            $this->getJson("/api/v1/public/payment-channels?amount={$amount}&audience=ticket&units={$units}")
+                ->assertOk()
+                ->json('data')
+        )->firstWhere('channel', 'va');
+
+        $this->assertEqualsWithDelta((float) $order->service_fee, (float) $preview['service_fee'], 0.0001);
+        $this->assertEqualsWithDelta((float) $order->gross_amount, (float) $preview['total'], 0.0001);
+
+        // And the preview's own ceiling is the order's, not a number of its own:
+        // one unit past what any order can reach is refused, one unit under it
+        // is not.
+        $max = TicketService::MAX_PAID_UNITS_PER_ORDER;
+
+        $this->getJson("/api/v1/public/payment-channels?amount=1000&audience=ticket&units={$max}")
+            ->assertOk();
+        $this->getJson('/api/v1/public/payment-channels?amount=1000&audience=ticket&units='.($max + 1))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('units');
+    }
+
+    /**
+     * The gate's bulk mode obeys the day rule, because it goes through the same
+     * method the box office does.
+     *
+     * A group of 4 buys a three-day pass: 12 QRs, 4 of them for today. One
+     * scan with `whole_order` must admit today's 4 and leave the other 8 — a
+     * party that walks in on Saturday has not spent Sunday.
+     *
+     * Written as a comparison across two days, because asserting "4 admitted"
+     * alone would stay green if the filter were dropped and all 12 were burned
+     * at once: 4 is also what a single day's rows look like from the outside
+     * until you come back tomorrow and find nothing left.
+     */
+    public function test_bulk_scan_admits_only_todays_seats_of_a_pass(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithTickets($user);
+        $event = $this->event($org);
+        $days = ['2026-11-14', '2026-11-15', '2026-11-16'];
+        $category = $this->category($event, 'pass', $days, ['price' => 0]);
+
+        $orderId = $this->buy($org, $event, $category, 4)->assertCreated()->json('data.order.id');
+        $order = TicketOrder::findOrFail($orderId);
+
+        $this->assertSame(12, $order->tickets()->count());
+
+        $qrOn = fn (string $date) => $order->tickets()
+            ->whereDate('event_date', $date)
+            ->value('qr_code');
+
+        $scan = fn (string $qr) => $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/scan", [
+                'qr_code' => $qr,
+                'whole_order' => true,
+            ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-11-14 10:00', 'Asia/Jakarta'));
+
+        $scan($qrOn('2026-11-14'))
+            ->assertOk()
+            ->assertJsonPath('data.checked_in', 4)
+            // The denominator is today's rows, not the order's 12 — the gate is
+            // told 4 of 4, which is what "this party is all in" looks like.
+            ->assertJsonPath('data.order.checked_in', 4)
+            ->assertJsonPath('data.order.total', 4);
+
+        $this->assertSame(4, $order->tickets()->where('is_used', true)->count());
+        $this->assertSame(8, $order->tickets()->where('is_used', false)->count());
+
+        // The next day the same party walks up again and the other 4 are there.
+        Carbon::setTestNow(Carbon::parse('2026-11-15 10:00', 'Asia/Jakarta'));
+
+        $scan($qrOn('2026-11-15'))
+            ->assertOk()
+            ->assertJsonPath('data.checked_in', 4);
+
+        $this->assertSame(8, $order->tickets()->where('is_used', true)->count());
+
+        Carbon::setTestNow();
+    }
 }

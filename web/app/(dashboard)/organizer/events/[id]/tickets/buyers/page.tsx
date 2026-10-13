@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -68,13 +69,39 @@ export default function TicketBuyersPage() {
   const canExport = isExportEnabled(eventQuery.data);
 
   const [filter, setFilter] = useState<Filter>("all");
+  const [category, setCategory] = useState("");
+  const [range, setRange] = useState({ from: "", to: "" });
   const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Debounce the search box so we don't fire a request per keystroke — the
+  // filtering is the server's now, so every character would be a round trip.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const ordersQuery = useQuery({
-    queryKey: ["ticket-orders", orgId, eventId],
-    queryFn: () => getTicketOrders(orgId!, eventId),
+    queryKey: ["ticket-orders", orgId, eventId, { filter, category, ...range, q, page }],
+    queryFn: () =>
+      getTicketOrders(orgId!, eventId, {
+        status: filter === "all" ? undefined : filter,
+        category_id: category || undefined,
+        from: range.from || undefined,
+        to: range.to || undefined,
+        q: q || undefined,
+        page,
+      }),
     enabled: !!orgId && ticketing,
+    // The list keeps the previous page on screen while the next one loads —
+    // without it every filter change blanks the page back to skeletons, and the
+    // filter row jumps as the summary cards unmount under it.
+    placeholderData: (prev) => prev,
   });
 
   /**
@@ -95,31 +122,37 @@ export default function TicketBuyersPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal check-in.").message),
   });
 
-  const orders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
+  const visible = ordersQuery.data?.items ?? [];
+  const meta = ordersQuery.data?.meta;
+  // Only paid orders count as sales, and tickets are counted as issued rows
+  // rather than `quantity` — both derived server-side over the whole filtered
+  // set, so paging through the list cannot change the totals. See
+  // TicketOrderController::summary().
+  const summary = ordersQuery.data?.summary;
+  const categories = ordersQuery.data?.categories ?? [];
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const filtered = !!(filter !== "all" || category || range.from || range.to || q);
 
-    return orders.filter((o) => {
-      if (filter !== "all" && o.status !== filter) return false;
-      if (!q) return true;
-      return (
-        o.buyer_name.toLowerCase().includes(q) ||
-        o.buyer_email.toLowerCase().includes(q) ||
-        (o.buyer_phone ?? "").toLowerCase().includes(q) ||
-        (o.tickets ?? []).some((t) => (t.holder_name ?? "").toLowerCase().includes(q))
-      );
-    });
-  }, [orders, filter, search]);
+  // The event's own window bounds the day pickers: a ticket cannot be for a day
+  // the event does not run, so offering those dates is offering a filter that
+  // can only return nothing.
+  const eventStart = eventQuery.data?.start_date ?? undefined;
+  const eventEnd = eventQuery.data?.end_date ?? undefined;
 
-  // Only paid orders count as sales — pending ones still hold quota, but no money.
-  const paid = orders.filter((o) => o.status === "paid");
-  // Issued rows, not `quantity`: that column is the paid units, and for a pass
-  // or a per-day category it is not the number of tickets (a three-day buyer is
-  // one seat and three QRs). Counting it here would disagree with the "Tiket
-  // terjual" card on the ticket page, which counts the same rows server-side.
-  const soldTickets = paid.reduce((s, o) => s + (o.tickets?.length ?? o.quantity), 0);
-  const revenue = paid.reduce((s, o) => s + o.total_price, 0);
+  const resetFilters = () => {
+    setFilter("all");
+    setCategory("");
+    setRange({ from: "", to: "" });
+    setSearch("");
+    setQ("");
+    setPage(1);
+  };
+
+  /** Any filter change resets the page — page 3 of a new filter is usually empty. */
+  const pick = <T,>(set: (v: T) => void) => (value: T) => {
+    set(value);
+    setPage(1);
+  };
 
   if (eventQuery.data && !ticketing) {
     return (
@@ -171,7 +204,10 @@ export default function TicketBuyersPage() {
             <Skeleton key={i} className="h-[92px] w-full rounded-xl" />
           ))}
         </div>
-      ) : orders.length === 0 ? (
+      ) : /* "Nothing sold yet" and "nothing matches" are different pages, and
+            with the filtering server-side an empty response no longer tells
+            them apart — only an empty response with no filter on does. */
+      meta?.total === 0 && !filtered ? (
         <EmptyState
           icon={Users}
           title="Belum ada pembeli"
@@ -180,37 +216,89 @@ export default function TicketBuyersPage() {
       ) : (
         <>
           <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Pesanan lunas" value={String(paid.length)} />
-            <SummaryCard label="Tiket terjual" value={String(soldTickets)} />
-            <SummaryCard label="Pendapatan kotor" value={rupiah(revenue)} />
+            <SummaryCard label="Pesanan lunas" value={String(summary?.paid_orders ?? 0)} />
+            <SummaryCard label="Tiket terjual" value={String(summary?.sold_tickets ?? 0)} />
+            <SummaryCard label="Pendapatan kotor" value={rupiah(summary?.revenue ?? 0)} />
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari nama, email, atau telepon…"
-                className="pl-9"
-              />
+          <div className="mb-4 grid gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari nama, email, telepon, atau pemegang tiket…"
+                  className="pl-9"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {FILTERS.map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => pick(setFilter)(key)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                      filter === key
+                        ? "border-transparent bg-foreground text-background"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {FILTERS.map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFilter(key)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                    filter === key
-                      ? "border-transparent bg-foreground text-background"
-                      : "border-border text-muted-foreground hover:text-foreground"
-                  )}
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Select
+                value={category}
+                onChange={(e) => pick(setCategory)(e.target.value)}
+                aria-label="Kategori tiket"
+              >
+                <option value="">Semua kategori</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+              {/* The attendance day, not the purchase date: on a multi-day
+                  event the question is "who is coming on Saturday". An order
+                  from a category that sells no days has no date at all, so it
+                  drops out while a day is picked — it makes no claim about any
+                  particular one. */}
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Hari hadir dari
+                <Input
+                  type="date"
+                  value={range.from}
+                  min={eventStart}
+                  max={range.to || eventEnd}
+                  onChange={(e) => pick(setRange)({ ...range, from: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                sampai
+                <Input
+                  type="date"
+                  value={range.to}
+                  min={range.from || eventStart}
+                  max={eventEnd}
+                  onChange={(e) => pick(setRange)({ ...range, to: e.target.value })}
+                />
+              </label>
+              {filtered && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-end justify-self-start"
+                  onClick={resetFilters}
                 >
-                  {label}
-                </button>
-              ))}
+                  Reset filter
+                </Button>
+              )}
             </div>
           </div>
 
@@ -218,7 +306,7 @@ export default function TicketBuyersPage() {
             <EmptyState
               icon={Search}
               title="Tidak ada pembeli yang cocok"
-              description="Coba ubah kata kunci atau filter status."
+              description="Coba ubah kata kunci, kategori, rentang hari, atau filter status."
             />
           ) : (
             <div className="grid gap-3">
@@ -232,6 +320,32 @@ export default function TicketBuyersPage() {
                   checkingIn={checkInMut.isPending && checkInMut.variables === order.id}
                 />
               ))}
+            </div>
+          )}
+
+          {meta && meta.last_page > 1 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">
+                Halaman {meta.page} dari {meta.last_page} · {meta.total} pesanan
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={meta.page <= 1}
+                >
+                  Sebelumnya
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={meta.page >= meta.last_page}
+                >
+                  Berikutnya
+                </Button>
+              </div>
             </div>
           )}
         </>

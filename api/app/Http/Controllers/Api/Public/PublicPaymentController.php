@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\Http\Controllers\Controller;
 use App\Services\PaymentFeeCalculator;
+use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,7 +36,15 @@ class PublicPaymentController extends Controller
             // per unit, so the preview has to be told the basket size or it
             // quotes a total the order path will not honour. Defaults to 1:
             // every flow except ticket purchase buys exactly one thing.
-            'units' => ['nullable', 'integer', 'min:1', 'max:100'],
+            //
+            // The ceiling is the ticket flow's own, because that is the only
+            // flow that ever sends more than 1 and this endpoint must accept
+            // every basket the order path will. A tighter cap here is the worst
+            // kind of refusal: the picker fetches no channels, renders nothing,
+            // and the buyer is left on a form that cannot be submitted with no
+            // field to look at — which is exactly what a flat `max:100` did to
+            // a 101-seat order.
+            'units' => ['nullable', 'integer', 'min:1', 'max:'.TicketService::MAX_PAID_UNITS_PER_ORDER],
         ]);
 
         $audience = match ($data['audience']) {

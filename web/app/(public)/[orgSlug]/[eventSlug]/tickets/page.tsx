@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Ticket, Check, Minus, Plus, Loader2 } from "lucide-react";
+import { ChevronLeft, Ticket, Check, Loader2 } from "lucide-react";
 
 import { getPublicTicketCategories, purchaseTickets } from "@/lib/api/tickets";
 import { getPublicEvent } from "@/lib/api/events";
@@ -32,6 +32,7 @@ import {
   usesDays,
 } from "@/lib/tickets";
 import { DayPickerChips } from "@/components/event/day-picker-chips";
+import { SeatStepper } from "@/components/ticket/seat-stepper";
 import { cn } from "@/lib/utils";
 import { useEventBase } from "@/lib/event-base";
 import "../../../event-shell.css";
@@ -78,8 +79,9 @@ export default function BuyTicketsPage() {
   // Seats are capped by the tightest day the buyer picked, not by the
   // category's paid-unit count — in lib/tickets.ts, because the box office
   // bills on the same ceiling and two copies would offer seats the venue has
-  // not got.
-  const maxQty = Math.max(1, Math.min(20, seatCeiling(selectedCat, orderDates)));
+  // not got. The hard per-order guard is clamped in there too, so nothing here
+  // re-states a number the API also owns.
+  const maxQty = seatCeiling(selectedCat, orderDates);
 
   // Paid units, the mirror of the server's: seats times the days that are
   // priced. This is the one number the fee preview and the bill share.
@@ -311,28 +313,8 @@ export default function BuyTicketsPage() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label>Jumlah orang</Label>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                      disabled={quantity <= 1}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="w-8 text-center font-semibold">{quantity}</span>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                      disabled={quantity >= maxQty}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label htmlFor="qty">Jumlah orang</Label>
+                  <SeatStepper id="qty" value={quantity} max={maxQty} onChange={setQuantity} />
                 </div>
 
                 {/* Where "6 tiket" comes from, next to the stepper that

@@ -1720,6 +1720,20 @@ export interface PurchaseResult extends PaymentStart {
   order: TicketOrder;
 }
 
+/**
+ * One page of an event's buyer list, with the totals and the dropdown options
+ * that page needs.
+ *
+ * Not a bare `Paginated<TicketOrder>`: `summary` is computed over the whole
+ * filtered set rather than the rows on screen (a per-page sum would change as
+ * the organizer pages through), and `categories` are the event's own, so a
+ * category that has sold nothing is still selectable.
+ */
+export interface TicketOrderPage extends Paginated<TicketOrder> {
+  summary: { paid_orders: number; sold_tickets: number; revenue: number };
+  categories: { id: string; name: string }[];
+}
+
 export type ScanResult = "valid" | "used" | "unpaid" | "invalid" | "wrong_day";
 
 export interface ScanResponse {
@@ -1732,6 +1746,19 @@ export interface ScanResponse {
     event_date: string | null;
     used_at: string | null;
   };
+  /**
+   * How many tickets this scan actually admitted — 1 normally, the whole party
+   * in bulk mode. Counted by the server, never multiplied by the client.
+   *
+   * Absent on the refusals, which carry `ticket` but write nothing.
+   */
+  checked_in?: number;
+  /**
+   * The scanned ticket's order, counted for today: seats now in, and how many
+   * it has. A party arriving in two groups reads 20 of 20 on the second scan,
+   * not 5 of 20.
+   */
+  order?: { checked_in: number; total: number };
 }
 
 export interface TicketReport {

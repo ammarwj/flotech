@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Ticket;
 
+use App\Services\TicketService;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -28,8 +29,11 @@ class SellTicketRequest extends FormRequest
             // How many *people*, not how many ticket prices: a per-day order
             // multiplies this by the days picked. The controller derives the
             // paid-unit count, because only it knows the category's day mode.
-            'quantity' => ['required', 'integer', 'min:1', 'max:20'],
-            'dates' => ['nullable', 'array', 'max:60'],
+            // Same ceiling as the public door, from the same constant: a
+            // quantity the shop accepts and the till refuses would be a second
+            // reader of one number.
+            'quantity' => ['required', 'integer', 'min:1', 'max:'.TicketService::MAX_SEATS_PER_ORDER],
+            'dates' => ['nullable', 'array', 'max:'.TicketService::MAX_DAYS_PER_ORDER],
             'dates.*' => ['date_format:Y-m-d'],
             'buyer_name' => ['required', 'string', 'max:255'],
             // Still required, as at the public door: the e-ticket and its

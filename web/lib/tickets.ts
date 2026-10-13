@@ -190,6 +190,20 @@ export function unitCountLabel(
 }
 
 /**
+ * The hard per-order ceiling, mirroring `TicketService::MAX_SEATS_PER_ORDER`.
+ *
+ * A loop guard, not a sales cap: what limits an order is the quota. It lives
+ * here so no component writes the number itself — a form offering more seats
+ * than the API accepts hands the buyer a 422 at the last click, having let them
+ * fill in the whole form first.
+ *
+ * Keep it equal to the PHP constant. Higher and the stepper offers seats the
+ * order path refuses; lower and a party the API would have served is turned
+ * away by the form alone, which nothing server-side can report.
+ */
+export const MAX_SEATS_PER_ORDER = 100;
+
+/**
  * The most seats one order may still take, given the days it covers.
  *
  * Capped by the *tightest* day picked, not by the category's own paid-unit
@@ -198,22 +212,25 @@ export function unitCountLabel(
  * `ensureSeatsAvailable()` on the API side, which refuses per date for the same
  * reason.
  *
- * `fallback` is what "unlimited" comes out as — the form still needs a number
- * for its stepper. Dates empty on a day-selling category means nothing is
- * picked yet, so every day it sells is considered.
+ * An unlimited category comes out as the hard ceiling, not a token number: a
+ * category with no quota genuinely has none, and a stepper that stopped at 20
+ * sent a group of 300 through fifteen checkouts. The clamp is applied to the
+ * quota branch too, so callers get one number that is always safe to offer and
+ * never re-derive the ceiling themselves. Dates empty on a day-selling category
+ * means nothing is picked yet, so every day it sells is considered.
  */
-export function seatCeiling(
-  category: TicketCategory | null,
-  dates: string[],
-  fallback = 20,
-): number {
-  if (!category) return fallback;
-  if (!usesDays(category)) return category.remaining ?? fallback;
+export function seatCeiling(category: TicketCategory | null, dates: string[]): number {
+  const cap = (left: number) => Math.max(1, Math.min(MAX_SEATS_PER_ORDER, left));
+
+  if (!category) return MAX_SEATS_PER_ORDER;
+  if (!usesDays(category)) {
+    return category.remaining === null ? MAX_SEATS_PER_ORDER : cap(category.remaining);
+  }
 
   const limits = (category.days ?? [])
     .filter((day) => dates.length === 0 || dates.includes(day.event_date))
     .map((day) => day.remaining)
     .filter((left): left is number => left !== null);
 
-  return limits.length > 0 ? Math.min(...limits) : fallback;
+  return limits.length > 0 ? cap(Math.min(...limits)) : MAX_SEATS_PER_ORDER;
 }

@@ -19,6 +19,18 @@ class ScanController extends Controller
     /**
      * Validate a scanned QR code and check the holder in (one-time use).
      * Scoped to the event so a ticket from another event can't be used here.
+     *
+     * `whole_order` admits the rest of the scanned ticket's order in the same
+     * call — a group that bought 20 seats arrives as one party holding one
+     * phone, and making the gate read 20 codes off it is the slowest possible
+     * way to let in people who are already standing together. The flag is the
+     * gate's mode, not the buyer's: it is sent per scan so the staff can turn
+     * it off for the next lone visitor without reloading anything.
+     *
+     * The four guards below are untouched by it, and that is the point. They
+     * ask about *the scanned ticket*, and a bulk scan must not become a way to
+     * skip them: an unpaid, already-used or wrong-day code refuses exactly as
+     * it does alone, so one QR can never be presented twice to open an order.
      */
     public function checkIn(Request $request, string $organization, string $event): JsonResponse
     {
@@ -26,6 +38,7 @@ class ScanController extends Controller
 
         $data = $request->validate([
             'qr_code' => ['required', 'string'],
+            'whole_order' => ['sometimes', 'boolean'],
         ]);
 
         $ticket = $event->tickets()
@@ -80,11 +93,37 @@ class ScanController extends Controller
         // Through the service, not inline: the box office checks people in too,
         // and these three columns are written in one place so the two doors
         // cannot disagree about what "used" means.
-        $this->tickets->checkIn($ticket, auth('api')->id());
+        //
+        // Bulk mode reuses checkInOrder() — the same method the box-office
+        // dialog and the buyer list call — rather than looping here. That is
+        // what keeps the day rule single-sourced: a three-day pass scanned at
+        // the gate on day one must admit day one's seats only, and a third
+        // copy of that filter would be a third thing to keep in step.
+        // checkInOrder() skips rows already in and returns what it changed, so
+        // the scanned ticket is counted exactly once.
+        $userId = auth('api')->id();
+        $whole = (bool) ($data['whole_order'] ?? false);
+
+        if ($whole && $ticket->order) {
+            $checkedIn = $this->tickets->checkInOrder($ticket->order, $userId);
+        } else {
+            $this->tickets->checkIn($ticket, $userId);
+            $checkedIn = 1;
+        }
 
         return ApiResponse::success([
             'result' => 'valid',
             'ticket' => $this->ticketPayload($ticket->fresh('category')),
+            // Always sent, 1 on a single scan: a client reading it does not
+            // have to know which mode produced the answer, and the gate's
+            // screen says "20 tiket" because the server counted 20, not
+            // because the client multiplied something.
+            'checked_in' => $checkedIn,
+            // The order this ticket belongs to, counted today: how many of its
+            // seats are now in and how many there are. The gate's next question
+            // after "20 masuk" is "out of how many?", and a party arriving in
+            // two groups needs the second scan to read 20 of 20, not 5 of 20.
+            'order' => $this->orderTodayCount($ticket),
         ], 'Check-in berhasil');
     }
 
@@ -179,6 +218,36 @@ class ScanController extends Controller
             'by_date' => $byDate,
             'recent_checkins' => $recent,
         ]);
+    }
+
+    /**
+     * How many of this order's tickets are already in, out of the ones valid
+     * today — the "20 dari 20" the gate reads back.
+     *
+     * Asked after the writes, so it counts them. Both numbers come from
+     * TicketService::ticketsValidToday(), the same method checkInOrder() uses
+     * to pick what to admit, so the denominator cannot disagree with what the
+     * bulk call did.
+     *
+     * @return array{checked_in: int, total: int}
+     */
+    protected function orderTodayCount(Ticket $ticket): array
+    {
+        if (! $ticket->order) {
+            return ['checked_in' => 1, 'total' => 1];
+        }
+
+        // One row, two figures: a cloned relation shares its underlying builder,
+        // so the `is_used` filter on the first count would leak into the second
+        // and the denominator would silently become the numerator.
+        $row = $this->tickets->ticketsValidToday($ticket->order)
+            ->selectRaw('count(*) as total, sum(case when is_used then 1 else 0 end) as used')
+            ->first();
+
+        return [
+            'checked_in' => (int) ($row->used ?? 0),
+            'total' => (int) ($row->total ?? 0),
+        ];
     }
 
     /**
