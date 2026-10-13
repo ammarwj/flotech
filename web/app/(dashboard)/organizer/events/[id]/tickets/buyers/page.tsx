@@ -114,7 +114,11 @@ export default function TicketBuyersPage() {
 
   // Only paid orders count as sales — pending ones still hold quota, but no money.
   const paid = orders.filter((o) => o.status === "paid");
-  const soldTickets = paid.reduce((s, o) => s + o.quantity, 0);
+  // Issued rows, not `quantity`: that column is the paid units, and for a pass
+  // or a per-day category it is not the number of tickets (a three-day buyer is
+  // one seat and three QRs). Counting it here would disagree with the "Tiket
+  // terjual" card on the ticket page, which counts the same rows server-side.
+  const soldTickets = paid.reduce((s, o) => s + (o.tickets?.length ?? o.quantity), 0);
   const revenue = paid.reduce((s, o) => s + o.total_price, 0);
 
   if (eventQuery.data && !ticketing) {
@@ -272,44 +276,55 @@ function BuyerCard({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-muted/40"
+        className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-muted/40"
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-semibold">{order.buyer_name}</p>
-            <TicketOrderStatusBadge status={order.status} />
-            {order.category && <Badge variant="neutral">{order.category.name}</Badge>}
-            {/* Which rail took the money. Only for the two off-platform ones:
-                a gateway sale is the default and labelling every row with it
-                would be noise. Cash matters here because that revenue is real
-                but never reaches the wallet, and the buyer list is where an
-                organizer reconciles the two. */}
-            {order.payment_method !== "gateway" && (
-              <Badge variant="outline">
-                {TICKET_PAYMENT_METHOD_LABELS[order.payment_method]}
-              </Badge>
-            )}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Mail className="h-3.5 w-3.5" />
-              {order.buyer_email}
-            </span>
-            {order.buyer_phone && (
-              <span className="inline-flex items-center gap-1">
-                <Phone className="h-3.5 w-3.5" />
-                {order.buyer_phone}
+        {/* Stacked on a phone, one row from `sm` up. The two blocks cannot sit
+            side by side at that width: an email address is a single unbreakable
+            token, so it overflows its column and runs under the price instead
+            of wrapping. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="min-w-0 truncate font-semibold">{order.buyer_name}</p>
+              <TicketOrderStatusBadge status={order.status} />
+              {order.category && <Badge variant="neutral">{order.category.name}</Badge>}
+              {/* Which rail took the money. Only for the two off-platform ones:
+                  a gateway sale is the default and labelling every row with it
+                  would be noise. Cash matters here because that revenue is real
+                  but never reaches the wallet, and the buyer list is where an
+                  organizer reconciles the two. */}
+              {order.payment_method !== "gateway" && (
+                <Badge variant="outline">
+                  {TICKET_PAYMENT_METHOD_LABELS[order.payment_method]}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                {/* Truncated, not wrapped: an address has no break opportunity,
+                    so left to itself it widens the row past the viewport. */}
+                <span className="truncate">{order.buyer_email}</span>
               </span>
-            )}
-            <span>{fmtDateTime(order.created_at)}</span>
+              {order.buyer_phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                  {order.buyer_phone}
+                </span>
+              )}
+              <span>{fmtDateTime(order.created_at)}</span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex-shrink-0 text-right">
-          <p className="font-semibold">{rupiah(order.total_price)}</p>
-          <p className="text-xs text-muted-foreground">
-            {order.quantity} tiket · check-in {checkedIn}/{order.quantity}
-          </p>
+          {/* Left-aligned under the details on a phone, right-aligned beside
+              them from `sm` up — a right edge the stacked block no longer
+              shares with anything reads as a stray column. */}
+          <div className="flex-shrink-0 text-left sm:text-right">
+            <p className="font-semibold">{rupiah(order.total_price)}</p>
+            <p className="text-xs text-muted-foreground">
+              {tickets.length} tiket · check-in {checkedIn}/{tickets.length}
+            </p>
+          </div>
         </div>
 
         <ChevronDown

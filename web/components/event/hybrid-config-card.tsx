@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { SectionHeader } from "@/components/event/section-header";
 import {
+  LegsFields,
   NumField,
   PointsSection,
   Sub,
@@ -97,32 +98,7 @@ export function HybridConfigCard({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex cursor-pointer items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
-                checked={c.home_away}
-                onChange={(e) =>
-                  set({ home_away: e.target.checked, legs: e.target.checked ? 2 : 1 })
-                }
-              />
-              <span>
-                <span className="font-medium">Home &amp; Away</span>
-                <span className="block text-xs text-muted-foreground">
-                  Setiap tim bertemu dua kali, kandang dan tandang.
-                </span>
-              </span>
-            </label>
-            <div className="grid gap-1.5">
-              <Label className="font-semibold">Jumlah leg</Label>
-              <Select
-                value={String(c.legs)}
-                onChange={(e) => set({ legs: Number(e.target.value), home_away: e.target.value === "2" })}
-              >
-                <option value="1">Single Leg</option>
-                <option value="2">Double Leg</option>
-              </Select>
-            </div>
+            <LegsFields config={c} onChange={set} />
           </div>
         </Sub>
 

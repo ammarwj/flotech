@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, ListOrdered } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { SectionHeader } from "@/components/event/section-header";
 import { hybridConfig, type HybridConfig } from "@/lib/hybrid";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -130,6 +131,66 @@ export function NumField({
 }
 
 /**
+ * How many times every pairing is played: once, or home & away.
+ *
+ * The two controls are one setting read twice, which is why they are written
+ * together — `home_away` is what the copy and the schedule *mean*, `legs` is
+ * what ScheduleService::legRounds() counts, and either one set without the
+ * other leaves a config that says two opposite things. HybridConfig::fromArray()
+ * derives the missing half on read, but only the half it can: a stored
+ * `home_away: true` beside `legs: 1` is kept as a single round.
+ *
+ * Shared by the group stage and the standalone league for the same reason the
+ * points and tiebreakers are: the round-robin generator behind both is the same
+ * method reading the same key, so a second copy of these labels is a second set
+ * to keep in step.
+ *
+ * Returned as a fragment, not a card: each format card already has a section to
+ * put it in ("Struktur grup" for hybrid, "Putaran" for a league), and the grid
+ * around it belongs to that card.
+ */
+export function LegsFields({
+  config,
+  onChange,
+}: {
+  config: HybridConfig;
+  onChange: (fields: { home_away: boolean; legs: number }) => void;
+}) {
+  return (
+    <>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
+          checked={config.home_away}
+          onChange={(e) =>
+            onChange({ home_away: e.target.checked, legs: e.target.checked ? 2 : 1 })
+          }
+        />
+        <span>
+          <span className="font-medium">Home &amp; Away</span>
+          <span className="block text-xs text-muted-foreground">
+            Setiap tim bertemu dua kali, kandang dan tandang.
+          </span>
+        </span>
+      </label>
+      <div className="grid gap-1.5">
+        <Label className="font-semibold">Jumlah leg</Label>
+        <Select
+          value={String(config.legs)}
+          onChange={(e) =>
+            onChange({ legs: Number(e.target.value), home_away: e.target.value === "2" })
+          }
+        >
+          <option value="1">Single Leg</option>
+          <option value="2">Double Leg</option>
+        </Select>
+      </div>
+    </>
+  );
+}
+
+/**
  * Points per result. A set-based category has no draw to award a point for, so
  * the middle field is not offered there at all.
  */
@@ -238,8 +299,13 @@ export function TiebreakerSection({
 
 /**
  * The standings settings of a standalone league. Its table is ranked by the
- * same config a group stage is, so the organizer gets the same two sections —
+ * same config a group stage is, so the organizer gets the same sections —
  * minus everything a league has no use for (groups, qualification, bracket).
+ *
+ * Home & away is here for the same reason: generateRoundRobin() and
+ * generateGroupStage() both expand their pairings through legRounds(), so the
+ * key has always worked for a league — it just had no control, and the only way
+ * to a two-round league was a catalog preset ("Liga 2 Putaran").
  *
  * Writes a *patch*, never the whole config. hybridConfig() fills in every
  * DEFAULT_HYBRID key, and handing that back would store a group structure on a
@@ -270,10 +336,19 @@ export function LeagueConfigCard({
     <Card>
       <SectionHeader
         icon={ListOrdered}
-        title="Konfigurasi Klasemen"
-        description="Poin dan urutan tie breaker yang dipakai tabel liga ini."
+        title="Konfigurasi Liga"
+        description="Jumlah putaran, poin, dan urutan tie breaker yang dipakai tabel liga ini."
       />
       <CardContent className="grid gap-5 p-4 pt-0 sm:p-6 sm:pt-0">
+        <Sub title="Putaran">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <LegsFields config={c} onChange={patch} />
+          </div>
+          <p className="-mt-1 text-xs text-muted-foreground">
+            Mengubahnya baru berlaku saat jadwal dibuat ulang dari halaman Jadwal.
+          </p>
+        </Sub>
+
         <PointsSection config={c} context={context} onChange={(points) => patch({ points })} />
         <TiebreakerSection config={c} onChange={(tiebreakers) => patch({ tiebreakers })} />
       </CardContent>

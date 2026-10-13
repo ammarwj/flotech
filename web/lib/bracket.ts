@@ -291,9 +291,14 @@ export function buildMatchSections(
   const deciders = matches.filter(isDecider);
   const sections = groupByRound(
     matches.filter((m) => !isThirdPlace(m) && !isDecider(m))
-  ).map(
-    ([round, list]) => [knockout ? knockoutRoundLabel(list.length) : `Putaran ${round}`, list] as [string, Match[]]
-  );
+  ).map(([round, list]) => {
+    if (knockout) return [knockoutRoundLabel(list.length), list] as [string, Match[]];
+    // Same marker the group stage prints, and for the same reason: legRounds()
+    // appends the return fixtures as further rounds, so "Putaran 5" alone gives
+    // a four-team league two headings that each look like a first meeting.
+    const leg = list[0]?.leg ?? 1;
+    return [leg > 1 ? `Putaran ${round} (Leg 2)` : `Putaran ${round}`, list] as [string, Match[]];
+  });
 
   if (third.length) sections.push([THIRD_PLACE_LABEL, third]);
   if (deciders.length) sections.push([DECIDER_LABEL, deciders]);
