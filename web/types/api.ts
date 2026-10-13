@@ -1788,13 +1788,25 @@ export interface TicketReport {
     issued: number;
     checked_in: number;
   }[];
-  recent_checkins: {
-    id: string;
-    holder_name: string | null;
-    category: string | null;
-    used_at: string | null;
-  }[];
 }
+
+/**
+ * One admitted ticket in the check-in log.
+ *
+ * Its own paginated endpoint rather than a tail on `TicketReport`: the log is
+ * the only part of that payload that grows with the gate, and a fixed twenty
+ * rows of a two-thousand-person event is neither a summary nor a list.
+ */
+export interface CheckinEntry {
+  id: string;
+  holder_name: string | null;
+  category: string | null;
+  /** Null for a ticket from a category that does not sell by the day. */
+  event_date: string | null;
+  used_at: string | null;
+}
+
+export type CheckinPage = Paginated<CheckinEntry>;
 
 export interface UploadSignResult {
   key: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -118,6 +119,9 @@ export default function TicketBuyersPage() {
       toast.success(`${res.checked_in} tiket di-check-in.`);
       qc.invalidateQueries({ queryKey: ["ticket-orders", orgId, eventId] });
       qc.invalidateQueries({ queryKey: ["ticket-report", orgId, eventId] });
+      // The check-in log on the tickets page: this button admits people, and it
+      // is the other door into that list besides the scanner.
+      qc.invalidateQueries({ queryKey: ["checkins", orgId, eventId] });
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal check-in.").message),
   });
@@ -221,42 +225,25 @@ export default function TicketBuyersPage() {
             <SummaryCard label="Pendapatan kotor" value={rupiah(summary?.revenue ?? 0)} />
           </div>
 
-          <div className="mb-4 grid gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
+          {/* Three fields on one baseline, then the status tabs on their own
+              row. Search and the status pills are both elastic, so sharing a
+              row made them eat each other's width; and a labelled input beside
+              an unlabelled select can never line up, whatever the gap is. */}
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <Field label="Cari pembeli" className="lg:col-span-5">
+              <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cari nama, email, telepon, atau pemegang tiket…"
+                  placeholder="Nama, email, telepon, atau pemegang tiket…"
                   className="pl-9"
                 />
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {FILTERS.map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => pick(setFilter)(key)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                      filter === key
-                        ? "border-transparent bg-foreground text-background"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            </Field>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Select
-                value={category}
-                onChange={(e) => pick(setCategory)(e.target.value)}
-                aria-label="Kategori tiket"
-              >
+            <Field label="Kategori" className="lg:col-span-3">
+              <Select value={category} onChange={(e) => pick(setCategory)(e.target.value)}>
                 <option value="">Semua kategori</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -264,42 +251,67 @@ export default function TicketBuyersPage() {
                   </option>
                 ))}
               </Select>
-              {/* The attendance day, not the purchase date: on a multi-day
-                  event the question is "who is coming on Saturday". An order
-                  from a category that sells no days has no date at all, so it
-                  drops out while a day is picked — it makes no claim about any
-                  particular one. */}
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                Hari hadir dari
-                <Input
-                  type="date"
+            </Field>
+
+            {/* One range, so one field. The attendance day, not the purchase
+                date: on a multi-day event the question is "who is coming on
+                Saturday". An order from a category that sells no days has no
+                date at all, so it drops out while a day is picked — it makes no
+                claim about any particular one. */}
+            <Field as="group" label="Hari hadir" className="sm:col-span-2 lg:col-span-4">
+              {/* `min-w-0` on each half: the picker's trigger is `w-full`, but
+                  a flex item's min-content width wins over it, so without this
+                  a long date ("14 November 2026") pushes the pair out of the
+                  column instead of truncating inside it. */}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <DatePicker
+                  aria-label="Hari hadir, dari"
+                  className="min-w-0"
+                  placeholder="Mulai"
+                  clearable
                   value={range.from}
                   min={eventStart}
                   max={range.to || eventEnd}
-                  onChange={(e) => pick(setRange)({ ...range, from: e.target.value })}
+                  onChange={(v) => pick(setRange)({ ...range, from: v })}
                 />
-              </label>
-              <label className="grid gap-1 text-xs text-muted-foreground">
-                sampai
-                <Input
-                  type="date"
+                <span aria-hidden className="text-sm text-muted-foreground">
+                  &ndash;
+                </span>
+                <DatePicker
+                  aria-label="Hari hadir, sampai"
+                  className="min-w-0"
+                  placeholder="Selesai"
+                  clearable
                   value={range.to}
                   min={range.from || eventStart}
                   max={eventEnd}
-                  onChange={(e) => pick(setRange)({ ...range, to: e.target.value })}
+                  onChange={(v) => pick(setRange)({ ...range, to: v })}
                 />
-              </label>
-              {filtered && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="self-end justify-self-start"
-                  onClick={resetFilters}
-                >
-                  Reset filter
-                </Button>
-              )}
-            </div>
+              </div>
+            </Field>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-1.5">
+            {FILTERS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => pick(setFilter)(key)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  filter === key
+                    ? "border-transparent bg-foreground text-background"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+            {filtered && (
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={resetFilters}>
+                Reset filter
+              </Button>
+            )}
           </div>
 
           {visible.length === 0 ? (
@@ -351,6 +363,43 @@ export default function TicketBuyersPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * One labelled control in the filter row.
+ *
+ * Every field carries a label, including the ones whose placeholder already
+ * says what they are: a labelled input and a bare select sitting in the same
+ * grid start at different heights, so the row can never settle on one baseline.
+ *
+ * `as="group"` is for a field holding more than one control — the day range.
+ * A <label> wrapping two of them points at whichever comes first, so clicking
+ * "Hari hadir" would open the *from* picker while the pointer sits over *to*.
+ * Those halves carry their own aria-labels instead.
+ */
+function Field({
+  as = "label",
+  label,
+  className,
+  children,
+}: {
+  as?: "label" | "group";
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const Tag = as === "group" ? "div" : "label";
+
+  return (
+    <Tag
+      className={cn("grid gap-1.5", className)}
+      role={as === "group" ? "group" : undefined}
+      aria-label={as === "group" ? label : undefined}
+    >
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </Tag>
   );
 }
 

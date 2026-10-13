@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\Ticket;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
+use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -186,19 +187,6 @@ class ScanController extends Controller
                 'checked_in' => (int) $row->checked_in,
             ]);
 
-        $recent = $event->tickets()
-            ->where('is_used', true)
-            ->with('category')
-            ->latest('used_at')
-            ->limit(20)
-            ->get()
-            ->map(fn ($t) => [
-                'id' => $t->id,
-                'holder_name' => $t->holder_name,
-                'category' => $t->category?->name,
-                'used_at' => $t->used_at,
-            ]);
-
         return ApiResponse::success([
             'finance' => [
                 // The organizer keeps all of it. `platform_fee` is retired —
@@ -216,7 +204,68 @@ class ScanController extends Controller
             ],
             'categories' => $categories,
             'by_date' => $byDate,
-            'recent_checkins' => $recent,
+        ]);
+    }
+
+    /**
+     * The check-in log: every admitted ticket, newest first.
+     *
+     * Split out of `report()` and paginated. It used to ride along as a fixed
+     * 20-row `recent_checkins` tail, which is the one figure on that payload
+     * that grows without bound — a gate admitting two thousand people has a
+     * log, not a "recent" list, and twenty rows of it answer nothing while
+     * costing the summary cards a join on every poll.
+     *
+     * Paid orders only, the same scope as every figure in `report()`:
+     * `checkIn()` refuses an unpaid QR outright, so a row here that the cards
+     * do not count could only come from data written behind them.
+     *
+     * Plain `tenant` like `report()`, not `org.admin`: `holder_name` is the
+     * name printed on the pass the operator just scanned, not the buyer's
+     * contact details that put `ticket-orders` behind the stricter gate.
+     */
+    public function checkins(Request $request, string $organization, string $event): JsonResponse
+    {
+        $event = $this->findEvent($request, $event);
+
+        $filters = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'date' => ['nullable', 'date_format:Y-m-d'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $page = $event->tickets()
+            ->where('is_used', true)
+            ->whereHas('order', fn ($q) => $q->where('status', 'paid'))
+            ->when(
+                $filters['q'] ?? null,
+                fn ($q, $term) => Search::anyColumn($q, ['holder_name'], $term),
+            )
+            // The attendance day, not the moment of the scan: on a multi-day
+            // event the question is "who came in on Saturday", and a pass
+            // scanned at 00:30 is still Saturday's.
+            ->when(
+                $filters['date'] ?? null,
+                fn ($q, $date) => $q->whereDate('event_date', $date),
+            )
+            ->with('category')
+            ->latest('used_at')
+            ->paginate(min((int) ($filters['per_page'] ?? 20), 100));
+
+        return ApiResponse::success([
+            'items' => collect($page->items())->map(fn (Ticket $t) => [
+                'id' => $t->id,
+                'holder_name' => $t->holder_name,
+                'category' => $t->category?->name,
+                'event_date' => $t->event_date?->toDateString(),
+                'used_at' => $t->used_at,
+            ])->all(),
+            'meta' => [
+                'page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
         ]);
     }
 

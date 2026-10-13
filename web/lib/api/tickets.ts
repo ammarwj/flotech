@@ -2,6 +2,7 @@ import { apiClient } from "./client";
 import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 import type {
   ApiEnvelope,
+  CheckinPage,
   PurchaseResult,
   ScanResponse,
   Team,
@@ -206,6 +207,33 @@ export async function downloadTicketPoster(orgId: string, eventId: string): Prom
 export async function getTicketReport(orgId: string, eventId: string): Promise<TicketReport> {
   const { data } = await apiClient.get<ApiEnvelope<TicketReport>>(
     `/organizations/${orgId}/events/${eventId}/ticket-report`
+  );
+  return data.data;
+}
+
+export interface CheckinQuery {
+  /** Holder name, "contains", case-insensitive. */
+  q?: string;
+  /** The attendance day (`YYYY-MM-DD`), not the moment of the scan. */
+  date?: string;
+  page?: number;
+}
+
+/**
+ * The check-in log for an event, newest first.
+ *
+ * Paginated server-side and separate from `getTicketReport()`: the log grows
+ * with the gate while the summary cards do not, so a page that polls the cards
+ * should not be dragging a list of every admitted holder along with them.
+ */
+export async function getCheckins(
+  orgId: string,
+  eventId: string,
+  params: CheckinQuery = {}
+): Promise<CheckinPage> {
+  const { data } = await apiClient.get<ApiEnvelope<CheckinPage>>(
+    `/organizations/${orgId}/events/${eventId}/checkins`,
+    { params }
   );
   return data.data;
 }

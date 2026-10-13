@@ -18,7 +18,7 @@ import {
   subMonths,
 } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -34,6 +34,14 @@ const MONTHS = Array.from({ length: 12 }, (_, m) =>
  */
 const YEARS_BACK = 100;
 const YEARS_AHEAD = 10;
+
+/**
+ * The panel's own width (`w-76` = 19rem), in px, and the breathing room kept
+ * from the viewport edge. Spelled here because the flip decision is made in JS
+ * before the panel exists to be measured.
+ */
+const PANEL_WIDTH = 304;
+const VIEWPORT_MARGIN = 8;
 
 /**
  * Month/year jump in the calendar header. A bare styled <select> reads as a
@@ -82,9 +90,12 @@ export function DatePicker({
   value,
   onChange,
   min,
+  max,
   placeholder = "Pilih tanggal",
+  clearable,
   disabled,
   className,
+  "aria-label": ariaLabel,
   "aria-invalid": ariaInvalid,
 }: {
   id?: string;
@@ -93,23 +104,69 @@ export function DatePicker({
   onChange: (value: string) => void;
   /** Earliest selectable date as `YYYY-MM-DD`; earlier days are disabled. */
   min?: string;
+  /** Latest selectable date as `YYYY-MM-DD`; later days are disabled. */
+  max?: string;
   placeholder?: string;
+  /**
+   * Show a clear button while a date is picked.
+   *
+   * Off by default: on a form, emptying a date field is usually invalid, and a
+   * filter is the case where it is the normal thing to do.
+   */
+  clearable?: boolean;
   disabled?: boolean;
   className?: string;
+  /** For a picker with no <label> of its own — half of a range, say. */
+  "aria-label"?: string;
   "aria-invalid"?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const selected = value ? parseISO(value) : null;
-  const [viewMonth, setViewMonth] = React.useState<Date>(
-    () => startOfMonth(selected ?? (min ? parseISO(min) : new Date()))
-  );
+
+  /**
+   * Which month to show when there is no selection: the nearest end of the
+   * allowed window, or today when it falls inside it. Opening on today for an
+   * event that ran last November would make the picker look empty — every day
+   * on screen struck through — until the viewer found the chevrons.
+   */
+  const openingMonth = React.useCallback(() => {
+    if (selected) return startOfMonth(selected);
+    const today = format(new Date(), ISO);
+    if (min && today < min) return startOfMonth(parseISO(min));
+    if (max && today > max) return startOfMonth(parseISO(max));
+    return startOfMonth(new Date());
+  }, [selected, min, max]);
+
+  const [viewMonth, setViewMonth] = React.useState<Date>(openingMonth);
   const rootRef = React.useRef<HTMLDivElement>(null);
+
+  /**
+   * Which edge the panel hangs from. Left by default; right when the panel
+   * would otherwise run past the viewport — which is what a trigger near the
+   * right edge does, and the far half of a date range is exactly that.
+   */
+  const [alignRight, setAlignRight] = React.useState(false);
 
   const toggle = () => {
     // Jump the calendar to the selected month right before opening.
-    if (!open) setViewMonth(startOfMonth(selected ?? (min ? parseISO(min) : new Date())));
+    if (!open) setViewMonth(openingMonth());
     setOpen((o) => !o);
   };
+
+  // Measured before paint, so the panel never renders on the wrong edge first.
+  React.useLayoutEffect(() => {
+    if (!open || !rootRef.current) return;
+
+    const place = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setAlignRight(rect.left + PANEL_WIDTH > window.innerWidth - VIEWPORT_MARGIN);
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open]);
 
   // Close on outside click / Escape.
   React.useEffect(() => {
@@ -131,7 +188,10 @@ export function DatePicker({
     end: endOfWeek(endOfMonth(viewMonth), { weekStartsOn: 0 }),
   });
 
-  const isDisabledDay = (d: Date) => !!min && format(d, ISO) < min;
+  const isDisabledDay = (d: Date) => {
+    const iso = format(d, ISO);
+    return (!!min && iso < min) || (!!max && iso > max);
+  };
 
   // Always include the year currently in view, so a stored value outside the
   // window (or a `min` far ahead) still renders as the selected option.
@@ -140,7 +200,10 @@ export function DatePicker({
     min ? parseISO(min).getFullYear() : thisYear - YEARS_BACK,
     viewMonth.getFullYear()
   );
-  const to = Math.max(thisYear + YEARS_AHEAD, viewMonth.getFullYear());
+  const to = Math.max(
+    max ? parseISO(max).getFullYear() : thisYear + YEARS_AHEAD,
+    viewMonth.getFullYear()
+  );
   const years = Array.from({ length: to - from + 1 }, (_, i) => to - i);
 
   const pick = (d: Date) => {
@@ -158,12 +221,15 @@ export function DatePicker({
         type="button"
         id={id}
         disabled={disabled}
+        aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={toggle}
         className={cn(
           "flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
+          // Room for the clear button, so a long date doesn't run under it.
+          clearable && selected && "pr-10",
           className
         )}
       >
@@ -173,10 +239,29 @@ export function DatePicker({
         </span>
       </button>
 
+      {/* Beside the trigger, not inside it: a button within a button is invalid
+          markup, and the inner one would never receive the click. */}
+      {clearable && selected && !disabled && (
+        <button
+          type="button"
+          aria-label="Hapus tanggal"
+          onClick={() => {
+            onChange("");
+            setOpen(false);
+          }}
+          className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+
       {open && (
         <div
           role="dialog"
-          className="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-76 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
+          className={cn(
+            "absolute top-[calc(100%+0.375rem)] z-50 w-76 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]",
+            alignRight ? "right-0" : "left-0"
+          )}
         >
           <div className="mb-2 flex items-center justify-between">
             <button

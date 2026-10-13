@@ -500,6 +500,11 @@ Route::prefix('v1')->group(function () {
             // controller, like the category routes above.
             Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
+            // The check-in log, paginated. Split out of the report above: it is
+            // the one list there that grows with the gate, and twenty rows of a
+            // two-thousand-person event answer nothing. Same `tenant` scope —
+            // it carries holder names, not buyer contacts.
+            Route::get('events/{event}/checkins', [ScanController::class, 'checkins']);
             Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
 
             // Box office: the organizer selling at the venue. Plain `tenant` on

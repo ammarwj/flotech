@@ -44,6 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TicketCategoryForm } from "@/components/event/ticket-category-form";
+import { CheckinLog } from "@/components/event/checkin-log";
 import { BoxOfficeDialog } from "@/components/event/box-office-dialog";
 import { rupiah } from "@/lib/labels";
 import type { TicketCategory } from "@/types/api";
@@ -93,6 +94,9 @@ export default function EventTicketsPage() {
     // A box-office sale lands in the buyer list too, and that page is where a
     // gateway order settled after this dialog closed gets checked in.
     qc.invalidateQueries({ queryKey: ["ticket-orders", orgId, eventId] });
+    // The log below. Checking a whole order in from the dialog admits people,
+    // so the list they belong at the top of has to be asked again.
+    qc.invalidateQueries({ queryKey: ["checkins", orgId, eventId] });
   };
 
   const handleError = (err: unknown, fallback: string) => {
@@ -450,23 +454,25 @@ export default function EventTicketsPage() {
         />
       )}
 
-      {/* ===== Recent check-ins ===== */}
-      {report && report.recent_checkins.length > 0 && (
+      {/* ===== Check-in log =====
+          Its own paginated query, not a tail on the report: the log is the one
+          thing on this page that grows with the gate, and the twenty rows it
+          used to show were unreachable past the twentieth person through the
+          door. The day filter's options are the days tickets were *issued* for,
+          not the days the log on screen happens to cover — a day nobody has
+          come in on is selectable, and finding it empty is the answer. Same
+          source as the per-day card above, so the two cannot disagree about
+          which days exist, and empty when nothing sells by the day. */}
+      {orgId && ticketing && (
         <div className="mt-10">
           <h2 className="mb-4 text-lg font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-            Check-in Terbaru
+            Log Check-in
           </h2>
-          <Card className="divide-y divide-border p-0">
-            {report.recent_checkins.map((c) => (
-              <div key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className="font-medium">{c.holder_name ?? "Tanpa nama"}</span>
-                <span className="text-muted-foreground">{c.category}</span>
-                <span className="text-muted-foreground">
-                  {c.used_at ? new Date(c.used_at).toLocaleString("id-ID") : ""}
-                </span>
-              </div>
-            ))}
-          </Card>
+          <CheckinLog
+            orgId={orgId}
+            eventId={eventId}
+            days={report?.by_date.map((d) => d.event_date) ?? []}
+          />
         </div>
       )}
     </div>
