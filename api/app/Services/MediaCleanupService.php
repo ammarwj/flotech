@@ -121,7 +121,40 @@ class MediaCleanupService
             ...$event->personnel()->pluck('photo_url'),
             ...Certificate::where('event_id', $event->id)->pluck('pdf_key'),
             ...$this->teamUrls($event->teams()->pluck('id')->all()),
+            // Fun run entries. Their documents live in their own table, which
+            // is exactly why they need their own call here: the sweep below is
+            // keyed on `team_id`, and a runner has no team — see the
+            // race_entry_documents migration for the leak this avoids.
+            ...$this->raceEntryUrls($event->raceEntries()->pluck('id')->all()),
         ];
+    }
+
+    /**
+     * Every file stored under the given fun run entries — the transfer receipt
+     * the runner uploaded plus whatever documents their entry required.
+     *
+     * Its own method beside teamUrls() rather than a branch inside it: the two
+     * sweep different tables on different keys, and there is nothing to share
+     * but the chunking. Called from eventUrls() alone today; kept public for
+     * the same reason teamUrls() is, so a path that deletes entries without
+     * deleting the event has somewhere to ask.
+     *
+     * @param  array<int, string>  $entryIds
+     * @return array<int, string|null>
+     */
+    public function raceEntryUrls(array $entryIds): array
+    {
+        $urls = [];
+
+        foreach (array_chunk($entryIds, self::CHUNK) as $chunk) {
+            $urls = [
+                ...$urls,
+                ...DB::table('race_entries')->whereIn('id', $chunk)->pluck('payment_proof_url'),
+                ...DB::table('race_entry_documents')->whereIn('race_entry_id', $chunk)->pluck('file_url'),
+            ];
+        }
+
+        return $urls;
     }
 
     /**

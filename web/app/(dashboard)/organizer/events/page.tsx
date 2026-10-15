@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { useCatalog } from "@/lib/hooks/use-catalog";
 import { EventQrDialog } from "@/components/event/event-qr-dialog";
+import { isRaceEvent } from "@/lib/race";
 
 export default function EventsPage() {
   const { sportLabel, sportColor } = useCatalog();
@@ -92,6 +93,17 @@ export default function EventsPage() {
       <div className="grid grid-cols-1 gap-3">
         {events?.map((ev) => {
           const color = sportColor(ev.sport_type);
+          // A fun run has no fixtures, so four of the destinations below lead
+          // to pages that can never fill: Jadwal, Petugas, Statistik (visitor
+          // analytics is fine, but the page sits beside the match ones) and
+          // Jaminan. Resolved once per card so the buttons and the meta row
+          // cannot disagree.
+          //
+          // Hiding them is only half: every one of those routes still answers
+          // its URL, so each page carries its own guard too — the precedent is
+          // `/[orgSlug]/[eventSlug]/register`, where hiding the button left the
+          // URL open to old tabs and bookmarks.
+          const isRace = isRaceEvent(ev);
           return (
             <Card
               key={ev.id}
@@ -119,11 +131,21 @@ export default function EventsPage() {
                     <span className="inline-flex items-center gap-1.5" style={{ color }}>
                       {sportLabel(ev.sport_type)}
                     </span>
-                    <span>{ev.categories.length} kategori</span>
-                    <span className="inline-flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" />
-                      {ev.teams_count ?? 0} tim
-                    </span>
+                    {/* `categories` and `teams_count` are both competition
+                        shapes: a fun run keeps its categories in
+                        `race_categories` and its entrants in `race_entries`,
+                        so both would read 0 over a race that sold out. The
+                        numbers live on the race page, next to the quota that
+                        makes them mean something. */}
+                    {!isRace && (
+                      <>
+                        <span>{ev.categories.length} kategori</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5" />
+                          {ev.teams_count ?? 0} tim
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -153,26 +175,35 @@ export default function EventsPage() {
                     />
                   </>
                 )}
+                {/* One button, two destinations: a race's entrants live in
+                    `race_entries` and the page that lists them also holds the
+                    categories and the price windows, so there is nothing for
+                    `/registrations` to show. */}
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/organizer/events/${ev.id}/registrations`}>
+                  <Link href={`/organizer/events/${ev.id}/${isRace ? "race" : "registrations"}`}>
                     <ClipboardList className="h-4 w-4" />
-                    Pendaftaran
+                    {isRace ? "Peserta Lomba" : "Pendaftaran"}
                   </Link>
                 </Button>
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/organizer/events/${ev.id}/schedule`}>
-                    <CalendarClock className="h-4 w-4" />
-                    Jadwal
-                  </Link>
-                </Button>
-                {/* Next to Jadwal, not next to Pendaftaran: these are the
-                    people who run the matches, not people who entered them. */}
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/organizer/events/${ev.id}/personnel`}>
-                    <ShieldCheck className="h-4 w-4" />
-                    Petugas
-                  </Link>
-                </Button>
+                {!isRace && (
+                  <>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/organizer/events/${ev.id}/schedule`}>
+                        <CalendarClock className="h-4 w-4" />
+                        Jadwal
+                      </Link>
+                    </Button>
+                    {/* Next to Jadwal, not next to Pendaftaran: these are the
+                        people who run the matches, not people who entered
+                        them — which is also why they go when the matches do. */}
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/organizer/events/${ev.id}/personnel`}>
+                        <ShieldCheck className="h-4 w-4" />
+                        Petugas
+                      </Link>
+                    </Button>
+                  </>
+                )}
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/organizer/events/${ev.id}/tickets`}>
                     <Ticket className="h-4 w-4" />
@@ -187,13 +218,17 @@ export default function EventsPage() {
                 </Button>
                 {/* Always shown, even with the deposit off: the page itself
                     explains how to turn it on, so hiding the button would hide
-                    that the feature exists at all. */}
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/organizer/events/${ev.id}/deposits`}>
-                    <Wallet className="h-4 w-4" />
-                    Jaminan
-                  </Link>
-                </Button>
+                    that the feature exists at all. The exception is a fun run,
+                    where the deposit has nothing to attach to — a jaminan is
+                    posted by a competing squad, and there are none. */}
+                {!isRace && (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/organizer/events/${ev.id}/deposits`}>
+                      <Wallet className="h-4 w-4" />
+                      Jaminan
+                    </Link>
+                  </Button>
+                )}
                 {/* Always shown, not just while the gateway is off: manual
                     orders that already have proof never expire on their own, so
                     hiding this the moment the gateway returns would strand

@@ -143,6 +143,34 @@ class Event extends Model
         return $this->hasMany(EventSponsor::class)->orderBy('sort_order')->orderBy('created_at');
     }
 
+    /**
+     * The sale windows of a fun run: Early Bird, Pre Sale, Last Call.
+     *
+     * Ordered by when they start rather than by `sort_order`: the order they
+     * run in is the order they are read in, and a drag-handle that disagreed
+     * with the calendar would be a second answer to "which comes first".
+     * `sort_order` is kept for the ties a same-day window can produce.
+     *
+     * Only a `scoring: 'none'` event has any of these. Empty everywhere else,
+     * which is why nothing has to ask the sport before loading it.
+     */
+    public function racePeriods(): HasMany
+    {
+        return $this->hasMany(RacePeriod::class)->orderBy('starts_at')->orderBy('sort_order');
+    }
+
+    /** The categories a fun run sells entries in (Mahasiswa, Umum, 5K). */
+    public function raceCategories(): HasMany
+    {
+        return $this->hasMany(RaceCategory::class)->orderBy('sort_order')->orderBy('created_at');
+    }
+
+    /** The runners. The fun run counterpart of both `teams` and `ticketOrders`. */
+    public function raceEntries(): HasMany
+    {
+        return $this->hasMany(RaceEntry::class);
+    }
+
     public function ticketCategories(): HasMany
     {
         return $this->hasMany(TicketCategory::class);

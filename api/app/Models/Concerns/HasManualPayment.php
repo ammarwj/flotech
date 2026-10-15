@@ -24,6 +24,35 @@ use Illuminate\Support\Carbon;
  */
 trait HasManualPayment
 {
+    /**
+     * The rails a payment can be taken on, as a human reads them.
+     *
+     * Three, not the two an event may choose from: `onsite` is cash at the box
+     * office and belongs to the order, never to the event. Spelled once because
+     * the raw column value otherwise leaks into an export — "onsite" sitting in
+     * a sheet an organizer hands to someone else.
+     *
+     * Here rather than on TicketOrder, where it started: this trait is already
+     * the one place that knows what the three values mean (isOffPlatform() reads
+     * exactly the same set), and the labels drifting away from that set is the
+     * failure worth designing out. Every model using the trait gets them, which
+     * is what let the race export stop reaching across to a ticket model for a
+     * string that was never about tickets.
+     *
+     * @var array<string, string>
+     */
+    public const METHOD_LABELS = [
+        'gateway' => 'Pembayaran online',
+        'manual' => 'Transfer manual',
+        'onsite' => 'Tunai di loket',
+    ];
+
+    /** This payment's rail in words, falling back to the raw value. */
+    public function methodLabel(): string
+    {
+        return self::METHOD_LABELS[$this->payment_method] ?? (string) $this->payment_method;
+    }
+
     /** The column holding this model's settled/unsettled payment state. */
     abstract protected function paymentStateColumn(): string;
 

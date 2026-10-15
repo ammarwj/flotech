@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\WalletException;
+use App\Models\RaceEntry;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
@@ -49,6 +50,47 @@ class RefundService
         DB::transaction(function () use ($team, $actor, $reason) {
             $team->update(['payment_status' => 'refunded']);
             $this->reverse('team', $team->id, 'registration_fee', $actor, $reason);
+        });
+    }
+
+    /**
+     * Refund a fun run entry.
+     *
+     * Its own arm rather than a branch inside one of the two above, because the
+     * ledger row it has to find is keyed on its own `source_type`/`category`
+     * pair: without this method a refunded entry voids the entry and leaves the
+     * organizer credited for money that went back, which `wallet:audit` cannot
+     * see — the ledger stays internally consistent, it is just one row richer
+     * than the truth.
+     *
+     * Phase two will add a used-check here, the counterpart of the
+     * already-scanned guard on a ticket order: once a runner has been checked
+     * in at the start line there is nothing left to refund. There is no such
+     * check now because nothing writes `checked_in_at` yet, and a guard reading
+     * a column no path fills would be dead code pretending to be a rule.
+     *
+     * @throws WalletException
+     */
+    public function refundRaceEntry(RaceEntry $entry, ?User $actor = null, ?string $reason = null): void
+    {
+        if ($entry->status !== 'paid') {
+            throw new WalletException('Hanya entry lunas yang bisa direfund.');
+        }
+
+        if ((float) $entry->price <= 0) {
+            throw new WalletException('Entry gratis tidak bisa direfund.');
+        }
+
+        DB::transaction(function () use ($entry, $actor, $reason) {
+            $entry->update(['status' => 'refunded']);
+            // The category released here is the same string creditRaceEntry()
+            // wrote; they are spelled apart on purpose only in the sense that
+            // nothing derives one from the other — a typo in either leaves the
+            // credit standing and the refund silent.
+            $this->reverse('race_entry', $entry->id, 'race_entry', $actor, $reason);
+
+            // The place goes back on offer, the mirror of TicketService::release().
+            $entry->category()->decrement('taken');
         });
     }
 

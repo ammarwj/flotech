@@ -2,7 +2,12 @@ import { apiClient } from "./client";
 import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 
 /** What can be exported. Mirrors ExportController's two kind lists. */
-export type ExportKind = "registrations" | "ticket-buyers" | "standings" | "leaderboard";
+export type ExportKind =
+  | "registrations"
+  | "ticket-buyers"
+  | "race-entries"
+  | "standings"
+  | "leaderboard";
 export type ExportFormat = "xlsx" | "pdf";
 
 /** These are per-category, so they need `categoryId`. */

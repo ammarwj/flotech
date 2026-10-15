@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\RaceEntryResource;
 use App\Http\Resources\TeamResource;
 use App\Http\Resources\TicketOrderResource;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\RaceEntry;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\PaymentRails;
+use App\Services\RaceEntryService;
 use App\Services\RegistrationService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
@@ -20,8 +23,14 @@ use Illuminate\Http\Request;
  * Manual-transfer payments waiting on a human, per event.
  *
  * Behind `org.admin` rather than plain `tenant`: approving a receipt issues a
- * valid ticket (or admits a paying team) on nothing but someone's say-so, so a
- * gate operator must not be able to do it. Same rule as the wallet endpoints.
+ * valid ticket (or admits a paying team, or a paying runner) on nothing but
+ * someone's say-so, so a gate operator must not be able to do it. Same rule as
+ * the wallet endpoints.
+ *
+ * Three rails of income rendered side by side, sharing nothing but the
+ * HasManualPayment trait. They are independent on purpose: a queue per model
+ * would make the organizer check three screens to find out whether anyone is
+ * waiting on them.
  */
 class PaymentVerificationController extends Controller
 {
@@ -29,10 +38,11 @@ class PaymentVerificationController extends Controller
         protected TicketService $tickets,
         protected RegistrationService $registration,
         protected PaymentRails $rails,
+        protected RaceEntryService $raceEntries,
     ) {}
 
     /**
-     * Everything awaiting verification for this event, both rails of income.
+     * Everything awaiting verification for this event, every rail of income.
      */
     public function index(Request $request, string $organization, string $event): JsonResponse
     {
@@ -44,6 +54,12 @@ class PaymentVerificationController extends Controller
             ),
             'teams' => TeamResource::collection(
                 $eventModel->teams()->awaitingVerification()->with('category')->latest('payment_proof_uploaded_at')->get(),
+            ),
+            // Empty on every competition event, and present unconditionally
+            // anyway: a key whose absence depends on the sport is one the
+            // client has to defend against in three places instead of none.
+            'race_entries' => RaceEntryResource::collection(
+                $eventModel->raceEntries()->awaitingVerification()->with('category')->latest('payment_proof_uploaded_at')->get(),
             ),
         ]);
     }
@@ -96,6 +112,30 @@ class PaymentVerificationController extends Controller
         );
     }
 
+    public function approveRaceEntry(Request $request, string $organization, string $event, string $raceEntry): JsonResponse
+    {
+        $model = $this->raceEntry($request, $event, $raceEntry);
+
+        $this->raceEntries->approveProof($model, $request->user());
+
+        return ApiResponse::success(
+            new RaceEntryResource($model->fresh()->load('category')),
+            'Pembayaran diterima. Pendaftaran sudah lunas.',
+        );
+    }
+
+    public function rejectRaceEntry(Request $request, string $organization, string $event, string $raceEntry): JsonResponse
+    {
+        $model = $this->raceEntry($request, $event, $raceEntry);
+
+        $this->raceEntries->rejectProof($model, $this->reason($request), $this->rails->deadline());
+
+        return ApiResponse::success(
+            new RaceEntryResource($model->fresh()->load('category')),
+            'Bukti ditolak. Peserta dapat mengunggah ulang.',
+        );
+    }
+
     private function reason(Request $request): string
     {
         return $request->validate([
@@ -111,6 +151,11 @@ class PaymentVerificationController extends Controller
     private function team(Request $request, string $eventId, string $teamId): Team
     {
         return $this->event($request, $eventId)->teams()->findOrFail($teamId);
+    }
+
+    private function raceEntry(Request $request, string $eventId, string $entryId): RaceEntry
+    {
+        return $this->event($request, $eventId)->raceEntries()->findOrFail($entryId);
     }
 
     /**

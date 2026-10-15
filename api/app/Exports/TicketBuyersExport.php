@@ -3,7 +3,6 @@
 namespace App\Exports;
 
 use App\Models\Event;
-use App\Models\TicketOrder;
 
 /** Ticket orders with how many of their seats have actually been scanned in. */
 class TicketBuyersExport extends EventExport
@@ -43,7 +42,7 @@ class TicketBuyersExport extends EventExport
             (int) $o->quantity,
             (float) $o->total_price,
             $o->status,
-            TicketOrder::METHOD_LABELS[$o->payment_method] ?? $o->payment_method,
+            $o->methodLabel(),
             $o->tickets->where('is_used', true)->count().'/'.$o->quantity,
             $o->paid_at?->toDateTimeString() ?? '—',
         ])->all();

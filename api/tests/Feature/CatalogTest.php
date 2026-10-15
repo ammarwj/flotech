@@ -25,12 +25,29 @@ class CatalogTest extends TestCase
             ->json('data');
 
         // A literal, not Sport::count(): the number is here so that adding a
-        // sport to SportSeeder makes someone read this test rather than let the
-        // catalog drift away from what it claims to ship.
-        $this->assertCount(9, $data['sports']);
+        // sport makes someone read this test rather than let the catalog drift
+        // away from what it claims to ship. Nine from SportSeeder plus fun_run,
+        // which is seeded by its own migration rather than by the seeder — see
+        // seed_fun_run_sport for why.
+        $this->assertCount(10, $data['sports']);
         $this->assertSame('football', $data['sports'][0]['slug']);
         $this->assertSame('goal', $data['sports'][0]['stats'][0]['role']);
         $this->assertSame('set', collect($data['sports'])->firstWhere('slug', 'volleyball')['scoring']);
+
+        // All three scoring values reach the client, compared rather than
+        // checked one at a time: `none` says the sport holds no matches at all,
+        // and asserting it alone would pass even if every sport reported it.
+        $this->assertSame('none', collect($data['sports'])->firstWhere('slug', 'fun_run')['scoring']);
+        // And it carries no stored rulebook — same as volleyball, which is the
+        // point: an empty config is NOT what switches these features off. That
+        // is `scoring`, which is why the two sports look identical here and
+        // answer differently in FunRunGatingTest. Asserting fun_run's emptiness
+        // alone would read as the gate, and it never was.
+        $this->assertSame([], collect($data['sports'])->firstWhere('slug', 'fun_run')['period_config']);
+        $this->assertSame([], collect($data['sports'])->firstWhere('slug', 'volleyball')['period_config']);
+        $this->assertNotSame([], collect($data['sports'])->firstWhere('slug', 'football')['squad_config']);
+        // Nothing is played, so there is no duration to default.
+        $this->assertSame(0, collect($data['sports'])->firstWhere('slug', 'fun_run')['default_match_minutes']);
 
         // Entrant shapes travel with the sport: racket sports field a lone
         // player, a pair, or a squad; everything else only ever a squad.

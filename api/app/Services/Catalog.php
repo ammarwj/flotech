@@ -280,9 +280,39 @@ class Catalog
         return null;
     }
 
+    /**
+     * How this sport is scored, or null when nothing defines it.
+     *
+     * Null rather than a guess, unlike isSetBased() below: the three gates that
+     * ask this have to be able to tell "no such sport" from "a sport that holds
+     * no matches", and a default would answer both the same way.
+     */
+    public static function scoringOf(?string $slug): ?string
+    {
+        return self::sport($slug)['scoring'] ?? null;
+    }
+
     public static function isSetBased(?string $slug): bool
     {
         return (self::sport($slug)['scoring'] ?? 'goal') === 'set';
+    }
+
+    /**
+     * Whether this sport holds matches at all.
+     *
+     * The landing place for every gate that wants to ask "is there anything to
+     * schedule, rank or score here?", and it exists because isSetBased() above
+     * **defaults to `goal`** for an unknown sport. That default is a safe answer
+     * to its own question and a dangerous one to this one: a gate written as
+     * `! isSetBased($slug)` reads a fun run as a running-score sport and
+     * switches on the clock and the team sheet for an entrant who has no
+     * players at all. Both gates that were written that way now read `scoring`
+     * positively instead (see MatchClockRules and SquadRules), and this is where
+     * the next one lands rather than growing a third copy of the negation.
+     */
+    public static function isCompetitive(?string $slug): bool
+    {
+        return in_array(self::scoringOf($slug), ['goal', 'set'], true);
     }
 
     /**

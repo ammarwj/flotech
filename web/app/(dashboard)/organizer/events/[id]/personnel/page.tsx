@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { SectionHeader } from "@/components/event/section-header";
 import {
   PersonnelEditor,
@@ -122,6 +123,7 @@ export default function EventPersonnelPage() {
         backLabel="Kelola event"
       />
 
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
       <Card>
         <SectionHeader
           icon={ShieldCheck}
@@ -147,6 +149,7 @@ export default function EventPersonnelPage() {
           )}
         </CardContent>
       </Card>
+      </RaceRouteGuard>
     </div>
   );
 }

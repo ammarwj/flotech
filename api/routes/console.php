@@ -18,6 +18,8 @@ Schedule::command('wallet:audit')->dailyAt('01:00');
 // Manual transfers get no Midtrans expiry webhook, so abandoned orders would
 // hold their ticket quota forever.
 Schedule::command('tickets:expire-manual')->hourly()->withoutOverlapping();
+// Same for fun run entries, which hold a place in a category's quota.
+Schedule::command('race-entries:expire-manual')->hourly()->withoutOverlapping();
 // Same for plan bills, which hold no quota but do print a deadline.
 Schedule::command('plan-orders:expire-manual')->hourly()->withoutOverlapping();
 

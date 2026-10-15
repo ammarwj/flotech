@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Event;
+use App\Models\RaceEntry;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Models\TicketOrder;
@@ -34,6 +35,26 @@ use Illuminate\Support\Facades\DB;
  */
 class WalletService
 {
+    /**
+     * Credit categories that count towards `wallets.total_earned`.
+     *
+     * > **Invarian: daftar ini wajib tumbuh bersama setiap rail pendapatan
+     * > baru.** Rail keempat yang lupa didaftarkan di sini **tetap mengkredit
+     * > saldo dengan benar** — cabang `increment($column)` di atasnya tidak
+     * > membaca `category` sama sekali — lalu diam-diam kurang menghitung
+     * > `total_earned`, dan `wallet:audit` tetap hijau karena ia memeriksa
+     * > `balance_* = Σ ±amount` dan tidak pernah menyentuh kolom ini. Ujilah
+     * > dengan **membandingkan** `total_earned` DAN `balance_pending` sesudah
+     * > satu kredit; pasangan yang lebih kuat: satu kredit tiket + satu kredit
+     * > entry di event yang sama, assert `total_earned` = jumlah keduanya.
+     *
+     * An adjustment or a reversal is deliberately absent: `total_earned` is
+     * what the organizer has earned, not what their balance has done.
+     *
+     * @var list<string>
+     */
+    private const EARNING_CATEGORIES = ['ticket_sale', 'registration_fee', 'race_entry'];
+
     public function forOrganization(Organization $org): Wallet
     {
         return Wallet::firstOrCreate(['organization_id' => $org->id]);
@@ -102,6 +123,30 @@ class WalletService
             'team',
             $team->id,
             "Biaya pendaftaran {$team->name} — {$event->name}",
+        );
+    }
+
+    /**
+     * Credit an organizer for a paid fun run entry.
+     *
+     * Beside the two above rather than folded into either: an entry is neither a
+     * seat nor a squad, and `EARNING_CATEGORIES` below is what has to know it
+     * exists.
+     */
+    public function creditRaceEntry(RaceEntry $entry): ?WalletTransaction
+    {
+        $event = $entry->event;
+        $gross = (float) $entry->price;
+        $fee = (float) $entry->platform_fee;
+
+        return $this->credit(
+            $event,
+            'race_entry',
+            $gross,
+            $fee,
+            'race_entry',
+            $entry->id,
+            "Entry {$entry->full_name} — {$event->name}",
         );
     }
 
@@ -304,7 +349,7 @@ class WalletService
                 ? $locked->increment($column, $tx->amount)
                 : $locked->decrement($column, $tx->amount);
 
-            if ($tx->type === 'credit' && in_array($tx->category, ['ticket_sale', 'registration_fee'], true)) {
+            if ($tx->type === 'credit' && in_array($tx->category, self::EARNING_CATEGORIES, true)) {
                 $locked->increment('total_earned', $tx->amount);
             }
 

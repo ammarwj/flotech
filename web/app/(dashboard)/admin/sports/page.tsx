@@ -44,7 +44,7 @@ type SportForm = {
   name: string;
   color: string;
   icon: string;
-  scoring: "goal" | "set";
+  scoring: "goal" | "set" | "none";
   participant_modes: ParticipantType[];
   /**
    * Held as a string so the box can be *emptied while being retyped*. Folding a
@@ -338,11 +338,20 @@ export default function AdminSportsPage() {
             <Select
               id="scoring"
               value={form.scoring}
-              onChange={(e) => setForm({ ...form, scoring: e.target.value as "goal" | "set" })}
+              onChange={(e) =>
+                setForm({ ...form, scoring: e.target.value as "goal" | "set" | "none" })
+              }
             >
               <option value="goal">Gol / poin tunggal</option>
               <option value="set">Per set (voli, badminton, padel)</option>
+              <option value="none">Tanpa pertandingan (fun run)</option>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              &quot;Tanpa pertandingan&quot; mematikan jadwal, klasemen, bracket, dan
+              statistik pemain untuk cabang ini — pesertanya mendaftar, membayar,
+              lalu menunjukkan kwitansinya di hari H. Kategori dan periode
+              harganya diatur per event, bukan di sini.
+            </p>
           </div>
         </div>
 

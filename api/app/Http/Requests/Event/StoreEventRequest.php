@@ -73,7 +73,19 @@ class StoreEventRequest extends FormRequest
             'rules_config.deposit.yellow_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'rules_config.deposit.red_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
             // Format, bracket config, fee and team cap live on each category.
-            ...EventCategoryRules::make('required'),
+            // `required` normally, because a competition event with no
+            // category is an event nothing can be entered in — but a fun run
+            // has no competition categories at all (its own live in
+            // `race_categories`), so demanding one would make the sport
+            // impossible to create.
+            //
+            // Read off the payload rather than a stored row: this is the create
+            // path, there is no event yet, and `sport_type` is required above
+            // so it is always there to read. `Catalog::scoringOf()` is the same
+            // single reader every gate uses — see MatchClockRules.
+            ...EventCategoryRules::make(
+                Catalog::scoringOf($this->input('sport_type')) === 'none' ? 'nullable' : 'required',
+            ),
         ];
     }
 }

@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { SectionHeader } from "@/components/event/section-header";
 
 /** Which of the six lists a row lives in. */
@@ -184,6 +185,8 @@ export default function RegistrationFormPage() {
         backLabel="Kelola event"
       />
 
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
+
       <div className="grid gap-6">
         <Card>
           <SectionHeader
@@ -317,6 +320,7 @@ export default function RegistrationFormPage() {
           </Button>
         </div>
       </div>
+      </RaceRouteGuard>
     </div>
   );
 }

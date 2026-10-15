@@ -48,6 +48,7 @@ import {
   crestGradient,
 } from "@/lib/bracket";
 import { showsPlayerStats } from "@/lib/scoring";
+import { isRaceEvent } from "@/lib/race";
 import type { EventStatus, PublicEvent, PublicTeam } from "@/types/api";
 import "../../event-shell.css";
 
@@ -219,6 +220,22 @@ function PublicEventView() {
   // once here so the tab and the panels below can't disagree about it.
   const playerStats = showsPlayerStats(ev.sport);
 
+  // A fun run holds no fixtures at all, so five of the six tabs below can never
+  // fill — Info is the whole public page. Resolved once here for the same
+  // reason `playerStats` is: the tab bar and the panels must not disagree.
+  //
+  // "Tim Peserta" goes too, and that is a privacy decision rather than an
+  // emptiness one. It renders `approved_teams`, which a race event has none of,
+  // so it would simply be blank — but the fix is NOT to publish the runners
+  // there instead. A squad roster is public because a squad is public: names
+  // and shirt numbers are already on the schedule, the standings and the
+  // leaderboard. A `race_entries` row carries an email, a phone number and an
+  // emergency contact, which is why even the organizer's own list of them sits
+  // behind `org.admin`. Nobody asked for a public start list, and that is a
+  // decision to take deliberately if it is ever wanted — with its own payload
+  // that publishes a name and nothing else.
+  const isRace = isRaceEvent(ev);
+
   // Which categories a panel can actually show anything for. An event may mix
   // formats — a badminton event runs Tunggal as a league and Ganda as a knockout
   // — so the tab decides which categories are on offer, not the other way round.
@@ -236,8 +253,12 @@ function PublicEventView() {
   // Top-level tabs: Info + whichever match panels *any* category can fill.
   const tabs: [TabKey, string, typeof Info][] = [
     ["info", "Info", Info],
-    ["teams", "Tim Peserta", Users],
-    ["schedule", "Jadwal", CalendarClock],
+    ...(isRace
+      ? []
+      : ([
+          ["teams", "Tim Peserta", Users],
+          ["schedule", "Jadwal", CalendarClock],
+        ] as [TabKey, string, typeof Info][])),
     ...(categoriesFor("standings").length > 0
       ? ([["standings", "Klasemen", ListOrdered]] as [
           TabKey,
@@ -250,11 +271,23 @@ function PublicEventView() {
       : []),
     // Unlike the two above, this one is decided per event, not per category:
     // the sport lives on the event, so no category can bring the tab back.
-    ...(playerStats
+    // (Klasemen and Bracket need no race branch: a fun run has no
+    // `event_categories` at all, so `categoriesFor()` is empty for both.)
+    ...(playerStats && !isRace
       ? ([["stats", "Statistik", Goal]] as [TabKey, string, typeof Info][])
       : []),
   ];
-  const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : "schedule";
+  // The fallback has to be a tab that EXISTS, and it is still "schedule"
+  // wherever there is one — a competition event's default landing tab must not
+  // move. On a fun run there is no schedule, so "teams" takes it: that is the
+  // panel holding the start list. Not `tabs[tabs.length - 1]`, which would be
+  // Statistik or Bracket on an ordinary event and quietly change where every
+  // stale link lands.
+  // Still "schedule" wherever there is one — a competition event's default
+  // landing tab must not move. A fun run has only Info, so that is where a
+  // stale `?tab=schedule` link lands instead of on an empty panel.
+  const fallbackTab: TabKey = isRace ? "info" : "schedule";
+  const activeTab: TabKey = tabs.some(([k]) => k === tab) ? tab : fallbackTab;
 
   // The chips for this tab, and the category actually being shown. Switching to
   // Bracket while a league category is picked lands on the first category that
@@ -271,9 +304,17 @@ function PublicEventView() {
   // Preselect the viewed category on the registration form.
   // Selalu ke domain utama: pendaftaran butuh sesi, dan refresh cookie terikat
   // `.floevent.id` sehingga tidak akan pernah terkirim ke domain organizer.
-  const registerHref = selectedCategory
-    ? mainUrl(`/register?category=${selectedCategory.slug}`)
-    : mainUrl("/register");
+  //
+  // Two forms, one button. A fun run's entrants are runners, and `/register`
+  // renders a team form over `event_categories` — which a race event has none
+  // of, so it would open an empty category select. The race form picks its own
+  // category, hence no `?category=`: these are `race_categories` and the slug
+  // above belongs to a competition category that does not exist here.
+  const registerHref = isRace
+    ? mainUrl("/race")
+    : selectedCategory
+      ? mainUrl(`/register?category=${selectedCategory.slug}`)
+      : mainUrl("/register");
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll =
@@ -369,10 +410,17 @@ function PublicEventView() {
                     {ev.location_name}
                   </span>
                 )}
-                <span>
-                  <Users />
-                  {ev.approved_teams_count} tim
-                </span>
+                {/* `approved_teams_count` counts `teams`, which a fun run has
+                    none of — the pill would read "0 tim" over an event that
+                    sold three hundred entries. Dropped rather than swapped for
+                    an entry count: that number is only meaningful next to a
+                    quota, and it belongs on the race form where the quota is. */}
+                {!isRace && (
+                  <span>
+                    <Users />
+                    {ev.approved_teams_count} tim
+                  </span>
+                )}
               </div>
 
               {/* .ehero-cta punya margin-top sendiri, jadi wadahnya ikut hilang

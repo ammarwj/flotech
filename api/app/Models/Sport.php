@@ -15,8 +15,23 @@ class Sport extends Model
 {
     use HasUuids;
 
-    /** How a match is scored. */
-    public const SCORING = ['goal', 'set'];
+    /**
+     * How a match is scored — and whether there is a match at all.
+     *
+     * `none` is the third answer and it is not a scoring style: it says this
+     * sport holds no fixtures, no table and no bracket (a fun run, a charity
+     * ride). One column rather than a separate `is_competitive` boolean beside
+     * it, because a boolean would be a second reader of a question this column
+     * already answers, and the two would drift the way two readers of `stage`
+     * did. Every gate asking "is there anything to schedule here?" goes through
+     * Catalog::isCompetitive(); the ones asking "does this run on a clock?" read
+     * `=== 'goal'` positively — never `! isSetBased()`, which lets `none`
+     * through as enabled.
+     *
+     * SportRequest validates against this constant, so widening it here is the
+     * whole of the server-side change.
+     */
+    public const SCORING = ['goal', 'set', 'none'];
 
     /** What a single entrant is: one player, a pair, or a squad. */
     public const MODES = ['single', 'double', 'team'];

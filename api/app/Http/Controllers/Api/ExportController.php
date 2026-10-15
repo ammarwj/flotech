@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exports\EventExport;
 use App\Exports\LeaderboardExport;
+use App\Exports\RaceEntriesExport;
 use App\Exports\RegistrationsExport;
 use App\Exports\StandingsExport;
 use App\Exports\TicketBuyersExport;
@@ -37,7 +38,7 @@ use Symfony\Component\HttpFoundation\Response;
 class ExportController extends Controller
 {
     /** Exports scoped to a whole event. */
-    private const EVENT_KINDS = ['registrations', 'ticket-buyers'];
+    private const EVENT_KINDS = ['registrations', 'ticket-buyers', 'race-entries'];
 
     /** Exports scoped to one category, so they need `?category_id=`. */
     private const CATEGORY_KINDS = ['standings', 'leaderboard'];
@@ -109,9 +110,11 @@ class ExportController extends Controller
                 : new LeaderboardExport($category, $this->stats);
         }
 
-        return $kind === 'registrations'
-            ? new RegistrationsExport($event)
-            : new TicketBuyersExport($event);
+        return match ($kind) {
+            'registrations' => new RegistrationsExport($event),
+            'race-entries' => new RaceEntriesExport($event),
+            default => new TicketBuyersExport($event),
+        };
     }
 
     protected function event(Request $request, string $eventId): Event

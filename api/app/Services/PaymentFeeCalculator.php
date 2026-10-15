@@ -36,6 +36,20 @@ class PaymentFeeCalculator
     public const AUDIENCE_ORGANIZER = 'plan_service_fee_amount';
 
     /**
+     * A runner paying an entry fee to an organizer. Charged once per entry —
+     * one person, one place at the start line, so nothing multiplies it.
+     *
+     * A fourth audience rather than borrowing one of the two above, and both
+     * were weighed. AUDIENCE_REGISTRATION is priced for a whole squad entering
+     * at once ("many times a ticket, bought once"), which is the wrong rate to
+     * put on one runner. AUDIENCE_TICKET is per seat in a basket, so it moves
+     * for reasons that have nothing to do with race entries — and the day
+     * tickets are repriced, entry fees would follow silently. $audience has no
+     * default precisely so a new flow has to make this choice out loud.
+     */
+    public const AUDIENCE_RACE_ENTRY = 'race_entry_service_fee_amount';
+
+    /**
      * Breakdown for one channel. Throws when the channel is unknown or has
      * been disabled (e.g. `retail` before it's turned on).
      *

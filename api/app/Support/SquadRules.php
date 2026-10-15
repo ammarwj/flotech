@@ -91,7 +91,14 @@ final class SquadRules
             // cabang yang punya jam berjalan adalah cabang yang menurunkan sebelas
             // nama sebelum kick-off. Dua gate yang berbeda akan berselisih dan
             // selisihnya baru terlihat saat admin menambahkan cabang baru.
-            enabled: ! Catalog::isSetBased($slug) && Catalog::sport($slug) !== null,
+            // Positif (`=== 'goal'`), bukan negasi `! isSetBased()`. Keduanya
+            // menjawab sama selama dunia cuma berisi gol dan set, dan berpisah
+            // begitu ada cabang yang tidak berpertandingan sama sekali: fun run
+            // (`scoring: 'none'`) lolos dari negasi sebagai MENYALA, lalu babak
+            // `max(1, 0)` dan sebelas pemain inti dituntut dari peserta yang
+            // rosternya nol baris. Katalog yang ditanya, bukan daftar slug —
+            // cabang yang besok ditambahkan admin tetap ikut tanpa deploy.
+            enabled: Catalog::scoringOf($slug) === 'goal',
             // Dijaga, bukan dipercaya: 0 inti akan membuat submit() menuntut sheet
             // kosong sementara sync() menolak setiap nama — manajer terkunci di
             // luar formulirnya sendiri tanpa satu pun pesan yang bisa ditindak.

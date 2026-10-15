@@ -14,10 +14,11 @@ use Illuminate\Http\Request;
  * fee is the same everywhere, so one endpoint serves all checkout flows.
  *
  * `audience` is the one thing that does differ: the platform's own margin is
- * set separately for each of the three flows — a participant buying tickets, a
- * participant paying a team's registration fee, and an organizer buying a plan
- * from us. `units` is the second: the ticket margin is per seat, so a basket of
- * three carries three of them, while the other two are bought once. It is a
+ * set separately for each of the four flows — a participant buying tickets, a
+ * participant paying a team's registration fee, a runner paying a fun run entry
+ * fee, and an organizer buying a plan from us. `units` is the second: the ticket
+ * margin is per seat, so a basket of three carries three of them, while the
+ * other three are each bought once. It is a
  * preview of public pricing either way — none of the rates is a secret, and the
  * number that gets charged is recomputed server-side at order time.
  */
@@ -31,7 +32,7 @@ class PublicPaymentController extends Controller
             // is would be quoted another flow's rate here and only find out
             // when the order path charges a different number. Same reason
             // PaymentFeeCalculator takes `$audience` without a default.
-            'audience' => ['required', 'in:ticket,registration,organizer'],
+            'audience' => ['required', 'in:ticket,registration,race_entry,organizer'],
             // How many things are being bought. The platform margin is charged
             // per unit, so the preview has to be told the basket size or it
             // quotes a total the order path will not honour. Defaults to 1:
@@ -47,9 +48,14 @@ class PublicPaymentController extends Controller
             'units' => ['nullable', 'integer', 'min:1', 'max:'.TicketService::MAX_PAID_UNITS_PER_ORDER],
         ]);
 
+        // No `default` arm, deliberately: a `match` with no default throws on
+        // an unhandled value, so adding a word to the rule above without adding
+        // it here fails loudly in development rather than quoting some other
+        // flow's rate in production.
         $audience = match ($data['audience']) {
             'ticket' => PaymentFeeCalculator::AUDIENCE_TICKET,
             'registration' => PaymentFeeCalculator::AUDIENCE_REGISTRATION,
+            'race_entry' => PaymentFeeCalculator::AUDIENCE_RACE_ENTRY,
             'organizer' => PaymentFeeCalculator::AUDIENCE_ORGANIZER,
         };
 

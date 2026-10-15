@@ -22,19 +22,34 @@ export interface ParticipantDocument {
  */
 export type DocumentSubject =
   | { kind: "ticket-order"; id: string }
+  /**
+   * A fun run entry, addressed by its unguessable id exactly as a ticket order
+   * is — the runner may never have signed up, and in this phase the receipt is
+   * what they show at the start line, so a session requirement would lock them
+   * out of their only proof.
+   */
+  | { kind: "race-entry"; id: string }
   /** The manager's own copy, scoped by their session. */
   | { kind: "my-team"; id: string }
   /** The same team's documents from the organizer's side, scoped by the event. */
   | { kind: "registration"; orgId: string; eventId: string; id: string };
+
+/** The id-addressed subjects and the path segment each uses. */
+const BY_ID: Record<"ticket-order" | "race-entry" | "my-team", string> = {
+  "ticket-order": "ticket-orders",
+  "race-entry": "race-entries",
+  "my-team": "my-teams",
+};
 
 function pathFor(subject: DocumentSubject, document: DocumentKind): string {
   if (subject.kind === "registration") {
     return `/organizations/${subject.orgId}/events/${subject.eventId}/registrations/${subject.id}/${document}`;
   }
 
-  const base = subject.kind === "ticket-order" ? "ticket-orders" : "my-teams";
-
-  return `/${base}/${subject.id}/${document}`;
+  // A map rather than a chain of ternaries: with three id-addressed subjects a
+  // chain stops reading as a choice and starts reading as a default, and the
+  // one that falls off the end is silently the wrong endpoint.
+  return `/${BY_ID[subject.kind]}/${subject.id}/${document}`;
 }
 
 export async function getParticipantDocument(

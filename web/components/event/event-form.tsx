@@ -719,6 +719,15 @@ export function EventForm({
   // Fall back to the first catalog entry until the user picks one.
   const sportValue = v.sport_type || sports[0]?.slug || "";
   const selectedSport = sports.find((s) => s.slug === sportValue) ?? null;
+  /**
+   * A fun run has no competition categories at all — no format, no participant
+   * type, no bracket config, and a fee that is a per-period price list rather
+   * than one number. So the whole block goes, replaced by a pointer to the page
+   * that does own those things, rather than branched field by field: five
+   * conditionals inside CategoryEditor would leave a form whose every row is
+   * about something this sport does not have.
+   */
+  const isRace = selectedSport?.scoring === "none";
   // What this sport's cards are actually called, and what it defaults to —
   // both shown as placeholders so a blank field reads as "inherited", not "0".
   const sportCards = disciplineStatDefs(selectedSport);
@@ -774,8 +783,12 @@ export function EventForm({
     setClientErrors(next);
 
     const catNext: Record<string, string | undefined> = {};
-    for (const c of categories) {
-      if (!c.name?.trim()) catNext[c._key] = "Nama kategori wajib diisi.";
+    // Skipped for a race: the drafts below are never rendered and never sent,
+    // so validating them would block a save on a field nobody can see.
+    if (!isRace) {
+      for (const c of categories) {
+        if (!c.name?.trim()) catNext[c._key] = "Nama kategori wajib diisi.";
+      }
     }
     setCatErrors(catNext);
 
@@ -805,17 +818,23 @@ export function EventForm({
       return;
     }
 
-    const cleanedCategories: EventCategoryInput[] = categories.map((c) => ({
-      id: c.id,
-      name: c.name!.trim(),
-      participant_type: c.participant_type ?? "team",
-      // Drop blank template rows rather than posting partai with no name.
-      rubber_format: c.rubber_format?.filter((r) => r.label.trim()) ?? null,
-      tournament_format: c.tournament_format || fallbackFormat,
-      registration_fee: c.registration_fee ?? 0,
-      max_teams: c.max_teams ?? null,
-      bracket_config: c.bracket_config ?? null,
-    }));
+    // `undefined`, not `[]`: the request treats an absent key as "do not touch
+    // the stored categories" and an empty array as "delete them all", and a
+    // race event has none either way. Sending `[]` would also trip the
+    // `min:1` rule the create request still carries.
+    const cleanedCategories: EventCategoryInput[] | undefined = isRace
+      ? undefined
+      : categories.map((c) => ({
+          id: c.id,
+          name: c.name!.trim(),
+          participant_type: c.participant_type ?? "team",
+          // Drop blank template rows rather than posting partai with no name.
+          rubber_format: c.rubber_format?.filter((r) => r.label.trim()) ?? null,
+          tournament_format: c.tournament_format || fallbackFormat,
+          registration_fee: c.registration_fee ?? 0,
+          max_teams: c.max_teams ?? null,
+          bracket_config: c.bracket_config ?? null,
+        }));
 
     // Drop blank court rows so an empty input never becomes a nameless court.
     const cleanedCourts = (v.courts ?? []).map((c) => c.trim()).filter(Boolean);
@@ -1027,6 +1046,31 @@ export function EventForm({
             </CardContent>
           </Card>
 
+          {isRace ? (
+            <Card>
+              <SectionHeader
+                icon={Layers}
+                title="Kategori Lomba"
+                description="Cabang ini tidak punya pertandingan, jadi kategorinya tidak butuh format atau bracket."
+              />
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Kategori lomba (mis. Mahasiswa, Umum, 5K) dan periode harganya
+                  diatur di halaman <strong>Peserta Lomba</strong> — harga ikut
+                  periode pendaftaran, jadi keduanya hidup bersama di sana.
+                  {!initial?.id && " Halaman itu bisa dibuka setelah event ini disimpan."}
+                </p>
+                {initial?.id && (
+                  <Button asChild variant="outline" className="mt-3 gap-2">
+                    <Link href={`/organizer/events/${initial.id}/race`}>
+                      <Layers className="h-4 w-4" />
+                      Atur kategori & periode
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <SectionHeader
               icon={Layers}
@@ -1105,6 +1149,7 @@ export function EventForm({
               )}
             </CardContent>
           </Card>
+          )}
 
           {/* Only for a sport that books players. Volleyball and basketball field
         squads and keep a leaderboard, yet have no card column — which is why the

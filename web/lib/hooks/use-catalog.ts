@@ -93,8 +93,3 @@ export function useCatalog() {
       catalog.knockout_rounds.find((r) => Number(r.meta?.size) === size)?.label ?? `${size} Besar`,
   };
 }
-
-/** True when the sport is scored per set (volleyball, racket sports). */
-export function isSetBasedSport(sport: SportDef | null | undefined): boolean {
-  return sport?.scoring === "set";
-}

@@ -37,7 +37,7 @@ return [
     | from the `organizations` row, not from the issuer fields above.
     |
     | Separate prefixes so each stream keeps its own monthly sequence. Sharing
-    | one prefix would interleave three unrelated ledgers into a single run of
+    | one prefix would interleave four unrelated ledgers into a single run of
     | numbers, and a gap in an invoice sequence is exactly what an auditor asks
     | about.
     |
@@ -50,6 +50,14 @@ return [
     'registration_invoice_prefix' => env('BILLING_REG_INVOICE_PREFIX', 'INV-R'),
 
     'registration_receipt_prefix' => env('BILLING_REG_RECEIPT_PREFIX', 'KW-R'),
+
+    // Fun run entries. A fourth stream rather than reusing the registration
+    // prefix above: an entry is sold to one runner and a registration to a
+    // whole squad, so interleaving them would put two unrelated ledgers in one
+    // run of numbers — the same reason the three above are already apart.
+    'race_invoice_prefix' => env('BILLING_RACE_INVOICE_PREFIX', 'INV-RUN'),
+
+    'race_receipt_prefix' => env('BILLING_RACE_RECEIPT_PREFIX', 'KW-RUN'),
 
     // Days a past_due invoice stays payable before it reads as overdue.
     'due_days' => (int) env('BILLING_DUE_DAYS', 7),

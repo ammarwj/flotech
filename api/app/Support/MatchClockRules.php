@@ -76,7 +76,14 @@ final class MatchClockRules
         $label = trim((string) $merged['label']);
 
         return new self(
-            enabled: ! Catalog::isSetBased($slug) && Catalog::sport($slug) !== null,
+            // Positif (`=== 'goal'`), bukan negasi `! isSetBased()`. Keduanya
+            // menjawab sama selama dunia cuma berisi gol dan set, dan berpisah
+            // begitu ada cabang yang tidak berpertandingan sama sekali: fun run
+            // (`scoring: 'none'`) lolos dari negasi sebagai MENYALA, lalu babak
+            // `max(1, 0)` dan sebelas pemain inti dituntut dari peserta yang
+            // rosternya nol baris. Katalog yang ditanya, bukan daftar slug —
+            // cabang yang besok ditambahkan admin tetap ikut tanpa deploy.
+            enabled: Catalog::scoringOf($slug) === 'goal',
             // Dijaga, bukan dipercaya: 0 babak akan membuat `start()` membuka
             // babak yang langsung melewati batasnya sendiri.
             periods: max(1, (int) $merged['periods']),

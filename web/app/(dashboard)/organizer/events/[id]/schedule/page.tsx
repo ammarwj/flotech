@@ -83,6 +83,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUrlState } from "@/lib/hooks/use-url-state";
 import { PageHeader } from "@/components/shared/page-header";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StandingsTable } from "@/components/event/standings-table";
 import { GroupStandings } from "@/components/event/group-standings";
@@ -668,6 +669,8 @@ function ScheduleView() {
           }
         />
 
+        <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
+
         {categories.length > 1 && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1154,6 +1157,7 @@ function ScheduleView() {
             onSubmit={(payload) => editSlot.mutate(payload)}
           />
         )}
+        </RaceRouteGuard>
       </div>
     </EventTimezoneProvider>
   );

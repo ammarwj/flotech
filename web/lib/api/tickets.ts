@@ -4,6 +4,7 @@ import type {
   ApiEnvelope,
   CheckinPage,
   PurchaseResult,
+  RaceEntry,
   ScanResponse,
   Team,
   TicketCategory,
@@ -14,10 +15,18 @@ import type {
   TicketReport,
 } from "@/types/api";
 
-/** The manual transfers waiting on an org admin for one event. */
+/**
+ * The manual transfers waiting on an org admin for one event.
+ *
+ * Every rail of income, in one payload. `race_entries` is empty on every
+ * competition event and present unconditionally anyway — a key whose absence
+ * depends on the sport is one the client has to defend against everywhere
+ * instead of nowhere.
+ */
 export interface PendingPayments {
   tickets: TicketOrder[];
   teams: Team[];
+  race_entries: RaceEntry[];
 }
 
 export interface TicketCategoryInput {
@@ -350,6 +359,30 @@ export async function rejectTicketPayment(
 ): Promise<TicketOrder> {
   const { data } = await apiClient.post<ApiEnvelope<TicketOrder>>(
     `/organizations/${orgId}/events/${eventId}/payments/tickets/${orderId}/reject`,
+    { reason }
+  );
+  return data.data;
+}
+
+export async function approveRaceEntryPayment(
+  orgId: string,
+  eventId: string,
+  entryId: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/payments/race-entries/${entryId}/approve`
+  );
+  return data.data;
+}
+
+export async function rejectRaceEntryPayment(
+  orgId: string,
+  eventId: string,
+  entryId: string,
+  reason: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/payments/race-entries/${entryId}/reject`,
     { reason }
   );
   return data.data;

@@ -55,8 +55,12 @@ use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicPaymentController;
+use App\Http\Controllers\Api\Public\PublicRaceController;
 use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\PublicStatController;
+use App\Http\Controllers\Api\RaceCategoryController;
+use App\Http\Controllers\Api\RaceEntryController;
+use App\Http\Controllers\Api\RacePeriodController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
@@ -209,7 +213,26 @@ Route::prefix('v1')->group(function () {
         Route::get('matches/{match}', [PublicEventController::class, 'match']);
         Route::get('tickets', [PublicTicketController::class, 'categories']);
         Route::post('tickets/purchase', [PublicTicketController::class, 'purchase']);
+
+        // Fun run. `race` lists what is on sale with the price windows it
+        // belongs to, in one payload — the page prints a price and the date it
+        // changes in the same sentence, and two requests would let them
+        // disagree across a boundary.
+        Route::get('race', [PublicRaceController::class, 'categories']);
+        // Entering needs an account, the same rule team registration follows:
+        // the entry is tied to whoever filed it, and that link is the only way
+        // they reach it again later.
+        Route::post('race/register', [PublicRaceController::class, 'register'])->middleware('auth:api');
     });
+
+    // Public fun run entry lookup (by entry id). Public for the reason the
+    // e-ticket lookup below is: the unguessable id is the credential, and in
+    // this phase the receipt reached from here IS what the runner shows at the
+    // start line — a login would lock them out of their only proof.
+    Route::get('race-entries/{raceEntry}', [PublicRaceController::class, 'entry']);
+    Route::post('race-entries/{raceEntry}/proof', [PublicRaceController::class, 'proof']);
+    Route::get('race-entries/{raceEntry}/invoice', [PublicRaceController::class, 'invoice']);
+    Route::get('race-entries/{raceEntry}/receipt', [PublicRaceController::class, 'receipt']);
 
     // Public e-ticket lookup (by order id).
     Route::get('ticket-orders/{order}', [PublicTicketController::class, 'order']);
@@ -493,6 +516,18 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/ticket-categories', [TicketCategoryController::class, 'store']);
             Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
             Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
+            // Fun run: the categories a race sells entries in, their price per
+            // sale window, and the windows themselves. Plain `tenant`, like the
+            // ticket categories above: this is catalogue setup, and the number
+            // typed here is a price list, not a payment. What IS org.admin is
+            // ruling on a transfer receipt — see events/{event}/payments.
+            Route::get('events/{event}/race-periods', [RacePeriodController::class, 'index']);
+            Route::put('events/{event}/race-periods', [RacePeriodController::class, 'sync']);
+            Route::get('events/{event}/race-categories', [RaceCategoryController::class, 'index']);
+            Route::post('events/{event}/race-categories', [RaceCategoryController::class, 'store']);
+            Route::patch('race-categories/{raceCategory}', [RaceCategoryController::class, 'update']);
+            Route::delete('race-categories/{raceCategory}', [RaceCategoryController::class, 'destroy']);
+
             // Printable QR poster pointing at the public ticket shop — taped up
             // at the venue. Plain `tenant`, no org.admin: it carries no buyer
             // data and moves no money, and the operator at the gate is who
@@ -565,6 +600,15 @@ Route::prefix('v1')->group(function () {
                 [TicketOrderController::class, 'index'],
             );
 
+            // Runner list. Narrowed the same way the buyer list above is, and
+            // for the same reason: these rows carry a runner's email, phone and
+            // emergency contact — more contact detail than any other
+            // participant list in the app, not less.
+            Route::middleware('org.admin')->get(
+                'events/{event}/race-entries',
+                [RaceEntryController::class, 'index'],
+            );
+
             // Manual-transfer verification. Approving a receipt issues a valid
             // ticket on someone's say-so, so it is owner/admin only — a gate
             // operator must not be able to.
@@ -574,6 +618,8 @@ Route::prefix('v1')->group(function () {
                 Route::post('events/{event}/payments/tickets/{order}/reject', [PaymentVerificationController::class, 'rejectTicket']);
                 Route::post('events/{event}/payments/teams/{team}/approve', [PaymentVerificationController::class, 'approveTeam']);
                 Route::post('events/{event}/payments/teams/{team}/reject', [PaymentVerificationController::class, 'rejectTeam']);
+                Route::post('events/{event}/payments/race-entries/{raceEntry}/approve', [PaymentVerificationController::class, 'approveRaceEntry']);
+                Route::post('events/{event}/payments/race-entries/{raceEntry}/reject', [PaymentVerificationController::class, 'rejectRaceEntry']);
             });
 
             // Wallet & payouts (Phase 4). Money endpoints are narrowed to the

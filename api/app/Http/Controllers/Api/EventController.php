@@ -173,6 +173,10 @@ class EventController extends Controller
             );
         }
 
+        if (array_key_exists('sport_type', $data)) {
+            $data['sport_type'] = $this->sportTypeFor($model, $data['sport_type']);
+        }
+
         // rules_config is one column holding several independent rulebooks, so a
         // plain update() would let the form that knows about one of them delete
         // the rest. Merge per namespace instead — the same guard `officials`
@@ -274,6 +278,16 @@ class EventController extends Controller
      */
     protected function syncCategories(Event $event, array $categories): void
     {
+        // A sport that holds no matches has no competition categories: its own
+        // live in `race_categories`, gated by RaceCategoryController. Returning
+        // early rather than letting the loop run over an empty list, because
+        // the delete sweep at the bottom would then be reached with an empty
+        // `$keep` — and on an event that somehow had categories it would drop
+        // every one of them.
+        if (Catalog::scoringOf($event->sport_type) === 'none') {
+            return;
+        }
+
         $modes = Catalog::participantModes($event->sport_type);
         $keep = [];
 
@@ -353,6 +367,48 @@ class EventController extends Controller
 
             PurgeMediaJob::dispatch($urls)->afterCommit();
         }
+    }
+
+    /**
+     * The sport this event may be saved as.
+     *
+     * Frozen once anything hangs off it, the same snapshot reasoning as
+     * `participant_type` and `ticket_categories.day_mode`: the rows already
+     * stored were shaped by the sport, and switching it leaves them unreadable
+     * by every reader that matters. The two directions are both real and both
+     * silent — a fun run turned into a football event keeps `race_entries` that
+     * no competition surface will ever render, and a football event turned into
+     * a fun run keeps `teams`, `matches` and standings that the race surfaces
+     * cannot show. Neither errors; the data simply stops being reachable.
+     *
+     * Only checked when the field is sent, and a no-op change always passes —
+     * the same `array_key_exists` reasoning as `payment_method` above, so an
+     * organizer whose event has entrants can still rename it with a form that
+     * happens to post the sport back unchanged.
+     *
+     * @throws ValidationException
+     */
+    protected function sportTypeFor(Event $event, string $sport): string
+    {
+        if ($sport === $event->sport_type) {
+            return $sport;
+        }
+
+        // Three tables, one question: has anything been built on this sport
+        // yet? Checked together rather than branching on which kind of event it
+        // is, because the answer has to hold in both directions and a branch
+        // would need the old sport AND the new one to stay in step.
+        $hasRows = $event->raceEntries()->exists()
+            || $event->teams()->exists()
+            || $event->matches()->exists();
+
+        if ($hasRows) {
+            throw ValidationException::withMessages([
+                'sport_type' => 'Cabang olahraga tidak bisa diubah karena sudah ada peserta atau jadwal.',
+            ]);
+        }
+
+        return $sport;
     }
 
     /**

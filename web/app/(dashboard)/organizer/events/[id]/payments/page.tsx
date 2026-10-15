@@ -7,9 +7,11 @@ import { toast } from "sonner";
 import { Check, ExternalLink, Inbox, X } from "lucide-react";
 
 import {
+  approveRaceEntryPayment,
   approveTeamPayment,
   approveTicketPayment,
   getPendingPayments,
+  rejectRaceEntryPayment,
   rejectTeamPayment,
   rejectTicketPayment,
 } from "@/lib/api/tickets";
@@ -22,10 +24,17 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 
-/** What the two queues have in common, so one row component renders both. */
+/** What the three queues have in common, so one row component renders them all. */
 type Row = {
   id: string;
-  kind: "ticket" | "team";
+  /**
+   * Which rail this payment came in on. The three are independent streams that
+   * share only the HasManualPayment shape — approving any of them is the same
+   * act (money arrived) through a different endpoint, which is why the kind
+   * travels on the row rather than splitting the page into three queues an
+   * organizer would have to check separately.
+   */
+  kind: "ticket" | "team" | "race-entry";
   title: string;
   subtitle: string;
   amount: number;
@@ -58,6 +67,7 @@ export default function EventPaymentsPage() {
   const approve = useMutation<void, Error, Row>({
     mutationFn: async (row) => {
       if (row.kind === "ticket") await approveTicketPayment(orgId!, params.id, row.id);
+      else if (row.kind === "race-entry") await approveRaceEntryPayment(orgId!, params.id, row.id);
       else await approveTeamPayment(orgId!, params.id, row.id);
     },
     onSuccess: () => done("Pembayaran diterima."),
@@ -67,6 +77,7 @@ export default function EventPaymentsPage() {
   const reject = useMutation<void, Error, { row: Row; text: string }>({
     mutationFn: async ({ row, text }) => {
       if (row.kind === "ticket") await rejectTicketPayment(orgId!, params.id, row.id, text);
+      else if (row.kind === "race-entry") await rejectRaceEntryPayment(orgId!, params.id, row.id, text);
       else await rejectTeamPayment(orgId!, params.id, row.id, text);
     },
     onSuccess: () => done("Bukti ditolak. Pembeli dapat mengunggah ulang."),
@@ -91,6 +102,20 @@ export default function EventPaymentsPage() {
       amount: t.payment_amount,
       proofUrl: t.payment_proof_url,
       uploadedAt: t.payment_proof_uploaded_at,
+    })),
+    // Empty on every competition event, and read unconditionally anyway: a key
+    // whose presence depends on the sport is one this page would have to defend
+    // against in three places instead of none.
+    ...(query.data?.race_entries ?? []).map<Row>((e) => ({
+      id: e.id,
+      kind: "race-entry",
+      title: e.full_name,
+      // The period, because it is what makes the amount checkable against the
+      // price list — the same reason it is on the receipt.
+      subtitle: `Lomba · ${e.category?.name ?? "-"} · ${e.period_name}`,
+      amount: e.price,
+      proofUrl: e.payment_proof_url,
+      uploadedAt: e.payment_proof_uploaded_at,
     })),
   ];
 

@@ -36,7 +36,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PillTabs } from "@/components/event/pill-tabs";
-import { WalletTxStatusBadge, WithdrawalStatusBadge } from "@/components/shared/status-badge";
+import {
+  WalletTxStatusBadge,
+  WithdrawalStatusBadge,
+} from "@/components/shared/status-badge";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
 import { BankAccountForm } from "@/components/wallet/bank-account-form";
 import { WithdrawDialog } from "@/components/wallet/withdraw-dialog";
@@ -78,7 +81,12 @@ function StatCard({
 }
 
 const dateTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  iso
+    ? new Date(iso).toLocaleString("id-ID", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "—";
 
 /** Three lists that share a page but not a job. `bank` is the default, so it carries no query param. */
 const TABS = [
@@ -103,14 +111,18 @@ function WalletPage() {
   // The open tab lives in the URL, not in state: a reload — or a link shared
   // with someone — has to land back on the same list. Defaults to the bank
   // account, since an organizer with nowhere to be paid cannot withdraw at all.
-  const tab = TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "bank";
+  const tab = TABS.some((t) => t.key === params.get("tab"))
+    ? params.get("tab")!
+    : "bank";
 
   const setTab = (key: string) => {
     const next = new URLSearchParams(params.toString());
     if (key === "bank") next.delete("tab");
     else next.set("tab", key);
     const qs = next.toString();
-    router.replace(qs ? `/organizer/wallet?${qs}` : "/organizer/wallet", { scroll: false });
+    router.replace(qs ? `/organizer/wallet?${qs}` : "/organizer/wallet", {
+      scroll: false,
+    });
   };
 
   const walletQuery = useQuery({
@@ -151,12 +163,14 @@ function WalletPage() {
     onError: (err) => {
       const parsed = parseApiError(err, "Gagal menyimpan tujuan pencairan.");
       setBankErrors(parsed.fieldErrors);
-      if (Object.keys(parsed.fieldErrors).length === 0) toast.error(parsed.message);
+      if (Object.keys(parsed.fieldErrors).length === 0)
+        toast.error(parsed.message);
     },
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: (values: { amount: number; note?: string }) => createWithdrawal(orgId!, values),
+    mutationFn: (values: { amount: number; note?: string }) =>
+      createWithdrawal(orgId!, values),
     onSuccess: () => {
       setWithdrawErrors({});
       setWithdrawOpen(false);
@@ -168,7 +182,8 @@ function WalletPage() {
     onError: (err) => {
       const parsed = parseApiError(err, "Gagal mengajukan penarikan.");
       setWithdrawErrors(parsed.fieldErrors);
-      if (Object.keys(parsed.fieldErrors).length === 0) toast.error(parsed.message);
+      if (Object.keys(parsed.fieldErrors).length === 0)
+        toast.error(parsed.message);
     },
   });
 
@@ -178,7 +193,8 @@ function WalletPage() {
       invalidate();
       toast.success("Penarikan dibatalkan, dana kembali ke saldo tersedia");
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal membatalkan penarikan.").message),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal membatalkan penarikan.").message),
   });
 
   if (orgLoading) {
@@ -236,7 +252,9 @@ function WalletPage() {
   // an organizer sitting on millions in held funds — they would go looking for
   // missing sales instead of waiting for the clock.
   const heldCoversMinimum =
-    !!wallet && wallet.balance_pending > 0 && wallet.balance_available + wallet.balance_pending >= minimumTotal;
+    !!wallet &&
+    wallet.balance_pending > 0 &&
+    wallet.balance_available + wallet.balance_pending >= minimumTotal;
 
   // Say *why* the button is off rather than just disabling it.
   const blockedReason = !wallet
@@ -263,7 +281,10 @@ function WalletPage() {
         title="Dompet"
         description="Pendapatan tiket dan biaya pendaftaran dikumpulkan platform, lalu dicairkan ke rekeningmu."
         actions={
-          <Button disabled={!!blockedReason} onClick={() => setWithdrawOpen(true)}>
+          <Button
+            disabled={!!blockedReason}
+            onClick={() => setWithdrawOpen(true)}
+          >
             <Banknote className="mr-2 h-4 w-4" />
             Tarik Dana
           </Button>
@@ -290,7 +311,7 @@ function WalletPage() {
               icon={Hourglass}
               label="Saldo Tertahan"
               value={rupiah(wallet.balance_pending)}
-              hint="Cair setelah jam 01:00 WIB"
+              hint="Dapat ditarik setelah jam 01:00 WIB"
             />
             <StatCard
               icon={Clock}
@@ -308,10 +329,13 @@ function WalletPage() {
 
           {negative && (
             <Card className="mt-4 border-[var(--danger)]/40 bg-[var(--danger)]/5 p-4">
-              <p className="text-sm font-semibold text-[var(--danger)]">Saldo minus</p>
+              <p className="text-sm font-semibold text-[var(--danger)]">
+                Saldo minus
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Ada refund atas dana yang sudah kamu tarik. Penarikan dikunci sampai saldo kembali
-                positif — pendapatan berikutnya akan menutup selisih ini otomatis.
+                Ada refund atas dana yang sudah kamu tarik. Penarikan dikunci
+                sampai saldo kembali positif — pendapatan berikutnya akan
+                menutup selisih ini otomatis.
               </p>
             </Card>
           )}
@@ -321,8 +345,8 @@ function WalletPage() {
               the minimum on the cards has no reason to open the form at all. */}
           {hasWaiver && !negative && (
             <p className="mt-4 text-sm text-muted-foreground">
-              {rupiah(wallet.balance_minimum_waived)} berasal dari event yang sudah berakhir dan
-              bisa ditarik tanpa batas minimal
+              {rupiah(wallet.balance_minimum_waived)} berasal dari event yang
+              sudah berakhir dan bisa ditarik tanpa batas minimal
               {wallet.rules.admin_fee > 0
                 ? ` — biaya admin ${rupiah(wallet.rules.admin_fee)} tetap dipotong.`
                 : "."}
@@ -330,7 +354,9 @@ function WalletPage() {
           )}
 
           {blockedReason && !negative && (
-            <p className="mt-4 text-sm text-muted-foreground">{blockedReason}</p>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {blockedReason}
+            </p>
           )}
         </>
       )}
@@ -340,154 +366,168 @@ function WalletPage() {
           balance cards at the top were pushed off screen by history nobody
           had asked to read. */}
       <div className="mt-8">
-        <PillTabs
-          items={TABS}
-          activeKey={tab}
-          onSelect={setTab}
-        />
+        <PillTabs items={TABS} activeKey={tab} onSelect={setTab} />
       </div>
 
       <div className="mt-5">
-      {tab === "bank" && (
-        <section>
-        {banksQuery.isLoading ? (
-          <Skeleton className="h-[88px] rounded-xl" />
-        ) : (
-          <BankAccountForm
-            current={primaryBank}
-            pending={bankMutation.isPending}
-            fieldErrors={bankErrors}
-            // mutateAsync, not mutate: the form closes itself on success and
-            // has to stay open on failure, so it needs the outcome.
-            onSubmit={(values) => bankMutation.mutateAsync(values)}
-          />
+        {tab === "bank" && (
+          <section>
+            {banksQuery.isLoading ? (
+              <Skeleton className="h-[88px] rounded-xl" />
+            ) : (
+              <BankAccountForm
+                current={primaryBank}
+                pending={bankMutation.isPending}
+                fieldErrors={bankErrors}
+                // mutateAsync, not mutate: the form closes itself on success and
+                // has to stay open on failure, so it needs the outcome.
+                onSubmit={(values) => bankMutation.mutateAsync(values)}
+              />
+            )}
+          </section>
         )}
-        </section>
-      )}
 
-      {tab === "withdrawals" && (
-        <section>
-        {withdrawalsQuery.isLoading ? (
-          <Skeleton className="h-[88px] rounded-xl" />
-        ) : withdrawals.length === 0 ? (
-          <EmptyState
-            icon={Landmark}
-            title="Belum ada penarikan"
-            description="Penarikan yang kamu ajukan akan muncul di sini beserta bukti transfernya."
-          />
-        ) : (
-          <div className="grid gap-3">
-            {withdrawals.map((w) => (
-              <Card
-                key={w.id}
-                className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold tabular-nums">{rupiah(w.amount)}</span>
-                    <WithdrawalStatusBadge status={w.status} />
-                    <span className="text-xs text-muted-foreground">{w.reference}</span>
-                  </div>
-                  {/* One fact per line on a phone; the middot run only reads as
+        {tab === "withdrawals" && (
+          <section>
+            {withdrawalsQuery.isLoading ? (
+              <Skeleton className="h-[88px] rounded-xl" />
+            ) : withdrawals.length === 0 ? (
+              <EmptyState
+                icon={Landmark}
+                title="Belum ada penarikan"
+                description="Penarikan yang kamu ajukan akan muncul di sini beserta bukti transfernya."
+              />
+            ) : (
+              <div className="grid gap-3">
+                {withdrawals.map((w) => (
+                  <Card
+                    key={w.id}
+                    className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold tabular-nums">
+                          {rupiah(w.amount)}
+                        </span>
+                        <WithdrawalStatusBadge status={w.status} />
+                        <span className="text-xs text-muted-foreground">
+                          {w.reference}
+                        </span>
+                      </div>
+                      {/* One fact per line on a phone; the middot run only reads as
                       a list when it fits on one. */}
-                  <div className="mt-1 flex flex-col text-sm text-muted-foreground sm:block">
-                    <span>
-                      {payoutLabels(w.account_type).kind} &middot; {w.bank_name}{" "}
-                      &middot; {w.account_number}
-                    </span>
-                    <span className="hidden sm:inline"> &middot; </span>
-                    <span>
-                      biaya admin {rupiah(w.admin_fee)} &middot; {dateTime(w.created_at)}
-                    </span>
-                  </div>
-                  {w.admin_note && (
-                    <p className="mt-1 text-sm text-[var(--danger)]">{w.admin_note}</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {/* Opens in place rather than a new tab: the proof is a
+                      <div className="mt-1 flex flex-col text-sm text-muted-foreground sm:block">
+                        <span>
+                          {payoutLabels(w.account_type).kind} &middot;{" "}
+                          {w.bank_name} &middot; {w.account_number}
+                        </span>
+                        <span className="hidden sm:inline"> &middot; </span>
+                        <span>
+                          biaya admin {rupiah(w.admin_fee)} &middot;{" "}
+                          {dateTime(w.created_at)}
+                        </span>
+                      </div>
+                      {w.admin_note && (
+                        <p className="mt-1 text-sm text-[var(--danger)]">
+                          {w.admin_note}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {/* Opens in place rather than a new tab: the proof is a
                       signed object-storage link, so a raw tab drops the
                       organizer on a bare image with no idea which withdrawal
                       it belongs to. */}
-                  {w.proof_url && (
-                    <Button variant="outline" size="sm" onClick={() => setProof(w)}>
-                      <ReceiptText className="h-4 w-4" />
-                      Bukti transfer
-                    </Button>
-                  )}
-                  {w.status === "pending" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={cancelMutation.isPending}
-                      onClick={() => cancelMutation.mutate(w.id)}
-                    >
-                      Batalkan
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
+                      {w.proof_url && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setProof(w)}
+                        >
+                          <ReceiptText className="h-4 w-4" />
+                          Bukti transfer
+                        </Button>
+                      )}
+                      {w.status === "pending" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={cancelMutation.isPending}
+                          onClick={() => cancelMutation.mutate(w.id)}
+                        >
+                          Batalkan
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
         )}
-        </section>
-      )}
 
-      {tab === "transactions" && (
-        <section>
-        {txQuery.isLoading ? (
-          <Skeleton className="h-[88px] rounded-xl" />
-        ) : transactions.length === 0 ? (
-          <EmptyState
-            icon={ReceiptText}
-            title="Belum ada mutasi"
-            description="Penjualan tiket dan biaya pendaftaran yang lunas akan tercatat di sini."
-          />
-        ) : (
-          <div className="grid gap-2">
-            {transactions.map((tx) => (
-              // Stacks on a phone instead of wrapping: the amount used to wrap
-              // under the description while keeping text-right, leaving it
-              // stranded against the far edge with a ragged gap beside it.
-              // Below sm it reads as two left-aligned lines.
-              <Card
-                key={tx.id}
-                className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{WALLET_TX_CATEGORY_LABELS[tx.category]}</span>
-                    <WalletTxStatusBadge status={tx.status} />
-                  </div>
-                  {/* Wraps rather than truncates on a phone: a description cut
+        {tab === "transactions" && (
+          <section>
+            {txQuery.isLoading ? (
+              <Skeleton className="h-[88px] rounded-xl" />
+            ) : transactions.length === 0 ? (
+              <EmptyState
+                icon={ReceiptText}
+                title="Belum ada mutasi"
+                description="Penjualan tiket dan biaya pendaftaran yang lunas akan tercatat di sini."
+              />
+            ) : (
+              <div className="grid gap-2">
+                {transactions.map((tx) => (
+                  // Stacks on a phone instead of wrapping: the amount used to wrap
+                  // under the description while keeping text-right, leaving it
+                  // stranded against the far edge with a ragged gap beside it.
+                  // Below sm it reads as two left-aligned lines.
+                  <Card
+                    key={tx.id}
+                    className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">
+                          {WALLET_TX_CATEGORY_LABELS[tx.category]}
+                        </span>
+                        <WalletTxStatusBadge status={tx.status} />
+                      </div>
+                      {/* Wraps rather than truncates on a phone: a description cut
                       to "Penjualan 2 tiket — Turnamen…" says less than the
                       extra line costs. */}
-                  <p className="mt-0.5 text-sm text-muted-foreground sm:truncate">
-                    {tx.description ?? tx.event_name ?? "—"} &middot; {dateTime(tx.created_at)}
-                  </p>
-                </div>
-                <div className="shrink-0 sm:text-right">
-                  <p
-                    className="font-semibold tabular-nums"
-                    style={{
-                      color: tx.type === "credit" ? "var(--success)" : "var(--danger)",
-                    }}
-                  >
-                    {tx.type === "credit" ? "+" : "−"}
-                    {rupiah(tx.amount)}
-                  </p>
-                  {tx.fee_amount > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      biaya {rupiah(tx.fee_amount)} dari {rupiah(tx.gross_amount)}
-                    </p>
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
+                      <p className="mt-0.5 text-sm text-muted-foreground sm:truncate">
+                        {tx.description ?? tx.event_name ?? "—"} &middot;{" "}
+                        {dateTime(tx.created_at)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 sm:text-right">
+                      <p
+                        className="font-semibold tabular-nums"
+                        style={{
+                          color:
+                            tx.type === "credit"
+                              ? "var(--success)"
+                              : "var(--danger)",
+                        }}
+                      >
+                        {tx.type === "credit" ? "+" : "−"}
+                        {rupiah(tx.amount)}
+                      </p>
+                      {tx.fee_amount > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          biaya {rupiah(tx.fee_amount)} dari{" "}
+                          {rupiah(tx.gross_amount)}
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
         )}
-        </section>
-      )}
       </div>
 
       {/* Read-only: no onApprove/onReject, because the transfer is already

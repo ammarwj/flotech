@@ -47,6 +47,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TeamStatusBadge } from "@/components/shared/status-badge";
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
@@ -237,6 +238,8 @@ export default function RegistrationsPage() {
         }
       />
 
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
+
       {query.isLoading && (
         <div className="grid gap-3">
           {[0, 1, 2].map((i) => (
@@ -382,6 +385,7 @@ export default function RegistrationsPage() {
         onClose={() => setImportOpen(false)}
         onImported={() => qc.invalidateQueries({ queryKey: ["registrations", orgId, eventId] })}
       />
+      </RaceRouteGuard>
     </div>
   );
 }

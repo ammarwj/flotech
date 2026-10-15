@@ -519,7 +519,16 @@ export interface SportDef {
   name: string;
   color: string;
   icon: string | null;
-  scoring: "goal" | "set";
+  /**
+   * How a match is scored — and whether there is a match at all.
+   *
+   * `"none"` is the third answer and is not a scoring style: it says this sport
+   * holds no fixtures, no table and no bracket (a fun run). `isRaceEvent()` in
+   * lib/race.ts is the single reader of it; the gates that ask "does this run on
+   * a clock?" read `=== "goal"` positively, never `!== "set"`, which would let
+   * `"none"` through as enabled.
+   */
+  scoring: "goal" | "set" | "none";
   /** Entrant shapes this sport can be run with. Squad-only for most sports. */
   participant_modes: ParticipantType[];
   default_match_minutes: number;
@@ -1479,6 +1488,127 @@ export interface ManualPaymentFields {
   verified_at: string | null;
 }
 
+/**
+ * Fun run — a sport that holds no matches, so none of the competition shapes
+ * above apply to it. `isRaceEvent()` in lib/race.ts is the only reader of the
+ * `scoring: "none"` that selects it.
+ */
+
+/** One sale window of a fun run: Early Bird, Pre Sale, Last Call. */
+export interface RacePeriod {
+  id: string;
+  event_id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  sort_order: number;
+  /**
+   * Whether this window is in force right now, as the SERVER decided it.
+   *
+   * Published rather than derived from the two timestamps here, the same
+   * reasoning as `effective_payment_method` and `registration_is_open`: two
+   * readers of one rule drift, and the drift shows early bird highlighted above
+   * a last-call price. `currentPeriod()` reads this and nothing else.
+   */
+  is_current: boolean;
+  /**
+   * Whether the window has run out — a different question from `is_current`,
+   * which is why both travel. A past window renders greyed and a future one as
+   * "mulai 12 Jan", and only one window can ever be current.
+   */
+  has_ended: boolean;
+}
+
+/** This category's price in one window; `price: null` = not sold then. */
+export interface RaceCategoryPrice {
+  period_id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  /**
+   * Null means NOT SOLD in that window — not free, and not inherited. The one
+   * place in this shape where an absent value must not read as a default; see
+   * the race_category_prices migration.
+   */
+  price: number | null;
+  is_current: boolean;
+}
+
+/** A category a fun run sells entries in: Mahasiswa, Umum, 5K. */
+export interface RaceCategory {
+  id: string;
+  event_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  /** Null = unlimited, the convention every quota in this API uses. */
+  quota: number | null;
+  /** Places held, paid or pending — the reservation, not the paid count. */
+  taken: number;
+  remaining: number | null;
+  is_active: boolean;
+  /** Active and with room. NOT "can be entered" — see `current_price`. */
+  is_open: boolean;
+  /**
+   * What a runner would pay this instant, or null when this category is not on
+   * sale. **Null is not zero**: zero is a real price (a sponsored run), so a
+   * `?? 0` here would make "free" and "not on sale" the same thing.
+   */
+  current_price: number | null;
+  /** Every window with this category's price in it, unsold ones included. */
+  price_schedule: RaceCategoryPrice[];
+  created_at: string;
+}
+
+/** One runner's entry. The fun run counterpart of both Team and TicketOrder. */
+export interface RaceEntry extends ManualPaymentFields {
+  id: string;
+  event_id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  gender: string | null;
+  birth_date: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  custom_fields: Record<string, string>;
+  /**
+   * The price snapshot, both halves. Neither is derived from the period row:
+   * organizers reprice mid-sale, and a receipt already issued must keep saying
+   * what was charged and which window it was bought in.
+   */
+  period_name: string;
+  price: number;
+  platform_fee: number;
+  gateway_fee: number;
+  gateway_tax: number;
+  service_fee: number;
+  /** price + gateway_fee + service_fee — what the runner is actually charged. */
+  gross_amount: number;
+  /** Null on a free entry, which never had a bill to document. */
+  invoice_number: string | null;
+  receipt_number: string | null;
+  status: "pending" | "paid" | "cancelled" | "expired" | "refunded";
+  paid_at: string | null;
+  created_at: string;
+  /** Where to transfer. Only while a manual entry is still unpaid. */
+  bank_account?: PublicBankAccount | null;
+  category?: { id: string; name: string; slug: string };
+  event?: {
+    id: string;
+    name: string;
+    slug: string;
+    start_date: string | null;
+    location_name: string | null;
+  };
+  documents?: {
+    id: string;
+    document_type: string | null;
+    file_url: string;
+    file_name: string | null;
+  }[];
+}
+
 /** Shared by every "start a payment" response. */
 export interface PaymentStart {
   snap_token: string | null;
@@ -1491,6 +1621,23 @@ export interface PaymentStart {
 
 export interface RegisterTeamResult extends PaymentStart {
   team: Team;
+}
+
+export interface RegisterRaceEntryResult extends PaymentStart {
+  entry: RaceEntry;
+}
+
+/** What the public fun run page reads: what is on sale, and the windows. */
+export interface PublicRaceOffer {
+  categories: RaceCategory[];
+  periods: RacePeriod[];
+  /**
+   * The window in force, or null. Published separately from the `is_current`
+   * flags so the page can tell "nothing is open" from "this category has no
+   * price in the open window" — two different sentences, and only the server
+   * can tell them apart.
+   */
+  current_period: RacePeriod | null;
 }
 
 export interface PayRegistrationResult extends PaymentStart {

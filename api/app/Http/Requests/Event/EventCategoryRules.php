@@ -17,13 +17,23 @@ use Illuminate\Validation\Rule;
 class EventCategoryRules
 {
     /**
-     * @param  string  $presence  'required' (create) or 'sometimes' (update)
+     * @param  string  $presence  'required' (create), 'sometimes' (update), or
+     *                            'nullable' for a sport with no competition
+     *                            categories at all — see StoreEventRequest.
      * @return array<string, mixed>
      */
     public static function make(string $presence): array
     {
         $rules = [
-            'categories' => [$presence, 'array', 'min:1'],
+            // `min:1` only where the list is required. A fun run passes
+            // `nullable` here and sends nothing at all; keeping `min:1`
+            // unconditional would refuse `[]` as well, which is the shape a
+            // client sends when it has no categories to send.
+            'categories' => array_values(array_filter([
+                $presence,
+                'array',
+                $presence === 'required' ? 'min:1' : null,
+            ])),
             'categories.*.id' => ['nullable', 'uuid'],
             'categories.*.name' => ['required', 'string', 'max:255'],
             'categories.*.slug' => ['nullable', 'string', 'max:100', 'alpha_dash'],

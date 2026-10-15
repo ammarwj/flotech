@@ -67,12 +67,12 @@ class PlatformSettings
             'label' => 'Tambahan masa tahan di atas batas 01:00 (hari)',
             'description' => 'Dana masuk cair otomatis setelah lewat jam 01:00 WIB berikutnya. Isi 0 untuk batas 01:00 terdekat, atau tambahkan hari untuk menahannya lebih lama.',
         ],
-        // Three margins, not one rate applied three times, and the split
+        // Four margins, not one rate applied four times, and the split
         // follows two different seams. The first is who pays: a participant
         // paying an organizer is not an organizer paying us. The second is what
         // is bought — a ticket is sold per seat, a team registration once per
         // team at many times the price — so a rate that suits one is wrong for
-        // the other. All three are priced independently and any may be zero
+        // the other. All four are priced independently and any may be zero
         // while the others are not. PaymentFeeCalculator takes the key as an
         // argument rather than picking it, so a call site that forgets to say
         // which one it is cannot silently inherit another flow's rate.
@@ -96,6 +96,14 @@ class PlatformSettings
             'max' => 100_000,
             'label' => 'Fee platform ke peserta — pendaftaran tim (Rp)',
             'description' => 'Margin platform pada biaya pendaftaran tim. Nominal tetap satu kali per tim — jumlah pemain di roster tidak menambah fee — ditambahkan ke tagihan peserta di atas fee gateway.',
+        ],
+        'race_entry_service_fee_amount' => [
+            'config' => 'payments.race_entry_service_fee_amount',
+            'type' => 'money',
+            'min' => 0,
+            'max' => 100_000,
+            'label' => 'Fee platform ke peserta — entry lomba (Rp)',
+            'description' => 'Margin platform pada biaya pendaftaran fun run. Nominal tetap satu kali per pelari — satu orang, satu tempat di garis start — ditambahkan ke tagihan peserta di atas fee gateway.',
         ],
         'plan_service_fee_amount' => [
             'config' => 'payments.plan_service_fee_amount',
