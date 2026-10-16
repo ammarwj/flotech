@@ -33,22 +33,22 @@ class MidtransWebhookController extends Controller
      * RUN- = fun run entry, and everything else falls through to a plan order.
      *
      * Plan orders are matched by that `default` arm rather than by their own
-     * prefix on purpose — see handlePlanOrder(). A new rail therefore only has
-     * to add its own `Str::startsWith` arm; `match` evaluates `default` last
-     * whatever position it is written in, so the arms cannot be shadowed by it
-     * (unlike a `switch`). What a forgotten arm DOES cause is a silent
-     * failure in the worst direction: the settlement lands in
-     * handlePlanOrder(), finds no row, and answers Midtrans with a 404 — which
-     * is retried a few times and then abandoned, leaving the row pending
-     * forever with nothing logged as an error anywhere.
-     *
-     * Plan orders are matched by that `default` arm rather than by their own
-     * prefix on purpose. They used to be minted as SUB- and are now minted as
-     * PLN-; matching either prefix explicitly would strand every id of the
+     * prefix on purpose: they used to be minted as SUB- and are now minted as
+     * PLN-, so matching either prefix explicitly would strand every id of the
      * other kind still outstanding at Midtrans.
      *
+     * A new rail therefore only has to add its own `Str::startsWith` arm;
+     * `match` evaluates `default` last whatever position it is written in, so
+     * the arms cannot be shadowed by it (unlike a `switch`). What a forgotten
+     * arm DOES cause is a silent failure in the worst direction: the settlement
+     * lands in handlePlanOrder(), finds no row, and answers Midtrans with a 404
+     * — which is retried a few times and then abandoned, leaving the row
+     * pending forever with nothing logged as an error anywhere. **That has
+     * already happened once**, to the RUN- arm: a merge kept handleRaceEntry()
+     * but dropped the line below that reaches it, and nothing failed loudly.
+     *
      * `payment_type` is the instrument the payment actually settled with, and
-     * all three arms pass it on. It is NOT a second spelling of the order's
+     * all four arms pass it on. It is NOT a second spelling of the order's
      * `payment_channel`: that is the fee group the buyer picked *before* paying,
      * which the gateway fee was computed from, and one channel covers several
      * instruments — `va` settles as `bca_va` or `echannel`, `ewallet` as qris or
@@ -71,6 +71,7 @@ class MidtransWebhookController extends Controller
         return match (true) {
             Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus, $paymentType),
             Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus, $paymentType),
+            Str::startsWith($orderId, 'RUN-') => $this->handleRaceEntry($orderId, $transactionStatus, $paymentType),
             default => $this->handlePlanOrder($orderId, $transactionStatus, $paymentType),
         };
     }
@@ -114,7 +115,7 @@ class MidtransWebhookController extends Controller
         return ApiResponse::success(null, 'Webhook diproses');
     }
 
-    protected function handleRaceEntry(string $orderId, string $status): JsonResponse
+    protected function handleRaceEntry(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
         $entry = RaceEntry::where('midtrans_order_id', $orderId)->first();
         if (! $entry) {
@@ -122,7 +123,7 @@ class MidtransWebhookController extends Controller
         }
 
         match ($status) {
-            'capture', 'settlement' => $this->raceEntries->markPaid($entry),
+            'capture', 'settlement' => $this->raceEntries->markPaid($entry, $paymentType),
             // Unlike handleRegistration above, the failure arm is wired: an
             // abandoned entry is holding a place in a quota, and the only other
             // thing that gives it back is the hourly sweep — which never

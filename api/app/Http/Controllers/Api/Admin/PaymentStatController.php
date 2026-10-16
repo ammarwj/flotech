@@ -33,14 +33,17 @@ class PaymentStatController extends Controller
      * identity TicketOrder::getGrossAmountAttribute() publishes per row.
      * `gateway_tax` is NOT added: it is already counted inside `gateway_fee`.
      *
-     * Spelled once because every breakdown below runs the same three queries
-     * with a different `GROUP BY`. A fourth rail is one entry here.
+     * Spelled once because every breakdown below runs the same query per rail
+     * with a different `GROUP BY`. A new rail is one entry here — and it must
+     * be added, because a rail left out does not read as zero anywhere: its
+     * revenue is simply absent from every figure on the page.
      *
      * @var array<string, array{table: string, amount: string}>
      */
     private const SOURCES = [
         'ticket_order' => ['table' => 'ticket_orders', 'amount' => 'total_price'],
         'team' => ['table' => 'teams', 'amount' => 'payment_amount'],
+        'race_entry' => ['table' => 'race_entries', 'amount' => 'price'],
         'event_plan_order' => ['table' => 'event_plan_orders', 'amount' => 'amount'],
     ];
 
@@ -120,7 +123,7 @@ class PaymentStatController extends Controller
     /**
      * Per-rail figures, plus an `_all` roll-up `totals` reuses.
      *
-     * Summed from the same three queries rather than totalled separately, so
+     * Summed from the same per-rail queries rather than totalled separately, so
      * the cards and the breakdown under them cannot disagree — the same reason
      * StatController derives `active` from its own map.
      *

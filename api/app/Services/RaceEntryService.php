@@ -136,16 +136,21 @@ class RaceEntryService
      * webhooks are no-ops, and the early return is also what keeps the runner
      * from getting a second mail.
      */
-    public function markPaid(RaceEntry $entry): void
+    public function markPaid(RaceEntry $entry, ?string $paymentType = null): void
     {
         if ($entry->status === 'paid') {
             return;
         }
 
-        DB::transaction(function () use ($entry) {
+        DB::transaction(function () use ($entry, $paymentType) {
             $entry->update([
                 'status' => 'paid',
                 'paid_at' => Carbon::now(),
+                // The Midtrans instrument, known only to the webhook. Written
+                // with `??` so the other doors into this method — manual
+                // approval, a free entry, dev's mock settle — cannot blank a
+                // value a settlement already stored. Same as the other rails.
+                'payment_type' => $paymentType ?? $entry->payment_type,
                 // `??` keeps a re-delivered webhook from issuing a second
                 // receipt for one payment; free entries never get one at all.
                 'receipt_number' => $entry->receipt_number

@@ -57,6 +57,10 @@ class RaceEntryResource extends JsonResource
             'created_at' => $this->created_at,
 
             'payment_method' => $this->payment_method,
+            // The Midtrans instrument it settled with (`qris`, `gopay`, …).
+            // Null for manual/free entries, and for anything settled before
+            // the column existed. See the other three rails' resources.
+            'payment_type' => $this->payment_type,
             // Derived, not stored — see HasManualPayment for why there is no
             // `awaiting_verification` status value.
             'awaiting_verification' => $this->isAwaitingVerification(),

@@ -25,6 +25,7 @@ import type { AdminPaymentTotals } from "@/types/api";
 const SOURCE_LABELS: Record<string, { label: string; hint: string }> = {
   ticket_order: { label: "Tiket", hint: "Penonton membeli tiket dari organizer" },
   team: { label: "Pendaftaran tim", hint: "Biaya pendaftaran yang dibayar peserta" },
+  race_entry: { label: "Entry lomba", hint: "Pelari mendaftar fun run / race" },
   event_plan_order: { label: "Paket event", hint: "Organizer membeli paket dari flo-event" },
 };
 
@@ -315,13 +316,20 @@ export default function AdminPaymentStatsPage() {
               Per jenis pemasukan
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tiket dan pendaftaran dikumpulkan <span className="font-medium">untuk</span> organizer
-              dan masuk ke dompetnya; paket event adalah pendapatan flo-event sendiri.
+              Tiket, pendaftaran tim, dan entry lomba dikumpulkan{" "}
+              <span className="font-medium">untuk</span> organizer dan masuk ke dompetnya; paket
+              event adalah pendapatan flo-event sendiri.
             </p>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {/* Column count and skeleton count both come off SOURCE_LABELS, so a
+                rail added to the server shows up here without a second number
+                to remember — a hand-counted grid silently drops the new one
+                onto a row of its own. */}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {query.isPending
-                ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)
+                ? Object.keys(SOURCE_LABELS).map((key) => (
+                    <Skeleton key={key} className="h-24 rounded-xl" />
+                  ))
                 : sourceRows.map(([key, sums]) => (
                     <div key={key} className="rounded-xl bg-[var(--bg-alt)] p-4">
                       <p className="text-sm font-semibold">{SOURCE_LABELS[key]?.label ?? key}</p>

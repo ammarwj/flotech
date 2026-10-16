@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\Plan;
+use App\Models\RaceEntry;
 use App\Models\Team;
 use App\Models\TicketCategory;
 use App\Models\TicketOrder;
@@ -117,6 +118,44 @@ class PaymentInstrumentTest extends TestCase
     }
 
     /**
+     * A pending fun run entry, with the period and category it needs.
+     *
+     * Its own event, because `sport_type` is what makes the race tables apply
+     * and the ticket fixture's event is futsal. Built without a paid plan order
+     * for the same reason event() is — see its docblock.
+     */
+    private function raceEntry(Organization $org, string $midtransId = 'RUN-ABCDEFGHIJ'): RaceEntry
+    {
+        $event = $org->events()->create([
+            'plan_id' => $this->planId(),
+            'name' => 'Run', 'slug' => 'run-'.uniqid(),
+            'sport_type' => 'fun_run', 'status' => 'open',
+            'start_date' => '2026-08-01', 'end_date' => '2026-08-01',
+        ]);
+
+        $period = $event->racePeriods()->create([
+            'name' => 'Early Bird',
+            'starts_at' => '2026-07-01T00:00:00+07:00',
+            'ends_at' => '2026-07-10T23:59:59+07:00',
+        ]);
+        $category = $event->raceCategories()->create(['name' => '5K', 'slug' => '5k']);
+        $category->prices()->create(['race_period_id' => $period->id, 'price' => 75000]);
+
+        return $category->entries()->create([
+            'event_id' => $event->id,
+            'full_name' => 'Ammar',
+            'email' => 'ammar@test.com',
+            'race_period_id' => $period->id,
+            'period_name' => 'Early Bird',
+            'price' => 75000,
+            'status' => 'pending',
+            'payment_method' => 'gateway',
+            'payment_channel' => 'va',
+            'midtrans_order_id' => $midtransId,
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $extra
      * @return array<string, mixed>
      */
@@ -169,11 +208,12 @@ class PaymentInstrumentTest extends TestCase
     }
 
     /**
-     * All three rails in one test. One rail on its own would pass while the two
+     * All four rails in one test. One rail on its own would pass while the
      * other arms were never wired — which is exactly the state this change
-     * found the controller in.
+     * found the controller in twice: first the TIX-/REG- arms never receiving
+     * the instrument, then the RUN- arm missing from `match` altogether.
      */
-    public function test_all_three_rails_store_the_instrument(): void
+    public function test_all_four_rails_store_the_instrument(): void
     {
         // Settling a plan order mails a receipt PDF, and dompdf's own output
         // buffer is what PHPUnit flags as risky. The document is covered by
@@ -185,6 +225,7 @@ class PaymentInstrumentTest extends TestCase
 
         $order = $this->ticketOrder($event);
         $team = $this->team($event);
+        $entry = $this->raceEntry($org);
         $plan = Plan::create(['name' => 'Pro X', 'slug' => 'pro-'.uniqid(), 'price' => 350000]);
         $planOrder = $org->planOrders()->create([
             'plan_id' => $plan->id,
@@ -197,10 +238,16 @@ class PaymentInstrumentTest extends TestCase
 
         $this->notify($this->payload($order->midtrans_order_id, '100000.00', ['payment_type' => 'qris']))->assertOk();
         $this->notify($this->payload($team->midtrans_order_id, '150000.00', ['payment_type' => 'bank_transfer']))->assertOk();
+        $this->notify($this->payload($entry->midtrans_order_id, '75000.00', ['payment_type' => 'echannel']))->assertOk();
         $this->notify($this->payload($planOrder->midtrans_order_id, '350000.00', ['payment_type' => 'gopay']))->assertOk();
 
         $this->assertSame('qris', $order->fresh()->payment_type);
         $this->assertSame('bank_transfer', $team->fresh()->payment_type);
+        // `va` channel, `echannel` instrument — the pair that proves the two
+        // columns answer different questions, taken from a real dev row.
+        $entry = $entry->fresh();
+        $this->assertSame('echannel', $entry->payment_type);
+        $this->assertSame('va', $entry->payment_channel);
         $this->assertSame('gopay', $planOrder->fresh()->payment_type);
     }
 
@@ -317,6 +364,51 @@ class PaymentInstrumentTest extends TestCase
             ->assertOk()
             ->json('data.by_payment_type');
         $this->assertArrayNotHasKey('label', $types[0]);
+    }
+
+    /**
+     * Every rail reaches the figures, compared against the catalogue of rails
+     * rather than a literal list.
+     *
+     * A rail left out of SOURCES does not read as zero anywhere — its revenue is
+     * simply absent from every number on the page, which is indistinguishable
+     * from nobody having paid. That is exactly how the fun run rail arrived:
+     * added on its own branch, after the breakdown was written.
+     *
+     * The comparison that matters is `totals` against the sum of `by_source`:
+     * asserting a race row exists would still pass if the rail were counted in
+     * its own card but left out of the roll-up above it.
+     */
+    public function test_every_rail_reaches_the_breakdown(): void
+    {
+        $org = $this->org();
+        $event = $this->event($org);
+
+        $this->notify($this->payload(
+            $this->ticketOrder($event)->midtrans_order_id, '100000.00', ['payment_type' => 'qris'],
+        ))->assertOk();
+        $this->notify($this->payload(
+            $this->team($event)->midtrans_order_id, '150000.00', ['payment_type' => 'bank_transfer'],
+        ))->assertOk();
+        $this->notify($this->payload(
+            $this->raceEntry($org)->midtrans_order_id, '75000.00', ['payment_type' => 'echannel'],
+        ))->assertOk();
+
+        $data = $this->actingAs($this->superAdmin(), 'api')
+            ->getJson('/api/v1/admin/payment-stats')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(1, $data['by_source']['race_entry']['count']);
+        $this->assertEquals(75000, $data['by_source']['race_entry']['gross']);
+
+        // Three payments, and the roll-up is the sum of the rails beside it.
+        $this->assertSame(3, $data['totals']['count']);
+        $this->assertSame(
+            $data['totals']['count'],
+            array_sum(array_column($data['by_source'], 'count')),
+        );
+        $this->assertEquals(325000, $data['totals']['gross']);
     }
 
     public function test_a_regular_user_cannot_read_payment_stats(): void

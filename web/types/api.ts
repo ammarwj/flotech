@@ -2194,7 +2194,10 @@ export interface AdminPaymentStats {
    * Midtrans names those, and there is no catalogue to read one out of.
    */
   by_channel: (AdminPaymentTotals & { payment_channel: string; label: string })[];
-  by_source: Record<"ticket_order" | "team" | "event_plan_order", AdminPaymentTotals>;
+  by_source: Record<
+    "ticket_order" | "team" | "race_entry" | "event_plan_order",
+    AdminPaymentTotals
+  >;
   /** The sum of `by_source`, derived server-side so the cards cannot disagree with it. */
   totals: AdminPaymentTotals;
 }
