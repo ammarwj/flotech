@@ -374,7 +374,6 @@ export interface EventPlanOrder extends ManualPaymentFields {
   /** When the owner was last nudged that this credit is unspent; null = never. */
   idle_reminded_at: string | null;
   midtrans_order_id: string | null;
-  payment_type: string | null;
   paid_at: string | null;
   /** Buyer-paid, on top of `amount`. `gateway_tax` is already inside `gateway_fee`. */
   payment_channel: string | null;
@@ -1469,6 +1468,17 @@ export interface PublicBankAccount {
 /** Columns shared by anything payable — a ticket order or a team registration. */
 export interface ManualPaymentFields {
   payment_method: PaymentMethod;
+  /**
+   * The Midtrans instrument the payment actually settled with (`qris`,
+   * `gopay`, `bank_transfer`, …).
+   *
+   * NOT a second spelling of `payment_channel`: that is the fee group the buyer
+   * picked *before* paying, which the gateway fee was computed from, and one
+   * channel covers several instruments — `ewallet` carries qris, gopay and
+   * shopeepay alike. Null for a manual/onsite/free order, and for anything
+   * settled before the column existed.
+   */
+  payment_type: string | null;
   /** Derived server-side: manual, unsettled, proof uploaded, not yet ruled on. */
   awaiting_verification: boolean;
   payment_proof_url: string | null;
@@ -1936,6 +1946,8 @@ export interface AdminPayment {
   platform_fee: number;
   payment_method: PaymentMethod;
   payment_channel: string | null;
+  /** The instrument it settled with; the channel above does not say which. */
+  payment_type: string | null;
   gateway_fee: number;
   service_fee: number;
   gross_amount: number;
@@ -1945,6 +1957,43 @@ export interface AdminPayment {
 
 export interface AdminWallet extends Wallet {
   organization_name: string | null;
+}
+
+/** One group's settled figures in the platform payment breakdown. */
+export interface AdminPaymentTotals {
+  count: number;
+  /** What sellers charge — organizer ticket/registration prices and plan prices. */
+  amount: number;
+  /** Buyer surcharge on top. `gateway_tax` is already inside this, so it is not published separately. */
+  gateway_fee: number;
+  service_fee: number;
+  /** amount + gateway_fee + service_fee — what payers were actually charged. */
+  gross: number;
+}
+
+/**
+ * Settled money cut by how people paid, for the super admin's dashboard.
+ *
+ * Counted from the order tables, never from the notification log — Midtrans
+ * re-delivers webhooks, so one payment can have several log rows.
+ *
+ * `"unknown"` is a real bucket in both breakdowns, covering manual transfers,
+ * box-office cash, free orders and anything settled before the column existed.
+ * There is no catalogue of instruments to pad either list with: Midtrans names
+ * them, so the only list that cannot go stale is what the rows carry.
+ */
+export interface AdminPaymentStats {
+  by_payment_type: (AdminPaymentTotals & { payment_type: string })[];
+  /**
+   * `label` is the channel's display name, resolved server-side from the same
+   * config the checkout picker reads — so the dashboard cannot disagree with
+   * what the buyer was shown. The instrument rows above carry no label:
+   * Midtrans names those, and there is no catalogue to read one out of.
+   */
+  by_channel: (AdminPaymentTotals & { payment_channel: string; label: string })[];
+  by_source: Record<"ticket_order" | "team" | "event_plan_order", AdminPaymentTotals>;
+  /** The sum of `by_source`, derived server-side so the cards cannot disagree with it. */
+  totals: AdminPaymentTotals;
 }
 
 /** A super-admin editable platform rule (payout policy). */

@@ -21,6 +21,7 @@ import {
   Wallet,
   Banknote,
   BadgeCheck,
+  PieChart,
   ReceiptText,
   MessageSquareQuote,
   Newspaper,
@@ -171,6 +172,10 @@ export const ADMIN_NAV: NavSection[] = [
         short: "Penarikan",
       },
       { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },
+      // PieChart, not ReceiptText: the page above is the list of individual
+      // payments an admin acts on, this one is the aggregate behind them, and
+      // the same icon on both would read as one page duplicated.
+      { href: "/admin/payment-stats", label: "Perhitungan Pembayaran", icon: PieChart },
     ],
   },
   {

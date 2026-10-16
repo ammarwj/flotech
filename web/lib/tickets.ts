@@ -141,6 +141,34 @@ export function selectableDates(
 }
 
 /**
+ * The dates a freshly picked category starts with.
+ *
+ * A per-day category that sells exactly one date asks a question with one
+ * possible answer: the buyer has to click the single chip before the form will
+ * submit, and a form that refuses to proceed until you confirm the only option
+ * is a step, not a choice. So it starts ticked. Everything else starts empty —
+ * two dates is a real question, and a pass never asks one (`coveredDates()`
+ * resolves its own).
+ *
+ * `seats` is what the quantity is at that moment, so the one date is only
+ * pre-picked when it actually has room for them; a chip the picker would draw
+ * disabled must not arrive already selected. Lives here rather than in the two
+ * callers because the box office and the public shop have to open on the same
+ * state — a till that starts blank where the shop starts ticked is the same
+ * class of split as two readers of a plan limit.
+ */
+export function defaultDates(
+  category: TicketCategory | null,
+  seats = 1,
+): string[] {
+  if (category?.day_mode !== "per_day") return [];
+
+  const days = selectableDates(category, seats);
+
+  return days.length === 1 && !days[0].disabled ? [days[0].date] : [];
+}
+
+/**
  * A range of days as one line: "14 – 16 Nov" for a run, chips joined otherwise.
  *
  * Dates are expected sorted. Gaps matter to a buyer who picked Friday and

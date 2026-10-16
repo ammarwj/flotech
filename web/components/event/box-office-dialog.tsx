@@ -40,6 +40,7 @@ import { phoneInput } from "@/lib/phone";
 import {
   coveredDates,
   dateRangeLabel,
+  defaultDates,
   isSoldOut,
   priceUnitLabel,
   pricedDays,
@@ -163,7 +164,12 @@ function SaleForm({
 
   const [selected, setSelected] = useState<string>(sellable[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
-  const [dates, setDates] = useState<string[]>([]);
+  // Seeded, not empty: a category is already picked above, so the one-date
+  // rule has to apply to it on open the same way it does to the next one the
+  // staff selects.
+  const [dates, setDates] = useState<string[]>(() =>
+    defaultDates(sellable[0] ?? null, 1),
+  );
   const [buyer, setBuyer] = useState({ name: "", email: "", phone: "" });
   const [channel, setChannel] = useState<string | null>(null);
 
@@ -255,7 +261,12 @@ function SaleForm({
               // and the channel's fee is quoted per ticket — both reset, same
               // as on the buyer's page.
               setQuantity(1);
-              setDates([]);
+              setDates(
+                defaultDates(
+                  sellable.find((c) => c.id === e.target.value) ?? null,
+                  1,
+                ),
+              );
               setChannel(null);
             }}
           >

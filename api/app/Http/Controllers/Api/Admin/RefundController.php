@@ -47,6 +47,10 @@ class RefundController extends Controller
                 'platform_fee' => (float) $order->platform_fee,
                 'payment_method' => $order->payment_method,
                 'payment_channel' => $order->payment_channel,
+                // The instrument it actually settled with, which the channel
+                // above does not say: `ewallet` covers qris, gopay and
+                // shopeepay alike.
+                'payment_type' => $order->payment_type,
                 'gateway_fee' => (float) $order->gateway_fee,
                 'service_fee' => (float) $order->service_fee,
                 'gross_amount' => $order->gross_amount,
@@ -71,6 +75,7 @@ class RefundController extends Controller
                 'platform_fee' => (float) $team->platform_fee,
                 'payment_method' => $team->payment_method,
                 'payment_channel' => $team->payment_channel,
+                'payment_type' => $team->payment_type,
                 'gateway_fee' => (float) $team->gateway_fee,
                 'service_fee' => (float) $team->service_fee,
                 'gross_amount' => $team->gross_amount,

@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\LandingStatController;
+use App\Http\Controllers\Api\Admin\PaymentStatController as AdminPaymentStatController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
@@ -612,6 +613,10 @@ Route::prefix('v1')->group(function () {
             // How much of the platform is in use: tournaments by status.
             Route::get('stats', [AdminStatController::class, 'index']);
 
+            // Settled money, cut by how people paid. Counted from the order
+            // tables, never from the notification log — see the controller.
+            Route::get('payment-stats', [AdminPaymentStatController::class, 'index']);
+
             // Public page traffic across the whole platform.
             Route::get('view-stats', [AdminViewStatController::class, 'index']);
             Route::get('view-stats/organizations', [AdminViewStatController::class, 'organizations']);
@@ -718,5 +723,11 @@ Route::prefix('v1')->group(function () {
     });
 
     // ---- Webhooks (signature-verified inside controller) ----
-    Route::post('webhooks/midtrans', [MidtransWebhookController::class, 'handle']);
+    // Throttled because this is the one unauthenticated route that writes an
+    // unbounded number of rows: every notification is logged to
+    // `payment_notifications` *before* its signature is checked, so a rejected
+    // payload leaves a row too. 300/minute is far above any real Midtrans
+    // volume — the limit is there for the flood, not for the traffic.
+    Route::post('webhooks/midtrans', [MidtransWebhookController::class, 'handle'])
+        ->middleware('throttle:300,1');
 });

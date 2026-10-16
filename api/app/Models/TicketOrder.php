@@ -44,6 +44,10 @@ class TicketOrder extends Model
         'status',
         'payment_method',
         'payment_channel',
+        // The Midtrans instrument the payment actually settled with. NOT a
+        // second spelling of payment_channel above: that is the fee group the
+        // buyer picked beforehand, which the gateway fee was computed from.
+        'payment_type',
         'gateway_fee',
         'gateway_tax',
         'service_fee',

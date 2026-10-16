@@ -176,14 +176,22 @@ class TicketService
      * their e-ticket link. Idempotent — re-delivered webhooks are no-ops (the
      * early return is also what keeps the buyer from getting a second mail),
      * and the wallet guards itself besides.
+     *
+     * `$paymentType` is the Midtrans instrument (`qris`, `gopay`, …), known
+     * only once the payment settles and only by the webhook. It defaults to
+     * null because the other four doors into this method — manual approval,
+     * box-office cash, a free order and dev's mock settle — have no instrument
+     * to report, and it is written with `??` so none of them can blank a value
+     * the webhook already stored. Same pattern as
+     * EventPlanOrderService::activate().
      */
-    public function markPaid(TicketOrder $order): void
+    public function markPaid(TicketOrder $order, ?string $paymentType = null): void
     {
         if ($order->status === 'paid') {
             return;
         }
 
-        DB::transaction(function () use ($order) {
+        DB::transaction(function () use ($order, $paymentType) {
             $order->update([
                 'status' => 'paid',
                 'paid_at' => Carbon::now(),
@@ -191,6 +199,7 @@ class TicketService
                 // receipt for one payment; free orders never get one at all.
                 'receipt_number' => $order->receipt_number
                     ?? ((float) $order->total_price > 0 ? $this->number('receipt') : null),
+                'payment_type' => $paymentType ?? $order->payment_type,
             ]);
 
             // A manual transfer went straight into the organizer's own bank

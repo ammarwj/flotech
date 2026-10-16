@@ -11,6 +11,7 @@ import {
   Settings2,
   Trophy,
   BarChart3,
+  PieChart,
   Zap,
 } from "lucide-react";
 
@@ -123,6 +124,29 @@ export default function AdminOverviewPage() {
       )}
 
       <Card className="mt-6 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
+            <PieChart className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+              Perhitungan pembayaran
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Uang masuk yang sudah lunas, dirinci per instrumen pembayaran (QRIS, GoPay, transfer
+              bank), per channel, dan per jenis pemasukan.
+            </p>
+          </div>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href="/admin/payment-stats">
+            Lihat perhitungan
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </Card>
+
+      <Card className="mt-4 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
             <CreditCard className="h-5 w-5" />

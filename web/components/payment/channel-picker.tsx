@@ -114,6 +114,19 @@ export function ChannelPicker({
         );
       })}
 
+      {/* This channel is quoted at the QRIS rate, but the Midtrans page it
+          opens also offers GoPay as a direct payment — and that one is charged
+          at a higher rate (~2%) that lands on the buyer after our total has
+          already been shown here. Nothing in the breakdown above can carry it,
+          so the only place to say it is before they leave. Keyed on the channel
+          key rather than the label, which is editable in config. */}
+      {value === "ewallet" && (
+        <p className="rounded-xl bg-[var(--tint)] p-3 text-xs text-muted-foreground">
+          Bayar dengan scan QRIS, jangan tombol GoPay langsung, agar tidak kena
+          biaya tambahan.
+        </p>
+      )}
+
       {/* Only once a channel is picked: the fee is per channel, so before that
           there is no single breakdown to show. */}
       {selected && (
