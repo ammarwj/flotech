@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
 use App\Http\Controllers\Api\Admin\LandingStatController;
+use App\Http\Controllers\Api\Admin\PaymentStatController as AdminPaymentStatController;
 use App\Http\Controllers\Api\Admin\PlanController;
 use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
@@ -669,6 +670,11 @@ Route::prefix('v1')->group(function () {
 
             // How much of the platform is in use: tournaments by status.
             Route::get('stats', [AdminStatController::class, 'index']);
+
+            // Settled money, cut by how people paid. Counted from the order
+            // tables, never from the webhooks that settled them — see the
+            // controller.
+            Route::get('payment-stats', [AdminPaymentStatController::class, 'index']);
 
             // Public page traffic across the whole platform.
             Route::get('view-stats', [AdminViewStatController::class, 'index']);

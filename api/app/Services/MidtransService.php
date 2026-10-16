@@ -81,6 +81,27 @@ class MidtransService
     }
 
     /**
+     * Normalize the `payment_type` a notification reports before it is stored.
+     *
+     * Here rather than in the webhook controller because it is written to three
+     * order tables — ticket_orders, teams and event_plan_orders — and the
+     * dashboard groups on the stored value. Midtrans sends lower case today; if
+     * that ever changed, a raw value would show "qris" and "QRIS" as two
+     * separate instruments, and the two readers would have no single place to
+     * be fixed in.
+     */
+    public static function paymentType(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $clean = strtolower(trim($value));
+
+        return $clean === '' ? null : substr($clean, 0, 32);
+    }
+
+    /**
      * Validate a webhook notification signature (sha512).
      */
     public function isValidSignature(string $orderId, string $statusCode, string $grossAmount, string $signature): bool

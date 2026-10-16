@@ -21,6 +21,7 @@ import {
   coveredDates,
   dateRangeLabel,
   dayModeLabel,
+  defaultDates,
   isSoldOut,
   priceUnitLabel,
   pricedDays,
@@ -198,7 +199,9 @@ export default function BuyTicketsPage() {
                   onClick={() => {
                     setSelected(cat.id);
                     setQuantity(1);
-                    setDates([]);
+                    // Seats go back to 1 above, so that is the basket the one
+                    // date has to have room for.
+                    setDates(defaultDates(cat, 1));
                     setChannel(null);
                   }}
                   className={cn(

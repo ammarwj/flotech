@@ -129,11 +129,17 @@ export default function AdminPaymentsPage() {
                   <Badge variant="outline">
                     {row.kind === "ticket_order" ? "Tiket" : "Pendaftaran"}
                   </Badge>
+                  {/* Channel is the fee group picked before paying;
+                      payment_type is the instrument it actually settled with,
+                      and one channel covers several — `ewallet` carries qris,
+                      gopay and shopeepay alike. Both are shown because the
+                      channel alone does not say which. */}
                   <Badge variant={row.payment_method === "gateway" ? "info" : "neutral"}>
                     {row.payment_method === "gateway"
                       ? `Gateway${row.payment_channel ? ` · ${row.payment_channel}` : ""}`
                       : "Transfer manual"}
                   </Badge>
+                  {row.payment_type && <Badge variant="outline">{row.payment_type}</Badge>}
                 </div>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {row.payer ?? "—"} &middot; {row.event_name ?? "—"} &middot;{" "}

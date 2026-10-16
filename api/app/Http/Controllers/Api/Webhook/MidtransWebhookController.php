@@ -7,10 +7,10 @@ use App\Models\EventPlanOrder;
 use App\Models\RaceEntry;
 use App\Models\Team;
 use App\Models\TicketOrder;
+use App\Services\EventPlanOrderService;
 use App\Services\MidtransService;
 use App\Services\RaceEntryService;
 use App\Services\RegistrationService;
-use App\Services\EventPlanOrderService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -46,11 +46,19 @@ class MidtransWebhookController extends Controller
      * prefix on purpose. They used to be minted as SUB- and are now minted as
      * PLN-; matching either prefix explicitly would strand every id of the
      * other kind still outstanding at Midtrans.
+     *
+     * `payment_type` is the instrument the payment actually settled with, and
+     * all three arms pass it on. It is NOT a second spelling of the order's
+     * `payment_channel`: that is the fee group the buyer picked *before* paying,
+     * which the gateway fee was computed from, and one channel covers several
+     * instruments — `va` settles as `bca_va` or `echannel`, `ewallet` as qris or
+     * gopay. Only a settlement writes it, so an order that expired unpaid keeps
+     * a null there.
      */
     public function handle(Request $request): JsonResponse
     {
         $orderId = (string) $request->input('order_id');
-        $paymentType = $request->input('payment_type');
+        $paymentType = MidtransService::paymentType($request->input('payment_type'));
         $statusCode = (string) $request->input('status_code');
         $grossAmount = (string) $request->input('gross_amount');
         $signature = (string) $request->input('signature_key');
@@ -61,9 +69,8 @@ class MidtransWebhookController extends Controller
         }
 
         return match (true) {
-            Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus),
-            Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus),
-            Str::startsWith($orderId, 'RUN-') => $this->handleRaceEntry($orderId, $transactionStatus),
+            Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus, $paymentType),
+            Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus, $paymentType),
             default => $this->handlePlanOrder($orderId, $transactionStatus, $paymentType),
         };
     }
@@ -91,7 +98,7 @@ class MidtransWebhookController extends Controller
         return ApiResponse::success(null, 'Webhook diproses');
     }
 
-    protected function handleTicket(string $orderId, string $status): JsonResponse
+    protected function handleTicket(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
         $order = TicketOrder::where('midtrans_order_id', $orderId)->first();
         if (! $order) {
@@ -99,7 +106,7 @@ class MidtransWebhookController extends Controller
         }
 
         match ($status) {
-            'capture', 'settlement' => $this->tickets->markPaid($order),
+            'capture', 'settlement' => $this->tickets->markPaid($order, $paymentType),
             'deny', 'cancel', 'expire' => $this->tickets->cancel($order),
             default => null,
         };
@@ -127,7 +134,7 @@ class MidtransWebhookController extends Controller
         return ApiResponse::success(null, 'Webhook diproses');
     }
 
-    protected function handleRegistration(string $orderId, string $status): JsonResponse
+    protected function handleRegistration(string $orderId, string $status, ?string $paymentType = null): JsonResponse
     {
         $team = Team::where('midtrans_order_id', $orderId)->first();
         if (! $team) {
@@ -135,7 +142,7 @@ class MidtransWebhookController extends Controller
         }
 
         match ($status) {
-            'capture', 'settlement' => $this->registration->markPaid($team),
+            'capture', 'settlement' => $this->registration->markPaid($team, $paymentType),
             default => null,
         };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +28,7 @@ import { ExportButtons } from "@/components/event/export-buttons";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { useUrlState } from "@/lib/hooks/use-url-state";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -54,7 +55,10 @@ const FILTERS: [Filter, string][] = [
 const fmtDateTime = (iso: string | null | undefined) =>
   iso ? format(parseISO(iso), "d MMM yyyy, HH:mm", { locale: idLocale }) : "—";
 
-export default function TicketBuyersPage() {
+const isFilter = (v: string | null): v is Filter =>
+  !!v && FILTERS.some(([key]) => key === v);
+
+function TicketBuyersPage() {
   const qc = useQueryClient();
   const params = useParams<{ id: string }>();
   const eventId = params.id;
@@ -69,23 +73,36 @@ export default function TicketBuyersPage() {
   const ticketing = isTicketingEnabled(eventQuery.data);
   const canExport = isExportEnabled(eventQuery.data);
 
-  const [filter, setFilter] = useState<Filter>("all");
-  const [category, setCategory] = useState("");
-  const [range, setRange] = useState({ from: "", to: "" });
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
+  // The whole filter row lives in the query string: this page is the one an
+  // organizer keeps open and reloads all day, and a refresh that silently drops
+  // back to "Semua" shows a list that answers a different question than the one
+  // on screen a second ago. It also makes a filtered view linkable.
+  const { params: sp, setParams } = useUrlState();
+
+  const rawFilter = sp.get("status");
+  const filter: Filter = isFilter(rawFilter) ? rawFilter : "all";
+  const category = sp.get("category") ?? "";
+  const range = { from: sp.get("from") ?? "", to: sp.get("to") ?? "" };
+  const q = sp.get("q") ?? "";
+  const page = Math.max(1, Number(sp.get("page")) || 1);
+
+  const [search, setSearch] = useState(q);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  const setPage = (p: number) => setParams({ page: p > 1 ? String(p) : undefined });
 
   // Debounce the search box so we don't fire a request per keystroke — the
   // filtering is the server's now, so every character would be a round trip.
+  // The equality guard is load-bearing now that `q` comes from the URL: on
+  // mount the box is seeded from it, and writing that same value back would
+  // drop `page` on every refresh.
   useEffect(() => {
+    if (search === q) return;
     const t = setTimeout(() => {
-      setQ(search);
-      setPage(1);
+      setParams({ q: search || undefined, page: undefined });
     }, 350);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, q, setParams]);
 
   const ordersQuery = useQuery({
     queryKey: ["ticket-orders", orgId, eventId, { filter, category, ...range, q, page }],
@@ -144,19 +161,20 @@ export default function TicketBuyersPage() {
   const eventEnd = eventQuery.data?.end_date ?? undefined;
 
   const resetFilters = () => {
-    setFilter("all");
-    setCategory("");
-    setRange({ from: "", to: "" });
     setSearch("");
-    setQ("");
-    setPage(1);
+    setParams({
+      status: undefined,
+      category: undefined,
+      from: undefined,
+      to: undefined,
+      q: undefined,
+      page: undefined,
+    });
   };
 
   /** Any filter change resets the page — page 3 of a new filter is usually empty. */
-  const pick = <T,>(set: (v: T) => void) => (value: T) => {
-    set(value);
-    setPage(1);
-  };
+  const pick = (patch: Record<string, string | undefined>) =>
+    setParams({ ...patch, page: undefined });
 
   if (eventQuery.data && !ticketing) {
     return (
@@ -243,7 +261,10 @@ export default function TicketBuyersPage() {
             </Field>
 
             <Field label="Kategori" className="lg:col-span-3">
-              <Select value={category} onChange={(e) => pick(setCategory)(e.target.value)}>
+              <Select
+                value={category}
+                onChange={(e) => pick({ category: e.target.value || undefined })}
+              >
                 <option value="">Semua kategori</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -272,7 +293,7 @@ export default function TicketBuyersPage() {
                   value={range.from}
                   min={eventStart}
                   max={range.to || eventEnd}
-                  onChange={(v) => pick(setRange)({ ...range, from: v })}
+                  onChange={(v) => pick({ from: v || undefined })}
                 />
                 <span aria-hidden className="text-sm text-muted-foreground">
                   &ndash;
@@ -285,7 +306,7 @@ export default function TicketBuyersPage() {
                   value={range.to}
                   min={range.from || eventStart}
                   max={eventEnd}
-                  onChange={(v) => pick(setRange)({ ...range, to: v })}
+                  onChange={(v) => pick({ to: v || undefined })}
                 />
               </div>
             </Field>
@@ -296,7 +317,7 @@ export default function TicketBuyersPage() {
               <button
                 key={key}
                 type="button"
-                onClick={() => pick(setFilter)(key)}
+                onClick={() => pick({ status: key === "all" ? undefined : key })}
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
                   filter === key
@@ -344,7 +365,7 @@ export default function TicketBuyersPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={meta.page <= 1}
                 >
                   Sebelumnya
@@ -352,7 +373,7 @@ export default function TicketBuyersPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => setPage(page + 1)}
                   disabled={meta.page >= meta.last_page}
                 >
                   Berikutnya
@@ -363,6 +384,15 @@ export default function TicketBuyersPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  // useSearchParams() needs a Suspense boundary or the build fails.
+  return (
+    <Suspense fallback={null}>
+      <TicketBuyersPage />
+    </Suspense>
   );
 }
 

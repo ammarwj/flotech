@@ -209,14 +209,18 @@ class RegistrationService
     /**
      * Settle a paid registration and credit the organizer's wallet. Idempotent
      * — re-delivered webhooks are no-ops.
+     *
+     * `$paymentType` is the Midtrans instrument, known only to the webhook —
+     * see TicketService::markPaid() for why it defaults to null and is written
+     * with `??` rather than assigned.
      */
-    public function markPaid(Team $team): void
+    public function markPaid(Team $team, ?string $paymentType = null): void
     {
         if ($team->payment_status === 'paid') {
             return;
         }
 
-        DB::transaction(function () use ($team) {
+        DB::transaction(function () use ($team, $paymentType) {
             $team->update([
                 'payment_status' => 'paid',
                 'paid_at' => Carbon::now(),
@@ -224,6 +228,7 @@ class RegistrationService
                 // receipt for one payment; free entries never get one at all.
                 'receipt_number' => $team->receipt_number
                     ?? ((float) $team->payment_amount > 0 ? $this->number('receipt') : null),
+                'payment_type' => $paymentType ?? $team->payment_type,
             ]);
 
             // A manual transfer went straight into the organizer's own bank

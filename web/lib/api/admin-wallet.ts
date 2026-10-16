@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   AdminPayment,
+  AdminPaymentStats,
   AdminWallet,
   ApiEnvelope,
   Paginated,
@@ -192,5 +193,18 @@ export async function rejectPlanOrder(id: string, reason: string): Promise<Event
     `/admin/plan-orders/${id}/reject`,
     { reason }
   );
+  return data.data;
+}
+
+/**
+ * Settled money broken down by how people paid — the payment dashboard's one
+ * call. Both dates are inclusive `YYYY-MM-DD` and either may be omitted.
+ */
+export async function getAdminPaymentStats(
+  params: { from?: string; to?: string } = {}
+): Promise<AdminPaymentStats> {
+  const { data } = await apiClient.get<ApiEnvelope<AdminPaymentStats>>("/admin/payment-stats", {
+    params,
+  });
   return data.data;
 }

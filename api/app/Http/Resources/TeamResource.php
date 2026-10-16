@@ -43,6 +43,12 @@ class TeamResource extends JsonResource
             'paid_at' => $this->paid_at,
             'midtrans_token' => $this->midtrans_token,
             'payment_method' => $this->payment_method,
+            // The Midtrans instrument it settled with (`qris`, `gopay`, …).
+            // Null for manual/onsite/free orders, and for anything settled
+            // before the column existed. Published alongside payment_method
+            // rather than instead of it: one is the rail, this is the
+            // instrument on it.
+            'payment_type' => $this->payment_type,
             // Derived, not stored — see HasManualPayment for why there is no
             // `awaiting_verification` status value.
             'awaiting_verification' => $this->isAwaitingVerification(),
