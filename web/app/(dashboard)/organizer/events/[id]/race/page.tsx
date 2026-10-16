@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarRange, Flag, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { CalendarRange, Flag, Pencil, Plus, ScanLine, Trash2, Users } from "lucide-react";
 
 import {
   createRaceCategory,
@@ -153,6 +154,14 @@ export default function EventRacePage() {
         title="Peserta Lomba"
         description="Kategori, periode harga, dan daftar pendaftar."
         backHref={`/organizer/events/${eventId}/edit`}
+        actions={
+          <Button asChild variant="outline">
+            <Link href={`/organizer/events/${eventId}/race-scan`}>
+              <ScanLine className="h-4 w-4" />
+              Check-in Peserta
+            </Link>
+          </Button>
+        }
       />
 
       <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="race">

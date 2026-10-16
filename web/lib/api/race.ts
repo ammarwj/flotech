@@ -3,8 +3,11 @@ import type {
   ApiEnvelope,
   PublicRaceOffer,
   RaceCategory,
+  RaceCheckinPage,
   RaceEntry,
   RacePeriod,
+  RaceReport,
+  RaceScanResponse,
   RegisterRaceEntryResult,
 } from "@/types/api";
 
@@ -118,6 +121,45 @@ export async function getRaceEntries(
 ): Promise<RaceEntryPage> {
   const { data } = await apiClient.get<ApiEnvelope<RaceEntryPage>>(
     `/organizations/${orgId}/events/${eventId}/race-entries`,
+    { params }
+  );
+  return data.data;
+}
+
+// ---- Check-in desk (tenant-scoped) ----
+
+/**
+ * Scan a runner in.
+ *
+ * No `whole_order` flag, unlike the ticket gate: a runner is one person with
+ * one place, and there is no party behind them to admit in the same call.
+ */
+export async function scanRaceEntry(
+  orgId: string,
+  eventId: string,
+  qrCode: string
+): Promise<RaceScanResponse> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceScanResponse>>(
+    `/organizations/${orgId}/events/${eventId}/race-scan`,
+    { qr_code: qrCode }
+  );
+  return data.data;
+}
+
+export async function getRaceReport(orgId: string, eventId: string): Promise<RaceReport> {
+  const { data } = await apiClient.get<ApiEnvelope<RaceReport>>(
+    `/organizations/${orgId}/events/${eventId}/race-report`
+  );
+  return data.data;
+}
+
+export async function getRaceCheckins(
+  orgId: string,
+  eventId: string,
+  params: { page?: number; per_page?: number; q?: string } = {}
+): Promise<RaceCheckinPage> {
+  const { data } = await apiClient.get<ApiEnvelope<RaceCheckinPage>>(
+    `/organizations/${orgId}/events/${eventId}/race-checkins`,
     { params }
   );
   return data.data;

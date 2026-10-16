@@ -83,5 +83,60 @@ Rapi-rapi yang ikut: `METHOD_LABELS` dipindah dari `TicketOrder` ke
 `HasManualPayment` (satu-satunya tempat yang tahu arti ketiga nilai rail itu),
 jadi export lomba tidak perlu mengimpor model tiket.
 
-## Fase 2 — ditunda
-Scan QR + nomor BIB. Kode saja, nol migrasi.
+## Fase 2 — selesai (nol migrasi, seperti rencana)
+
+Scan check-in di meja registrasi. Empat kolom yang disiapkan fase 1 akhirnya
+punya pembaca — kecuali `bib_number`, yang kolomnya ada tapi penulisnya
+ditunda (lihat bawah).
+
+### Backend
+- [x] `RaceEntryService::newQrCode()` — `RUN-` + ULID, bentuk `TIX-`
+- [x] QR dicetak di `markPaid()`, **tidak pernah** di `hold()`; `??` menahan
+      webhook ulang dari mencetak kode kedua. Entry **gratis** tetap dapat QR
+      (beda dari kwitansi: `price > 0` soal tagihan, bukan soal garis start)
+- [x] `ensureQrCode()` — entry lunas warisan fase 1 dapat kode saat dibaca.
+      UPDATE berkondisi (`whereNull`), **bukan** `lockForUpdate`: halaman bukti
+      mem-poll tiap 4 detik dan bisa terbuka di dua perangkat
+- [x] `RaceEntryService::checkIn()` — satu-satunya penulis tiga kolom check-in
+- [x] `RaceScanController` — `checkIn`/`report`/`checkins`, grup `tenant`
+- [x] tiga rute: `race-scan`, `race-report`, `race-checkins`
+- [x] `qr_code`/`bib_number`/`checked_in_at` terbit di `RaceEntryResource`
+      (`qr_code` lewat `when()` — absen, bukan null, saat belum lunas)
+
+### Frontend
+- [x] `lib/hooks/use-qr-scanner.ts` — logika kamera diekstrak; **halaman scan
+      tiket ikut memakainya** (315 → 287 baris), jadi debounce & busy-ref hidup
+      sekali
+- [x] `organizer/events/[id]/race-scan/page.tsx` — kamera, hasil, input manual,
+      hitungan "X dari Y sudah datang", log 10 terakhir
+- [x] QR + badge check-in di halaman bukti pelari
+- [x] tipe `RaceScanResult` **sendiri** (4 hasil, tanpa `wrong_day`)
+- [x] guard rute dua arah: `race-scan` menolak event pertandingan, `scan`
+      (tiket) menolak event lomba
+
+### Test
+- [x] `RaceCheckinTest` — 14 uji, semuanya pembanding
+- [x] tiga uji mutasi: QR dicetak di `hold()` (2 merah), check-in kedua
+      diterima (1 merah), dan `whereNull` dihapus
+- [x] suite penuh: **978 lolos**
+- [x] verifikasi di app sungguhan atas data warisan fase 1: dua entry lunas
+      tanpa QR → dapat kode saat dibaca, **stabil** di pembacaan kedua; entry
+      `expired` tidak dapat apa pun; scan #1 valid → #2 `used`; kode tiket di
+      meja lomba `invalid`; hitungan 0→1; guard 404/403 dua arah
+
+### Catatan: satu uji mutasi yang awalnya lolos
+
+`whereNull('qr_code')` dihapus → **14 test tetap hijau**. Sebabnya
+`ensureQrCode()` keluar lebih awal saat kode sudah ada, jadi pembacaan kedua
+yang berurutan tidak pernah mencapai UPDATE-nya. Guard itu melindungi dari
+pembaca **bersamaan**, dan tidak ada test yang mensimulasikannya. Ditambahkan
+`test_two_concurrent_readers_mint_one_code` (dua panggilan dari instance basi
+yang sama) — mutasinya sekarang merah.
+
+### `bib_number`: kolomnya ada, penulisnya belum
+
+Sengaja ditunda. Dua bentuk yang masuk akal — nomor urut otomatis saat lunas,
+atau diketik organizer per gelombang — dan keduanya tidak bisa diputuskan tanpa
+tahu bagaimana organizer sungguhan membagi race pack. Payload scan dan halaman
+bukti sudah menampilkannya begitu ada isinya, jadi menambah penulisnya nanti
+tidak menyentuh UI.

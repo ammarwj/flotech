@@ -113,12 +113,13 @@ return new class extends Migration
             $table->foreignUuid('verified_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('verified_at')->nullable();
 
-            // Phase two. Nullable, no readers yet — see the class docblock.
-            // RaceEntryService::hold() must NOT fill qr_code: minting it before
-            // settlement issues a check-in credential for an unpaid entry, and
-            // fixing that later means deciding what happens to codes already
-            // handed out — exactly the decision receipt_number avoids by being
-            // born only when the money arrives.
+            // Check-in. Nullable, and null is a real state: an unpaid entry
+            // has no code because RaceEntryService::hold() must NOT mint one —
+            // a credential issued before settlement admits somebody who has
+            // not paid, and taking it back later means deciding what happens
+            // to codes already handed out. That is exactly the decision
+            // receipt_number avoids by being born only when the money arrives,
+            // and markPaid() mints the QR the same way.
             $table->string('bib_number', 20)->nullable();
             $table->string('qr_code', 64)->nullable()->unique();
             $table->timestamp('checked_in_at')->nullable();

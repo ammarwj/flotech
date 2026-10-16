@@ -9,6 +9,7 @@ import { CheckCircle2, Clock, Flag } from "lucide-react";
 import { getRaceEntry, submitRaceEntryProof } from "@/lib/api/race";
 import { parseApiError } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
+import { QrCode } from "@/components/event/qr-code";
 import { Badge } from "@/components/ui/badge";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
@@ -42,8 +43,17 @@ export default function RaceEntryPage() {
     queryKey: ["race-entry", params.entryId],
     queryFn: () => getRaceEntry(params.entryId),
     retry: false,
-    // Poll while awaiting payment so the receipt unlocks once settled — for a
-    // manual entry that is when the organizer approves the uploaded proof.
+    /**
+     * Poll while awaiting payment so the receipt and the QR unlock once
+     * settled — for a manual entry that is when the organizer approves the
+     * uploaded proof.
+     *
+     * Stops once the entry is no longer pending. Deliberately NOT extended to
+     * watch for `checked_in_at`: the runner is standing at the desk when that
+     * flips, looking at the staff rather than at their phone, and polling every
+     * paid entry forever would have every runner's device hammering this
+     * endpoint through the whole race.
+     */
     refetchInterval: (q) => (q.state.data?.status === "pending" ? 4000 : false),
   });
 
@@ -201,6 +211,60 @@ export default function RaceEntryPage() {
           />
         </div>
       </Card>
+
+      {/* The QR, and the three states it has. `entry.qr_code` is absent rather
+          than null until the entry is paid — that is what lets the placeholder
+          below say "aktif setelah lunas" instead of rendering an empty frame.
+          A code that exists but has already been scanned still renders: the
+          runner is inside, and a blank card would read as a problem. */}
+      {!dead && (
+        <Card className="mb-6 p-5 text-center">
+          <h2 className="mb-1 text-base font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+            QR Check-in
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {entry.checked_in_at
+              ? "Kamu sudah check-in."
+              : "Tunjukkan QR ini di meja registrasi saat pengambilan race pack."}
+          </p>
+
+          <div className="flex justify-center">
+            {entry.qr_code ? (
+              <QrCode value={entry.qr_code} size={200} />
+            ) : (
+              <div className="grid h-[200px] w-[200px] place-items-center rounded-lg bg-[var(--bg-soft)] text-center text-sm text-muted-foreground">
+                <span>
+                  <Flag className="mx-auto mb-2 h-7 w-7" />
+                  QR aktif setelah
+                  <br />
+                  pembayaran lunas
+                </span>
+              </div>
+            )}
+          </div>
+
+          {entry.qr_code && (
+            <p className="mt-3 break-all text-xs text-muted-foreground">{entry.qr_code}</p>
+          )}
+
+          {entry.bib_number && (
+            <p className="mt-3 text-sm">
+              Nomor BIB: <strong>{entry.bib_number}</strong>
+            </p>
+          )}
+
+          {entry.checked_in_at && (
+            <Badge variant="success" className="mt-3">
+              Check-in {new Date(entry.checked_in_at).toLocaleString("id-ID", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Badge>
+          )}
+        </Card>
+      )}
 
       {paid && (
         <p className="text-center text-sm text-muted-foreground">

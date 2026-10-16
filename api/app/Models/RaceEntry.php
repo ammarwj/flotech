@@ -62,9 +62,11 @@ class RaceEntry extends Model
         'rejected_reason',
         'verified_by',
         'verified_at',
-        // Phase two. Fillable so the check-in path needs no model change, but
-        // nothing writes them yet — RaceEntryService::hold() must not mint a
-        // qr_code before the money arrives.
+        // Check-in. `qr_code` is minted by markPaid() and never by hold(): a
+        // credential issued before the money arrives admits somebody who has
+        // not paid. `checked_in_at`/`checked_in_by` are written only by
+        // RaceEntryService::checkIn(). `bib_number` has no writer yet — the
+        // column is here, and what fills it is still the organizer's decision.
         'bib_number',
         'qr_code',
         'checked_in_at',
@@ -139,7 +141,7 @@ class RaceEntry extends Model
         return $this->hasMany(RaceEntryDocument::class, 'race_entry_id');
     }
 
-    /** Who checked the runner in at the start line. Phase two; null until then. */
+    /** Who checked the runner in at the start line; null until they arrive. */
     public function checkedInBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'checked_in_by');

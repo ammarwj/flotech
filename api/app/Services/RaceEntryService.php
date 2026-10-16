@@ -25,7 +25,8 @@ use Throwable;
  * (manual money never touches the wallet, a free order gets no document, a
  * re-delivered webhook is a no-op) is spelled the same way here.
  *
- * What it does NOT do, on purpose, is mint a check-in credential. See hold().
+ * The one rule worth stating up front: a check-in credential is minted on
+ * settlement and never before — see hold() and markPaid().
  */
 class RaceEntryService
 {
@@ -59,12 +60,11 @@ class RaceEntryService
      * it here rather than accepting a period id is what makes "give me the
      * early-bird price" unaskable.
      *
-     * **It must not fill `qr_code`.** The column is there, nullable, and phase
-     * two reads it — but minting a code before the money arrives issues a
-     * check-in credential for an unpaid entry, and fixing that later means
-     * deciding what happens to codes already handed out. `receipt_number`
-     * avoids exactly that decision by being born only on settlement, and the
-     * QR will be born the same way.
+     * **It must not fill `qr_code`.** Minting a code before the money arrives
+     * issues a check-in credential for an unpaid entry, and taking it back
+     * later means deciding what happens to codes already handed out.
+     * `receipt_number` avoids exactly that decision by being born only on
+     * settlement, and markPaid() mints the QR the same way for the same reason.
      *
      * @param  array{full_name: string, email: string, phone?: string|null, gender?: string|null, birth_date?: string|null, emergency_contact_name?: string|null, emergency_contact_phone?: string|null, custom_fields?: array<string, mixed>|null}  $runner
      *
@@ -150,6 +150,15 @@ class RaceEntryService
                 // receipt for one payment; free entries never get one at all.
                 'receipt_number' => $entry->receipt_number
                     ?? ((float) $entry->price > 0 ? $this->number('receipt') : null),
+                // The check-in credential, born here and nowhere earlier. The
+                // same `??` for the same reason as the receipt above: a
+                // re-delivered webhook must not mint a second code and silently
+                // invalidate the one already on the runner's phone.
+                //
+                // Unlike the receipt it is issued for a FREE entry too — a
+                // sponsored run still has a start line, and `price > 0` is a
+                // question about billing, not about admission.
+                'qr_code' => $entry->qr_code ?? self::newQrCode(),
             ]);
 
             // A manual transfer went straight into the organizer's own bank
@@ -254,6 +263,67 @@ class RaceEntryService
             $entry->update(['status' => $status]);
             $entry->category()->decrement('taken');
         });
+    }
+
+    /**
+     * A check-in credential.
+     *
+     * `RUN-` prefixed and a lowercase ULID, the shape TicketService uses for
+     * `TIX-`: unguessable, sortable, and one glance tells gate staff which kind
+     * of code they are holding when they read it off a screen.
+     */
+    public static function newQrCode(): string
+    {
+        return 'RUN-'.Str::lower(Str::ulid());
+    }
+
+    /**
+     * Give a paid entry its QR if it predates this feature.
+     *
+     * Phase 1 settled entries without a code, so every entry paid before this
+     * shipped would be refused at the registration desk. Minted on read rather
+     * than by a backfill command: the organizer's own answer was that a command
+     * is one more thing to remember, and the proof page is the only place the
+     * code is ever needed — if nobody opens it, nobody is checking in with it.
+     *
+     * **The conditional UPDATE is what makes this safe, and `lockForUpdate`
+     * would not be.** The proof page polls every four seconds and a runner may
+     * have it open on two devices, so two readers can arrive together; without
+     * `whereNull('qr_code')` the second write would replace a code the first
+     * reader has already rendered, and the QR on screen would stop scanning
+     * with nothing to show why. Same shape, same reason as the atomic credit
+     * claim in EventController::store().
+     *
+     * Deliberately NOT called from the organizer's list or the verification
+     * queue: a read path that writes is one that cannot be cached, and those
+     * two are read far more often than they are acted on.
+     */
+    public function ensureQrCode(RaceEntry $entry): RaceEntry
+    {
+        if ($entry->status !== 'paid' || $entry->qr_code !== null) {
+            return $entry;
+        }
+
+        RaceEntry::whereKey($entry->id)
+            ->whereNull('qr_code')
+            ->update(['qr_code' => self::newQrCode()]);
+
+        // Re-read rather than trusting the write: on the losing side of a race
+        // the update matched nothing, and the code that counts is the winner's.
+        return $entry->fresh();
+    }
+
+    /**
+     * Check a runner in at the start line. The only place those three columns
+     * are written, so a second door — a desk app, a bulk tool — cannot disagree
+     * about what "checked in" means. Same reasoning as TicketService::checkIn().
+     */
+    public function checkIn(RaceEntry $entry, ?string $userId): void
+    {
+        $entry->update([
+            'checked_in_at' => Carbon::now(),
+            'checked_in_by' => $userId,
+        ]);
     }
 
     /**

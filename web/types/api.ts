@@ -1593,6 +1593,19 @@ export interface RaceEntry extends ManualPaymentFields {
   created_at: string;
   /** Where to transfer. Only while a manual entry is still unpaid. */
   bank_account?: PublicBankAccount | null;
+  /**
+   * The check-in credential, minted on settlement and never before.
+   *
+   * **Optional, and the absence is the signal**: an unpaid entry has no code,
+   * and the server omits the key rather than sending null — so the proof page
+   * renders "aktif setelah lunas" instead of an empty QR frame. A `?? ""`
+   * anywhere near this turns "not yet" into "broken".
+   */
+  qr_code?: string;
+  /** Null until somebody fills it in; no writer yet. */
+  bib_number: string | null;
+  /** Set the instant the desk scans them in. */
+  checked_in_at: string | null;
   category?: { id: string; name: string; slug: string };
   event?: {
     id: string;
@@ -1882,6 +1895,48 @@ export interface TicketOrderPage extends Paginated<TicketOrder> {
 }
 
 export type ScanResult = "valid" | "used" | "unpaid" | "invalid" | "wrong_day";
+
+/**
+ * What a race desk scan can answer — three of the five above, and that is the
+ * point rather than an omission.
+ *
+ * No `wrong_day`: a race is one morning, so there is no second day to be wrong
+ * about. The desk's own union, not a reuse of `ScanResult`, so a component
+ * written against it cannot be handed a result it has no branch for.
+ */
+export type RaceScanResult = "valid" | "used" | "unpaid" | "invalid";
+
+/** The name on the bib and nothing that identifies the runner further. */
+export interface RaceScanEntry {
+  id: string;
+  full_name: string;
+  category: string | null;
+  bib_number: string | null;
+  checked_in_at: string | null;
+}
+
+export interface RaceScanResponse {
+  result: RaceScanResult;
+  /** Carried on the refusals too: the desk's next question is always "who?". */
+  entry?: RaceScanEntry;
+}
+
+/** The desk summary: how many are expected, how many have arrived. */
+export interface RaceReport {
+  checkin: { total: number; checked_in: number; remaining: number };
+  categories: {
+    id: string;
+    name: string;
+    quota: number | null;
+    paid: number;
+    checked_in: number;
+  }[];
+}
+
+export interface RaceCheckinPage {
+  items: RaceScanEntry[];
+  meta: { page: number; last_page: number; total: number };
+}
 
 export interface ScanResponse {
   result: ScanResult;

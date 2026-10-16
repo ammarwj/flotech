@@ -288,7 +288,19 @@ class PublicRaceController extends Controller
             'documents',
         ])->findOrFail($raceEntry);
 
-        return ApiResponse::success(new RaceEntryResource($entry));
+        // The one read in this app that writes, and it is confined to here on
+        // purpose: an entry paid before check-in shipped has no QR, and this
+        // page is the only place the code is ever needed. See
+        // RaceEntryService::ensureQrCode() for why the write is a conditional
+        // UPDATE and not a plain save — this endpoint polls every four seconds
+        // and a runner may have it open twice.
+        $entry = $this->entries->ensureQrCode($entry);
+
+        return ApiResponse::success(new RaceEntryResource($entry->load([
+            'category',
+            'event.organization.bankAccounts',
+            'documents',
+        ])));
     }
 
     /**

@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import {
   CheckCircle2,
   XCircle,
@@ -15,13 +14,17 @@ import {
 
 import { scanTicket } from "@/lib/api/tickets";
 import { parseApiError } from "@/lib/api/errors";
+import { useQuery } from "@tanstack/react-query";
+import { getEvent } from "@/lib/api/events";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { useQrScanner } from "@/lib/hooks/use-qr-scanner";
 import { dayFullLabel } from "@/lib/match-dates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/shared/page-header";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import type { ScanResponse, ScanResult } from "@/types/api";
 
 type Feedback = {
@@ -61,15 +64,17 @@ export default function ScanPage() {
   const eventId = params.id;
   const { orgId } = useActiveOrg();
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const busyRef = useRef(false);
-  const lastCodeRef = useRef<{ code: string; at: number } | null>(null);
-
-  const [scanning, setScanning] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [manual, setManual] = useState("");
+
+  // Loaded for the guard alone: this gate reads `tickets`, and a fun run's
+  // codes are `race_entries` rows the other desk owns. Shares the `["event",…]`
+  // key with every other page, so arriving from the ticket page costs nothing.
+  const eventQuery = useQuery({
+    queryKey: ["event", orgId, eventId],
+    queryFn: () => getEvent(orgId!, eventId),
+    enabled: !!orgId,
+  });
   /**
    * Gate mode: one scan admits the scanned ticket's whole order. A party of 20
    * arrives together holding one phone, and reading 20 codes off it is the
@@ -89,17 +94,15 @@ export default function ScanPage() {
     setWholeOrder(next);
   }, []);
 
-  const submit = useCallback(
+  /**
+   * What this gate does with a code. The camera, the debounce and the busy
+   * guard are the shared hook's — see useQrScanner, which also explains why
+   * `wholeOrderRef` is still a ref here.
+   */
+  const handleScan = useCallback(
     async (qr: string) => {
-      if (!orgId || busyRef.current) return;
+      if (!orgId) return;
 
-      // Debounce repeat reads of the same code within 3s.
-      const now = Date.now();
-      const last = lastCodeRef.current;
-      if (last && last.code === qr && now - last.at < 3000) return;
-      lastCodeRef.current = { code: qr, at: now };
-
-      busyRef.current = true;
       try {
         const res: ScanResponse = await scanTicket(orgId, eventId, qr, wholeOrderRef.current);
         const admitted = res.checked_in ?? 1;
@@ -139,38 +142,19 @@ export default function ScanPage() {
           category: data?.errors?.ticket?.category,
           eventDate: data?.errors?.ticket?.event_date,
         });
-      } finally {
-        busyRef.current = false;
       }
     },
     [orgId, eventId]
   );
 
-  const startCamera = useCallback(async () => {
-    setCameraError(null);
-    setScanning(true);
-    try {
-      const reader = new BrowserMultiFormatReader();
-      controlsRef.current = await reader.decodeFromVideoDevice(
-        undefined,
-        videoRef.current!,
-        (result) => {
-          if (result) void submit(result.getText());
-        }
-      );
-    } catch {
-      setCameraError("Tidak bisa mengakses kamera. Izinkan akses kamera atau gunakan input manual.");
-      setScanning(false);
-    }
-  }, [submit]);
-
-  const stopCamera = useCallback(() => {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    setScanning(false);
-  }, []);
-
-  useEffect(() => () => controlsRef.current?.stop(), []);
+  const {
+    videoRef,
+    scanning,
+    cameraError,
+    start: startCamera,
+    stop: stopCamera,
+    submit,
+  } = useQrScanner({ onScan: handleScan });
 
   const fb = feedback ? FEEDBACK_STYLE[feedback.kind] : null;
 
@@ -182,6 +166,8 @@ export default function ScanPage() {
         backHref={`/organizer/events/${eventId}/tickets`}
         backLabel="Kelola tiket"
       />
+
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <Card className="overflow-hidden p-0">
@@ -310,6 +296,7 @@ export default function ScanPage() {
           </Card>
         </div>
       </div>
+      </RaceRouteGuard>
     </div>
   );
 }

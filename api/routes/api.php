@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RaceCategoryController;
 use App\Http\Controllers\Api\RaceEntryController;
+use App\Http\Controllers\Api\RaceScanController;
 use App\Http\Controllers\Api\RacePeriodController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
@@ -533,6 +534,17 @@ Route::prefix('v1')->group(function () {
             // data and moves no money, and the operator at the gate is who
             // reprints one that fell off. Gated on `qr_tickets` in the
             // controller, like the category routes above.
+            // Fun run check-in at the registration desk. Its own routes rather
+            // than widening the ticket scanner: a runner has no order to admit
+            // and no second day to be wrong about — see RaceScanController.
+            // Plain `tenant`, the same as the ticket gate: the person holding
+            // the scanner is the operator, and this payload carries the name on
+            // the bib, not the contact details that put `race-entries` behind
+            // `org.admin`.
+            Route::post('events/{event}/race-scan', [RaceScanController::class, 'checkIn']);
+            Route::get('events/{event}/race-report', [RaceScanController::class, 'report']);
+            Route::get('events/{event}/race-checkins', [RaceScanController::class, 'checkins']);
+
             Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
             Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
             // The check-in log, paginated. Split out of the report above: it is

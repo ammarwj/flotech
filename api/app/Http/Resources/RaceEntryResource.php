@@ -70,6 +70,20 @@ class RaceEntryResource extends JsonResource
             // still unpaid — there is nothing to pay once it is settled.
             'bank_account' => $this->when($this->isManual() && ! $this->isSettled(), fn () => $this->payTo()),
 
+            // The check-in credential, and `when()` is load-bearing: an unpaid
+            // entry has no code, and publishing the key as null would have the
+            // proof page render an empty QR frame rather than the "aktif
+            // setelah lunas" placeholder. Absent reads as "not yet"; null would
+            // read as "broken".
+            'qr_code' => $this->when($this->qr_code !== null, fn () => $this->qr_code),
+            // Null until somebody fills it in. Published regardless so the page
+            // can show it the moment it exists, without a second request.
+            'bib_number' => $this->bib_number,
+            // Set the instant the desk scans them in. The runner's own page
+            // shows it too — a second scan refuses, and somebody holding a
+            // phone that says "sudah check-in 06:12" can stop wondering.
+            'checked_in_at' => $this->checked_in_at,
+
             'category' => $this->whenLoaded('category', fn () => [
                 'id' => $this->category->id,
                 'name' => $this->category->name,
