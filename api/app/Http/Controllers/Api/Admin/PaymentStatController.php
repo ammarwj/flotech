@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\DB;
  * this endpoint without reshaping what a dashboard already reads — the same
  * reasoning as Admin\StatController's `events` key.
  *
- * **Counted from the order tables, never from `payment_notifications`.** That
- * table is an audit trail with one row per *delivery*, and Midtrans re-delivers:
- * a single payment that was notified three times would be billed three times
- * here. The orders are the money; the log only explains it.
+ * **Counted from the order tables, never from the webhooks that settled them.**
+ * Midtrans re-delivers notifications, so counting deliveries would bill a
+ * single payment as many times as it was announced. The order rows are the
+ * money: each one is written once, by the one service allowed to settle it.
  */
 class PaymentStatController extends Controller
 {

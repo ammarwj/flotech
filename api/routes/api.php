@@ -614,7 +614,8 @@ Route::prefix('v1')->group(function () {
             Route::get('stats', [AdminStatController::class, 'index']);
 
             // Settled money, cut by how people paid. Counted from the order
-            // tables, never from the notification log — see the controller.
+            // tables, never from the webhooks that settled them — see the
+            // controller.
             Route::get('payment-stats', [AdminPaymentStatController::class, 'index']);
 
             // Public page traffic across the whole platform.
@@ -723,11 +724,5 @@ Route::prefix('v1')->group(function () {
     });
 
     // ---- Webhooks (signature-verified inside controller) ----
-    // Throttled because this is the one unauthenticated route that writes an
-    // unbounded number of rows: every notification is logged to
-    // `payment_notifications` *before* its signature is checked, so a rejected
-    // payload leaves a row too. 300/minute is far above any real Midtrans
-    // volume — the limit is there for the flood, not for the traffic.
-    Route::post('webhooks/midtrans', [MidtransWebhookController::class, 'handle'])
-        ->middleware('throttle:300,1');
+    Route::post('webhooks/midtrans', [MidtransWebhookController::class, 'handle']);
 });

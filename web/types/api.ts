@@ -1974,8 +1974,9 @@ export interface AdminPaymentTotals {
 /**
  * Settled money cut by how people paid, for the super admin's dashboard.
  *
- * Counted from the order tables, never from the notification log — Midtrans
- * re-delivers webhooks, so one payment can have several log rows.
+ * Counted from the order rows themselves, never from the webhooks that settled
+ * them — Midtrans re-delivers notifications, so one payment can be announced
+ * several times.
  *
  * `"unknown"` is a real bucket in both breakdowns, covering manual transfers,
  * box-office cash, free orders and anything settled before the column existed.

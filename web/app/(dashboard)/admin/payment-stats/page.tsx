@@ -197,7 +197,7 @@ export default function AdminPaymentStatsPage() {
             Perhitungan Pembayaran
           </span>
         }
-        description="Seluruh pembayaran yang sudah lunas di platform, dirinci per instrumen Midtrans, channel, dan jenis pemasukan. Dihitung dari pesanannya — bukan dari log notifikasi, yang bisa berisi beberapa baris untuk satu pembayaran."
+        description="Seluruh pembayaran yang sudah lunas di platform, dirinci per instrumen Midtrans, channel, dan jenis pemasukan."
       />
 
       <Card className="mb-6 p-5">

@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Event;
 use App\Models\Organization;
-use App\Models\PaymentNotification;
 use App\Models\Plan;
 use App\Models\Team;
 use App\Models\TicketCategory;
@@ -18,14 +17,14 @@ use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
- * What Midtrans tells us, and what survives of it.
+ * Which instrument a payment settled with, and what the dashboard makes of it.
  *
- * Two things under test, and they are deliberately different kinds: the
- * instrument (`payment_type`) landing on the order rows, and every notification
- * landing in `payment_notifications` as an audit trail that must never be
- * mistaken for the money.
+ * `payment_type` is reported by Midtrans only once a payment settles, so the
+ * webhook is the only door that knows it — and it must never be confused with
+ * the order's `payment_channel`, which was already chosen before paying. Most
+ * tests here are comparisons for exactly that reason.
  */
-class MidtransNotificationTest extends TestCase
+class PaymentInstrumentTest extends TestCase
 {
     use CreatesPlannedEvents, RefreshDatabase;
 
@@ -203,96 +202,6 @@ class MidtransNotificationTest extends TestCase
         $this->assertSame('qris', $order->fresh()->payment_type);
         $this->assertSame('bank_transfer', $team->fresh()->payment_type);
         $this->assertSame('gopay', $planOrder->fresh()->payment_type);
-    }
-
-    /**
-     * The log appends per delivery; the money does not. Asserting the row count
-     * alone would pass a build that also double-credited, and asserting the
-     * credit alone would pass one that silently deduped the log and lost the
-     * evidence of a re-delivery.
-     */
-    public function test_a_redelivered_notification_appends_a_row_but_not_a_credit(): void
-    {
-        $order = $this->ticketOrder($this->event($this->org()));
-        $payload = $this->payload($order->midtrans_order_id, '100000.00', ['payment_type' => 'qris']);
-
-        $this->notify($payload)->assertOk();
-        $this->notify($payload)->assertOk();
-
-        $this->assertDatabaseCount('payment_notifications', 2);
-        $this->assertDatabaseCount('wallet_transactions', 1);
-
-        $types = $this->actingAs($this->superAdmin(), 'api')
-            ->getJson('/api/v1/admin/payment-stats')
-            ->assertOk()
-            ->json('data.by_payment_type');
-
-        $qris = collect($types)->firstWhere('payment_type', 'qris');
-        $this->assertSame(1, $qris['count']);
-        $this->assertEquals(100000, $qris['gross']);
-    }
-
-    /**
-     * Logged, and still rejected. Comparing the order before and after is the
-     * point: a build that recorded the row *after* the gate would pass an
-     * assertion on the 403 alone, and so would one that let the payload through.
-     */
-    public function test_an_invalid_signature_is_logged_but_moves_nothing(): void
-    {
-        $order = $this->ticketOrder($this->event($this->org()));
-
-        $payload = $this->payload($order->midtrans_order_id, '100000.00', ['payment_type' => 'qris']);
-        $payload['signature_key'] = 'nonsense';
-
-        $this->notify($payload)->assertStatus(403);
-
-        $row = PaymentNotification::firstOrFail();
-        $this->assertFalse($row->signature_valid);
-        $this->assertFalse($row->handled);
-        $this->assertSame('qris', $row->payment_type);
-
-        $fresh = $order->fresh();
-        $this->assertSame('pending', $fresh->status);
-        $this->assertNull($fresh->payment_type);
-        $this->assertDatabaseCount('wallet_transactions', 0);
-    }
-
-    /**
-     * The failure the controller's docblock calls out: a 404 that Midtrans
-     * retries and then abandons, leaving nothing behind. `handled` is what makes
-     * it findable, and it is what tells this case apart from a bad signature.
-     */
-    public function test_an_unknown_order_is_logged_as_unhandled(): void
-    {
-        $this->notify($this->payload('TIX-NOSUCHORDER', '100000.00', [
-            'payment_type' => 'qris',
-        ]))->assertStatus(404);
-
-        $row = PaymentNotification::firstOrFail();
-        $this->assertTrue($row->signature_valid);
-        $this->assertFalse($row->handled);
-        $this->assertNull($row->source_type);
-    }
-
-    /** The full response is kept, including fields no column of ours reads. */
-    public function test_the_full_payload_is_kept(): void
-    {
-        $order = $this->ticketOrder($this->event($this->org()));
-
-        $this->notify($this->payload($order->midtrans_order_id, '100000.00', [
-            'payment_type' => 'qris',
-            'acquirer' => 'gopay',
-            'merchant_id' => 'G123456',
-        ]))->assertOk();
-
-        $row = PaymentNotification::firstOrFail();
-        $this->assertSame('gopay', $row->payload['acquirer']);
-        $this->assertSame('G123456', $row->payload['merchant_id']);
-        $this->assertSame('accept', $row->fraud_status);
-        $this->assertSame('100000.00', $row->gross_amount);
-        $this->assertNotNull($row->transaction_time);
-        $this->assertSame('ticket_order', $row->source_type);
-        $this->assertSame($order->id, $row->source_id);
     }
 
     /**

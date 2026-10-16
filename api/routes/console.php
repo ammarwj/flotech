@@ -25,11 +25,6 @@ Schedule::command('plan-orders:expire-manual')->hourly()->withoutOverlapping();
 // a reminder is the only lever there is.
 Schedule::command('plan-orders:remind-idle')->dailyAt('09:00')->withoutOverlapping();
 
-// Midtrans notification log. Rows are written before the signature is checked,
-// so anyone who can reach the webhook URL can grow this table; the orders it
-// explains are never touched.
-Schedule::command('payments:prune-notifications')->dailyAt('02:10')->withoutOverlapping();
-
 // The visitor dedup ledger is only useful on its own day; the daily roll-up it
 // feeds (event_view_daily) is kept forever.
 Schedule::command('views:prune')->dailyAt('02:00')->withoutOverlapping();
