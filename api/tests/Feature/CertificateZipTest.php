@@ -7,11 +7,13 @@ use App\Models\Certificate;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\CertificateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use RuntimeException;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 use ZipArchive;
@@ -284,6 +286,65 @@ class CertificateZipTest extends TestCase
         $this->actingAs($user, 'api')
             ->getJson("/api/v1/organizations/{$org->id}/certificate-batches/pending-batch/download")
             ->assertStatus(409);
+    }
+
+    public function test_a_batch_survives_missing_objects_around_the_flush_boundary(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+        $event = $this->eventOn($org);
+
+        // 30 rows, so the loop crosses the 25-entry flush. The first 26 carry a
+        // `pdf_key` pointing at an object that is NOT on the disk — the state a
+        // row reaches when the bucket loses a file after it was issued.
+        //
+        // Flushing on the loop position reaches the boundary with an archive
+        // holding nothing, and `close()` on an empty archive writes no file at
+        // all: the reopen returns ER_NOENT and every later call throws "Invalid
+        // or uninitialized Zip object", including addFromString. That killed a
+        // real 86-document batch at 49/86, so the surviving four rows here are
+        // the whole assertion — a batch that merely "has entries" would pass on
+        // a build that skipped the flush entirely.
+        foreach (range(1, 26) as $n) {
+            $certificate = $this->certificate($org, $event, sprintf('CERT-2026-07-03%02d', $n), withPdf: false);
+            $certificate->update(['pdf_key' => 'certificates/'.$certificate->id.'.pdf']);
+        }
+
+        foreach (range(27, 30) as $n) {
+            $this->certificate($org, $event, sprintf('CERT-2026-07-03%02d', $n));
+        }
+
+        $batch = $this->zip($user, $org, $event->id)->assertStatus(202)->json('data.batch_id');
+
+        $names = $this->entriesOf($user, $org, $batch);
+
+        $this->assertCount(4, $names);
+        $this->assertContains('CERT-2026-07-0327.pdf', $names);
+        $this->assertContains('CERT-2026-07-0330.pdf', $names);
+    }
+
+    public function test_a_batch_whose_objects_all_vanished_fails_instead_of_shipping_a_broken_zip(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+        $event = $this->eventOn($org);
+
+        // `pdf_key` set, object absent — so the controller's own "nothing to
+        // pack" check passes and only the worker finds out.
+        $certificate = $this->certificate($org, $event, 'CERT-2026-07-0400', withPdf: false);
+        $certificate->update(['pdf_key' => 'certificates/'.$certificate->id.'.pdf']);
+
+        // Asserted against the service rather than the route: the alternative to
+        // throwing is an empty object on the bucket that downloads as a corrupt
+        // file under a green "siap diunduh", which is a failure the organizer
+        // cannot tell apart from a successful batch. Through the HTTP layer the
+        // same throw is just a 500, which would pass on a build that merely
+        // errored somewhere else.
+        $this->expectException(RuntimeException::class);
+
+        app(CertificateService::class)->zip(
+            Certificate::whereKey($certificate->id)->get(),
+        );
     }
 
     public function test_the_list_pages_and_its_total_counts_the_whole_filter(): void

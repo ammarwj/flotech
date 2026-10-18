@@ -19,6 +19,7 @@ use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
+use RuntimeException;
 use Throwable;
 use ZipArchive;
 
@@ -242,6 +243,19 @@ class CertificateService
 
         $disk = $this->storage();
 
+        // Counts entries actually written, NOT the loop position, and the
+        // difference is load-bearing twice over.
+        //
+        // `close()` on an archive holding nothing writes no file at all: the
+        // reopen then returns 9 (ZipArchive::ER_NOENT) and every later call on
+        // the object throws "Invalid or uninitialized Zip object" — including
+        // `addFromString`, so one flush at the wrong moment kills the whole
+        // batch. Flushing on `$i` reaches that state whenever the rows crossing
+        // a boundary had no readable object between them, which is exactly the
+        // skip path above. It also flushed for rows that added no memory to
+        // flush.
+        $written = 0;
+
         foreach ($certificates->values() as $i => $certificate) {
             // The certificate number is already unique and already the filename
             // download() hands over, so there is no NNN- prefix to add here:
@@ -258,13 +272,14 @@ class CertificateService
 
             if ($bytes !== null) {
                 $zip->addFromString($name, $bytes);
-            }
+                $written++;
 
-            // addFromString holds its payload in memory until the archive is
-            // closed, so a 500-document batch would carry every PDF at once.
-            if ($i % 25 === 24) {
-                $zip->close();
-                $zip->open($path);
+                // addFromString holds its payload in memory until the archive is
+                // closed, so a 500-document batch would carry every PDF at once.
+                if ($written % 25 === 0) {
+                    $zip->close();
+                    $zip->open($path);
+                }
             }
 
             if ($onProgress) {
@@ -273,6 +288,18 @@ class CertificateService
         }
 
         $zip->close();
+
+        // Every row skipped, so nothing was ever added and the close above wrote
+        // no file: `file_get_contents()` on it would warn and the batch would
+        // land on the bucket as an empty object that downloads as a broken zip.
+        // The controller already refuses a filter with no PDFs, so reaching here
+        // means the objects went missing between the request and the worker —
+        // rare, but the failure has to be the job's, not a corrupt download.
+        if ($written === 0) {
+            @unlink($path);
+
+            throw new RuntimeException('Tidak ada berkas sertifikat yang bisa dibaca dari penyimpanan.');
+        }
 
         $key = self::BATCH_PREFIX.'/'.Str::uuid()->toString().'.zip';
 
