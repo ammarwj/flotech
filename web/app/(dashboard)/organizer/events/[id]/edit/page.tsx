@@ -24,6 +24,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { EventStatusPanel } from "@/components/event/event-status-panel";
 import { EventPlanPanel } from "@/components/event/event-plan-panel";
+import { RaceSetupPanel } from "@/components/event/race-setup-panel";
+import { isRaceEvent } from "@/lib/race";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import type { EventStatus } from "@/types/api";
 
@@ -125,6 +127,18 @@ export default function EditEventPage() {
   const ev = eventQuery.data;
 
   /**
+   * A fun run holds no fixtures and sells no spectator tickets, so two of the
+   * destinations below lead to pages that can never fill. Resolved once here so
+   * the header and the form cannot disagree about it.
+   *
+   * Hiding a button is only half the job — every route still answers its own
+   * URL, so each of those pages carries its own `RaceRouteGuard`. The precedent
+   * is `/[orgSlug]/[eventSlug]/register`, where hiding the CTA left the URL open
+   * to old tabs and the form 422'd on submit instead of saying so up front.
+   */
+  const isRace = isRaceEvent(ev);
+
+  /**
    * Only a draft that nobody has touched may be deleted; the server refuses the
    * rest with a 422. Mirrored here so the button is absent rather than present
    * and rejected — the reactive 422 is still the net, but a destructive control
@@ -149,7 +163,16 @@ export default function EditEventPage() {
       confirmLabel: "Hapus event",
       consequences: (
         <ul className="grid gap-1">
-          <li>{ev.categories.length} kategori kompetisi</li>
+          {/* A race's categories live in `race_categories`, so `categories` is
+              empty for one and the line would read "0 kategori kompetisi" over
+              an event whose categories are real and about to go with it. Named
+              without a count rather than fetching one: this is a draft nobody
+              has entered, and the number that matters is the credit below. */}
+          <li>
+            {isRace
+              ? "Kategori lomba & periode harganya"
+              : `${ev.categories.length} kategori kompetisi`}
+          </li>
           <li>Foto galeri &amp; sponsor</li>
           <li className="text-[var(--success)]">
             Paketnya kembali jadi kredit dan bisa dipakai untuk event lain
@@ -177,12 +200,20 @@ export default function EditEventPage() {
                 </a>
               </Button>
             )}
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/schedule`}>
-                <CalendarClock className="h-4 w-4" />
-                Jadwal & Klasemen
-              </Link>
-            </Button>
+            {!isRace && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/schedule`}>
+                  <CalendarClock className="h-4 w-4" />
+                  Jadwal & Klasemen
+                </Link>
+              </Button>
+            )}
+            {/* Deliberately NOT gated. A race reads the same `team_fields` and
+                `team_documents` the builder on that page edits — see
+                PublicRaceController::assertFormComplete(), which validates the
+                required ones, and the public race form, which renders them. The
+                page itself drops the four roster sections for a race; a runner
+                has no players and no bench. */}
             <Button asChild variant="outline">
               <Link href={`/organizer/events/${eventId}/registration-form`}>
                 <ClipboardList className="h-4 w-4" />
@@ -223,6 +254,17 @@ export default function EditEventPage() {
         pending={update.isPending}
         fieldErrors={fieldErrors}
         cancelHref="/organizer/events"
+        /* Handed to the form rather than rendered above it, so it lands in the
+           slot the competition category editor occupies — after Detail Event.
+           Above the form it sat over the event's own name and dates, which
+           reads backwards: an event is named before anybody decides what it
+           sells. The panel writes straight to saved rows and the form holds an
+           unsubmitted draft, hence a slot rather than a section inside it. */
+        raceSetup={
+          isRace && orgId ? (
+            <RaceSetupPanel orgId={orgId} eventId={eventId} />
+          ) : undefined
+        }
         onSubmit={(values) => {
           setFieldErrors({});
           update.mutate(values);

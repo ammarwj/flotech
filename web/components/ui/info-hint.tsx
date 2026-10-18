@@ -13,6 +13,13 @@ import { cn } from "@/lib/utils";
  * phone, which is where an organizer actually fills a match-day form — and the
  * fields it explains are exactly the ones nobody can guess from the label.
  *
+ * On a touch screen the hover half is switched OFF, not merely redundant. A tap
+ * fires `mouseenter` before `click` on every mobile browser, so the panel was
+ * opened by the synthetic hover and then immediately toggled shut again by the
+ * click — the marker looked dead, and the one place it is needed most is a
+ * phone. `onPointerEnter` with a pointerType check is what separates the two:
+ * a mouse still opens on hover, a finger leaves it entirely to the click.
+ *
  * Deliberately not a Radix popover: the repo pulls in dialog, label and slot
  * only, and a floating-position engine is a heavy dependency for a panel that
  * never needs to flip or collide-detect. `align` covers the one real case, a
@@ -93,8 +100,10 @@ export function InfoHint({
     <span
       ref={ref}
       className="relative inline-flex align-middle"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      // Mouse only — see the class docblock. A finger fires these too, and the
+      // enter/click pair cancelled each other out.
+      onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(true)}
+      onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(false)}
     >
       <button
         // Load-bearing: this lives inside <form>, and a bare <button> defaults
@@ -106,7 +115,11 @@ export function InfoHint({
         onClick={() => setOpen((v) => !v)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+        // The icon is 16px; a finger needs ~44. `after:` grows the hit area
+        // without growing the box, so the marker still sits on a label's own
+        // line and nothing around it moves — padding here would push the label
+        // row taller, which is the whole reason guidance lives in a marker.
+        className="relative text-muted-foreground transition-colors after:absolute after:left-1/2 after:top-1/2 after:h-11 after:w-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
       >
         <Info className="h-4 w-4" />
       </button>

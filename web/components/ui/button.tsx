@@ -37,10 +37,35 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, type, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        /**
+         * `type="button"` unless the caller asks otherwise.
+         *
+         * HTML defaults a <button> inside a form to `submit`, which is the
+         * wrong default for a component used 437 times and meant to submit in
+         * about 26 of them: any button that lands inside a form — often because
+         * something above it was moved, not because it was written there —
+         * silently starts submitting it. That is exactly what happened when the
+         * race setup panel moved inside EventForm: pressing "Atur Periode"
+         * saved the whole event and toasted "Perubahan tersimpan".
+         *
+         * Safe to flip: every submit button in this codebase already says
+         * `type="submit"`, and every other button has an `onClick` — none were
+         * relying on the implicit default.
+         *
+         * Under `asChild` the child is usually an <a> or a <Link>, where `type`
+         * means a content-type hint rather than a button role — so nothing is
+         * defaulted there. A `type` the caller passed is still forwarded, since
+         * it was destructured out and would otherwise be dropped.
+         */
+        {...(asChild ? (type ? { type } : {}) : { type: type ?? "button" })}
+        {...props}
+      />
     );
   }
 );

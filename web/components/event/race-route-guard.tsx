@@ -47,7 +47,7 @@ export function RaceRouteGuard({
       <EmptyState
         icon={Flag}
         title="Halaman ini untuk event pertandingan"
-        description="Event ini adalah lomba tanpa pertandingan — tidak ada jadwal, klasemen, atau bracket. Peserta, kategori, dan periode harganya diatur di halaman Peserta Lomba."
+        description="Event ini adalah lomba tanpa pertandingan — tidak ada jadwal, klasemen, atau bracket. Daftar pendaftarnya ada di halaman Peserta Lomba; kategori dan periode harganya diatur di halaman Kelola Event."
         action={
           <Button asChild>
             <Link href={`/organizer/events/${eventId}/race`}>Ke Peserta Lomba</Link>

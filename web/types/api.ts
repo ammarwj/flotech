@@ -1581,6 +1581,8 @@ export interface RaceEntry extends ManualPaymentFields {
   birth_date: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  /** Who they are to the runner — "Ibu", "Suami". Free text; see the column. */
+  emergency_contact_relation: string | null;
   custom_fields: Record<string, string>;
   /**
    * The price snapshot, both halves. Neither is derived from the period row:

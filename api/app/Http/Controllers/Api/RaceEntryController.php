@@ -38,8 +38,30 @@ class RaceEntryController extends Controller
                 // every runner.
                 fn ($w) => Search::anyColumn($w, ['full_name', 'email', 'phone'], (string) $term)
             ))
-            ->latest()
-            ->paginate(min((int) $request->query('per_page', 25), 100));
+            ->latest();
+
+        // Counted before paginating, and from the SAME filtered query the page
+        // comes out of.
+        //
+        // The screen prints "N pendaftar · M lunas" together, and those were
+        // being measured against different populations: the total came from the
+        // paginator (every match) while the other two were counted on the
+        // client from whatever rows had loaded. Unpaginated that merely looked
+        // right; the first page of 25 would have read "120 pendaftar · 25
+        // lunas" with nothing on screen to say which of the two numbers to
+        // believe. The same reasoning as `effective_payment_method` — one
+        // sentence, one answer, and the server is the only side that has it.
+        //
+        // Two counts, each `clone`d so the aggregate does not consume the
+        // builder the page still needs. "Awaiting verification" goes through
+        // HasManualPayment's own scope rather than being spelled out again:
+        // it is four conditions, one of them `verified_at IS NULL`, and a
+        // second copy here would drift from the queue screen that acts on it —
+        // the whole reason that trait derives the state instead of storing it.
+        $paid = (clone $entries)->reorder()->where('status', 'paid')->count();
+        $awaiting = (clone $entries)->reorder()->awaitingVerification()->count();
+
+        $entries = $entries->paginate(min((int) $request->query('per_page', 25), 100));
 
         return ApiResponse::success([
             'items' => RaceEntryResource::collection($entries->items()),
@@ -47,6 +69,9 @@ class RaceEntryController extends Controller
                 'page' => $entries->currentPage(),
                 'last_page' => $entries->lastPage(),
                 'total' => $entries->total(),
+                // Event-wide (or filter-wide), never page-wide.
+                'paid' => $paid,
+                'awaiting_verification' => $awaiting,
             ],
         ]);
     }

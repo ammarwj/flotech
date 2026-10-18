@@ -40,6 +40,7 @@ class RaceEntry extends Model
         'birth_date',
         'emergency_contact_name',
         'emergency_contact_phone',
+        'emergency_contact_relation',
         'custom_fields',
         'race_period_id',
         'period_name',

@@ -83,12 +83,19 @@ class ExportController extends Controller
         $name = $model->slug.'-'.$export->slug();
 
         if (($data['format'] ?? 'xlsx') === 'pdf') {
+            // The paper is sized from the table, not the other way round — see
+            // EventExport::paper(). Without it dompdf defaults to A4 portrait
+            // and crops everything past the eighth column off the right edge,
+            // which a race export (14 fixed columns plus the event's whole
+            // registration form) hits every time.
             return Pdf::loadView('pdf.export', [
                 'title' => $export->title(),
                 'event' => $model,
                 'headings' => $export->headings(),
                 'rows' => $export->rows(),
-            ])->download($name.'.pdf');
+            ])
+                ->setPaper($export->paper())
+                ->download($name.'.pdf');
         }
 
         return Excel::download($export, $name.'.xlsx');

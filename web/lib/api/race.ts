@@ -111,7 +111,23 @@ export async function deleteRaceCategory(orgId: string, categoryId: string): Pro
 
 export interface RaceEntryPage {
   items: RaceEntry[];
-  meta: { page: number; last_page: number; total: number };
+  meta: {
+    page: number;
+    last_page: number;
+    total: number;
+    /**
+     * Event-wide counts, NOT counts of `items`.
+     *
+     * Published rather than derived on the client because the screen prints
+     * them in one sentence with `total`: counted from the loaded rows they
+     * would be measured against a different population, and a fully paid event
+     * would read "120 pendaftar · 25 lunas" with nothing on screen to say which
+     * number to believe.
+     */
+    paid: number;
+    /** Manual, unsettled, proof in hand, not yet ruled on. */
+    awaiting_verification: number;
+  };
 }
 
 export async function getRaceEntries(
@@ -192,6 +208,7 @@ export interface RegisterRaceEntryPayload {
   birth_date?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
   custom_fields?: Record<string, string>;
   documents?: {
     document_type: string;

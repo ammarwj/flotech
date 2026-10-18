@@ -26,6 +26,7 @@ class RaceEntryResource extends JsonResource
             'birth_date' => $this->birth_date?->toDateString(),
             'emergency_contact_name' => $this->emergency_contact_name,
             'emergency_contact_phone' => $this->emergency_contact_phone,
+            'emergency_contact_relation' => $this->emergency_contact_relation,
             'custom_fields' => (object) ($this->custom_fields ?? []),
 
             // The price snapshot, both halves. `period_name` is published

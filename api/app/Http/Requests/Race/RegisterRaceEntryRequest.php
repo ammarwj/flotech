@@ -46,11 +46,14 @@ class RegisterRaceEntryRequest extends FormRequest
             // the form's business, not the column's.
             'gender' => ['nullable', 'string', 'max:10'],
             'birth_date' => ['nullable', 'date'],
-            // The one pair that exists for safety rather than for admin. Not
+            // The one group that exists for safety rather than for admin. Not
             // `required` here even so: whether to demand it is the organizer's
             // call, and they make it on their registration form.
             'emergency_contact_name' => ['nullable', 'string', 'max:255'],
             'emergency_contact_phone' => ['nullable', 'string', 'max:30'],
+            // Who they are to the runner. Free text for the same reason
+            // `gender` above is: the list of relations nobody has agreed on.
+            'emergency_contact_relation' => ['nullable', 'string', 'max:50'],
 
             // Whatever else this event's form asks for. The keys are validated
             // against the stored schema by the controller, which is the only

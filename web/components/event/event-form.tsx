@@ -46,6 +46,7 @@ import {
   tracksClock,
   tracksDiscipline,
 } from "@/lib/scoring";
+import { isRaceSport } from "@/lib/race";
 import { compressToWebp } from "@/lib/image";
 import {
   uploadImage,
@@ -139,11 +140,19 @@ function EventSummary({
   categories,
   banner,
   days,
+  isRace,
 }: {
   v: EventInput;
   categories: CategoryDraft[];
   banner: string | null;
   days: number | null;
+  /**
+   * A race's categories live in `race_categories`, so the drafts below are
+   * empty for it and the block would read "0 kategori" over an event whose
+   * categories are simply somewhere else — the same misreading the event list
+   * avoids by hiding its own count.
+   */
+  isRace: boolean;
 }) {
   const { sportLabel, sportColor: colorOf, formatLabel } = useCatalog();
   const sport = v.sport_type ?? "";
@@ -200,6 +209,7 @@ function EventSummary({
             )}
           </SummaryRow>
         </div>
+        {!isRace && (
         <div className="space-y-2 border-t border-border pt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {categories.length} kategori
@@ -223,6 +233,7 @@ function EventSummary({
             );
           })}
         </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -495,6 +506,7 @@ export function EventForm({
   fieldErrors,
   cancelHref,
   plan,
+  raceSetup,
 }: {
   initial?: Partial<SportEvent>;
   submitLabel: string;
@@ -504,6 +516,24 @@ export function EventForm({
   fieldErrors?: FieldErrors;
   /** When set, renders a "Batal" link in the sticky footer. */
   cancelHref?: string;
+  /**
+   * A race's sale windows and categories, rendered where the competition
+   * category editor sits — because that is the same slot in the same reading
+   * order, and for a race the one replaces the other.
+   *
+   * A slot rather than the panel itself, because the panel is a live editor
+   * with its own queries and mutations against saved rows: EventForm holds a
+   * draft that has not been submitted, and a child that writes straight through
+   * would break that. It is also why this is absent while an event is being
+   * CREATED — there is no event id to attach a window to yet, and the form
+   * falls back to a card that says so.
+   *
+   * Passing it from the edit page instead of placing the panel above the form
+   * fixes the order: an organizer names the event and sets its dates before
+   * deciding what it sells, so setup for what it sells cannot sit above the
+   * name.
+   */
+  raceSetup?: React.ReactNode;
   /**
    * The plan this event runs on — from the credit being spent when creating, or
    * from the event itself when editing. Its caps are applied proactively: the
@@ -726,8 +756,12 @@ export function EventForm({
    * that does own those things, rather than branched field by field: five
    * conditionals inside CategoryEditor would leave a form whose every row is
    * about something this sport does not have.
+   *
+   * Asked of `lib/race.ts` rather than read off `scoring` here, for the reason
+   * that file states: it is the single reader, and a second copy drifts the day
+   * an admin adds another non-competitive sport.
    */
-  const isRace = selectedSport?.scoring === "none";
+  const isRace = isRaceSport(selectedSport);
   // What this sport's cards are actually called, and what it defaults to —
   // both shown as placeholders so a blank field reads as "inherited", not "0".
   const sportCards = disciplineStatDefs(selectedSport);
@@ -862,7 +896,12 @@ export function EventForm({
         // (`namesSquad` = `tracksClock`) — dua gate akan berselisih dan
         // selisihnya baru terlihat saat admin menambah cabang baru.
         ...(namesSquad(selectedSport) ? { squad: cleanedSquad } : {}),
-        deposit,
+        // Same reasoning again: a race has no teams to hold a jaminan against,
+        // so the key is left out instead of being posted as zeroes. Leaving it
+        // out keeps a stored deposit dormant, which is what the other three
+        // rulebooks do and what the per-namespace merge in
+        // EventController::update() is there for.
+        ...(isRace ? {} : { deposit }),
       },
     });
   };
@@ -1047,29 +1086,27 @@ export function EventForm({
           </Card>
 
           {isRace ? (
-            <Card>
-              <SectionHeader
-                icon={Layers}
-                title="Kategori Lomba"
-                description="Cabang ini tidak punya pertandingan, jadi kategorinya tidak butuh format atau bracket."
-              />
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Kategori lomba (mis. Mahasiswa, Umum, 5K) dan periode harganya
-                  diatur di halaman <strong>Peserta Lomba</strong> — harga ikut
-                  periode pendaftaran, jadi keduanya hidup bersama di sana.
-                  {!initial?.id && " Halaman itu bisa dibuka setelah event ini disimpan."}
-                </p>
-                {initial?.id && (
-                  <Button asChild variant="outline" className="mt-3 gap-2">
-                    <Link href={`/organizer/events/${initial.id}/race`}>
-                      <Layers className="h-4 w-4" />
-                      Atur kategori & periode
-                    </Link>
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            /* The live editor when the caller has one to give — the edit page
+               does — and otherwise a card saying why there is nothing here yet.
+               Both land in the slot the competition category editor occupies,
+               because for a race the one replaces the other and the reading
+               order is the same: name the event, then say what it sells. */
+            (raceSetup ?? (
+              <Card>
+                <SectionHeader
+                  icon={Layers}
+                  title="Kategori Lomba"
+                  description="Cabang ini tidak punya pertandingan, jadi kategorinya tidak butuh format atau bracket."
+                />
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Kategori (mis. Mahasiswa, Umum, 5K) dan periode harganya
+                    diatur setelah event ini disimpan — harga ikut periode
+                    pendaftaran, jadi keduanya diisi bersama.
+                  </p>
+                </CardContent>
+              </Card>
+            ))
           ) : (
           <Card>
             <SectionHeader
@@ -1548,6 +1585,13 @@ export function EventForm({
             </Card>
           )}
 
+          {/* Teams only. Jaminan is held per team and drawn down by the cards
+        that team collects, so a fun run has nothing on either side of the
+        calculation: `race_entries` are individual runners, and the sport books
+        nobody. Gated on `isRace` rather than `tracksDiscipline` on purpose —
+        volleyball has no card column either, but it fields teams, and a flat
+        sum held against each of them is still a real thing to track there. */}
+          {!isRace && (
           <Card>
             <SectionHeader
               icon={Wallet}
@@ -1621,6 +1665,7 @@ export function EventForm({
               </FieldHint>
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <SectionHeader
@@ -1644,6 +1689,13 @@ export function EventForm({
                 <FieldError message={errorFor("location_name")} />
               </div>
 
+              {/* Courts are read by exactly one thing — ScheduleService, which
+              spreads fixtures across lanes. A race reaches it never, so the
+              rows would be a list of venues nothing ever assigns. The stored
+              value is still posted back untouched (the state is seeded from
+              `initial` and nothing here edits it), so a sport switched back to
+              a competition one finds its lanes where it left them. */}
+              {!isRace && (
               <div className="grid gap-2">
                 <Label className="font-semibold">Lapangan</Label>
                 {(v.courts ?? []).length > 0 && (
@@ -1693,6 +1745,7 @@ export function EventForm({
                   pertandingan. Kosongkan jika tidak perlu.
                 </FieldHint>
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1806,6 +1859,7 @@ export function EventForm({
             categories={categories}
             banner={bannerShown}
             days={days}
+            isRace={isRace}
           />
         </aside>
       </div>

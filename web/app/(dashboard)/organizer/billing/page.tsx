@@ -14,7 +14,7 @@ import {
 } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
 import { checkoutOutcome } from "@/lib/checkout";
-import { canUpgrade, unconsumedOrders } from "@/lib/plan";
+import { canUpgrade, planOrderUsage, planOrderUsageLabel, unconsumedOrders } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
@@ -276,16 +276,26 @@ export default function BillingPage() {
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {order.invoice_number ?? "—"} &middot;{" "}
-                    {order.event ? (
-                      <Link
-                        href={`/organizer/events/${order.event.id}/stats`}
-                        className="underline underline-offset-2"
-                      >
-                        {order.event.name}
-                      </Link>
-                    ) : (
-                      "Belum dipakai"
-                    )}{" "}
+                    {/* What became of it — never derived here. An upgraded
+                        order carries `event_id: null` by design, so branching
+                        on the event alone called it unspent while the credit
+                        section above, which reads `superseded`, left it out. */}
+                    {(() => {
+                      const usage = planOrderUsage(order);
+
+                      if (usage.kind === "event") {
+                        return (
+                          <Link
+                            href={`/organizer/events/${usage.event.id}/stats`}
+                            className="underline underline-offset-2"
+                          >
+                            {usage.event.name}
+                          </Link>
+                        );
+                      }
+
+                      return planOrderUsageLabel(order);
+                    })()}{" "}
                     &middot; {order.paid_at ? `Dibayar ${dateTime(order.paid_at)}` : "Belum dibayar"}
                   </p>
                 </div>

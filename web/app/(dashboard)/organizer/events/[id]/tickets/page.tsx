@@ -33,6 +33,8 @@ import {
 import { getEvent } from "@/lib/api/events";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { isTicketingEnabled } from "@/lib/plan";
+import { isRaceEvent } from "@/lib/race";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { dayFullLabel } from "@/lib/match-dates";
 import { dateRangeLabel, dayModeLabel, sellingDates, usesDays } from "@/lib/tickets";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
@@ -75,17 +77,21 @@ export default function EventTicketsPage() {
     enabled: !!orgId,
   });
   const ticketing = isTicketingEnabled(eventQuery.data);
+  // A fun run sells no spectator ticket at all — there is no gate to close on a
+  // road, and its runners carry their own QR. Not a plan question: the refusal
+  // below is a different one, and upgrading cannot change this answer.
+  const isRace = isRaceEvent(eventQuery.data);
 
   const catsQuery = useQuery({
     queryKey: ["ticket-categories", orgId, eventId],
     queryFn: () => getTicketCategories(orgId!, eventId),
-    enabled: !!orgId && ticketing,
+    enabled: !!orgId && ticketing && !isRace,
   });
 
   const reportQuery = useQuery({
     queryKey: ["ticket-report", orgId, eventId],
     queryFn: () => getTicketReport(orgId!, eventId),
-    enabled: !!orgId && ticketing,
+    enabled: !!orgId && ticketing && !isRace,
   });
 
   const invalidate = () => {
@@ -168,7 +174,10 @@ export default function EventTicketsPage() {
   };
 
   // ---- Plan gate: ticketing not on this plan ----
-  if (org && !ticketing) {
+  // Skipped for a race, so the sport's refusal below wins: both would be true
+  // for a fun run on a plan without tickets, and "upgrade your plan" is the one
+  // of the two that cannot possibly help.
+  if (org && !ticketing && !isRace) {
     return (
       <div>
         <PageHeader
@@ -205,6 +214,10 @@ export default function EventTicketsPage() {
         backHref="/organizer/events"
         backLabel="Daftar event"
         actions={
+          // Dropped for a race along with everything they lead to. The guard
+          // below replaces the body, and three actions over an explanation of
+          // why there is no body would each be a dead end of its own.
+          isRace ? undefined : (
           <>
             <Button onClick={() => setBoxOffice(true)} disabled={!categories?.length}>
               <Store className="h-4 w-4" />
@@ -223,8 +236,11 @@ export default function EventTicketsPage() {
               </Link>
             </Button>
           </>
+          )
         }
       />
+
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
 
       {/* ===== Sales & check-in summary ===== */}
       {reportQuery.isLoading ? (
@@ -475,6 +491,7 @@ export default function EventTicketsPage() {
           />
         </div>
       )}
+      </RaceRouteGuard>
     </div>
   );
 }

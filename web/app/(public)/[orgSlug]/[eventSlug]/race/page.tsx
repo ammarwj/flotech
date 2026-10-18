@@ -24,6 +24,8 @@ import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import { ChannelPicker } from "@/components/payment/channel-picker";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { InfoHint } from "@/components/ui/info-hint";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -95,6 +97,7 @@ function RaceRegisterPage() {
     birth_date: "",
     emergency_contact_name: "",
     emergency_contact_phone: "",
+    emergency_contact_relation: "",
   });
 
   // Whatever else this event asks for. Empty lists render nothing at all — an
@@ -123,6 +126,7 @@ function RaceRegisterPage() {
         birth_date: runner.birth_date || null,
         emergency_contact_name: runner.emergency_contact_name || null,
         emergency_contact_phone: runner.emergency_contact_phone || null,
+        emergency_contact_relation: runner.emergency_contact_relation || null,
         custom_fields: answers as Record<string, string>,
         // Only the rows that name a slot. A `DocumentRow` carries
         // `document_type` optionally — the uploader fills it from the schema —
@@ -206,8 +210,12 @@ function RaceRegisterPage() {
         <ChevronLeft className="h-4 w-4" />
         Kembali ke halaman event
       </Link>
+      {/* The event's own name, not a word for what kind of event it is: the
+          `fun_run` branch covers a race, a training run and a charity walk
+          alike, and "Lomba" is wrong for two of the three. Falls back to the
+          neutral verb while the event is still loading. */}
       <h1 className="mb-1 mt-3 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "var(--font-display)" }}>
-        Daftar Lomba
+        {event?.name ? `Pendaftaran ${event.name}` : "Pendaftaran"}
       </h1>
       <p className="mb-6 text-muted-foreground">
         Isi datamu, pilih kategori, lalu selesaikan pembayaran.
@@ -224,7 +232,7 @@ function RaceRegisterPage() {
         <Card className="mb-5 flex items-start gap-2.5 p-4 text-sm">
           <Flag className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <span>
-            Penyelenggara belum membuka kategori untuk lomba ini. Coba lagi nanti.
+            Penyelenggara belum membuka kategori untuk event ini. Coba lagi nanti.
           </span>
         </Card>
       )}
@@ -321,7 +329,18 @@ function RaceRegisterPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="runner-email">Email</Label>
+              {/* Behind a marker for the same reason the organizer's own fields
+                  are: a line of help under this input pushed it off the
+                  baseline of "Nomor HP" beside it, and the row stopped reading
+                  as a row. The marker beside the Label, never inside it — a
+                  <label> may not wrap interactive content. */}
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="runner-email">Email</Label>
+                <InfoHint label="Penjelasan email">
+                  Kwitansi dan bukti pendaftaran dikirim ke alamat ini, jadi
+                  pastikan alamatnya aktif dan bisa kamu buka di hari H.
+                </InfoHint>
+              </div>
               <Input
                 id="runner-email"
                 type="email"
@@ -330,9 +349,6 @@ function RaceRegisterPage() {
                 placeholder="nama@email.com"
                 required
               />
-              <p className="text-xs text-muted-foreground">
-                Kwitansi dan bukti pendaftaran dikirim ke sini.
-              </p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="runner-phone">Nomor HP</Label>
@@ -357,11 +373,17 @@ function RaceRegisterPage() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="runner-birth">Tanggal lahir</Label>
-              <Input
+              {/* The same picker the organizer's event form uses, and the one
+                  CustomFieldEditor already renders for `date` fields — a native
+                  <input type="date"> looked like a different control sitting
+                  between them. Its year dropdown reaches 100 years back, which
+                  is what makes a birth date reachable at all: the month
+                  chevrons alone are ~430 clicks to 1990. */}
+              <DatePicker
                 id="runner-birth"
-                type="date"
                 value={runner.birth_date}
-                onChange={(e) => setRunner({ ...runner, birth_date: e.target.value })}
+                onChange={(val) => setRunner({ ...runner, birth_date: val })}
+                placeholder="Pilih tanggal lahir"
               />
             </div>
           </CardContent>
@@ -372,11 +394,15 @@ function RaceRegisterPage() {
           <CardHeader>
             <CardTitle>Kontak Darurat</CardTitle>
             <CardDescription>
-              Dihubungi panitia kalau terjadi sesuatu di lintasan.
+              Dihubungi panitia kalau terjadi sesuatu saat acara berlangsung.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5">
+            {/* Full width, so the phone and the relation pair off on the row
+                below instead of leaving one cell of the two-column grid
+                hanging — the same shape "Nama lengkap" takes in the card
+                above. */}
+            <div className="grid gap-1.5 sm:col-span-2">
               <Label htmlFor="ec-name">Nama</Label>
               <Input
                 id="ec-name"
@@ -396,6 +422,25 @@ function RaceRegisterPage() {
                 }
               />
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ec-relation">Status hubungan</Label>
+              {/* Free text, not a select, and deliberately NOT run through
+                  `nameInput` like the name beside it: that uppercases, which is
+                  right for a person's name on a roster and wrong for a word in
+                  a sentence a marshal reads off a phone — "IBU" is shouting.
+                  The placeholder carries the common answers instead of an enum
+                  locking them in; see the column, which makes the same call
+                  `gender` did. */}
+              <Input
+                id="ec-relation"
+                value={runner.emergency_contact_relation}
+                maxLength={50}
+                placeholder="Ibu / Suami / Teman"
+                onChange={(e) =>
+                  setRunner({ ...runner, emergency_contact_relation: e.target.value })
+                }
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -406,7 +451,19 @@ function RaceRegisterPage() {
               <CardTitle>Data Tambahan</CardTitle>
               <CardDescription>Diminta oleh penyelenggara event ini.</CardDescription>
             </CardHeader>
-            <CardContent>
+            {/* Two columns and `gap-3`, the same as the two cards above, which
+                is what makes this read as one form rather than a section
+                bolted on. It only works because the editor puts each field's
+                guidance behind a marker beside the label: in the flow, help
+                text wrapped to two lines beside help text wrapped to three put
+                the inputs on different baselines and the row stopped reading
+                as a row.
+
+                The grid belongs here rather than to the editor because the
+                editor emits bare cells — that is what lets `long_text` span
+                both columns, and without any grid at all they stack with no
+                gap whatsoever. */}
+            <CardContent className="grid gap-3 sm:grid-cols-2">
               <CustomFieldEditor
                 fields={schema.team_fields}
                 value={answers}
@@ -443,7 +500,7 @@ function RaceRegisterPage() {
           />
           <span>
             Saya menyatakan data di atas benar dan dalam kondisi sehat untuk
-            mengikuti lomba ini.
+            mengikuti event ini.
           </span>
         </label>
 

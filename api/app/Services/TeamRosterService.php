@@ -490,6 +490,16 @@ class TeamRosterService
      * on. Removing a field that already has answers is blocked at the schema
      * end (EventController), which is where the organizer can actually respond.
      *
+     * A field hidden by its `visible_if` is dropped the same way, and that is
+     * the half of the rule answerErrors() cannot do: refusing to *demand* an
+     * unseen question still leaves whatever a stale tab sent for it stored, so
+     * a NIM would outlive the runner switching from UAD to UMUM. Both halves
+     * ask RegistrationForm::isVisible(), the rule's only reader.
+     *
+     * The visibility pass runs against the SUBMITTED answers rather than the
+     * cleaned ones: the trigger may itself be a field further down this list,
+     * and cleaning in order would decide a condition on a half-built map.
+     *
      * @param  list<array<string, mixed>>  $fields
      * @param  mixed  $answers
      * @return array<string, string>
@@ -503,10 +513,20 @@ class TeamRosterService
         $clean = [];
 
         foreach ($fields as $field) {
-            $value = $answers[$field['key']] ?? null;
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
 
-            if (is_scalar($value) && trim((string) $value) !== '') {
-                $clean[$field['key']] = trim((string) $value);
+            // Null means unanswered, and an absent key is how that is stored —
+            // see normalizeAnswer(), which is also what stamps a consent box
+            // with the server's clock instead of trusting the payload.
+            $value = RegistrationForm::normalizeAnswer(
+                $field['type'],
+                $answers[$field['key']] ?? null,
+            );
+
+            if ($value !== null) {
+                $clean[$field['key']] = $value;
             }
         }
 
@@ -528,12 +548,25 @@ class TeamRosterService
         $errors = [];
 
         foreach ($fields as $field) {
-            $value = $answers[$field['key']] ?? null;
-            $value = is_scalar($value) ? trim((string) $value) : '';
+            // A question this entrant was never shown is not one they failed to
+            // answer. Without this a required field behind a condition locks
+            // the form for everyone the condition excludes.
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
+
+            // A consent box is read for whether it is ticked, never for what it
+            // says: the stored value is an instant the server writes, so
+            // comparing the payload's text would be checking the client's work.
+            $value = $field['type'] === 'consent'
+                ? (RegistrationForm::normalizeAnswer('consent', $answers[$field['key']] ?? null) ?? '')
+                : (is_scalar($answers[$field['key']] ?? null) ? trim((string) $answers[$field['key']]) : '');
 
             if ($value === '') {
                 if ($field['required']) {
-                    $errors["{$prefix}.{$field['key']}"] = "{$field['label']} wajib diisi.";
+                    $errors["{$prefix}.{$field['key']}"] = $field['type'] === 'consent'
+                        ? "{$field['label']} wajib disetujui."
+                        : "{$field['label']} wajib diisi.";
                 }
 
                 continue;

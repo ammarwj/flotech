@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
+import { getPublicRace } from "@/lib/api/race";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import {
   PublicResults,
@@ -169,6 +170,36 @@ function PublicEventView() {
     retry: false,
   });
 
+  /**
+   * A race event's categories, which live in `race_categories` and are NOT in
+   * the event payload.
+   *
+   * `PublicEventResource.categories` is `event_categories` — the competition
+   * ones, read by the schedule, the standings and the bracket. A fun run has
+   * zero of those, which is why the "Kategori & Biaya" card rendered its header
+   * over nothing at all. Kept its own endpoint rather than widened into the
+   * event payload because the price depends on the window in force, and the
+   * server is the only thing that may decide which window that is (see the
+   * invariant on RacePricing).
+   *
+   * Up here with the event query, not beside the `isRace` it reads: everything
+   * below the early returns runs conditionally, and a hook there changes call
+   * order between the loading and loaded renders. `isRaceEvent` is asked of
+   * `query.data` directly for the same reason — `ev` does not exist yet.
+   *
+   * `enabled` keeps a football event from asking at all: the route 404s for
+   * one, and a failed query would sit retrying behind a card that is correctly
+   * showing nothing.
+   */
+  const raceQuery = useQuery({
+    // The same key the registration form uses, so arriving there from this page
+    // costs no second request.
+    queryKey: ["public-race", params.orgSlug, params.eventSlug],
+    queryFn: () => getPublicRace(params.orgSlug, params.eventSlug),
+    enabled: isRaceEvent(query.data),
+    retry: false,
+  });
+
   // Rosters live behind a dialog, so a player or official hit is the one match a
   // visitor cannot spot by scanning the grid — worth matching on even though
   // only the team name is rendered on the card.
@@ -235,6 +266,11 @@ function PublicEventView() {
   // decision to take deliberately if it is ever wanted — with its own payload
   // that publishes a name and nothing else.
   const isRace = isRaceEvent(ev);
+
+  // Fed by the query up beside the event one — see its docblock for why it
+  // cannot live here.
+  const raceCategories = raceQuery.data?.categories ?? [];
+  const racePeriod = raceQuery.data?.current_period ?? null;
 
   // Which categories a panel can actually show anything for. An event may mix
   // formats — a badminton event runs Tunggal as a league and Ganda as a knockout
@@ -315,6 +351,11 @@ function PublicEventView() {
     : selectedCategory
       ? mainUrl(`/register?category=${selectedCategory.slug}`)
       : mainUrl("/register");
+  // Three CTAs say the same thing, so the word is picked once. "Tim" is wrong
+  // for a solo entrant, and the `fun_run` branch covers a training run and a
+  // charity walk as well as a race — so the neutral verb is used rather than a
+  // second noun that would be wrong for two of the three.
+  const registerLabel = isRace ? "Daftar Sekarang" : "Daftar Tim Sekarang";
   // Klasemen, bracket and the leaderboard are all per-category — a bracket
   // belongs to exactly one — so "Semua" is offered on the schedule alone.
   const isAll =
@@ -432,7 +473,7 @@ function PublicEventView() {
                       href={registerHref}
                       className="btn btn-primary btn-lg"
                     >
-                      Daftar Tim Sekarang
+                      {registerLabel}
                     </Link>
                   )}
                   {showRegistrationClosed && (
@@ -458,19 +499,33 @@ function PublicEventView() {
         </div>
       </header>
 
-      {/* ===== TABS ===== */}
-      <section className="etabs">
-        <div className="container">
-          <PillTabs
-            items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
-            activeKey={activeTab}
-            // Info adalah default, jadi ia tidak perlu ditulis ke URL.
-            onSelect={(key) =>
-              setParams({ tab: key === "info" ? undefined : key })
-            }
-          />
-        </div>
-      </section>
+      {/* ===== TABS =====
+          Gone entirely when there is only one, which on a fun run is always:
+          Info is the only panel it can fill, so the strip would be a single
+          pill with nowhere else to go. Written as "more than one" rather than
+          `!isRace` so an ordinary event whose categories can fill nothing yet
+          loses it too — the condition is "is there a choice", and a second
+          reader spelled as a sport check would disagree with this one the first
+          time a competition event has no schedule either.
+
+          Derived from `tabs`, the same array that renders the pills, so the two
+          cannot drift. `.etabs` carries its own border and padding, so hiding
+          only the pills would leave a visible seam — the same call Proof()
+          makes by returning null instead of an empty strip. */}
+      {tabs.length > 1 && (
+        <section className="etabs">
+          <div className="container">
+            <PillTabs
+              items={tabs.map(([key, label, icon]) => ({ key, label, icon }))}
+              activeKey={activeTab}
+              // Info adalah default, jadi ia tidak perlu ditulis ke URL.
+              onSelect={(key) =>
+                setParams({ tab: key === "info" ? undefined : key })
+              }
+            />
+          </div>
+        </section>
+      )}
 
       {/* ===== INFO TAB ===== */}
       {activeTab === "info" && (
@@ -518,25 +573,64 @@ function PublicEventView() {
                 */}
                 <OrganizerCard organization={ev.organization} />
 
-                <div className="card scard">
-                  <h3>
-                    <Trophy />
-                    Kategori & Biaya
-                  </h3>
-                  {categories.map((c) => (
-                    <div className="price-tier" key={c.id}>
-                      <div>
-                        <b>{c.name}</b>
-                        <small>{formatLabel(c.tournament_format)}</small>
-                      </div>
-                      <span className="amt" style={{ fontSize: 14 }}>
-                        {c.registration_fee > 0
-                          ? rupiah(c.registration_fee)
-                          : "Gratis"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {/* The card goes entirely when there is nothing in it. Its
+                    header used to render over an empty list for every race
+                    event, and a heading with no rows under it reads as broken
+                    rather than as "none yet" — the same call Proof() makes by
+                    returning null instead of a lone label. */}
+                {(isRace ? raceCategories.length > 0 : categories.length > 0) && (
+                  <div className="card scard">
+                    <h3>
+                      <Trophy />
+                      Kategori & Biaya
+                    </h3>
+                    {isRace
+                      ? raceCategories.map((c) => (
+                          <div className="price-tier" key={c.id}>
+                            <div>
+                              <b>{c.name}</b>
+                              {/* Which window the price belongs to, because the
+                                  same category costs three different amounts
+                                  over the sale and a number with no window
+                                  beside it cannot be checked against anything.
+                                  The sub-line carries the quota when the
+                                  category is not on sale right now, since the
+                                  price then has no window to name. */}
+                              <small>
+                                {c.current_price !== null
+                                  ? (racePeriod?.name ?? "Periode berjalan")
+                                  : "Tidak dijual pada periode ini"}
+                                {c.remaining !== null &&
+                                  ` · sisa ${c.remaining} kuota`}
+                              </small>
+                            </div>
+                            <span className="amt" style={{ fontSize: 14 }}>
+                              {/* Null is not zero: zero is a real price (a
+                                  sponsored run), so `?? 0` here would print
+                                  "Gratis" over a category nobody can enter. */}
+                              {c.current_price === null
+                                ? "—"
+                                : c.current_price > 0
+                                  ? rupiah(c.current_price)
+                                  : "Gratis"}
+                            </span>
+                          </div>
+                        ))
+                      : categories.map((c) => (
+                          <div className="price-tier" key={c.id}>
+                            <div>
+                              <b>{c.name}</b>
+                              <small>{formatLabel(c.tournament_format)}</small>
+                            </div>
+                            <span className="amt" style={{ fontSize: 14 }}>
+                              {c.registration_fee > 0
+                                ? rupiah(c.registration_fee)
+                                : "Gratis"}
+                            </span>
+                          </div>
+                        ))}
+                  </div>
+                )}
 
                 {/* Aturan yang sama dengan CTA hero: kartunya hilang seluruhnya
                     begitu event berjalan, bukan cuma tombolnya. */}
@@ -555,15 +649,16 @@ function PublicEventView() {
                             marginBottom: 16,
                           }}
                         >
-                          Pendaftaran tim sedang dibuka. Amankan slot timmu
-                          sekarang.
+                          {isRace
+                            ? "Pendaftaran sedang dibuka. Amankan slotmu sekarang."
+                            : "Pendaftaran tim sedang dibuka. Amankan slot timmu sekarang."}
                         </p>
                         <Link
                           href={registerHref}
                           className="btn btn-primary btn-block"
                         >
                           <Trophy className="h-4 w-4" />
-                          Daftar Tim
+                          {isRace ? "Daftar" : "Daftar Tim"}
                         </Link>
                       </>
                     ) : (
@@ -811,14 +906,19 @@ function PublicEventView() {
         <section className="section" style={{ paddingTop: 0 }}>
           <div className="container">
             <div className="ereg">
-              <h2>Siap bertanding di {ev.name}?</h2>
+              {/* "Bertanding" and "turnamen" are competition words: a fun run
+                  has no opponent, and the same branch covers a training run. */}
+              <h2>
+                {isRace ? `Ikut ${ev.name}?` : `Siap bertanding di ${ev.name}?`}
+              </h2>
               <p>
-                Daftarkan timmu, lengkapi data pemain, dan ikuti keseruan
-                turnamennya.
+                {isRace
+                  ? "Isi datamu, pilih kategori, lalu selesaikan pembayaran."
+                  : "Daftarkan timmu, lengkapi data pemain, dan ikuti keseruan turnamennya."}
               </p>
               <div className="ehero-cta">
                 <Link href={registerHref} className="btn btn-primary btn-lg">
-                  Daftar Tim Sekarang
+                  {registerLabel}
                 </Link>
               </div>
             </div>

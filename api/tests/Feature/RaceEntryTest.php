@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exports\RaceEntriesExport;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceCategory;
@@ -130,6 +131,93 @@ class RaceEntryTest extends TestCase
     }
 
     // ---- registering ----
+
+    /**
+     * The emergency contact's three fields survive the whole chain — request
+     * rule, service, column, resource.
+     *
+     * The relation is the one that needs asserting: the pair beside it was
+     * already wired, so a build that dropped the new column would keep every
+     * other race test green. Compared against an entry that omits it, because
+     * the field is nullable on purpose (whether to demand it is the organizer's
+     * call, made on their registration form) — asserting only the filled one
+     * would pass a rule that had quietly become `required`.
+     */
+    public function test_the_emergency_contact_relation_is_stored_and_published(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $filled = $this->register(User::factory()->create(), $org, $event, $category, [
+            'emergency_contact_name' => 'Siti Aminah',
+            'emergency_contact_phone' => '08998877665',
+            'emergency_contact_relation' => 'Ibu',
+        ]);
+
+        // Published, not just stored: the organizer's list and the export read
+        // the resource, and a column nothing emits is a column nobody can call.
+        $this->assertSame('Ibu', $filled['entry']['emergency_contact_relation']);
+        $this->assertSame('Ibu', RaceEntry::findOrFail($filled['entry']['id'])->emergency_contact_relation);
+        // Free text, never an enum — see the column. "Ibu" is stored as typed,
+        // not uppercased the way a roster name would be.
+        $this->assertNotSame('IBU', $filled['entry']['emergency_contact_relation']);
+
+        $omitted = $this->register(User::factory()->create(), $org, $event, $category);
+
+        $this->assertNull($omitted['entry']['emergency_contact_relation']);
+        $this->assertNull(RaceEntry::findOrFail($omitted['entry']['id'])->emergency_contact_relation);
+    }
+
+    /**
+     * The entrant sheet's headings and its values line up.
+     *
+     * `headings()` and `rows()` are computed separately, so a column added to
+     * one and not the other prints every later value one column to the left —
+     * silently, in a file an organizer hands to a race marshal. The assertion
+     * is therefore positional: the heading's index is looked up and the value
+     * at that same index is checked, which is the only form that catches an
+     * off-by-one. Asserting "the sheet contains Ibu" somewhere would pass with
+     * the column landing under Periode.
+     *
+     * Two entries, one with the relation and one without, so the `'—'`
+     * placeholder is exercised in the same alignment it has to keep.
+     */
+    public function test_the_export_puts_the_relation_under_its_own_heading(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $this->register(User::factory()->create(), $org, $event, $category, [
+            'full_name' => 'Ammar',
+            'emergency_contact_name' => 'Siti Aminah',
+            'emergency_contact_relation' => 'Ibu',
+        ]);
+        $this->register(User::factory()->create(), $org, $event, $category, [
+            'full_name' => 'Budi',
+            'email' => 'budi@test.com',
+        ]);
+
+        $export = new RaceEntriesExport($event->fresh());
+        $headings = $export->headings();
+        $rows = $export->rows();
+
+        $at = array_search('Hubungan', $headings, true);
+        $this->assertNotFalse($at, 'the sheet has no Hubungan column');
+
+        // Ordered by full_name within the category, so Ammar is first.
+        $this->assertSame('Ibu', $rows[0][$at]);
+        $this->assertSame('—', $rows[1][$at]);
+
+        // And the neighbours still hold their own ground — the half that proves
+        // the column was inserted rather than appended over something else.
+        $this->assertSame('Siti Aminah', $rows[0][(int) array_search('Kontak Darurat', $headings, true)]);
+        $this->assertSame('Early Bird', $rows[0][(int) array_search('Periode', $headings, true)]);
+        $this->assertCount(count($headings), $rows[0]);
+    }
 
     /**
      * The price charged is the one in force, and the snapshot is what is
@@ -604,7 +692,7 @@ class RaceEntryTest extends TestCase
         $this->actingAs($owner, 'api')
             ->patchJson("/api/v1/organizations/{$org->id}/events/{$race->id}", ['sport_type' => 'football'])
             ->assertStatus(422)
-            ->assertJsonPath('errors.sport_type.0', 'Cabang olahraga tidak bisa diubah karena sudah ada peserta atau jadwal.');
+            ->assertJsonPath('errors.sport_type.0', 'Cabang olahraga tidak bisa diubah karena sudah ada peserta, jadwal, atau kategori tiket.');
         $this->assertSame('fun_run', $race->fresh()->sport_type);
 
         // And the other direction: a football event with a team cannot become
@@ -621,6 +709,83 @@ class RaceEntryTest extends TestCase
             ->patchJson("/api/v1/organizations/{$org->id}/events/{$football->id}", ['sport_type' => 'fun_run'])
             ->assertStatus(422);
         $this->assertSame('football', $football->fresh()->sport_type);
+    }
+
+    /**
+     * A ticket category freezes the sport too, and it is the arm that reaches an
+     * event with no entrants at all.
+     *
+     * Compared against a draft that has none: asserting the refusal alone would
+     * pass a guard that froze every event, and the empty save above is in a
+     * different test on a different event. The tickets are what makes this
+     * reachable — `teams`, `matches` and `race_entries` all need somebody to
+     * have entered, while a ticket category can be set up the day the event is
+     * created. Without this arm a football event could be moved to `fun_run`
+     * carrying categories the new sport is refused at
+     * (TicketCategoryController::ensureTicketsEnabled), sellable through a door
+     * and invisible on every race surface.
+     */
+    public function test_sport_type_is_frozen_by_a_ticket_category_alone(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+
+        $bare = $this->eventOn($org, null, ['sport_type' => 'football', 'status' => 'draft']);
+        $this->actingAs($owner, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/events/{$bare->id}", ['sport_type' => 'fun_run'])
+            ->assertOk();
+        $this->assertSame('fun_run', $bare->fresh()->sport_type);
+
+        $ticketed = $this->eventOn($org, null, ['sport_type' => 'football', 'status' => 'draft']);
+        $ticketed->ticketCategories()->create([
+            'name' => 'Tribun', 'price' => 50_000, 'quota' => 100, 'is_active' => true,
+        ]);
+
+        $this->actingAs($owner, 'api')
+            ->patchJson("/api/v1/organizations/{$org->id}/events/{$ticketed->id}", ['sport_type' => 'fun_run'])
+            ->assertStatus(422);
+        $this->assertSame('football', $ticketed->fresh()->sport_type);
+    }
+
+    /**
+     * A fun run sells no spectator ticket, and the refusal is a 422 about the
+     * sport rather than the plan's 403.
+     *
+     * Compared against a football event on the SAME plan, so the plan cannot
+     * explain the difference — the pattern every gate in this codebase is tested
+     * with. Asserting the race's refusal alone would pass a build that refused
+     * ticket categories outright, which is ten sports losing the feature.
+     *
+     * The status codes are part of what is asserted, not incidental. 403 with
+     * `errors.feature` is the plan door, which isPlanLimitError() turns into a
+     * "upgrade your plan" toast; sending that for a fun run would point the
+     * organizer at a purchase that cannot change the answer. Hence a plain 422
+     * with no `feature` key.
+     */
+    public function test_a_fun_run_cannot_create_a_spectator_ticket_category(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+
+        $payload = ['name' => 'Tribun', 'price' => 50_000, 'quota' => 100, 'is_active' => true];
+
+        // The same plan runs both events, so only the sport differs.
+        $plan = $this->fullPlan();
+
+        $race = $this->raceEvent($org, $plan);
+        $this->actingAs($owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$race->id}/ticket-categories", $payload)
+            ->assertStatus(422)
+            // Not the plan's shape: `errors.feature` here would be swallowed
+            // into a toast about an upgrade that cannot help.
+            ->assertJsonMissingPath('errors.feature');
+        $this->assertSame(0, $race->ticketCategories()->count());
+
+        $football = $this->eventOn($org, $plan, ['sport_type' => 'football', 'status' => 'open']);
+        $this->actingAs($owner, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$football->id}/ticket-categories", $payload)
+            ->assertCreated();
+        $this->assertSame(1, $football->ticketCategories()->count());
     }
 
     /**
@@ -806,5 +971,129 @@ class RaceEntryTest extends TestCase
         $this->actingAs($owner, 'api')->getJson($url)->assertOk();
         $this->actingAs($operator, 'api')->getJson($url)->assertForbidden();
         $this->actingAs($outsider, 'api')->getJson($url)->assertForbidden();
+    }
+
+    /**
+     * Invarian: `paid` dan `awaiting_verification` dihitung EVENT-WIDE, bukan
+     * dari baris yang kebetulan ada di halaman ini.
+     *
+     * Dibandingkan dengan **meminta dua halaman** dari daftar yang sama: angka
+     * keduanya harus identik. Assert "paid = 2" pada satu halaman akan lolos
+     * penuh walau hitungannya diambil dari `items` — di halaman pertama yang
+     * memuat semuanya, kedua cara menjawab sama. Itulah bentuk bug yang
+     * sebelumnya ada: benar selama seluruh daftar termuat sekaligus, lalu
+     * berbunyi "120 pendaftar · 25 lunas" begitu dipaginasi.
+     */
+    public function test_the_headline_counts_are_event_wide_not_page_wide(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        foreach (range(1, 3) as $i) {
+            $entry = RaceEntry::findOrFail(
+                $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'],
+            );
+
+            // With no Midtrans server key the suite settles an entry on the
+            // spot, so one is pushed BACK to pending rather than two forward to
+            // paid. The point is only that `paid` differs from `total` — if the
+            // two matched, a page-wide count would answer correctly by luck.
+            if ($i === 3) {
+                $entry->update(['status' => 'pending', 'paid_at' => null]);
+            }
+        }
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $first = $this->actingAs($owner, 'api')->getJson($url.'?per_page=2')->json('data');
+        $second = $this->actingAs($owner, 'api')->getJson($url.'?per_page=2&page=2')->json('data');
+
+        // The pages really are different sizes — otherwise the comparison below
+        // would be two reads of the same thing.
+        $this->assertCount(2, $first['items']);
+        $this->assertCount(1, $second['items']);
+
+        foreach ([$first, $second] as $page) {
+            $this->assertSame(3, $page['meta']['total']);
+            $this->assertSame(2, $page['meta']['paid']);
+        }
+    }
+
+    /**
+     * Dan angka yang sama menyempit saat daftarnya disaring: ia dihitung dari
+     * query yang SAMA dengan yang melahirkan halamannya.
+     *
+     * Dibandingkan dengan hitungan tanpa filter di test yang sama — assert
+     * "paid = 1" sendirian lolos walau filternya tidak pernah sampai ke
+     * hitungan.
+     */
+    public function test_the_counts_follow_the_filter(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        foreach (['Ammar Wijaya', 'Dimas Prasetyo'] as $name) {
+            $entry = RaceEntry::findOrFail(
+                $this->register(User::factory()->create(), $org, $event, $category, [
+                    'full_name' => $name,
+                ])['entry']['id'],
+            );
+            app(\App\Services\RaceEntryService::class)->markPaid($entry);
+        }
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data.meta');
+        $one = $this->actingAs($owner, 'api')->getJson($url.'?search=Dimas')->json('data.meta');
+
+        $this->assertSame(2, $all['total']);
+        $this->assertSame(2, $all['paid']);
+        $this->assertSame(1, $one['total']);
+        $this->assertSame(1, $one['paid']);
+    }
+
+    /**
+     * Invarian: kertas PDF melebar mengikuti jumlah kolom.
+     *
+     * Dibandingkan dengan ekspor yang kolomnya sedikit, karena itu yang
+     * membedakan "kertas dihitung" dari "kertas dipaku landscape": assert
+     * "lebarnya > A4" sendirian lolos walau setiap ekspor dapat lebar yang
+     * sama. Ini bug yang sudah terjadi — tanpa `setPaper` dompdf memakai A4
+     * potret dan memotong kolom kedelapan ke atas tanpa suara.
+     */
+    public function test_pdf_paper_widens_with_the_column_count(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $event->update(['registration_form' => [
+            'team_fields' => array_map(fn ($i) => [
+                'key' => "f{$i}", 'label' => "Field {$i}", 'type' => 'short_text',
+                'required' => false, 'options' => [],
+            ], range(1, 12)),
+        ]]);
+
+        $wide = new \App\Exports\RaceEntriesExport($event->fresh());
+        $narrow = new \App\Exports\TicketBuyersExport($event->fresh());
+
+        $this->assertGreaterThan(
+            count($narrow->headings()),
+            count($wide->headings()),
+            'Fixture salah: ekspor pembandingnya harus lebih sempit.',
+        );
+
+        // The pair that binds it: a wider table gets wider paper, and the
+        // narrow one is not simply given the same sheet.
+        $this->assertGreaterThan($narrow->paper()[2], $wide->paper()[2]);
+
+        // And the floor holds — a narrow export still prints on ordinary paper
+        // rather than on something too small to read.
+        $this->assertGreaterThanOrEqual(595.28, $narrow->paper()[2]);
     }
 }

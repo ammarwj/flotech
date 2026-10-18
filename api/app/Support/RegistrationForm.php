@@ -30,11 +30,31 @@ use App\Models\Event;
  * one is a different class of decision from publishing a line of text the
  * entrant typed. Adding it there would need its own thinking, not this one
  * copied across.
+ *
+ * Three further things a field may carry, all optional and all absent-is-off so
+ * a schema saved before they existed keeps behaving exactly as it did:
+ *
+ * - `help_text` / `help_image_url`: guidance shown with the question. A jersey
+ *   size chart is a picture, not a sentence, so the image is its own key rather
+ *   than markup smuggled through the text — the forms render an `<img>` whose
+ *   `alt` is the field's own label.
+ * - `visible_if`: the field is only asked when another answer matches. Resolved
+ *   by isVisible(), which is the ONLY reader of the rule: a hidden field must
+ *   be neither demanded (a required question nobody can see locks the form) nor
+ *   stored (a NIM left on somebody who ended up picking UMUM), and those two
+ *   are separate call sites that would drift if each decided for itself.
  */
 final class RegistrationForm
 {
-    /** Field kinds an organizer may choose from. */
-    public const TYPES = ['short_text', 'long_text', 'select', 'date'];
+    /**
+     * Field kinds an organizer may choose from.
+     *
+     * `consent` is a tickbox whose stored value is WHEN it was ticked, not that
+     * it was — see normalizeAnswer(). A boolean would have needed a second
+     * column to answer "when", and a second column is a second writer of the
+     * same fact.
+     */
+    public const TYPES = ['short_text', 'long_text', 'select', 'date', 'consent'];
 
     /** File kinds a document slot may accept. */
     public const ACCEPTS = ['pdf', 'jpg', 'png'];
@@ -124,6 +144,88 @@ final class RegistrationForm
     }
 
     /**
+     * Whether this field is asked at all, given the answers so far.
+     *
+     * **The only reader of `visible_if`**, and that is the point. A hidden
+     * field must be neither demanded nor stored, and those are two call sites
+     * (answerErrors/assertFormComplete, and cleanAnswers) that each pass their
+     * own one-sided test: demanding one locks the form on a question nobody can
+     * see, storing one leaves a NIM on a runner who picked UMUM. One answer
+     * cannot drift from itself.
+     *
+     * The trigger is matched on its TRIMMED STRING value, the same shape
+     * answerErrors compares a select against — the stored answers are strings
+     * either way, and comparing loosely would make "0" match an empty answer.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, mixed>  $answers
+     */
+    public static function isVisible(array $field, array $answers): bool
+    {
+        $rule = $field['visible_if'] ?? null;
+
+        if (! is_array($rule)) {
+            return true;
+        }
+
+        $value = $answers[$rule['field']] ?? null;
+        $value = is_scalar($value) ? trim((string) $value) : '';
+
+        return in_array($value, $rule['values'], true);
+    }
+
+    /**
+     * The visible subset of a section's fields, in order.
+     *
+     * @param  array<string, mixed>  $answers
+     * @return list<array<string, mixed>>
+     */
+    public function visibleFields(string $section, array $answers): array
+    {
+        return array_values(array_filter(
+            $this->fieldsFor($section),
+            fn (array $field) => self::isVisible($field, $answers),
+        ));
+    }
+
+    /**
+     * What goes in `custom_fields` for one answer, as this field type stores it.
+     *
+     * **A `consent` field stores the INSTANT it was ticked, on the server's
+     * clock.** The whole requirement is "recorded with its time", and a time the
+     * submitting client supplies is one the person agreeing can choose — so
+     * whatever arrives is discarded and `now()` is written in its place. That
+     * also means the value is idempotent in the only way that matters: ticking
+     * an already-ticked box on an edit re-stamps it, which is the honest answer
+     * ("this is when they last affirmed it") rather than a frozen first tick
+     * nobody can account for.
+     *
+     * Every other type stores the trimmed text it was given. Null is returned
+     * for an answer that is not there, and the callers drop the key — an absent
+     * key and an empty string must not both mean "unanswered".
+     */
+    public static function normalizeAnswer(string $type, mixed $value): ?string
+    {
+        if ($type === 'consent') {
+            // Anything falsy is "not ticked". "0" and "false" are included
+            // because an unchecked box is exactly what a client sends that way,
+            // and reading them as consent would record agreement nobody gave.
+            $ticked = is_scalar($value)
+                && ! in_array(strtolower(trim((string) $value)), ['', '0', 'false', 'no'], true);
+
+            return $ticked ? now()->toIso8601String() : null;
+        }
+
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function fieldsFor(string $section): array
@@ -173,7 +275,7 @@ final class RegistrationForm
             $out[] = [
                 'key' => $field['key'],
                 'label' => $field['label'],
-                'value' => trim((string) $value),
+                'value' => self::displayValue($field, trim((string) $value)),
             ];
         }
 
@@ -208,11 +310,49 @@ final class RegistrationForm
 
             $out[] = [
                 'label' => $field['label'],
-                'value' => $field['type'] === 'date' ? self::albumDate($value) : $value,
+                'value' => $field['type'] === 'date'
+                    ? self::albumDate($value)
+                    : self::displayValue($field, $value),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * One stored answer as a human reads it, for every surface that prints one.
+     *
+     * Only `consent` needs translating: it stores an instant, and "2026-10-17T
+     * 09:14:02+07:00" on a public page or a printed sheet is a machine talking
+     * to itself. Everything else is already what the entrant typed.
+     *
+     * Written once and shared by publicAnswers() and albumRows() because the
+     * two differ on BLANKS, not on formatting — a second copy would be the
+     * place where one surface starts printing raw ISO and nobody notices, since
+     * each reader's own test would still pass.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    public static function displayValue(array $field, string $value): string
+    {
+        if (($field['type'] ?? null) !== 'consent' || $value === '') {
+            return $value;
+        }
+
+        try {
+            // `wallet.timezone` is the venue clock this whole schema already
+            // reads windows on (RacePeriod, TicketCategory, the hold release).
+            // App timezone is UTC, so formatting naively would print a consent
+            // given at 00:30 WIB as the previous day.
+            return 'Ya · '.\Illuminate\Support\Carbon::parse($value)
+                ->timezone(config('wallet.timezone', 'Asia/Jakarta'))
+                ->format('d/m/Y H:i');
+        } catch (\Throwable) {
+            // A value that is not the instant this type promised: a schema
+            // whose type was switched after answers came in. The raw text beats
+            // a wrong date, the same call albumDate() makes.
+            return $value;
+        }
     }
 
     /**
@@ -313,6 +453,16 @@ final class RegistrationForm
             $rules[$section.'.*.in_album'] = ['nullable', 'boolean'];
             $rules[$section.'.*.options'] = ['nullable', 'array', 'max:50'];
             $rules[$section.'.*.options.*'] = ['required', 'string', 'max:100'];
+            $rules[$section.'.*.help_text'] = ['nullable', 'string', 'max:500'];
+            $rules[$section.'.*.help_image_url'] = ['nullable', 'string', 'url', 'max:2048'];
+            // The rule's own shape only. That its `field` names a key defined
+            // EARLIER IN THE SAME LIST is the part a flat rule array cannot
+            // express, and it lives in SyncRegistrationFormRequest beside the
+            // other two — see that class for why "earlier" rather than "anywhere".
+            $rules[$section.'.*.visible_if'] = ['nullable', 'array'];
+            $rules[$section.'.*.visible_if.field'] = ['required_with:'.$section.'.*.visible_if', 'string', 'max:50'];
+            $rules[$section.'.*.visible_if.values'] = ['required_with:'.$section.'.*.visible_if', 'array', 'min:1', 'max:50'];
+            $rules[$section.'.*.visible_if.values.*'] = ['required', 'string', 'max:100'];
         }
 
         foreach (['team_documents', 'player_documents', 'team_official_documents'] as $section) {
@@ -376,10 +526,66 @@ final class RegistrationForm
                         fn ($o) => is_scalar($o) && trim((string) $o) !== '',
                     )))
                     : [],
+                // Guidance beside the question. Null rather than '' so the
+                // forms can render nothing at all instead of an empty line --
+                // same reason an event with no documents shows no upload UI.
+                'help_text' => self::cleanText($row['help_text'] ?? null),
+                'help_image_url' => self::cleanText($row['help_image_url'] ?? null),
+                'visible_if' => self::cleanCondition($row['visible_if'] ?? null),
             ];
         }
 
         return $clean;
+    }
+
+    /**
+     * A trimmed string, or null when there is nothing there.
+     *
+     * Null and '' must not both be storable: the forms branch on "is there
+     * guidance", and two spellings of "no" is two branches that will disagree.
+     */
+    private static function cleanText(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * The `visible_if` rule, or null when the field is always asked.
+     *
+     * A rule naming no values can never match, which would hide the field
+     * forever — so it normalizes to null (always visible) rather than to a
+     * question nobody is ever asked. Same reasoning as a document slot that
+     * accepts nothing falling back to every kind.
+     *
+     * @return array{field: string, values: list<string>}|null
+     */
+    private static function cleanCondition(mixed $raw): ?array
+    {
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        $field = self::cleanText($raw['field'] ?? null);
+
+        if ($field === null) {
+            return null;
+        }
+
+        $values = array_values(array_unique(array_map(
+            'strval',
+            array_filter(
+                is_array($raw['values'] ?? null) ? $raw['values'] : [],
+                fn ($v) => is_scalar($v) && trim((string) $v) !== '',
+            ),
+        )));
+
+        return $values === [] ? null : ['field' => $field, 'values' => $values];
     }
 
     /**

@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/admin-wallet";
 import { parseApiError } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
+import { planOrderUsageLabel } from "@/lib/plan";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -239,7 +240,7 @@ export default function AdminEventPlanOrdersPage() {
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {sub.plan?.name ?? "Paket dihapus"} &middot;{" "}
-                        {sub.event?.name ?? "Belum dipakai"} &middot;{" "}
+                        {planOrderUsageLabel(sub)} &middot;{" "}
                         {sub.invoice_number ?? "—"}
                       </p>
                       <p className="mt-1 text-sm font-bold">
@@ -598,9 +599,9 @@ export default function AdminEventPlanOrdersPage() {
             },
             {
               label: "Paket",
-              value: `${reviewing.order.plan?.name ?? "Paket dihapus"} · ${
-                reviewing.order.event?.name ?? "Belum dipakai"
-              }`,
+              value: `${reviewing.order.plan?.name ?? "Paket dihapus"} · ${planOrderUsageLabel(
+                reviewing.order
+              )}`,
             },
             { label: "Invoice", value: reviewing.order.invoice_number ?? "—" },
             {

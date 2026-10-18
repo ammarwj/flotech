@@ -48,8 +48,13 @@ class RaceEntriesExport extends EventExport
     public function headings(): array
     {
         return [
+            // `headings()` and `rows()` are computed separately, so a column
+            // added here must go in at the SAME position below — once the two
+            // disagree the sheet prints every later value one column to the
+            // left, which is the trap the standings export's `Adj` column
+            // documents at length.
             'Kategori', 'Nama', 'Email', 'Telepon', 'Gender', 'Tgl Lahir',
-            'Kontak Darurat', 'Telepon Darurat',
+            'Kontak Darurat', 'Telepon Darurat', 'Hubungan',
             'Periode', 'Biaya', 'Status', 'Metode', 'Terdaftar',
             ...array_column($this->fields(), 'label'),
         ];
@@ -75,6 +80,7 @@ class RaceEntriesExport extends EventExport
             $e->birth_date?->toDateString() ?? '—',
             $e->emergency_contact_name ?? '—',
             $e->emergency_contact_phone ?? '—',
+            $e->emergency_contact_relation ?? '—',
             // The snapshot, not the relation: the period may since have been
             // repriced or deleted, and this sheet has to keep saying what was
             // actually charged.

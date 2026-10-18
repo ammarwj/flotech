@@ -93,11 +93,11 @@ export default function EventsPage() {
       <div className="grid grid-cols-1 gap-3">
         {events?.map((ev) => {
           const color = sportColor(ev.sport_type);
-          // A fun run has no fixtures, so four of the destinations below lead
-          // to pages that can never fill: Jadwal, Petugas, Statistik (visitor
-          // analytics is fine, but the page sits beside the match ones) and
-          // Jaminan. Resolved once per card so the buttons and the meta row
-          // cannot disagree.
+          // A fun run has no fixtures, so several of the destinations below
+          // lead to pages that can never fill: Jadwal, Petugas, Jaminan and
+          // Tiket. Resolved once per card so the buttons and the meta row
+          // cannot disagree. Statistik stays — that is visitor analytics for
+          // the public page, which a race has.
           //
           // Hiding them is only half: every one of those routes still answers
           // its URL, so each page carries its own guard too — the precedent is
@@ -204,12 +204,21 @@ export default function EventsPage() {
                     </Button>
                   </>
                 )}
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/organizer/events/${ev.id}/tickets`}>
-                    <Ticket className="h-4 w-4" />
-                    Tiket
-                  </Link>
-                </Button>
+                {/* Spectator tickets are sold to a venue that can be gated,
+                    which a fun run has none of — it runs on a road or in a
+                    park. Its runners already carry a QR of their own, minted
+                    when their entry is paid and scanned at /race-scan, so
+                    nothing here is missing for them: this feature simply has no
+                    subject. The server refuses a ticket category for the sport
+                    outright (TicketCategoryController::ensureTicketsEnabled). */}
+                {!isRace && (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/organizer/events/${ev.id}/tickets`}>
+                      <Ticket className="h-4 w-4" />
+                      Tiket
+                    </Link>
+                  </Button>
+                )}
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/organizer/events/${ev.id}/stats`}>
                     <BarChart3 className="h-4 w-4" />

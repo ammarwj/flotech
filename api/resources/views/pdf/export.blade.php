@@ -17,8 +17,25 @@
         h1 { font-size: 16px; margin: 0 0 2px; }
         .muted { color: #6b7280; }
         .meta { font-size: 10px; margin-bottom: 14px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #e5e7eb; padding: 5px 6px; text-align: left; }
+        {{--
+          `table-layout: fixed` so the columns divide the page evenly instead of
+          dompdf widening whichever one holds the longest cell. Without it a
+          single long answer — a medical note, a waiver label — takes a third of
+          the sheet and squeezes every other column into one character per line.
+          The page itself is already sized to the column count
+          (EventExport::paper()), so an even division is the right one.
+        --}}
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 5px 6px;
+            text-align: left;
+            /* Long answers wrap rather than run past their column. dompdf needs
+               both spellings; neither alone breaks an unspaced string. */
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            vertical-align: top;
+        }
         th { background: #f3f4f6; font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; }
         tr:nth-child(even) td { background: #fafafa; }
         .foot { margin-top: 16px; font-size: 9px; }

@@ -9,6 +9,7 @@ use App\Http\Resources\TicketCategoryResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\TicketCategory;
+use App\Services\Catalog;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -184,8 +185,34 @@ class TicketCategoryController extends Controller
         return ApiResponse::success(null, 'Kategori tiket dihapus');
     }
 
+    /**
+     * Whether this event may sell spectator tickets at all.
+     *
+     * Two refusals, and the shapes differ because the organizer can act on the
+     * difference. The plan is a purchase decision — 403 + `errors.feature`, the
+     * ordinary organizer door, which `isPlanLimitError()` turns into a toast
+     * pointing at the plan. The sport is not: a fun run has nothing to sell a
+     * spectator ticket *to*. It is run on a road or in a park with no gate to
+     * close, and its runners already carry a QR of their own —
+     * `race_entries.qr_code`, minted by markPaid() and scanned at
+     * /race-scan. So that one is a plain 422 with no `errors.feature` key:
+     * swallowed into a plan toast it would send somebody to buy an upgrade that
+     * cannot change the answer.
+     *
+     * Asked through `Catalog::isCompetitive()`, whose docblock names itself the
+     * landing place for exactly this gate — the alternative is a third copy of
+     * the `scoring` negation it exists to prevent.
+     */
     protected function ensureTicketsEnabled(Event $event): ?JsonResponse
     {
+        if (! Catalog::isCompetitive($event->sport_type)) {
+            return ApiResponse::error(
+                'Cabang ini tidak menjual tiket penonton. Peserta lomba mendaftar lewat halaman Peserta Lomba dan sudah membawa QR-nya sendiri.',
+                null,
+                422,
+            );
+        }
+
         if (! $this->gate->allows($event, 'qr_tickets')) {
             return ApiResponse::error(
                 'Fitur tiket tidak tersedia di paket event ini.',

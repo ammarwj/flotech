@@ -211,6 +211,7 @@ class PublicRaceController extends Controller
                     'birth_date' => $data['birth_date'] ?? null,
                     'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
                     'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
+                    'emergency_contact_relation' => $data['emergency_contact_relation'] ?? null,
                     'custom_fields' => $this->cleanAnswers($category->event, $data['custom_fields'] ?? []),
                 ],
                 $orderId,
@@ -385,10 +386,22 @@ class PublicRaceController extends Controller
                 continue;
             }
 
-            $value = $answers[$field['key']] ?? null;
+            // A question this runner was never shown is not one they skipped.
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
+
+            // Consent is read through normalizeAnswer() so "ticked" is decided
+            // in one place; its stored value is an instant the server writes,
+            // and the payload's own text is never what is checked.
+            $value = $field['type'] === 'consent'
+                ? RegistrationForm::normalizeAnswer('consent', $answers[$field['key']] ?? null)
+                : $answers[$field['key']] ?? null;
 
             if (! is_scalar($value) || trim((string) $value) === '') {
-                $errors["custom_fields.{$field['key']}"] = "{$field['label']} wajib diisi.";
+                $errors["custom_fields.{$field['key']}"] = $field['type'] === 'consent'
+                    ? "{$field['label']} wajib disetujui."
+                    : "{$field['label']} wajib diisi.";
             }
         }
 
@@ -417,12 +430,23 @@ class PublicRaceController extends Controller
      */
     protected function cleanAnswers(Event $event, array $answers): ?array
     {
-        $allowed = array_column(RegistrationForm::forEvent($event)->teamFields, 'key');
         $clean = [];
 
-        foreach ($allowed as $key) {
-            if (array_key_exists($key, $answers) && is_scalar($answers[$key])) {
-                $clean[$key] = trim((string) $answers[$key]);
+        foreach (RegistrationForm::forEvent($event)->teamFields as $field) {
+            // Hidden means not stored, not just not demanded — see the same
+            // pair in TeamRosterService::cleanAnswers() for why one without
+            // the other leaves a NIM on a runner who ended up picking UMUM.
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
+
+            $value = RegistrationForm::normalizeAnswer(
+                $field['type'],
+                $answers[$field['key']] ?? null,
+            );
+
+            if ($value !== null) {
+                $clean[$field['key']] = $value;
             }
         }
 

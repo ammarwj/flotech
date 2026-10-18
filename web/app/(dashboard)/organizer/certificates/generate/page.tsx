@@ -14,6 +14,7 @@ import {
 import { getEvents } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { isCertificateEmailEnabled } from "@/lib/plan";
+import { isRaceEvent } from "@/lib/race";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,19 @@ export default function GenerateCertificatesPage() {
     enabled: !!orgId,
   });
 
+  /**
+   * Races are left out of the picker: CertificateService::recipients() reads
+   * `teams` and their active `players`, and a fun run has neither — picking one
+   * returns two empty lists and a page with nothing to tick, which reads as a
+   * loading failure rather than as an answer.
+   *
+   * Filtered here rather than in `getEvents()`, which also feeds the event list
+   * and the ticket picker — each decides for itself. Issuing certificates to
+   * runners would mean a third recipient type in that service plus a template
+   * that names one; that is a feature, not a gate, and nobody has asked for it.
+   */
+  const events = eventsQuery.data?.filter((ev) => !isRaceEvent(ev));
+
   const templatesQuery = useQuery({
     queryKey: ["certificate-templates", orgId],
     queryFn: () => getCertificateTemplates(orgId!),
@@ -52,7 +66,9 @@ export default function GenerateCertificatesPage() {
 
   // Emailing is an entitlement of the event being generated for, not of the
   // organization — picking a different event can change the answer.
-  const selectedEvent = eventsQuery.data?.find((e) => e.id === eventId);
+  // Looked up in the filtered list, so a race id can never be the selection
+  // even if one arrived from somewhere else.
+  const selectedEvent = events?.find((e) => e.id === eventId);
   const canEmail = isCertificateEmailEnabled(selectedEvent);
 
   const recipientsQuery = useQuery({
@@ -128,7 +144,7 @@ export default function GenerateCertificatesPage() {
               className="mt-1.5"
             >
               <option value="">— pilih event —</option>
-              {eventsQuery.data?.map((ev) => (
+              {events?.map((ev) => (
                 <option key={ev.id} value={ev.id}>
                   {ev.name}
                 </option>

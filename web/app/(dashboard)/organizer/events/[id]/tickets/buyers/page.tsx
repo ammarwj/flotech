@@ -24,6 +24,8 @@ import { parseApiError } from "@/lib/api/errors";
 import { rupiah, TICKET_PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
+import { isRaceEvent } from "@/lib/race";
+import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { ExportButtons } from "@/components/event/export-buttons";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
@@ -71,6 +73,9 @@ function TicketBuyersPage() {
     enabled: !!orgId,
   });
   const ticketing = isTicketingEnabled(eventQuery.data);
+  // Same pair as the tickets page: a race has no spectator ticket to have a
+  // buyer of, and that is the sport, not the plan.
+  const isRace = isRaceEvent(eventQuery.data);
   const canExport = isExportEnabled(eventQuery.data);
 
   // The whole filter row lives in the query string: this page is the one an
@@ -115,7 +120,7 @@ function TicketBuyersPage() {
         q: q || undefined,
         page,
       }),
-    enabled: !!orgId && ticketing,
+    enabled: !!orgId && ticketing && !isRace,
     // The list keeps the previous page on screen while the next one loads —
     // without it every filter change blanks the page back to skeletons, and the
     // filter row jumps as the summary cards unmount under it.
@@ -176,7 +181,9 @@ function TicketBuyersPage() {
   const pick = (patch: Record<string, string | undefined>) =>
     setParams({ ...patch, page: undefined });
 
-  if (eventQuery.data && !ticketing) {
+  // `!isRace` for the reason the tickets page gives: both are true for a fun
+  // run on a plan without tickets, and the upgrade is the one that cannot help.
+  if (eventQuery.data && !ticketing && !isRace) {
     return (
       <div>
         <PageHeader
@@ -210,6 +217,8 @@ function TicketBuyersPage() {
         backHref={`/organizer/events/${eventId}/tickets`}
         backLabel="Tiket"
         actions={
+          // Nothing to export from a list that cannot exist.
+          isRace ? undefined : (
           <ExportButtons
             orgId={orgId ?? undefined}
             eventId={eventId}
@@ -217,8 +226,11 @@ function TicketBuyersPage() {
             enabled={canExport}
             size="default"
           />
+          )
         }
       />
+
+      <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
 
       {ordersQuery.isLoading ? (
         <div className="grid gap-3">
@@ -383,6 +395,7 @@ function TicketBuyersPage() {
           )}
         </>
       )}
+      </RaceRouteGuard>
     </div>
   );
 }

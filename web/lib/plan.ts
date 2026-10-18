@@ -127,6 +127,48 @@ export function canUpgrade(order?: EventPlanOrder | null): boolean {
   return !!order && order.status === "paid" && !order.superseded;
 }
 
+/**
+ * What became of a purchase: the event it was spent on, the upgrade that took
+ * its place, or nothing yet.
+ *
+ * The only answer to that question, for the same reason unconsumedOrders() is
+ * the only answer to "is this a credit?" — they are the same fact read from the
+ * same two fields, and a second reader drifts. It drifted: the history row on
+ * /organizer/billing branched on `order.event` alone, so a Pro order that a paid
+ * Professional top-up had already replaced read "Belum dipakai" while the credit
+ * section above it — which does read `superseded` — correctly left it out. An
+ * upgraded order holds `event_id: null` *by design*: the entitlement moved to
+ * the successor, which is the row that now names the event.
+ *
+ * `superseded` is checked after the event, not before: a top-up that has itself
+ * been upgraded still names the event it is spent on, and "which event" is the
+ * more useful of the two true things.
+ */
+export type PlanOrderUsage =
+  | { kind: "event"; event: { id: string; name: string } }
+  | { kind: "superseded" }
+  | { kind: "unused" };
+
+export function planOrderUsage(order: EventPlanOrder): PlanOrderUsage {
+  if (order.event) return { kind: "event", event: order.event };
+  if (order.superseded) return { kind: "superseded" };
+  return { kind: "unused" };
+}
+
+/**
+ * Flat text for the same answer, for the surfaces that cannot link to an event.
+ *
+ * Kept beside planOrderUsage() rather than inlined at each call site: the wording
+ * of "Belum dipakai" is the thing that was wrong in three places at once.
+ */
+export function planOrderUsageLabel(order: EventPlanOrder): string {
+  const usage = planOrderUsage(order);
+
+  if (usage.kind === "event") return usage.event.name;
+  if (usage.kind === "superseded") return "Digantikan upgrade";
+  return "Belum dipakai";
+}
+
 const PLAN_COLORS: Record<string, string> = {
   starter: "var(--plan-starter)",
   pro: "var(--plan-pro)",

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EventStatusBadge } from "@/components/shared/status-badge";
 import { useCatalog } from "@/lib/hooks/use-catalog";
+import { isRaceEvent } from "@/lib/race";
 import { rupiah } from "@/lib/labels";
 import type { PublicEventListItem } from "@/types/api";
 
@@ -27,6 +28,22 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
   const when = dateRange(event.start_date, event.end_date);
   const teams = `${event.approved_teams_count} tim`;
   const categoriesCount = event.categories_count ?? 1;
+
+  /**
+   * Three of the numbers below are competition shapes, and all three read as
+   * facts about a fun run while being about tables it does not use:
+   * `approved_teams_count` counts `teams`, the category count counts
+   * `event_categories`, and the fee range is the min/max of their
+   * `registration_fee`. A race keeps its entrants in `race_entries`, its
+   * categories in `race_categories` and its prices in `race_periods` — so a
+   * sold-out race advertises "0 tim" and "Gratis" at the same time.
+   *
+   * Dropped rather than swapped for the race equivalents: the catalog payload
+   * carries no race aggregate, and a per-period price has no single number to
+   * print. The card still says what it reliably knows — sport, dates, place —
+   * and the event page has the rest.
+   */
+  const isRace = isRaceEvent(event);
 
   // Fee spans the event's categories: "Gratis", one price, or a min–max range.
   const feeMin = event.registration_fee_min ?? 0;
@@ -78,10 +95,14 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
             <span className="font-medium" style={{ color }}>
               {sportLabel(event.sport_type)}
             </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-muted-foreground">
-              {categoriesCount} kategori
-            </span>
+            {!isRace && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">
+                  {categoriesCount} kategori
+                </span>
+              </>
+            )}
           </div>
 
           <h3
@@ -108,14 +129,19 @@ export function PublicEventCard({ event }: { event: PublicEventListItem }) {
                 <span className="truncate">{event.location_name}</span>
               </span>
             )}
-            <span className="inline-flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 shrink-0" />
-              {teams}
-            </span>
+            {!isRace && (
+              <span className="inline-flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                {teams}
+              </span>
+            )}
           </div>
 
+          {/* The footer survives for its right half — "Pendaftaran dibuka" is
+              `registrationIsPubliclyOpen()`, which is as true of a race as of
+              anything else. Only the price goes. */}
           <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-sm">
-            <span className="font-semibold">{feeLabel}</span>
+            <span className="font-semibold">{isRace ? "" : feeLabel}</span>
             {event.registration_is_open && (
               <span className="text-xs font-medium text-[var(--brand-600)]">
                 Pendaftaran dibuka

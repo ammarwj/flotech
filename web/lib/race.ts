@@ -1,4 +1,4 @@
-import type { RaceCategory, RacePeriod, SportEvent } from "@/types/api";
+import type { RaceCategory, RacePeriod, SportDef, SportEvent } from "@/types/api";
 
 /**
  * Fun run: a sport that holds no matches at all.
@@ -25,7 +25,27 @@ import type { RaceCategory, RacePeriod, SportEvent } from "@/types/api";
 export function isRaceEvent(
   event: Pick<SportEvent, "sport"> | null | undefined
 ): boolean {
-  return event?.sport?.scoring === "none";
+  return isRaceSport(event?.sport);
+}
+
+/**
+ * The same question asked of a catalog entry rather than a saved event.
+ *
+ * The event form needs this: it is deciding what to render from the sport the
+ * organizer has just picked in a dropdown, before any event exists to carry a
+ * `sport` of its own. `isRaceEvent()` delegates here so the two can never part
+ * — a form that renders the competition fields for a sport the dashboard has
+ * already classified as a race is exactly the drift this file exists to stop.
+ *
+ * `undefined` answers **false**, the opposite of `hasFixtures()` and for the
+ * same three-state reason: the catalog arrives a moment after the form mounts,
+ * and a race-shaped form flashing over an unloaded sport would hide fields the
+ * organizer is in the middle of filling in.
+ */
+export function isRaceSport(
+  sport: Pick<SportDef, "scoring"> | null | undefined
+): boolean {
+  return sport?.scoring === "none";
 }
 
 /**

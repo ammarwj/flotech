@@ -8,7 +8,31 @@
  * out in a component is one that will disagree with the other three.
  */
 
-export type CustomFieldType = "short_text" | "long_text" | "select" | "date";
+export type CustomFieldType =
+  | "short_text"
+  | "long_text"
+  | "select"
+  | "date"
+  /**
+   * A tickbox whose stored value is WHEN it was ticked. The server stamps it
+   * (RegistrationForm::normalizeAnswer), so the forms send only whether the box
+   * is on — a timestamp from here would be one the person agreeing chose.
+   */
+  | "consent";
+
+/**
+ * When a field is asked at all: the trigger field's answer must be one of
+ * `values`. Absent means always.
+ *
+ * The trigger is always a key defined EARLIER IN THE SAME LIST — the API
+ * refuses anything else, which is what makes a cycle unrepresentable and
+ * guarantees the trigger is on screen and answered before this field is
+ * decided.
+ */
+export interface FieldCondition {
+  field: string;
+  values: string[];
+}
 
 /** File kinds a document slot may accept. Mirrors RegistrationForm::ACCEPTS. */
 export type DocumentAccept = "pdf" | "jpg" | "png";
@@ -34,6 +58,16 @@ export interface CustomField {
   in_album?: boolean;
   /** Only meaningful for `select`; [] everywhere else. */
   options: string[];
+  /**
+   * Guidance shown with the question. Null/absent means none at all — the forms
+   * render nothing rather than an empty line, so the two spellings of "no
+   * guidance" must not both be storable (the backend normalizes '' to null).
+   */
+  help_text?: string | null;
+  /** A picture the question needs — a jersey size chart. Rendered with the field's label as `alt`. */
+  help_image_url?: string | null;
+  /** Null/absent = always asked. See isFieldVisible, the only reader. */
+  visible_if?: FieldCondition | null;
 }
 
 /**
@@ -82,7 +116,60 @@ export const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
   { value: "long_text", label: "Teks panjang" },
   { value: "select", label: "Pilihan" },
   { value: "date", label: "Tanggal" },
+  { value: "consent", label: "Persetujuan (centang)" },
 ];
+
+/**
+ * The value a consent box submits when ticked.
+ *
+ * Deliberately not a timestamp: the server stamps its own clock and ignores
+ * whatever arrives, so sending one here would imply the client's is the one
+ * recorded. "1" is the shortest thing normalizeAnswer() reads as ticked.
+ */
+export const CONSENT_ON = "1";
+
+/** Whether a consent answer is ticked, for a form reading back its own state. */
+export function isConsentGiven(value: string | undefined): boolean {
+  return !!value && !["0", "false", "no"].includes(value.trim().toLowerCase());
+}
+
+/**
+ * One stored answer as a human reads it — the client's mirror of
+ * RegistrationForm::displayValue().
+ *
+ * Only `consent` needs translating, and it needs it badly: the stored value is
+ * the instant it was ticked, and "2026-10-17T11:01:07+00:00" in an organizer's
+ * participant list is a machine talking to itself. Everything else is already
+ * what the entrant typed.
+ *
+ * Written here rather than in the one screen that shows it, because the public
+ * page and the album already go through the server's copy and a third spelling
+ * on the client is where the three start disagreeing. Returns "" for an
+ * unanswered field so the caller decides whether a blank is a row or nothing —
+ * the same split publicAnswers()/albumRows() make on the server.
+ */
+export function formatAnswer(
+  field: CustomField,
+  answers: CustomFieldAnswers | undefined
+): string {
+  const raw = (answers?.[field.key] ?? "").trim();
+  if (raw === "" || field.type !== "consent") return raw;
+
+  const at = new Date(raw);
+
+  // A value that is not the instant this type promised: a schema whose type was
+  // switched after answers came in. The raw text beats a wrong date — the same
+  // call the server's copy makes.
+  if (Number.isNaN(at.getTime())) return raw;
+
+  return `Ya · ${at.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
 
 export const ACCEPTS: DocumentAccept[] = ["pdf", "jpg", "png"];
 
@@ -224,6 +311,51 @@ export function hasIncompleteOfficial(
   );
 }
 
+/**
+ * Whether this field is asked at all, given the answers so far.
+ *
+ * **The only reader of `visible_if` on the client**, mirroring
+ * RegistrationForm::isVisible(). Two screens-worth of behaviour hang off it —
+ * whether the field renders, and whether it is counted as missing — and those
+ * two deciding separately is how a form ends up demanding a question it never
+ * showed, with a disabled button and nothing on screen to explain it.
+ */
+export function isFieldVisible(
+  field: CustomField,
+  answers: CustomFieldAnswers | undefined
+): boolean {
+  const rule = field.visible_if;
+  if (!rule) return true;
+
+  return rule.values.includes((answers?.[rule.field] ?? "").trim());
+}
+
+/** The subset of a list that is asked, in order. */
+export function visibleFields(
+  fields: CustomField[],
+  answers: CustomFieldAnswers | undefined
+): CustomField[] {
+  return fields.filter((f) => isFieldVisible(f, answers));
+}
+
+/**
+ * What a missing field is called in the "Belum lengkap: …" line.
+ *
+ * A consent's label is a whole sentence — "Saya memahami risiko lomba dan
+ * membebaskan penyelenggara dari tuntutan cedera" — because that sentence IS
+ * what the person is agreeing to. Comma-joined with the others it turns the
+ * line into a paragraph nobody can scan for the one thing they still have to
+ * do, which is the line's only job. So the group is named once, by count,
+ * rather than read out.
+ *
+ * Collapsed here rather than at each of the five call sites: they all render
+ * the same list, and five copies of the rule would drift into a form that says
+ * one thing and a roster card beside it that says another.
+ */
+function missingLabel(field: CustomField): string {
+  return field.type === "consent" ? "" : field.label;
+}
+
 export function missingFor(
   fields: CustomField[],
   documents: DocumentSlot[],
@@ -231,11 +363,27 @@ export function missingFor(
   uploaded: DocumentRow[]
 ): string[] {
   const missing: string[] = [];
+  let consents = 0;
 
   for (const field of fields) {
+    // A question this entrant was never shown is not one they skipped — the
+    // server skips it the same way, in answerErrors/assertFormComplete.
+    if (!isFieldVisible(field, answers)) continue;
+
     if (field.required && !(answers?.[field.key] ?? "").trim()) {
+      // Counted, not named — see missingLabel. Held aside so the group lands
+      // after the fields rather than wherever the first unticked box sits.
+      if (missingLabel(field) === "") {
+        consents += 1;
+        continue;
+      }
+
       missing.push(field.label);
     }
+  }
+
+  if (consents > 0) {
+    missing.push(consents === 1 ? "1 pernyataan persetujuan" : `${consents} pernyataan persetujuan`);
   }
 
   for (const doc of documents) {

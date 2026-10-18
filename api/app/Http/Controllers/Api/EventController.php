@@ -394,17 +394,27 @@ class EventController extends Controller
             return $sport;
         }
 
-        // Three tables, one question: has anything been built on this sport
+        // Four tables, one question: has anything been built on this sport
         // yet? Checked together rather than branching on which kind of event it
         // is, because the answer has to hold in both directions and a branch
         // would need the old sport AND the new one to stay in step.
+        //
+        // `ticketCategories` belongs here for the same reason as the other
+        // three, and it is the one that reaches a sport with no entrants at all:
+        // spectator tickets are sold to a venue that can be gated, which a fun
+        // run has none of (TicketCategoryController::ensureTicketsEnabled now
+        // refuses to create one). Without this, an event that set its ticket
+        // categories up before anyone entered could be moved to `fun_run` and
+        // keep them — sellable through a door the new sport is refused at, and
+        // invisible on every race surface.
         $hasRows = $event->raceEntries()->exists()
             || $event->teams()->exists()
-            || $event->matches()->exists();
+            || $event->matches()->exists()
+            || $event->ticketCategories()->exists();
 
         if ($hasRows) {
             throw ValidationException::withMessages([
-                'sport_type' => 'Cabang olahraga tidak bisa diubah karena sudah ada peserta atau jadwal.',
+                'sport_type' => 'Cabang olahraga tidak bisa diubah karena sudah ada peserta, jadwal, atau kategori tiket.',
             ]);
         }
 

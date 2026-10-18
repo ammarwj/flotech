@@ -66,7 +66,7 @@ class RaceEntryService
      * `receipt_number` avoids exactly that decision by being born only on
      * settlement, and markPaid() mints the QR the same way for the same reason.
      *
-     * @param  array{full_name: string, email: string, phone?: string|null, gender?: string|null, birth_date?: string|null, emergency_contact_name?: string|null, emergency_contact_phone?: string|null, custom_fields?: array<string, mixed>|null}  $runner
+     * @param  array{full_name: string, email: string, phone?: string|null, gender?: string|null, birth_date?: string|null, emergency_contact_name?: string|null, emergency_contact_phone?: string|null, emergency_contact_relation?: string|null, custom_fields?: array<string, mixed>|null}  $runner
      *
      * @throws PaymentException when nothing is on sale, or this category is not
      */
@@ -102,6 +102,7 @@ class RaceEntryService
                 'birth_date' => $runner['birth_date'] ?? null,
                 'emergency_contact_name' => $runner['emergency_contact_name'] ?? null,
                 'emergency_contact_phone' => $runner['emergency_contact_phone'] ?? null,
+                'emergency_contact_relation' => $runner['emergency_contact_relation'] ?? null,
                 'custom_fields' => $runner['custom_fields'] ?? null,
 
                 // The snapshot. The FK is for display and may go null; these

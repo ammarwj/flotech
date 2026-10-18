@@ -10,6 +10,7 @@ import { getEvents } from "@/lib/api/events";
 import { downloadTicketPoster } from "@/lib/api/tickets";
 import { parseApiError } from "@/lib/api/errors";
 import { isTicketingEnabled } from "@/lib/plan";
+import { isRaceEvent } from "@/lib/race";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -59,7 +60,15 @@ export default function TicketsOverviewPage() {
     );
   }
 
-  const events = eventsQuery.data;
+  // Races are left out entirely rather than listed with a disabled row: this
+  // page is a picker, and a fun run sells no spectator ticket at all — there is
+  // no gate to close on a road, and its runners carry a QR of their own. The
+  // plan note on each row below is a different kind of refusal, one an upgrade
+  // can answer; this one it cannot, so the row would be a dead end.
+  //
+  // Filtered here and not in `getEvents()` — that call feeds the event list,
+  // the certificate picker and more, each of which decides for itself.
+  const events = eventsQuery.data?.filter((ev) => !isRaceEvent(ev));
 
   return (
     <div>
@@ -76,14 +85,34 @@ export default function TicketsOverviewPage() {
         </div>
       )}
 
+      {/* Two empty states, because the filter above makes "nothing here" mean
+          two things. An organizer whose only events are fun runs does have
+          events, and telling them to create one would send them to buy a plan
+          credit for a page that would still be empty. */}
       {events?.length === 0 && (
         <EmptyState
           icon={Trophy}
-          title="Belum ada event"
-          description="Buat event dulu, lalu siapkan kategori tiketnya."
+          title={
+            eventsQuery.data?.length
+              ? "Belum ada event yang menjual tiket"
+              : "Belum ada event"
+          }
+          description={
+            eventsQuery.data?.length
+              ? "Event lombamu tidak menjual tiket penonton — pesertanya mendaftar lewat halaman Peserta Lomba dan sudah membawa QR-nya sendiri."
+              : "Buat event dulu, lalu siapkan kategori tiketnya."
+          }
           action={
             <Button asChild>
-              <Link href="/organizer/events/new">Buat Event</Link>
+              <Link
+                href={
+                  eventsQuery.data?.length
+                    ? "/organizer/events"
+                    : "/organizer/events/new"
+                }
+              >
+                {eventsQuery.data?.length ? "Daftar event" : "Buat Event"}
+              </Link>
             </Button>
           }
         />
