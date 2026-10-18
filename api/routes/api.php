@@ -579,6 +579,13 @@ Route::prefix('v1')->group(function () {
             Route::get('certificates', [CertificateController::class, 'index']);
             Route::get('events/{event}/certificate-recipients', [CertificateController::class, 'recipients']);
             Route::post('events/{event}/certificates', [CertificateController::class, 'generate']);
+            // Bulk download. MUST stay above `certificates/{certificate}/…` or
+            // the literal segment is swallowed by the binding — the same
+            // ordering `plan-orders/discount-preview` depends on. Ungated and
+            // ownership-checked, like the batch routes under id-card-batches.
+            Route::post('certificates/zip', [CertificateController::class, 'zip']);
+            Route::get('certificate-batches/{batch}', [CertificateController::class, 'zipStatus']);
+            Route::get('certificate-batches/{batch}/download', [CertificateController::class, 'zipDownload']);
             Route::get('certificates/{certificate}/download', [CertificateController::class, 'download']);
             Route::post('certificates/{certificate}/send', [CertificateController::class, 'send']);
             Route::delete('certificates/{certificate}', [CertificateController::class, 'destroy']);

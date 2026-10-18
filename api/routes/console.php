@@ -36,6 +36,10 @@ Schedule::command('views:prune')->dailyAt('02:00')->withoutOverlapping();
 // find them, so without this the bucket keeps one zip per generate forever.
 Schedule::command('id-cards:prune')->dailyAt('02:20')->withoutOverlapping();
 
+// Bulk certificate zips are the same shape of orphan: the batch that named the
+// key expires out of the cache after a day, and no row ever pointed at it.
+Schedule::command('certificates:prune-zips')->dailyAt('02:25')->withoutOverlapping();
+
 // Custom domains: retry activations whose DNS was not ready yet, and repair the
 // generated nginx config. Every minute because an admin who just pointed an A
 // record is waiting on it; a single query when there is nothing to do.

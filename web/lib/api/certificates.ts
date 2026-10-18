@@ -3,8 +3,10 @@ import { downloadBlob, fileNameFromDisposition } from "@/lib/download";
 import type {
   ApiEnvelope,
   Certificate,
+  CertificateBatch,
   CertificateField,
   CertificateFieldDef,
+  CertificatePage,
   CertificateRecipients,
   CertificateTemplate,
   CertificateVerification,
@@ -63,10 +65,25 @@ export async function deleteCertificateTemplate(orgId: string, templateId: strin
 
 // ---- Issued certificates ----
 
-export async function getCertificates(orgId: string, eventId?: string): Promise<Certificate[]> {
-  const { data } = await apiClient.get<ApiEnvelope<Certificate[]>>(
+/**
+ * One page of issued certificates, newest first.
+ *
+ * Paginated because this list only grows — a fun run hands one to every runner.
+ * `meta.total` is the count over the whole filter, so the bulk-zip button can
+ * ask "is there anything to pack" without walking the pages.
+ */
+export async function getCertificates(
+  orgId: string,
+  params: { eventId?: string; page?: number } = {}
+): Promise<CertificatePage> {
+  const { data } = await apiClient.get<ApiEnvelope<CertificatePage>>(
     `/organizations/${orgId}/certificates`,
-    { params: eventId ? { event_id: eventId } : {} }
+    {
+      params: {
+        ...(params.eventId ? { event_id: params.eventId } : {}),
+        ...(params.page && params.page > 1 ? { page: params.page } : {}),
+      },
+    }
   );
   return data.data;
 }
@@ -121,6 +138,51 @@ export async function downloadCertificate(orgId: string, certificateId: string):
   downloadBlob(
     response.data,
     fileNameFromDisposition(response.headers["content-disposition"], "sertifikat.pdf")
+  );
+}
+
+// ---- Bulk download ----
+
+/**
+ * Queue a zip of every issued certificate, optionally narrowed to one event,
+ * and get back the id to poll.
+ *
+ * 202, never a finished file: pulling 500 PDFs out of the bucket runs for
+ * minutes, and the API container serves every other request single-process
+ * while it does. The server picks the rows from the organization's own
+ * certificates — the client sends a filter, never a list of ids.
+ */
+export async function zipCertificates(
+  orgId: string,
+  eventId?: string
+): Promise<{ batch_id: string; total: number }> {
+  const { data } = await apiClient.post<ApiEnvelope<{ batch_id: string; total: number }>>(
+    `/organizations/${orgId}/certificates/zip`,
+    eventId ? { event_id: eventId } : {}
+  );
+  return data.data;
+}
+
+export async function getCertificateZipBatch(
+  orgId: string,
+  batchId: string
+): Promise<CertificateBatch> {
+  const { data } = await apiClient.get<ApiEnvelope<CertificateBatch>>(
+    `/organizations/${orgId}/certificate-batches/${batchId}`
+  );
+  return data.data;
+}
+
+/** Save the finished zip. Blob through apiClient, for the reason above. */
+export async function downloadCertificateZipBatch(orgId: string, batchId: string): Promise<void> {
+  const response = await apiClient.get<Blob>(
+    `/organizations/${orgId}/certificate-batches/${batchId}/download`,
+    { responseType: "blob" }
+  );
+
+  downloadBlob(
+    response.data,
+    fileNameFromDisposition(response.headers["content-disposition"], "sertifikat.zip")
   );
 }
 

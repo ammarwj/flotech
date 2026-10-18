@@ -2437,6 +2437,30 @@ export interface IdCardBatch {
   error: string | null;
 }
 
+/**
+ * One page of issued certificates.
+ *
+ * `meta.total` counts the whole filter, not the page, which is what the
+ * bulk-zip button reads to decide whether there is anything to pack.
+ */
+export type CertificatePage = Paginated<Certificate>;
+
+/**
+ * A queued bulk certificate download, polled until its zip is ready.
+ *
+ * Same shape as IdCardBatch and deliberately its own type rather than an alias:
+ * one packs objects that already exist, the other renders them, and the two are
+ * free to grow apart.
+ */
+export interface CertificateBatch {
+  batch_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  total: number;
+  done: number;
+  filename: string | null;
+  error: string | null;
+}
+
 /** What the public QR lands on: proof the document is real. */
 export interface CertificateVerification {
   certificate_number: string;

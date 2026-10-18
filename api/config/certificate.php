@@ -16,6 +16,12 @@ return [
     // Where the QR on the PDF points. The web app serves /verify/{number}.
     'verify_url' => rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/').'/verify',
 
+    // Twin of config('id_card.max_recipients'). The cap is what makes a bulk
+    // zip bounded: GenerateCertificateZipJob pulls one object out of the bucket
+    // per row, and an organization with years of events behind it would
+    // otherwise ask for every certificate it ever issued in one request.
+    'max_batch' => 500,
+
     // Fields a template may place on the background, and where their values come
     // from. The editor reads this list through GET /certificate-fields, so adding
     // one here is all it takes for organizers to be able to place it.

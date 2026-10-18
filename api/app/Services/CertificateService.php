@@ -9,15 +9,18 @@ use App\Models\Player;
 use App\Models\Team;
 use App\Support\QrImage;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
 use Throwable;
+use ZipArchive;
 
 /**
  * Issues and renders certificates.
@@ -29,6 +32,17 @@ use Throwable;
  */
 class CertificateService
 {
+    /**
+     * Where a bulk-download zip lives.
+     *
+     * Deliberately *not* `certificates/`: that prefix holds the permanent PDFs
+     * `pdf_key` points at, and `certificates:prune-zips` deletes everything old
+     * under this one. Same reasoning as IdCardService::BATCH_PREFIX, written out
+     * there — an extension check alone is a one-typo-deep guard in front of a
+     * delete loop, and here that loop would eat the documents themselves.
+     */
+    public const BATCH_PREFIX = 'certificate-batches';
+
     public function __construct(protected R2StorageService $r2) {}
 
     /**
@@ -201,6 +215,100 @@ class CertificateService
 
             return sprintf('%s-%s-%04d', $prefix, $period, $seq);
         });
+    }
+
+    /**
+     * Pack already-rendered PDFs into one zip on the bucket, returning its key.
+     *
+     * Nothing is rendered here — `store()` wrote every one of these objects when
+     * the certificate was issued, so this is a copy, not a re-run. A row whose
+     * object has gone missing is skipped rather than failing the batch, the same
+     * way issueBatch() skips a recipient who already holds the award: one
+     * unreadable row must not cost an organizer the other two hundred.
+     *
+     * Written to the bucket rather than local disk because docker-compose gives
+     * `worker` no volume shared with `api` — a zip on the worker's disk is
+     * invisible to the container that serves the download.
+     *
+     * @param  Collection<int, Certificate>  $certificates
+     * @param  ?callable(int): void  $onProgress  called with the running count
+     */
+    public function zip(Collection $certificates, ?callable $onProgress = null): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'certzip').'.zip';
+
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        $disk = $this->storage();
+
+        foreach ($certificates->values() as $i => $certificate) {
+            // The certificate number is already unique and already the filename
+            // download() hands over, so there is no NNN- prefix to add here:
+            // unlike ID cards, where two people really are called the same
+            // thing, two certificates cannot share a name.
+            $name = str_replace('/', '-', (string) $certificate->certificate_number).'.pdf';
+
+            try {
+                $bytes = $certificate->pdf_key ? $disk->get($certificate->pdf_key) : null;
+            } catch (Throwable $e) {
+                report($e);
+                $bytes = null;
+            }
+
+            if ($bytes !== null) {
+                $zip->addFromString($name, $bytes);
+            }
+
+            // addFromString holds its payload in memory until the archive is
+            // closed, so a 500-document batch would carry every PDF at once.
+            if ($i % 25 === 24) {
+                $zip->close();
+                $zip->open($path);
+            }
+
+            if ($onProgress) {
+                $onProgress($i + 1);
+            }
+        }
+
+        $zip->close();
+
+        $key = self::BATCH_PREFIX.'/'.Str::uuid()->toString().'.zip';
+
+        $disk->put($key, (string) file_get_contents($path));
+
+        @unlink($path);
+
+        return $key;
+    }
+
+    /**
+     * The disk a batch zip lives on.
+     *
+     * Read through here by zip(), the download endpoint *and* the prune command,
+     * so none of the three can disagree about where the file is — the drift
+     * there is a 404 on an object that exists, or a sweep of the wrong bucket.
+     *
+     * Note this is Storage, not R2StorageService::put(): that one writes through
+     * its own S3Client and so cannot be faked, which would leave this whole
+     * feature untestable end to end. Reading is already done this way — see
+     * download() and fetchBytes().
+     */
+    public function storage(): FilesystemAdapter
+    {
+        /** @var FilesystemAdapter $disk */
+        $disk = Storage::disk('r2');
+
+        return $disk;
+    }
+
+    /** The filename the browser saves a batch under. */
+    public function zipFilename(?Event $event): string
+    {
+        $scope = $event ? ($event->slug ?: Str::slug($event->name)) : 'semua-event';
+
+        return 'sertifikat-'.$scope.'-'.now()->format('Ymd-His').'.zip';
     }
 
     /**
