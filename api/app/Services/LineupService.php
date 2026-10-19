@@ -92,6 +92,10 @@ class LineupService
         $this->assertSquadSize($match, $players, exact: false);
         $this->assertNoBannedPlayers($match, $team, array_column($players, 'player_id'));
         $this->assertOfficialsOwned($team, $officials);
+        // Its own call, after ownership: a coach serving a ban may not be on the
+        // bench either, and the message names the `officials` field so the
+        // editor can mark that section rather than the squad.
+        $this->assertNoBannedOfficials($match, $team, array_column($officials, 'team_official_id'));
 
         $keepIds = [];
 
@@ -186,6 +190,13 @@ class LineupService
             $lineup->match,
             $lineup->team,
             $lineup->players()->pluck('player_id')->all(),
+        );
+
+        // The bench, for the same reason and against the same stored rows.
+        $this->assertNoBannedOfficials(
+            $lineup->match,
+            $lineup->team,
+            $lineup->officials()->pluck('team_official_id')->all(),
         );
 
         $lineup->update([
@@ -413,6 +424,11 @@ class LineupService
      *  - `bans_remaining` counts the fixture the entry appears on, so it is not
      *    "what is left after this one".
      *
+     * Players and the bench come back in one list, told apart by `person_type`.
+     * Not two keys: the sheet asks one question of every name on it, and a second
+     * list is a second place to forget to filter. The editor branches on the type
+     * where it has to — a coach is struck off the bench section, not the squad.
+     *
      * @return array{bans: list<array<string, mixed>>, rules: array<string, mixed>|null}
      */
     public function bansFor(GameMatch $match, Team $team): array
@@ -444,13 +460,53 @@ class LineupService
      */
     protected function assertNoBannedPlayers(GameMatch $match, Team $team, array $playerIds): void
     {
-        if ($playerIds === []) {
+        $this->assertNobodyBanned($match, $team, 'player', $playerIds, 'players', 'dimainkan di laga ini');
+    }
+
+    /**
+     * Nobody on the bench is serving a ban in this fixture.
+     *
+     * Its own method and its own field, the same split assertOfficialsOwned() is:
+     * an official is not a player, and a check that took both from one list would
+     * have to branch on which id space each name came from. The message says
+     * "didaftarkan di bangku" rather than "dimainkan" — a suspended coach is not
+     * being fielded, and telling a manager their pelatih cannot play sends them
+     * looking at the squad section.
+     *
+     * @param  array<int, string>  $officialIds
+     *
+     * @throws ValidationException
+     */
+    protected function assertNoBannedOfficials(GameMatch $match, Team $team, array $officialIds): void
+    {
+        $this->assertNobodyBanned($match, $team, 'official', $officialIds, 'officials', 'didaftarkan di bangku laga ini');
+    }
+
+    /**
+     * The shared half of the two checks above.
+     *
+     * One body because the question — "is any of these ids serving a ban here?" —
+     * is identical and only the id space, the field and the verb differ. Two
+     * copies would be two readings of `bansFor()`, and the one that drifted would
+     * be the one nobody is watching.
+     *
+     * @param  array<int, string>  $ids
+     *
+     * @throws ValidationException
+     */
+    private function assertNobodyBanned(GameMatch $match, Team $team, string $type, array $ids, string $field, string $verb): void
+    {
+        if ($ids === []) {
             return;
         }
 
+        // `person_type` is load-bearing, not defensive: `players` and
+        // `team_officials` are separate tables, so without it a coach's ban could
+        // in principle refuse a player whose id matched — and, more to the point,
+        // the whole list is checked against one field's ids.
         $names = collect($this->bansFor($match, $team)['bans'])
-            ->filter(fn (array $ban) => in_array($ban['player_id'], $playerIds, true))
-            ->pluck('player_name')
+            ->filter(fn (array $ban) => $ban['person_type'] === $type && in_array($ban['person_id'], $ids, true))
+            ->pluck('person_name')
             ->unique()
             ->values();
 
@@ -458,10 +514,10 @@ class LineupService
             return;
         }
 
+        $who = $names->count() === 1 ? $names->first() : $names->join(', ', ' dan ');
+
         throw ValidationException::withMessages([
-            'players' => $names->count() === 1
-                ? "{$names->first()} sedang menjalani larangan bermain dan tidak bisa dimainkan di laga ini."
-                : $names->join(', ', ' dan ').' sedang menjalani larangan bermain dan tidak bisa dimainkan di laga ini.',
+            $field => "{$who} sedang menjalani larangan bermain dan tidak bisa {$verb}.",
         ]);
     }
 

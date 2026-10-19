@@ -433,12 +433,15 @@
                     <th class="side" colspan="3">{{ $home['team'] }}</th>
                     <th class="side split" colspan="3">{{ $away['team'] }}</th>
                 </tr>
+                {{-- Headings come from the list, not from here: a card list may
+                     name the bench, so its second column holds a shirt number or
+                     a jabatan. See MatchReportService::incidents(). --}}
                 <tr>
-                    <th class="col">Nama Pemain</th>
-                    <th class="col" style="width: 26pt;">NPG</th>
+                    <th class="col">{{ $list['name_label'] }}</th>
+                    <th class="col" style="width: {{ $list['number_width'] }}pt;">{{ $list['number_label'] }}</th>
                     <th class="col" style="width: 34pt;">Menit</th>
-                    <th class="col split">Nama Pemain</th>
-                    <th class="col" style="width: 26pt;">NPG</th>
+                    <th class="col split">{{ $list['name_label'] }}</th>
+                    <th class="col" style="width: {{ $list['number_width'] }}pt;">{{ $list['number_label'] }}</th>
                     <th class="col" style="width: 34pt;">Menit</th>
                 </tr>
             </thead>

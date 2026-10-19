@@ -5,6 +5,7 @@ import {
   updateMatchResult,
   type MatchResultPayload,
   type MatchStatEntry,
+  type OfficialStatEntry,
 } from "@/lib/api/matches";
 import {
   getOfficiatingMatchStats,
@@ -44,7 +45,12 @@ export interface MatchStatsGateway {
   /** Cache key for this fixture's tally on this surface. */
   queryKey: readonly unknown[];
   load: () => Promise<MatchStatsData>;
-  save: (entries: MatchStatEntry[]) => Promise<unknown>;
+  /**
+   * `officials` omitted leaves the bench's cards untouched; an empty array
+   * clears them. The editor always sends it for a sport with cards, so the
+   * distinction only matters to a caller with no bench block at all.
+   */
+  save: (entries: MatchStatEntry[], officials?: OfficialStatEntry[]) => Promise<unknown>;
   /**
    * Whoever writes cards owes the discipline query an invalidation — there is
    * no default here, because a forgotten key leaves a stale ban list on the very
@@ -83,7 +89,7 @@ export function organizerStatsGateway(
   return {
     queryKey: ["match-stats", orgId, matchId],
     load: () => getMatchStats(orgId, matchId),
-    save: (entries) => saveMatchStats(orgId, matchId, entries),
+    save: (entries, officials) => saveMatchStats(orgId, matchId, entries, officials),
     invalidate: [
       ["leaderboard", orgId, eventId],
       ["discipline", orgId, eventId],
@@ -132,7 +138,7 @@ export function officiatingStatsGateway(
   return {
     queryKey: ["officiating-match-stats", eventId, matchId],
     load: () => getOfficiatingMatchStats(eventId, matchId),
-    save: (entries) => saveOfficiatingMatchStats(eventId, matchId, entries),
+    save: (entries, officials) => saveOfficiatingMatchStats(eventId, matchId, entries, officials),
     invalidate: [
       ["officiating-discipline", eventId],
       ["officiating-match-stats", eventId, matchId],

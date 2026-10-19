@@ -1,6 +1,6 @@
 import { apiClient } from "./client";
 import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
-import type { MatchResultPayload, MatchStatEntry } from "./matches";
+import type { MatchResultPayload, MatchStatEntry, OfficialStatEntry } from "./matches";
 import type {
   ApiEnvelope,
   Discipline,
@@ -157,10 +157,11 @@ export async function saveOfficiatingMatchStats(
   eventId: string,
   matchId: string,
   stats: MatchStatEntry[],
+  officials?: OfficialStatEntry[],
 ): Promise<null> {
   const { data } = await apiClient.put<ApiEnvelope<null>>(
     `/officiating/events/${eventId}/matches/${matchId}/stats`,
-    { stats },
+    officials ? { stats, official_stats: officials } : { stats },
   );
   return data.data;
 }

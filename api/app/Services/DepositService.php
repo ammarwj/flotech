@@ -81,6 +81,13 @@ class DepositService
      * carries its full deposit — the deposit still applies, it just never
      * gets touched.
      *
+     * **Bench cards are deducted too.** The jaminan answers for the conduct of
+     * the people a team brings, and the coach sent off is exactly the incident an
+     * organizer holds a deposit against; a deduction that skipped them would be
+     * a rule nobody could read off the screen. Same reasoning as
+     * StandingService::fairPlayPoints(), and the same two-table fold — test it by
+     * *comparing* a player's card with an official's, not by asserting one.
+     *
      * @return array<string, array{yellow: int, red: int}>
      */
     private function cardsByTeam(Event $event): array
@@ -93,27 +100,30 @@ class DepositService
             return [];
         }
 
-        $rows = DB::table('player_match_stats')
-            ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
-            ->where('matches.event_id', $event->id)
-            ->where('matches.status', 'finished')
-            ->whereNotNull('matches.confirmed_at')
-            ->whereIn('player_match_stats.stat_key', $keys)
-            ->select(
-                // The snapshot on the stat row, not players.team_id: it records
-                // who they turned out for when the card was shown.
-                'player_match_stats.team_id',
-                'player_match_stats.stat_key',
-                'player_match_stats.value',
-            )
-            ->get();
-
         $cards = [];
 
-        foreach ($rows as $row) {
-            $slot = $row->stat_key === $redKey ? 'red' : 'yellow';
-            $cards[$row->team_id] ??= ['yellow' => 0, 'red' => 0];
-            $cards[$row->team_id][$slot] += (int) $row->value;
+        foreach (['player_match_stats', 'official_match_stats'] as $table) {
+            $rows = DB::table($table)
+                ->join('matches', 'matches.id', '=', $table.'.match_id')
+                ->where('matches.event_id', $event->id)
+                ->where('matches.status', 'finished')
+                ->whereNotNull('matches.confirmed_at')
+                ->whereIn($table.'.stat_key', $keys)
+                ->select(
+                    // The snapshot on the stat row, not the roster row's own
+                    // team: it records which side they were with when the card
+                    // was shown.
+                    $table.'.team_id',
+                    $table.'.stat_key',
+                    $table.'.value',
+                )
+                ->get();
+
+            foreach ($rows as $row) {
+                $slot = $row->stat_key === $redKey ? 'red' : 'yellow';
+                $cards[$row->team_id] ??= ['yellow' => 0, 'red' => 0];
+                $cards[$row->team_id][$slot] += (int) $row->value;
+            }
         }
 
         return $cards;

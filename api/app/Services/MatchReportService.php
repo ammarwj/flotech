@@ -112,6 +112,7 @@ class MatchReportService
             'awayTeam.players',
             'awayTeam.officials',
             'stats',
+            'officialStats',
             'rubbers',
             'lineups.players.player',
             'lineups.officials.official',
@@ -132,6 +133,13 @@ class MatchReportService
             ->map(fn (Collection $rows) => $rows->mapWithKeys(fn ($s) => [$s->stat_key => (int) $s->value]));
 
         $sheets = $match->lineups->keyBy('team_id');
+
+        // team_official_id => [stat_key => value]. Its own map, never merged into
+        // $stats: the two ids come from different tables, so one map would be a
+        // lookup unable to tell a coach from a player.
+        $officialStats = $match->officialStats
+            ->groupBy('team_official_id')
+            ->map(fn (Collection $rows) => $rows->mapWithKeys(fn ($s) => [$s->stat_key => (int) $s->value]));
 
         return [
             'event' => $event,
@@ -166,7 +174,7 @@ class MatchReportService
             // half-width columns, home on the left and away on the right, so
             // they are built as one structure rather than ten.
             'substitutions' => $this->substitutions($match, $sport),
-            'incidents' => $this->incidents($match, $sport, $stats),
+            'incidents' => $this->incidents($match, $sport, $stats, $officialStats),
             // Printed as a note rather than used as a gate. A finished result is
             // a result; whether the panitia has ratified it is a second fact,
             // and a sheet that stayed silent about it would let an unconfirmed
@@ -471,25 +479,51 @@ class MatchReportService
      * has nothing for it: a match with no cards still needs somewhere to write
      * the one the stat editor never received.
      *
+     * Cards list the bench alongside the squad; goals never do. A coach can be
+     * sent off and a coach cannot score, which is the same asymmetry the write
+     * door enforces — the bench is only ever given a card. An official's line
+     * carries their role where a player's carries a shirt number, so the sheet
+     * says who the name belongs to instead of printing a blank NPG box the
+     * panitia would try to fill.
+     *
      * @param  Collection<string, Collection<string, int>>  $stats
-     * @return array<int, array{title: string, home: array<int, array<string, string>>, away: array<int, array<string, string>>, rows: int}>
+     * @param  Collection<string, Collection<string, int>>  $officialStats
+     * @return array<int, array{title: string, name_label: string, number_label: string, number_width: int, home: array<int, array<string, string>>, away: array<int, array<string, string>>, rows: int}>
      */
-    protected function incidents(GameMatch $match, ?string $sport, Collection $stats): array
+    protected function incidents(GameMatch $match, ?string $sport, Collection $stats, Collection $officialStats): array
     {
         $lists = [];
 
         foreach ([['yellow', 'Daftar Kartu Kuning'], ['red', 'Daftar Kartu Merah'], ['goal', 'Daftar Pencetak Gol']] as [$role, $title]) {
+            // The card lists carry the bench, so their second column holds a
+            // shirt number *or* a role and the heading has to say so. Printing a
+            // jabatan under "NPG" is the same lie as "Nomor rekening" above a
+            // phone number — the reader goes looking for a number that is not
+            // one.
+            $benchListed = $role !== 'goal';
             $key = Catalog::statKeyForRole($sport, $role);
 
             if (! $key) {
                 continue;
             }
 
-            $home = $this->incidentRows($match->homeTeam, $key, $stats);
-            $away = $this->incidentRows($match->awayTeam, $key, $stats);
+            $bench = $benchListed ? $officialStats : collect();
+
+            $home = [
+                ...$this->incidentRows($match->homeTeam, $key, $stats),
+                ...$this->officialIncidentRows($match->homeTeam, $key, $bench, $sport),
+            ];
+            $away = [
+                ...$this->incidentRows($match->awayTeam, $key, $stats),
+                ...$this->officialIncidentRows($match->awayTeam, $key, $bench, $sport),
+            ];
 
             $lists[] = [
                 'title' => $title,
+                'name_label' => $benchListed ? 'Nama' : 'Nama Pemain',
+                'number_label' => $benchListed ? 'NPG / Jabatan' : 'NPG',
+                // Wider when it may hold "Pelatih Kepala" rather than "7".
+                'number_width' => $benchListed ? 56 : 26,
                 'home' => $home,
                 'away' => $away,
                 'rows' => max(self::MIN_LIST_ROWS, count($home), count($away)),
@@ -524,6 +558,43 @@ class MatchReportService
                 $rows[] = [
                     'name' => $player->full_name,
                     'number' => (string) ($player->jersey_number ?: ''),
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The bench's lines of one card list, in the order the team typed them.
+     *
+     * Read off the team's own bench rather than off the stat rows, the same way
+     * incidentRows() reads the roster, so a card belonging to somebody since
+     * removed cannot put a nameless line on the sheet.
+     *
+     * The role goes in the NPG column, which is where the reader looks to tell
+     * one name from another: a bench line with an empty number box reads as a
+     * player whose shirt nobody filled in. The label is the sport's own — an
+     * admin renames roles from /admin/sports, and this prints what they chose.
+     *
+     * @param  Collection<string, Collection<string, int>>  $stats
+     * @return array<int, array{name: string, number: string}>
+     */
+    protected function officialIncidentRows(?Team $team, string $key, Collection $stats, ?string $sport): array
+    {
+        if (! $team) {
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($team->officials as $official) {
+            $count = (int) ($stats[$official->id][$key] ?? 0);
+
+            for ($i = 0; $i < min($count, self::MAX_ROWS_PER_PLAYER); $i++) {
+                $rows[] = [
+                    'name' => $official->full_name,
+                    'number' => Catalog::officialRoleLabel($sport, $official->role) ?? 'Ofisial',
                 ];
             }
         }

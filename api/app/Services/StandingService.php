@@ -666,6 +666,14 @@ class StandingService
      * the pair before the decider's own result is even read. The knockout stage
      * leaks the same way, and never belonged in a group table either.
      *
+     * **Bench cards count, at the same weight.** A card shown to the coach is
+     * misconduct by the team, which is the whole of what this criterion measures
+     * — "every card counts except the coach's" is a rule nobody would guess from
+     * a table. Both tables are summed through one loop over one weight map, so
+     * there is no second answer to what a red is worth. Test it by *comparing* a
+     * player's red with an official's red in two otherwise identical categories;
+     * asserting one of them alone passes against a build that ignores the bench.
+     *
      * @return array<string, int> team id => points
      */
     protected function fairPlayPoints(EventCategory $category): array
@@ -679,22 +687,28 @@ class StandingService
             return [];
         }
 
-        $rows = DB::table('player_match_stats')
-            ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
-            ->where('matches.category_id', $category->id)
-            ->where($this->tableStages('matches.stage'))
-            ->whereIn('player_match_stats.stat_key', array_keys($weights))
-            ->groupBy('player_match_stats.team_id', 'player_match_stats.stat_key')
-            ->select(
-                'player_match_stats.team_id',
-                'player_match_stats.stat_key',
-                DB::raw('SUM(player_match_stats.value) as total'),
-            )
-            ->get();
-
         $out = [];
-        foreach ($rows as $r) {
-            $out[$r->team_id] = ($out[$r->team_id] ?? 0) + $weights[$r->stat_key] * (int) $r->total;
+
+        // Two tables, two queries, one fold. A UNION would need placeholder
+        // columns for the owner each side lacks — the nullable-pair shape
+        // `official_match_stats` exists to avoid, rebuilt in the reader.
+        foreach (['player_match_stats', 'official_match_stats'] as $table) {
+            $rows = DB::table($table)
+                ->join('matches', 'matches.id', '=', $table.'.match_id')
+                ->where('matches.category_id', $category->id)
+                ->where($this->tableStages('matches.stage'))
+                ->whereIn($table.'.stat_key', array_keys($weights))
+                ->groupBy($table.'.team_id', $table.'.stat_key')
+                ->select(
+                    $table.'.team_id',
+                    $table.'.stat_key',
+                    DB::raw('SUM('.$table.'.value) as total'),
+                )
+                ->get();
+
+            foreach ($rows as $r) {
+                $out[$r->team_id] = ($out[$r->team_id] ?? 0) + $weights[$r->stat_key] * (int) $r->total;
+            }
         }
 
         return $out;

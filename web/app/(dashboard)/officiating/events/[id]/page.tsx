@@ -629,6 +629,7 @@ function CrewMatchCard({
             <MatchStatsEditor
               gateway={officiatingStatsGateway(eventId, m.id)}
               match={m}
+              sport={sport}
             />
           )}
 

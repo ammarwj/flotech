@@ -160,7 +160,7 @@ class DisciplineTest extends TestCase
      */
     private function playerRow(array $payload, string $playerId): array
     {
-        $row = collect($payload['players'])->firstWhere('player_id', $playerId);
+        $row = collect($payload['people'])->firstWhere('person_id', $playerId);
 
         $this->assertNotNull($row, 'player missing from the discipline payload');
 
@@ -275,7 +275,7 @@ class DisciplineTest extends TestCase
 
         $this->assertSame(1, $this->playerRow($payload, $players['Budi'])['bans_remaining']);
         $this->assertNull(
-            collect($payload['players'])->firstWhere('player_id', $players['Andi']),
+            collect($payload['people'])->firstWhere('person_id', $players['Andi']),
             'an unconfirmed result issued a ban',
         );
     }
@@ -429,7 +429,7 @@ class DisciplineTest extends TestCase
 
             $this->assertFalse($payload['enabled'], "{$sport} reported card tracking it doesn't have");
             $this->assertNull($payload['rules']);
-            $this->assertSame([], $payload['players']);
+            $this->assertSame([], $payload['people']);
         }
 
         // The map is indexed by match id, so it has to serialize as {} — an
@@ -741,7 +741,7 @@ class DisciplineTest extends TestCase
         );
         $this->assertContains(
             $players['Budi'],
-            array_column(((array) $payload['matches'])[$semi] ?? [], 'player_id'),
+            array_column(((array) $payload['matches'])[$semi] ?? [], 'person_id'),
             'the bracket fixture lost the warning',
         );
     }
@@ -769,7 +769,7 @@ class DisciplineTest extends TestCase
 
         $next = $this->fixture($event, $home, $away, '2026-08-09 10:00:00');
         $reasons = collect(((array) $this->discipline($event)['matches'])[$next] ?? [])
-            ->pluck('reason', 'player_id');
+            ->pluck('reason', 'person_id');
 
         $this->assertSame('second_yellow', $reasons[$players['Budi']] ?? null);
         $this->assertSame('red_card', $reasons[$players['Andi']] ?? null);
@@ -799,7 +799,7 @@ class DisciplineTest extends TestCase
 
         $this->assertEquals($this->discipline($event), $public, 'the public tally drifted from the organizer one');
         $this->assertArrayHasKey($next, (array) $public['matches']);
-        $this->assertSame($players['Budi'], ((array) $public['matches'])[$next][0]['player_id']);
+        $this->assertSame($players['Budi'], ((array) $public['matches'])[$next][0]['person_id']);
     }
 
     public function test_a_served_ban_stays_visible_on_the_fixture_that_discharged_it(): void
@@ -830,7 +830,7 @@ class DisciplineTest extends TestCase
         $after = (array) $payload['matches'];
 
         $this->assertArrayHasKey($second, $after, 'the fixture that served the ban reports nothing');
-        $this->assertSame($players['Budi'], $after[$second][0]['player_id']);
+        $this->assertSame($players['Budi'], $after[$second][0]['person_id']);
         $this->assertSame('served', $after[$second][0]['status']);
         $this->assertSame('red_card', $after[$second][0]['reason']);
 
@@ -864,8 +864,8 @@ class DisciplineTest extends TestCase
 
         $bans = (array) $this->discipline($event)['matches'];
 
-        $served = collect($bans[$second] ?? [])->firstWhere('player_id', $players['Budi']);
-        $upcoming = collect($bans[$third] ?? [])->firstWhere('player_id', $players['Andi']);
+        $served = collect($bans[$second] ?? [])->firstWhere('person_id', $players['Budi']);
+        $upcoming = collect($bans[$third] ?? [])->firstWhere('person_id', $players['Andi']);
 
         $this->assertNotNull($served, 'Budi is missing from the fixture he sat out');
         $this->assertNotNull($upcoming, 'Andi is missing from the fixture he must sit out');
@@ -881,7 +881,7 @@ class DisciplineTest extends TestCase
         // it there, even though it now writes served entries of its own.
         $this->assertSame(
             [$players['Budi']],
-            array_column($bans[$second], 'player_id'),
+            array_column($bans[$second], 'person_id'),
             'the banning fixture served its own ban',
         );
     }

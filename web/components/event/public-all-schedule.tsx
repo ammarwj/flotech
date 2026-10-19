@@ -158,6 +158,7 @@ export function PublicAllSchedule({
           eventSlug={eventSlug}
           categoryLabel={open.categoryLabel || undefined}
           playerStats={playerStats}
+          sport={sport}
           onClose={() => setOpen(null)}
         />
       )}

@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { MatchStatEntry } from "@/lib/api/matches";
+import type { MatchStatEntry, OfficialStatEntry } from "@/lib/api/matches";
 import type { MatchStatsGateway } from "@/lib/match-doors";
 import { parseApiError } from "@/lib/api/errors";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { Match, MatchRoster, StatColumn } from "@/types/api";
+import type { Match, MatchRoster, SportDef, StatColumn } from "@/types/api";
 
 /**
  * Inline editor for per-player match statistics (columns vary by sport).
@@ -22,17 +23,32 @@ import type { Match, MatchRoster, StatColumn } from "@/types/api";
  *
  * Two surfaces mount it — the organizer's schedule and the match staff's — so it
  * knows nothing about which one it is on beyond the gateway handed to it.
+ *
+ * Each squad is followed by its bench, and the bench gets **only** the card
+ * columns — `card_columns` from the server, never a filter written here. A coach
+ * does not score: the write door refuses a gol for the bench, so offering the
+ * column would be offering a refusal, and the goals-vs-score tally below is
+ * deliberately blind to officials for the same reason.
  */
 export function MatchStatsEditor({
   gateway,
   match,
+  sport,
 }: {
   /** Which door this editor writes through — see {@link MatchStatsGateway}. */
   gateway: MatchStatsGateway;
   /** The fixture being edited; enables the goals-vs-score cross-check. */
   match?: Match;
+  /**
+   * Names the bench roles. Required rather than optional-with-a-default, the
+   * reason already written for `PublicMatchCard`: a default would let a caller
+   * that forgot it render a bench whose rows are told apart by nothing, which
+   * looks identical to one that works until two coaches share a name.
+   */
+  sport: SportDef | null;
 }) {
   const qc = useQueryClient();
+  const { officialRoleLabel } = useCatalog();
   const statsQuery = useQuery({
     queryKey: gateway.queryKey,
     queryFn: () => gateway.load(),
@@ -40,13 +56,23 @@ export function MatchStatsEditor({
 
   // Edits override the fetched tally; key = `${playerId}:${statKey}`.
   const [edits, setEdits] = useState<Record<string, number>>({});
+  // The bench's own edit map. Separate because the two id spaces are separate
+  // tables: one map keyed on a bare id could not tell a coach from a player, and
+  // the save loop would post each under the wrong key.
+  const [benchEdits, setBenchEdits] = useState<Record<string, number>>({});
   const data = statsQuery.data;
   const columns = data?.columns ?? [];
+  const cardColumns = data?.card_columns ?? [];
 
   const valueFor = (pid: string, key: string) =>
     edits[`${pid}:${key}`] ?? data?.stats[pid]?.[key] ?? 0;
   const setValue = (pid: string, key: string, v: number) =>
     setEdits((s) => ({ ...s, [`${pid}:${key}`]: v }));
+
+  const benchValueFor = (oid: string, key: string) =>
+    benchEdits[`${oid}:${key}`] ?? data?.official_stats[oid]?.[key] ?? 0;
+  const setBenchValue = (oid: string, key: string, v: number) =>
+    setBenchEdits((s) => ({ ...s, [`${oid}:${key}`]: v }));
 
   const save = useMutation({
     mutationFn: () => {
@@ -61,7 +87,27 @@ export function MatchStatsEditor({
           if (v > 0) entries.push({ player_id: p.id, stat_key: c.key, value: v });
         }
       }
-      return gateway.save(entries);
+
+      // Sent as `undefined` for a sport with no cards, which leaves the bench's
+      // rows untouched rather than clearing them — there is no bench block on
+      // screen to have cleared anything. With cards it is always an array, so an
+      // emptied input really does delete the row.
+      let officials: OfficialStatEntry[] | undefined;
+
+      if (cardColumns.length > 0) {
+        officials = [];
+        for (const o of [
+          ...(data?.home_team?.officials ?? []),
+          ...(data?.away_team?.officials ?? []),
+        ]) {
+          for (const c of cardColumns) {
+            const v = benchValueFor(o.id, c.key);
+            if (v > 0) officials.push({ team_official_id: o.id, stat_key: c.key, value: v });
+          }
+        }
+      }
+
+      return gateway.save(entries, officials);
     },
     onSuccess: () => {
       toast.success("Statistik disimpan");
@@ -72,6 +118,7 @@ export function MatchStatsEditor({
         qc.invalidateQueries({ queryKey: key });
       }
       setEdits({});
+      setBenchEdits({});
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan statistik.").message),
   });
@@ -148,6 +195,71 @@ export function MatchStatsEditor({
     );
   };
 
+  /**
+   * The bench's card inputs, under the squad they sit with.
+   *
+   * Rendered as its own table rather than extra rows in the squad's: the columns
+   * differ (cards only), and a shared table would need either blank cells where
+   * a coach has no gol column or a second header row — both of which read as a
+   * player whose stats nobody filled in. Its heading says "Ofisial" so the
+   * narrower row of inputs is explained rather than discovered.
+   *
+   * Nothing renders for a sport without cards (`card_columns` empty) or a team
+   * with no bench — the second is why this is not simply gated once at the top.
+   */
+  const benchBlock = (team: MatchRoster | null) => {
+    if (!team || cardColumns.length === 0 || team.officials.length === 0) return null;
+
+    return (
+      <div className="mt-4 border-t border-dashed border-border pt-3">
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+          Ofisial
+        </div>
+        <table className="w-full min-w-[16rem] text-sm">
+          <thead>
+            <tr className="text-[11px] uppercase text-muted-foreground">
+              <th className="pb-1 text-left font-medium">Nama</th>
+              {cardColumns.map((c) => (
+                <th key={c.key} title={c.label} className="w-10 px-0.5 pb-1 text-center font-medium">
+                  {c.short}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {team.officials.map((o) => (
+              <tr key={o.id}>
+                <td className="max-w-[140px] py-1 pr-2">
+                  <span className="block truncate">{o.full_name}</span>
+                  {/* Through the catalogue, never hardcoded — an admin may
+                      rename a role. A bench row has no number, so this is the
+                      only thing telling two coaches apart. */}
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {officialRoleLabel(sport?.slug, o.role) || "Ofisial"}
+                  </span>
+                </td>
+                {cardColumns.map((c) => (
+                  <td key={c.key} className="px-0.5 py-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={benchValueFor(o.id, c.key) || ""}
+                      onChange={(e) =>
+                        setBenchValue(o.id, c.key, e.target.value ? Number(e.target.value) : 0)
+                      }
+                      className="h-8 w-11 px-1 text-center"
+                      aria-label={`${c.label} ${o.full_name}`}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const teamBlock = (team: MatchRoster | null, cols: StatColumn[], side: "home" | "away") =>
     team && (
       <div className="min-w-0 flex-1 overflow-x-auto">
@@ -193,6 +305,7 @@ export function MatchStatsEditor({
             </tbody>
           </table>
         )}
+        {benchBlock(team)}
       </div>
     );
 

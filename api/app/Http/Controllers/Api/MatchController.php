@@ -948,7 +948,10 @@ class MatchController extends Controller
 
         $validated = $request->validate($this->statSheet->rules($matchModel));
 
-        if ($error = $this->statSheet->replace($matchModel, $validated['stats'])) {
+        // `?? null` and not `?? []`: an absent key means "say nothing about the
+        // bench", which leaves its cards alone, while an empty array clears
+        // them. See MatchStatService::replace().
+        if ($error = $this->statSheet->replace($matchModel, $validated['stats'], $validated['official_stats'] ?? null)) {
             return ApiResponse::error($error, ['assists' => [$error]], 422);
         }
 

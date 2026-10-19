@@ -2,10 +2,11 @@
 
 import { Badge } from "@/components/ui/badge";
 import { banReasonLabel } from "@/lib/scoring";
+import { useCatalog } from "@/lib/hooks/use-catalog";
 import type { DisciplineBan, DisciplineRules, SportDef } from "@/types/api";
 
 /**
- * The players a ban touches in this fixture, and why.
+ * The people a ban touches in this fixture, and why.
  *
  * Two rows, because a fixture answers two different questions depending on
  * whether it has been played. Upcoming: who may not take the field. Played: who
@@ -21,6 +22,13 @@ import type { DisciplineBan, DisciplineRules, SportDef } from "@/types/api";
  * Tone is `warning` rather than `danger` for the same reason nothing here has
  * gone wrong yet, and the served row drops to `neutral` because on a fixture
  * already in the books there is nothing left to act on at all.
+ *
+ * The bench is listed alongside the squad, in the same list under the same team
+ * heading. A coach suspended is one more name a panitia will not see on the
+ * touchline, and splitting the rows would make them read the card twice to find
+ * out whether anyone is missing. What differs is the parenthetical: `(#7)` for a
+ * player, `(Pelatih Kepala)` for the bench — the catalogue's own label, never a
+ * blank where a number would be.
  */
 export function MatchDisciplineNotice({
   bans,
@@ -28,6 +36,7 @@ export function MatchDisciplineNotice({
   rules,
 }: {
   bans: DisciplineBan[];
+  /** Names the cards *and* the bench roles; the sport owns both. */
   sport: SportDef | null;
   rules: DisciplineRules | null;
 }) {
@@ -87,7 +96,7 @@ export function MatchDisciplineNotice({
  * `bans_remaining` counts the fixture it is reported on, which reads correctly
  * on one that has yet to be played ("sisa 2 laga", this one included) and
  * misleadingly on one already in the books — there it would name a match the
- * player has just sat out as though it were still to come. So the played row
+ * person has just sat out as though it were still to come. So the played row
  * counts down by one and says so.
  */
 function BanList({
@@ -101,6 +110,8 @@ function BanList({
   rules: DisciplineRules | null;
   played: boolean;
 }) {
+  const { officialRoleLabel } = useCatalog();
+
   const teams: { id: string; name: string; bans: DisciplineBan[] }[] = [];
 
   for (const ban of bans) {
@@ -118,7 +129,10 @@ function BanList({
           </div>
           <ul className="grid gap-0.5">
             {team.bans.map((ban) => (
-              <li key={ban.player_id} className="flex items-baseline gap-1.5">
+              <li
+                key={`${ban.person_type}:${ban.person_id}`}
+                className="flex items-baseline gap-1.5"
+              >
                 {/* Bullet, not a leading dot in the text: it keeps the name
                     column aligned when a long reason wraps, which is exactly
                     when a reader needs the names to still line up. */}
@@ -128,8 +142,13 @@ function BanList({
                 />
                 <span className="min-w-0">
                   <span className="font-medium text-foreground">
-                    {ban.player_name}
+                    {ban.person_name}
+                    {/* One parenthetical, filled from whichever side the person
+                        came from. An official's jersey_number is null by
+                        construction, so these two cannot both fire. */}
                     {ban.jersey_number && ` (#${ban.jersey_number})`}
+                    {ban.person_type === "official" &&
+                      ` (${officialRoleLabel(sport?.slug, ban.role) || "Ofisial"})`}
                   </span>
                   <span className="text-muted-foreground">
                     {" — "}

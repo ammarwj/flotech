@@ -344,7 +344,7 @@ class LineupDisciplineTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        $ids = array_column($data['bans'], 'player_id');
+        $ids = array_column($data['bans'], 'person_id');
 
         // Both halves matter: the opponent is banned too, so asserting only that
         // Budi is listed would pass against a payload that leaks everybody.

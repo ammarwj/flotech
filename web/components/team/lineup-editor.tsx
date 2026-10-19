@@ -41,6 +41,13 @@ import type {
  * manager looking for a player who is simply gone and no explanation of why the
  * squad shrank; the server refuses the name either way, and this is the half of
  * that refusal they can read before pressing anything.
+ *
+ * The bench works the same way and from the same `bans` list, filtered by
+ * `person_type`. One list rather than two props: the server answers one question
+ * about this sheet, and a second prop is a second place for a caller to forget.
+ * A suspended official's row is struck through and its toggle refuses, exactly
+ * as a player's does — the server refuses both, on two different fields, and
+ * `officials` is the one it marks for the bench.
  */
 
 /** What the sheet says about one player. `null` = not on it at all. */
@@ -81,10 +88,11 @@ export function LineupEditor({
   onOfficialsChange: (next: string[]) => void;
   sport?: string | null;
   /**
-   * Who may not be fielded here. Required rather than defaulting to `[]`, for
-   * the reason already written for `PublicMatchCard`: a default would let a
-   * caller that forgot to pass them render an editor that blocks nobody, and
-   * pass review looking identical to one that works.
+   * Who may not take part here — squad and bench in one list, told apart by
+   * `person_type`. Required rather than defaulting to `[]`, for the reason
+   * already written for `PublicMatchCard`: a default would let a caller that
+   * forgot to pass them render an editor that blocks nobody, and pass review
+   * looking identical to one that works.
    */
   bans: LineupBan[];
   /** The rules naming the reason; `null` for a sport without cards. */
@@ -101,8 +109,15 @@ export function LineupEditor({
 }) {
   const { officialRoleLabel, sport: sportDef } = useCatalog();
 
-  // By player, so a row asks once rather than scanning the list per render.
-  const bannedBy = new Map(bans.map((ban) => [ban.player_id, ban]));
+  // By person, so a row asks once rather than scanning the list per render.
+  // Two maps, not one keyed by a bare id: `players` and `team_officials` are
+  // separate tables, so an id is only unique within its own.
+  const bannedPlayers = new Map(
+    bans.filter((b) => b.person_type === "player").map((ban) => [ban.person_id, ban]),
+  );
+  const bannedOfficials = new Map(
+    bans.filter((b) => b.person_type === "official").map((ban) => [ban.person_id, ban]),
+  );
 
   const starters = countRole(selection, "starter");
   const substitutes = countRole(selection, "substitute");
@@ -148,7 +163,7 @@ export function LineupEditor({
 
         <ul className="grid gap-2">
           {roster.map((player) => {
-            const ban = bannedBy.get(player.id);
+            const ban = bannedPlayers.get(player.id);
 
             return (
               <li
@@ -225,33 +240,56 @@ export function LineupEditor({
         ) : (
           <ul className="grid gap-2">
             {officials.map((official) => {
-              const chosen = chosenOfficials.includes(official.id);
+              const ban = bannedOfficials.get(official.id);
+              // A suspended official is never counted as brought, whatever the
+              // selection still says: a draft saved before the card was
+              // confirmed may well name them, and the server refuses it.
+              const chosen = !ban && chosenOfficials.includes(official.id);
 
               return (
                 <li key={official.id}>
                   <button
                     type="button"
                     onClick={() => toggleOfficial(official.id)}
-                    disabled={disabled}
+                    disabled={disabled || Boolean(ban)}
                     aria-pressed={chosen}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
-                      chosen
-                        ? "border-[var(--brand-600)] bg-[var(--tint)]"
-                        : "border-border hover:bg-[var(--bg-soft)]",
-                      disabled && "cursor-not-allowed opacity-60",
+                      ban
+                        ? "border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)]"
+                        : chosen
+                          ? "border-[var(--brand-600)] bg-[var(--tint)]"
+                          : "border-border hover:bg-[var(--bg-soft)]",
+                      (disabled || ban) && "cursor-not-allowed opacity-60",
                     )}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{official.full_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {/* Through the catalogue, never hardcoded: an admin may
-                            rename a role and every screen has to follow. */}
-                        {officialRoleLabel(sport, official.role) || "Tanpa jabatan"}
+                      <p
+                        className={cn(
+                          "truncate font-medium",
+                          ban && "text-muted-foreground line-through",
+                        )}
+                      >
+                        {official.full_name}
                       </p>
+                      {ban ? (
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                          <Badge variant="danger" dot>
+                            Larangan bermain
+                          </Badge>
+                          <span>{banReasonLabel(ban.reason, sportDef(sport), rules)}</span>
+                          {ban.bans_remaining > 1 && <span>· sisa {ban.bans_remaining} laga</span>}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {/* Through the catalogue, never hardcoded: an admin may
+                              rename a role and every screen has to follow. */}
+                          {officialRoleLabel(sport, official.role) || "Tanpa jabatan"}
+                        </p>
+                      )}
                     </div>
                     <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      {chosen ? "Dibawa" : "Tidak"}
+                      {ban ? "Terskors" : chosen ? "Dibawa" : "Tidak"}
                     </span>
                   </button>
                 </li>

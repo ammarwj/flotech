@@ -205,7 +205,7 @@ export function PublicResults({
               <section className="grid gap-3">
                 <h3 className="text-sm font-bold">Disiplin & larangan bermain</h3>
                 <DisciplineTable
-                  players={disciplineQuery.data.players}
+                  people={disciplineQuery.data.people}
                   sport={sport}
                   rules={disciplineQuery.data.rules}
                 />
@@ -250,6 +250,7 @@ export function PublicResults({
           orgSlug={orgSlug}
           eventSlug={eventSlug}
           playerStats={playerStats}
+          sport={sport}
           onClose={() => setOpenMatch(null)}
         />
       )}

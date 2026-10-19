@@ -43,4 +43,10 @@ class TeamOfficial extends Model
     {
         return $this->hasMany(RegistrationDocument::class, 'official_id');
     }
+
+    /** Cards shown to them, per fixture. Only yellow/red ever land here. */
+    public function matchStats(): HasMany
+    {
+        return $this->hasMany(OfficialMatchStat::class, 'team_official_id');
+    }
 }

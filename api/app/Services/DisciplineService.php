@@ -37,6 +37,22 @@ use Illuminate\Support\Facades\DB;
  *   by someone who sat and watched. An organizer who fields a banned player
  *   anyway gets a warning, not a correction. Wiring appearances up is separate
  *   work and needs a record of who played, which nothing writes yet.
+ *
+ * Players and the bench run through one engine, from two tables.
+ * `player_match_stats` and `official_match_stats` are kept apart on the write
+ * side — an official is not a player, and the five readers of the first table
+ * have no business with the bench — but a card means the same thing whoever it
+ * was shown to, and the accumulation rules are the sport's, not the person's.
+ * Two engines would be two copies of the serve-before-read ordering, the
+ * two-yellows absorption and the knockout reset, and the copy nobody is watching
+ * is the one that would drift.
+ *
+ * So everything below is keyed by a *person*: `person_type` ('player' |
+ * 'official') plus `person_id`, carried in one composite map key so the two id
+ * spaces cannot be confused even in a map. Reusing `player_id` for a coach was
+ * the alternative, and it is the same mistake as printing "Nomor rekening" above
+ * a phone number — every surface would read a field that is lying about what it
+ * holds.
  */
 class DisciplineService
 {
@@ -50,27 +66,33 @@ class DisciplineService
 
     /**
      * The `matches` map is keyed by fixture id and holds two kinds of entry,
-     * told apart by `status`: 'upcoming' is a player who may not take the field
-     * in a fixture still to be played, 'served' is one who sat a ban out in a
-     * fixture already finished and confirmed. Without the second kind the
-     * feature is invisible the moment it does its job — a played fixture leaves
-     * $pending forever, and "nobody was ever banned here" then looks exactly
-     * like "somebody was, and served it here".
+     * told apart by `status`: 'upcoming' is someone who may not take part in a
+     * fixture still to be played, 'served' is one who sat a ban out in a fixture
+     * already finished and confirmed. Without the second kind the feature is
+     * invisible the moment it does its job — a played fixture leaves $pending
+     * forever, and "nobody was ever banned here" then looks exactly like
+     * "somebody was, and served it here".
      *
-     * @return array{enabled: bool, rules: array<string, mixed>|null, players: array<int, array<string, mixed>>, matches: object}
+     * `people` is the one list players and the bench share, and it replaced the
+     * old `players` key outright rather than sitting beside it. Two spellings of
+     * one tally is the shape this codebase keeps refusing: the second reader
+     * drifts, and here it would drift by *omitting the bench* — the exact half
+     * the feature was added for.
+     *
+     * @return array{enabled: bool, rules: array<string, mixed>|null, people: array<int, array<string, mixed>>, matches: object}
      */
     public function forCategory(EventCategory $category): array
     {
         $rules = DisciplineRules::forCategory($category);
 
         if (! $rules->enabled) {
-            return ['enabled' => false, 'rules' => null, 'players' => [], 'matches' => (object) []];
+            return ['enabled' => false, 'rules' => null, 'people' => [], 'matches' => (object) []];
         }
 
         $timeline = $this->timeline($category);
         [$cards, $people] = $this->cards($category, $rules);
 
-        $players = [];
+        $rows = [];
         /** @var array<string, array<int, array<string, mixed>>> $bans */
         $bans = [];
 
@@ -93,11 +115,11 @@ class DisciplineService
             // the fixture is already being played.
             $pending = $mine->filter(fn (GameMatch $m) => $this->isPending($m))->values();
 
-            $running = [];   // yellows since the last ban, per player
+            $running = [];   // yellows since the last ban, per person
             $owed = [];      // bans issued but not yet sat out
             $issued = [];
             $served = [];
-            $totals = [];    // player => ['yellow' => n, 'red' => n]
+            $totals = [];    // person key => ['yellow' => n, 'red' => n]
             $reason = [];
             $resetDone = false;
 
@@ -117,10 +139,10 @@ class DisciplineService
                 // in this very match must not be discharged by it. Reversed, the
                 // ban is settled the moment it is handed out and this feature
                 // never warns about anything.
-                foreach ($owed as $playerId => $remaining) {
+                foreach ($owed as $personKey => $remaining) {
                     if ($remaining > 0) {
-                        $owed[$playerId] = $remaining - 1;
-                        $served[$playerId] = ($served[$playerId] ?? 0) + 1;
+                        $owed[$personKey] = $remaining - 1;
+                        $served[$personKey] = ($served[$personKey] ?? 0) + 1;
 
                         // The fixture the ban was actually sat out in, recorded
                         // here rather than derived afterwards: once this match
@@ -132,10 +154,10 @@ class DisciplineService
                         // a ban can only be served from the match *after* the one
                         // that issued it, so both were written in an earlier turn
                         // of this loop.
-                        if (isset($people[$playerId])) {
+                        if (isset($people[$personKey])) {
                             $bans[$match->id][] = [
-                                ...$people[$playerId],
-                                'reason' => $reason[$playerId] ?? 'yellow_accumulation',
+                                ...$people[$personKey],
+                                'reason' => $reason[$personKey] ?? 'yellow_accumulation',
                                 // Before the decrement, so the field means the
                                 // same thing under both statuses: fixtures owed
                                 // counting this one.
@@ -146,12 +168,12 @@ class DisciplineService
                     }
                 }
 
-                foreach ($cards[$match->id] ?? [] as $playerId => $card) {
+                foreach ($cards[$match->id] ?? [] as $personKey => $card) {
                     // A match carries both teams' cards; this pass owns one of
                     // them. Without this the opponent's players would be walked
                     // along the wrong team's fixture list and serve their bans
                     // against matches they were never in.
-                    if (($people[$playerId]['team_id'] ?? null) !== $teamId) {
+                    if (($people[$personKey]['team_id'] ?? null) !== $teamId) {
                         continue;
                     }
 
@@ -159,8 +181,8 @@ class DisciplineService
                         continue;
                     }
 
-                    $totals[$playerId]['yellow'] = ($totals[$playerId]['yellow'] ?? 0) + $card['yellow'];
-                    $totals[$playerId]['red'] = ($totals[$playerId]['red'] ?? 0) + $card['red'];
+                    $totals[$personKey]['yellow'] = ($totals[$personKey]['yellow'] ?? 0) + $card['yellow'];
+                    $totals[$personKey]['red'] = ($totals[$personKey]['red'] ?? 0) + $card['red'];
 
                     $yellow = $card['yellow'];
                     $expelled = false;
@@ -184,67 +206,67 @@ class DisciplineService
                         $expelled = false;
                     }
 
-                    $count = ($running[$playerId] ?? 0) + $yellow;
+                    $count = ($running[$personKey] ?? 0) + $yellow;
 
                     // A loop, not an `if`: value is an aggregate, so an organizer
-                    // may type two yellows for one player in one match and cross
+                    // may type two yellows for one person in one match and cross
                     // the threshold more than once at a time.
                     while ($count >= $rules->yellowThreshold) {
                         $count -= $rules->yellowThreshold;
-                        $owed[$playerId] = ($owed[$playerId] ?? 0) + $rules->yellowBanMatches;
-                        $issued[$playerId] = ($issued[$playerId] ?? 0) + $rules->yellowBanMatches;
-                        $reason[$playerId] = 'yellow_accumulation';
+                        $owed[$personKey] = ($owed[$personKey] ?? 0) + $rules->yellowBanMatches;
+                        $issued[$personKey] = ($issued[$personKey] ?? 0) + $rules->yellowBanMatches;
+                        $reason[$personKey] = 'yellow_accumulation';
                     }
 
-                    $running[$playerId] = $count;
+                    $running[$personKey] = $count;
 
                     if ($expelled && $rules->expulsionBanMatches > 0) {
-                        $owed[$playerId] = ($owed[$playerId] ?? 0) + $rules->expulsionBanMatches;
-                        $issued[$playerId] = ($issued[$playerId] ?? 0) + $rules->expulsionBanMatches;
+                        $owed[$personKey] = ($owed[$personKey] ?? 0) + $rules->expulsionBanMatches;
+                        $issued[$personKey] = ($issued[$personKey] ?? 0) + $rules->expulsionBanMatches;
                         // Outranks an accumulation crossed in the same match for
                         // the same reason a red outranks both: it is the heavier
                         // fact, and the one the organizer needs to read.
-                        $reason[$playerId] = 'second_yellow';
+                        $reason[$personKey] = 'second_yellow';
                     }
 
                     if ($card['red'] > 0) {
-                        $owed[$playerId] = ($owed[$playerId] ?? 0) + $rules->redBanMatches * $card['red'];
-                        $issued[$playerId] = ($issued[$playerId] ?? 0) + $rules->redBanMatches * $card['red'];
+                        $owed[$personKey] = ($owed[$personKey] ?? 0) + $rules->redBanMatches * $card['red'];
+                        $issued[$personKey] = ($issued[$personKey] ?? 0) + $rules->redBanMatches * $card['red'];
                         // Written last, so it wins the reason over both an
                         // accumulation and a sending-off picked up in the same
                         // match: it is the heaviest fact, and the one the
                         // organizer needs to read.
-                        $reason[$playerId] = 'red_card';
+                        $reason[$personKey] = 'red_card';
                     }
                 }
             }
 
-            foreach (array_keys($totals + $owed) as $playerId) {
-                $person = $people[$playerId] ?? null;
+            foreach (array_keys($totals + $owed) as $personKey) {
+                $person = $people[$personKey] ?? null;
 
                 if ($person === null) {
                     continue;
                 }
 
-                $remaining = $owed[$playerId] ?? 0;
+                $remaining = $owed[$personKey] ?? 0;
 
-                $players[] = [
+                $rows[] = [
                     ...$person,
-                    'yellow_total' => $totals[$playerId]['yellow'] ?? 0,
-                    'red_total' => $totals[$playerId]['red'] ?? 0,
-                    'yellow_running' => $running[$playerId] ?? 0,
-                    'bans_issued' => $issued[$playerId] ?? 0,
-                    'bans_served' => $served[$playerId] ?? 0,
+                    'yellow_total' => $totals[$personKey]['yellow'] ?? 0,
+                    'red_total' => $totals[$personKey]['red'] ?? 0,
+                    'yellow_running' => $running[$personKey] ?? 0,
+                    'bans_issued' => $issued[$personKey] ?? 0,
+                    'bans_served' => $served[$personKey] ?? 0,
                     'bans_remaining' => $remaining,
                 ];
 
                 // One outstanding ban match maps onto one upcoming fixture. A
-                // player owing two sits out the next two; a player owing more
-                // than the team has left simply runs out of fixtures.
+                // person owing two sits out the next two; one owing more than
+                // the team has left simply runs out of fixtures.
                 foreach ($pending->take($remaining) as $match) {
                     $bans[$match->id][] = [
                         ...$person,
-                        'reason' => $reason[$playerId] ?? 'yellow_accumulation',
+                        'reason' => $reason[$personKey] ?? 'yellow_accumulation',
                         'bans_remaining' => $remaining,
                         'status' => 'upcoming',
                     ];
@@ -252,12 +274,17 @@ class DisciplineService
             }
         }
 
-        usort($players, fn ($a, $b) => [$b['bans_remaining'], $b['red_total'], $b['yellow_total'], $a['player_name']]
-            <=> [$a['bans_remaining'], $a['red_total'], $a['yellow_total'], $b['player_name']]);
+        usort($rows, fn ($a, $b) => [$b['bans_remaining'], $b['red_total'], $b['yellow_total'], $a['person_name']]
+            <=> [$a['bans_remaining'], $a['red_total'], $a['yellow_total'], $b['person_name']]);
 
         // Cast: an empty map is [] in JSON, not {}, and the client indexes it by
         // match id. Same trap the public social links object carries.
-        return ['enabled' => true, 'rules' => $rules->toArray(), 'players' => $players, 'matches' => (object) $bans];
+        return [
+            'enabled' => true,
+            'rules' => $rules->toArray(),
+            'people' => $rows,
+            'matches' => (object) $bans,
+        ];
     }
 
     /**
@@ -325,16 +352,25 @@ class DisciplineService
     }
 
     /**
-     * Every card in the category, plus who the players are.
+     * Every card in the category, plus who the people carrying them are.
      *
-     * One query, shaped like PlayerStatService::leaderboard(). The stage is
-     * deliberately *not* filtered, unlike StandingService::fairPlayPoints():
-     * that one excludes the knockout and deciders because it feeds a standings
-     * criterion and must not loop back into itself. A ban is not a standings
-     * criterion — it is an administrative fact about a person, and one earned in
-     * the group stage plainly carries into the bracket. Branching on `stage` at
-     * all is what let a past bug hide half the application from itself; this
-     * reader avoids that by never asking.
+     * Two queries, one per owner table, shaped like
+     * PlayerStatService::leaderboard(). They are unioned here rather than in SQL:
+     * the two tables carry different owner columns and different name sources
+     * (`players.jersey_number` has no counterpart on the bench), so a UNION would
+     * need placeholder columns on both sides — the nullable-pair shape the tables
+     * were split to avoid, rebuilt in the reader.
+     *
+     * Both maps are keyed by `personKey()`, so a player id and an official id can
+     * never collide even though both are uuids from different tables.
+     *
+     * The stage is deliberately *not* filtered, unlike
+     * StandingService::fairPlayPoints(): that one excludes the knockout and
+     * deciders because it feeds a standings criterion and must not loop back into
+     * itself. A ban is not a standings criterion — it is an administrative fact
+     * about a person, and one earned in the group stage plainly carries into the
+     * bracket. Branching on `stage` at all is what let a past bug hide half the
+     * application from itself; this reader avoids that by never asking.
      *
      * @return array{0: array<string, array<string, array{yellow: int, red: int}>>, 1: array<string, array<string, mixed>>}
      */
@@ -342,7 +378,10 @@ class DisciplineService
     {
         $keys = array_values(array_filter([$rules->yellowKey, $rules->redKey]));
 
-        $rows = DB::table('player_match_stats')
+        $cards = [];
+        $people = [];
+
+        $playerRows = DB::table('player_match_stats')
             ->join('matches', 'matches.id', '=', 'player_match_stats.match_id')
             ->join('players', 'players.id', '=', 'player_match_stats.player_id')
             ->join('teams', 'teams.id', '=', 'player_match_stats.team_id')
@@ -350,7 +389,7 @@ class DisciplineService
             ->whereIn('player_match_stats.stat_key', $keys)
             ->select(
                 'player_match_stats.match_id',
-                'player_match_stats.player_id',
+                'player_match_stats.player_id as person_id',
                 // The snapshot on the stat row, not players.team_id: it records
                 // who they turned out for when the card was shown.
                 'player_match_stats.team_id',
@@ -362,25 +401,85 @@ class DisciplineService
             )
             ->get();
 
-        $cards = [];
-        $people = [];
-
-        foreach ($rows as $row) {
-            $slot = $row->stat_key === $rules->redKey ? 'red' : 'yellow';
-
-            $cards[$row->match_id][$row->player_id] ??= ['yellow' => 0, 'red' => 0];
-            $cards[$row->match_id][$row->player_id][$slot] += (int) $row->value;
-
-            $people[$row->player_id] ??= [
-                'player_id' => $row->player_id,
-                'player_name' => $row->full_name,
+        foreach ($playerRows as $row) {
+            $this->collect($cards, $people, $rules, $row, 'player', [
                 // Stays a string: "07" and "7" are different shirts.
                 'jersey_number' => $row->jersey_number,
-                'team_id' => $row->team_id,
-                'team_name' => $row->team_name,
-            ];
+                'role' => null,
+            ]);
+        }
+
+        $officialRows = DB::table('official_match_stats')
+            ->join('matches', 'matches.id', '=', 'official_match_stats.match_id')
+            ->join('team_officials', 'team_officials.id', '=', 'official_match_stats.team_official_id')
+            ->join('teams', 'teams.id', '=', 'official_match_stats.team_id')
+            ->where('matches.category_id', $category->id)
+            ->whereIn('official_match_stats.stat_key', $keys)
+            ->select(
+                'official_match_stats.match_id',
+                'official_match_stats.team_official_id as person_id',
+                'official_match_stats.team_id',
+                'official_match_stats.stat_key',
+                'official_match_stats.value',
+                'team_officials.full_name',
+                'team_officials.role',
+                'teams.name as team_name',
+            )
+            ->get();
+
+        foreach ($officialRows as $row) {
+            $this->collect($cards, $people, $rules, $row, 'official', [
+                // The bench wears no number, and an empty string here would read
+                // as a shirt on every surface that prints `#{number}`.
+                'jersey_number' => null,
+                // The role *key*; the label is the sport's and is resolved by the
+                // client through the catalogue, the same way a roster row is.
+                'role' => $row->role,
+            ]);
         }
 
         return [$cards, $people];
+    }
+
+    /**
+     * Fold one stat row into the two maps.
+     *
+     * Shared by both passes above so the card slot, the aggregation and the
+     * identity shape are written once: two copies would be two answers to "what
+     * counts as a red", and the copy nobody is watching is the one that drifts.
+     *
+     * @param  array<string, array<string, array{yellow: int, red: int}>>  $cards
+     * @param  array<string, array<string, mixed>>  $people
+     * @param  array<string, mixed>  $extra  the fields that differ between the two kinds
+     */
+    private function collect(array &$cards, array &$people, DisciplineRules $rules, object $row, string $type, array $extra): void
+    {
+        $key = self::personKey($type, $row->person_id);
+        $slot = $row->stat_key === $rules->redKey ? 'red' : 'yellow';
+
+        $cards[$row->match_id][$key] ??= ['yellow' => 0, 'red' => 0];
+        $cards[$row->match_id][$key][$slot] += (int) $row->value;
+
+        $people[$key] ??= [
+            'person_type' => $type,
+            'person_id' => $row->person_id,
+            'person_name' => $row->full_name,
+            'team_id' => $row->team_id,
+            'team_name' => $row->team_name,
+            ...$extra,
+        ];
+    }
+
+    /**
+     * One key for a person across both tables.
+     *
+     * `players` and `team_officials` are separate tables with separate uuid
+     * spaces, so a bare id is only unique within its own. Prefixing is what lets
+     * one map, one `$owed` tally and one `$running` counter serve both without a
+     * second set of variables to keep in step.
+     */
+    private static function personKey(string $type, string $id): string
+    {
+        return $type.':'.$id;
     }
 }

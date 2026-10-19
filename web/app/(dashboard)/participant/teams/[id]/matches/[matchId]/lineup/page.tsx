@@ -27,6 +27,23 @@ import { LineupStatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { LineupBan } from "@/types/api";
+
+/**
+ * The banned ids, split by which table they come from.
+ *
+ * Two sets rather than one, because `players` and `team_officials` are separate
+ * tables with separate uuid spaces — a single set keyed on a bare id would be a
+ * lookup unable to say which list the id belongs to. Written once here because
+ * both the seeding effect and `payload()` need the same answer, and a second copy
+ * is how one of them starts letting a suspended name through.
+ */
+function bannedIds(bans: LineupBan[]) {
+  return {
+    players: new Set(bans.filter((b) => b.person_type === "player").map((b) => b.person_id)),
+    officials: new Set(bans.filter((b) => b.person_type === "official").map((b) => b.person_id)),
+  };
+}
 
 /**
  * One fixture's team sheet.
@@ -40,7 +57,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function TeamLineupPage() {
   const params = useParams<{ id: string; matchId: string }>();
   const qc = useQueryClient();
-  const { sport } = useCatalog();
+  const { sport, officialRoleLabel } = useCatalog();
 
   const query = useQuery({
     queryKey: ["team-lineup", params.id, params.matchId],
@@ -60,23 +77,28 @@ export default function TeamLineupPage() {
   // map, which the editor reads as "Tidak dibawa" — the same third state the
   // full-list contract means on the way back.
   //
-  // Suspended players are dropped on the way in, and `payload()` drops them on
+  // Suspended people are dropped on the way in, and `payload()` drops them on
   // the way out. Without both the manager is stuck: a draft saved before the
   // cards were confirmed still names them, every save comes back 422, and the
   // one control that could take them off the sheet is the toggle this ban just
-  // disabled.
+  // disabled. That holds for the bench too — a suspended coach named in an old
+  // draft would 422 the whole sheet, squad included.
   //
   // Keyed on `data` rather than on `bans`, which is a fresh array every render
   // and would re-seed — throwing away whatever the manager had just picked.
   useEffect(() => {
     if (!data) return;
-    const banned = new Set(data.bans.map((ban) => ban.player_id));
+    const banned = bannedIds(data.bans);
     const next: LineupSelection = {};
     for (const row of data.lineup.players ?? []) {
-      if (!banned.has(row.player_id)) next[row.player_id] = row.role;
+      if (!banned.players.has(row.player_id)) next[row.player_id] = row.role;
     }
     setSelection(next);
-    setChosenOfficials((data.lineup.officials ?? []).map((row) => row.team_official_id));
+    setChosenOfficials(
+      (data.lineup.officials ?? [])
+        .filter((row) => !banned.officials.has(row.team_official_id))
+        .map((row) => row.team_official_id),
+    );
   }, [data]);
 
   const refresh = () => {
@@ -95,23 +117,25 @@ export default function TeamLineupPage() {
     const officialRow = (officialId: string) =>
       (lineup?.officials ?? []).find((row) => row.team_official_id === officialId);
 
-    // Suspended players never go out, whatever the selection map still holds —
+    // Suspended people never go out, whatever the selection map still holds —
     // the server refuses them, and a request it is certain to reject is not one
     // worth sending. The seeding effect is the other half of this.
-    const banned = new Set(bans.map((ban) => ban.player_id));
+    const banned = bannedIds(bans);
 
     return {
       players: (data?.roster ?? [])
-        .filter((player) => selection[player.id] && !banned.has(player.id))
+        .filter((player) => selection[player.id] && !banned.players.has(player.id))
         .map((player) => ({
           id: playerRow(player.id)?.id ?? null,
           player_id: player.id,
           role: selection[player.id] as "starter" | "substitute",
         })),
-      officials: chosenOfficials.map((id) => ({
-        id: officialRow(id)?.id ?? null,
-        team_official_id: id,
-      })),
+      officials: chosenOfficials
+        .filter((id) => !banned.officials.has(id))
+        .map((id) => ({
+          id: officialRow(id)?.id ?? null,
+          team_official_id: id,
+        })),
     };
   };
 
@@ -210,15 +234,23 @@ export default function TeamLineupPage() {
               <TriangleAlert className="h-5 w-5" />
             </span>
             <div className="min-w-0">
+              {/* "orang", not "pemain": the list carries the bench too, and a
+                  heading that counts coaches as players sends the manager
+                  looking through a squad that is fine. */}
               <h3 className="font-semibold">
-                {bans.length} pemain tidak bisa dimainkan di laga ini
+                {bans.length} orang tidak bisa didaftarkan di laga ini
               </h3>
               <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
                 {bans.map((ban) => (
-                  <li key={ban.player_id}>
+                  <li key={`${ban.person_type}:${ban.person_id}`}>
                     <span className="font-medium text-foreground">
-                      {ban.player_name}
+                      {ban.person_name}
+                      {/* One parenthetical either way — an official's
+                          jersey_number is null by construction, so these cannot
+                          both fire. */}
                       {ban.jersey_number && ` (#${ban.jersey_number})`}
+                      {ban.person_type === "official" &&
+                        ` (${officialRoleLabel(data.team.sport_type, ban.role) || "Ofisial"})`}
                     </span>{" "}
                     — {banReasonLabel(ban.reason, sport(data.team.sport_type), data.discipline_rules)}
                     {ban.bans_remaining > 1 && `, sisa ${ban.bans_remaining} laga`}

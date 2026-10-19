@@ -497,14 +497,31 @@ export interface MatchStatEntry {
   value: number;
 }
 
+/**
+ * One bench card. Its own shape, not `MatchStatEntry` with a renamed id: the two
+ * ids come from separate tables, and `stat_key` here is refused by the server
+ * unless it is one of the sport's cards.
+ */
+export interface OfficialStatEntry {
+  team_official_id: string;
+  stat_key: string;
+  value: number;
+}
+
+/**
+ * Full replace. `officials` omitted leaves the bench's cards alone — which is
+ * what a caller with no bench block to post means — while an empty array clears
+ * them, the same reading `officials` has on a registration update.
+ */
 export async function saveMatchStats(
   orgId: string,
   matchId: string,
-  stats: MatchStatEntry[]
+  stats: MatchStatEntry[],
+  officials?: OfficialStatEntry[]
 ): Promise<null> {
   const { data } = await apiClient.put<ApiEnvelope<null>>(
     `/organizations/${orgId}/matches/${matchId}/stats`,
-    { stats }
+    officials ? { stats, official_stats: officials } : { stats }
   );
   return data.data;
 }

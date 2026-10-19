@@ -169,6 +169,20 @@ class GameMatch extends Model
     }
 
     /**
+     * Cards shown to the benches in this fixture.
+     *
+     * Its own relation, never folded into `stats()`: an official is not a player
+     * (see the create_official_match_stats_table migration), and a caller that
+     * got both from one list would have to branch on which owner column is
+     * filled. Everything reading `stats()` today is about players and stays that
+     * way.
+     */
+    public function officialStats(): HasMany
+    {
+        return $this->hasMany(OfficialMatchStat::class, 'match_id');
+    }
+
+    /**
      * The team sheets handed in for this fixture — at most two, one per side.
      *
      * A pre-kickoff submission, not a record of who took the field: a named

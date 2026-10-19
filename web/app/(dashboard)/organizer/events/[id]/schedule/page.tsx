@@ -1009,7 +1009,7 @@ function ScheduleView() {
               <section className="grid gap-3">
                 <h3 className="text-sm font-bold">Disiplin & larangan bermain</h3>
                 <DisciplineTable
-                  players={disciplineQuery.data.players}
+                  people={disciplineQuery.data.people}
                   sport={eventQuery.data?.sport ?? null}
                   rules={disciplineQuery.data.rules}
                 />
@@ -1397,6 +1397,7 @@ function MatchCard({
             <MatchStatsEditor
               gateway={organizerStatsGateway(orgId, eventId, match.id)}
               match={match}
+              sport={sport}
             />
           )}
         </div>
@@ -1445,6 +1446,7 @@ function MatchCard({
         <MatchStatsEditor
           gateway={organizerStatsGateway(orgId, eventId, match.id)}
           match={match}
+          sport={sport}
         />
       )}
     </Card>

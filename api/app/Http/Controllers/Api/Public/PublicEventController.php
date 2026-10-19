@@ -231,14 +231,23 @@ class PublicEventController extends Controller
 
     /**
      * Player stats recorded in one match, for the public match detail. Unlike
-     * the organizer's editor payload this carries no rosters — only the players
+     * the organizer's editor payload this carries no rosters — only the people
      * who actually registered something, since nothing here is editable.
+     *
+     * The bench rides along in its own list. A coach sent off is part of what
+     * happened in the fixture, and the public schedule already carries the ban it
+     * produced — a detail dialog that showed the ban's cause nowhere would be the
+     * one screen unable to explain the warning beside it.
      */
     public function matchStats(string $orgSlug, string $eventSlug, string $matchId): JsonResponse
     {
         $event = $this->resolve($orgSlug, $eventSlug);
 
-        $match = GameMatch::with(['homeTeam', 'awayTeam', 'stats.player'])->findOrFail($matchId);
+        $match = GameMatch::with([
+            'homeTeam', 'awayTeam',
+            'stats.player',
+            'officialStats.official',
+        ])->findOrFail($matchId);
 
         // The slug pair is the whole of the authorization here, so the match has
         // to belong to that event — otherwise any match id is readable through
@@ -253,7 +262,12 @@ class PublicEventController extends Controller
     }
 
     /**
-     * One side of a match detail: the players with something to their name.
+     * One side of a match detail: the people with something to their name.
+     *
+     * `players` and `officials` are two lists from two tables, not one list with
+     * a type flag: the dialog prints a shirt number beside a player and a jabatan
+     * beside a coach, and the bench never carries the goal column the list is
+     * sorted by. Same split the write door keeps.
      *
      * @return array<string, mixed>|null
      */
@@ -283,10 +297,28 @@ class PublicEventController extends Controller
             ])
             ->values();
 
+        // Typed order, the way a bench has no natural one — the same reason
+        // team_officials carries sort_order and players do not.
+        $officials = $match->officialStats
+            ->where('team_id', $team->id)
+            ->filter(fn ($s) => $s->official !== null && $s->value > 0)
+            ->groupBy('team_official_id')
+            ->map(fn ($rows) => [
+                'id' => $rows->first()->official->id,
+                'full_name' => $rows->first()->official->full_name,
+                // The role key; the label is the sport's and is resolved on the
+                // client through the catalogue, as every other surface does.
+                'role' => $rows->first()->official->role,
+                'stats' => $rows->mapWithKeys(fn ($s) => [$s->stat_key => $s->value]),
+            ])
+            ->sortBy(fn ($row) => $row['full_name'])
+            ->values();
+
         return [
             'id' => $team->id,
             'name' => $team->name,
             'players' => $players,
+            'officials' => $officials,
         ];
     }
 

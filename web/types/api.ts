@@ -1007,18 +1007,40 @@ export interface RosterPlayer {
   jersey_number: string | null;
 }
 
+/** Someone on a team's bench, as the stat editor lists them. */
+export interface RosterOfficial {
+  id: string;
+  full_name: string;
+  /** The sport's role key; the label comes from the catalogue. */
+  role: string | null;
+}
+
 export interface MatchRoster {
   id: string;
   name: string;
   players: RosterPlayer[];
+  /** The bench. Cards only — see `card_columns`. */
+  officials: RosterOfficial[];
 }
 
 export interface MatchStatsData {
   columns: StatColumn[];
+  /**
+   * The subset of `columns` the bench may be given: the sport's yellow and red.
+   *
+   * Sent by the server rather than filtered here. The filter *is* the rule about
+   * what an official can carry, it is enforced at the write door, and a second
+   * copy in the editor is a second answer to it — the shape
+   * `effective_payment_method` exists to prevent. Empty means a sport without
+   * cards, which is the signal to render no bench block at all.
+   */
+  card_columns: StatColumn[];
   home_team: MatchRoster | null;
   away_team: MatchRoster | null;
   /** player_id => { stat_key => value } */
   stats: Record<string, Record<string, number>>;
+  /** team_official_id => { stat_key => value }. Its own map: separate tables, separate ids. */
+  official_stats: Record<string, Record<string, number>>;
 }
 
 /**
@@ -1033,10 +1055,27 @@ export interface PublicMatchStatPlayer {
   stats: Record<string, number>;
 }
 
+/** A bench entry on the public match detail: a jabatan where a player has a shirt. */
+export interface PublicMatchStatOfficial {
+  id: string;
+  full_name: string;
+  /** The sport's role key; the label comes from the catalogue. */
+  role: string | null;
+  stats: Record<string, number>;
+}
+
 export interface PublicMatchStatTeam {
   id: string;
   name: string;
   players: PublicMatchStatPlayer[];
+  /**
+   * The bench entries with a card against them.
+   *
+   * Its own list rather than players with a type flag: the dialog prints a shirt
+   * number beside a player and a jabatan beside a coach, and the bench never
+   * carries the goal column the player list is sorted by.
+   */
+  officials: PublicMatchStatOfficial[];
 }
 
 export interface PublicMatchStats {
@@ -1221,13 +1260,38 @@ export type BanReason = "red_card" | "second_yellow" | "yellow_accumulation";
  */
 export type BanStatus = "upcoming" | "served";
 
-/** One player kept out of one fixture. */
-export interface DisciplineBan {
-  player_id: string;
-  player_name: string;
+/**
+ * Whether a card was shown to someone on the pitch or on the bench.
+ *
+ * The two live in separate tables with separate id spaces, so this is what tells
+ * a `person_id` apart — never the id alone. Reusing `player_id` for a coach was
+ * the alternative and it is the same mistake as printing "Nomor rekening" above a
+ * phone number: every surface would read a field lying about what it holds.
+ */
+export type PersonType = "player" | "official";
+
+/**
+ * The identity half every discipline row carries, whoever it is about.
+ *
+ * `jersey_number` and `role` are the one place the two kinds differ, and both are
+ * nullable on both: a player may have no shirt typed, and a sport may define no
+ * bench roles. Reading "which one is filled" is how a surface decides what to
+ * print beside the name.
+ */
+export interface DisciplinePerson {
+  person_type: PersonType;
+  person_id: string;
+  person_name: string;
+  /** The shirt. Always null for an official — a bench wears no number. */
   jersey_number: string | null;
+  /** The sport's role *key*, resolved to a label through the catalogue. Null for a player. */
+  role: string | null;
   team_id: string;
   team_name: string;
+}
+
+/** One person kept out of one fixture. */
+export interface DisciplineBan extends DisciplinePerson {
   reason: BanReason;
   /** Fixtures still owed, counting this one. Same meaning under both statuses. */
   bans_remaining: number;
@@ -1246,9 +1310,11 @@ export interface DisciplineBan {
  * filter on fields it can no longer tell apart.
  */
 export interface LineupBan {
-  player_id: string;
-  player_name: string;
+  person_type: PersonType;
+  person_id: string;
+  person_name: string;
   jersey_number: string | null;
+  role: string | null;
   reason: BanReason;
   /** Fixtures still owed, counting this one. */
   bans_remaining: number;
@@ -1270,13 +1336,16 @@ export interface SquadRules {
   max_players: number;
 }
 
-/** A player's running card tally across the category. */
-export interface DisciplinePlayer {
-  player_id: string;
-  player_name: string;
-  jersey_number: string | null;
-  team_id: string;
-  team_name: string;
+/**
+ * One person's running card tally across the category — a player or someone on
+ * the bench, told apart by `person_type`.
+ *
+ * One type rather than two: the tally, the thresholds and the ban that comes out
+ * of them are the sport's rules and know nothing about who carried the card. Two
+ * types would be two tables on the same tab that could disagree about what three
+ * yellows means.
+ */
+export interface DisciplineTally extends DisciplinePerson {
   yellow_total: number;
   red_total: number;
   /** Yellows since the last ban was issued — the count that resets. */
@@ -1295,7 +1364,8 @@ export interface DisciplinePlayer {
 export interface Discipline {
   enabled: boolean;
   rules: DisciplineRules | null;
-  players: DisciplinePlayer[];
+  /** Players and bench in one list, told apart by `person_type`. */
+  people: DisciplineTally[];
   /**
    * Fixture id => the bans touching it. Includes fixtures already played: see
    * `BanStatus`.
