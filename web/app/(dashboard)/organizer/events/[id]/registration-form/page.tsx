@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TagInput } from "@/components/ui/tag-input";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
 
@@ -499,20 +500,22 @@ function FieldRows({
 
             {row.type === "select" && (
               <div className="grid gap-1.5">
-                <Label className="text-xs">Pilihan (satu per baris)</Label>
-                <textarea
-                  className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={row.options.join("\n")}
-                  placeholder={"Putra\nPutri"}
-                  onChange={(e) =>
-                    onChange(section, i, {
-                      options: e.target.value
-                        .split("\n")
-                        .map((o) => o.trim())
-                        .filter(Boolean),
-                    })
-                  }
+                <Label className="text-xs">Pilihan</Label>
+                {/* Chips, not a textarea. The list is held as committed values
+                    rather than as text, so there is no half-typed entry in the
+                    array for the trigger picker or the save to defend against
+                    — see TagInput's own note on why the textarea could not
+                    hold more than one option. */}
+                <TagInput
+                  value={row.options}
+                  onChange={(options) => onChange(section, i, { options })}
+                  placeholder="Putra, lalu Enter"
+                  aria-label="Pilihan jawaban"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Ketik satu pilihan lalu tekan Enter. Bisa juga tempel
+                  beberapa sekaligus, dipisah koma.
+                </p>
               </div>
             )}
 
