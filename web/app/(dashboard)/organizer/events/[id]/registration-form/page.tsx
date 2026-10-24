@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, FileText, ListChecks, Plus, Trash2, Users } from "lucide-react";
+import {
+  ChevronRight,
+  FileText,
+  HelpCircle,
+  ListChecks,
+  Plus,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -24,7 +32,9 @@ import {
   type DocumentSlot,
   type RegistrationFormSchema,
 } from "@/lib/registration-form";
+import { cn } from "@/lib/utils";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +42,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TagInput } from "@/components/ui/tag-input";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shared/page-header";
 import { SectionHeader } from "@/components/event/section-header";
 
@@ -566,35 +577,11 @@ function FieldRows({
               )}
             </div>
 
-            {/* Guidance. Stored as null when blank, so '' is sent back as null
-                rather than as an empty string the forms would have to defend
-                against — the API normalizes the same way. */}
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Teks bantuan (opsional)
-                </Label>
-                <Input
-                  value={row.help_text ?? ""}
-                  placeholder="Lihat panduan ukuran di bawah."
-                  onChange={(e) =>
-                    onChange(section, i, { help_text: e.target.value || null })
-                  }
-                />
-              </div>
-              <ImageUploadField
-                label="Gambar panduan (opsional)"
-                value={row.help_image_url ?? ""}
-                onChange={(url) =>
-                  onChange(section, i, { help_image_url: url || null })
-                }
-                onBusyChange={onBusyChange}
-                folder="registration-form"
-                maxDim={1200}
-                previewClassName="aspect-[3/1] w-full"
-                hint="Misalnya tabel ukuran jersey."
-              />
-            </div>
+            <FieldGuidance
+              row={row}
+              onChange={(patch) => onChange(section, i, patch)}
+              onBusyChange={onBusyChange}
+            />
 
             {/* The condition. Offered only when a field above this one can act
                 as a trigger: the API refuses anything else, and a picker whose
@@ -700,6 +687,133 @@ function FieldRows({
           {addLabel}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Matches `help_text`'s `max:500` on the API. */
+const HELP_TEXT_MAX = 500;
+
+/**
+ * The optional guidance attached to one question — a sentence, a picture, or
+ * both.
+ *
+ * Collapsed by default, and that is the point. Guidance is set on a minority
+ * of fields, but the open form rendered a full-width 3:1 upload box on *every*
+ * row: eight questions meant eight grey placeholders and a page nobody could
+ * scan for the questions themselves. A summary that names what is already set
+ * keeps the information without the height — closed, the row still says
+ * "Teks + gambar", so nothing is hidden, only folded.
+ *
+ * Opens on its own when something is already stored, so an organizer returning
+ * to a field never has to discover that their own help text is behind a
+ * toggle.
+ *
+ * Both values are stored as null when blank rather than as '': the entry forms
+ * branch on "is there guidance at all", and two spellings of "no" are two
+ * branches that will disagree. The API normalizes the same way.
+ */
+function FieldGuidance({
+  row,
+  onChange,
+  onBusyChange,
+}: {
+  row: CustomField;
+  onChange: (patch: Partial<CustomField>) => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const hasText = !!row.help_text?.trim();
+  const hasImage = !!row.help_image_url;
+  const [open, setOpen] = useState(hasText || hasImage);
+  // Not row.key: that is empty until a label is typed, so two fresh rows would
+  // both own `help-` and clicking one label would focus the other's box.
+  const textId = useId();
+
+  const text = row.help_text ?? "";
+  const remaining = HELP_TEXT_MAX - text.length;
+
+  const summary = [hasText && "Teks", hasImage && "Gambar"]
+    .filter(Boolean)
+    .join(" + ");
+
+  return (
+    <div className="rounded-lg border border-dashed border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronRight
+          className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")}
+          aria-hidden
+        />
+        <HelpCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="font-medium">Panduan pengisian</span>
+        {/* Closed, this is the only trace of what is set — so it names the
+            parts rather than showing a bare dot. */}
+        {summary ? (
+          <Badge variant="neutral" className="ml-auto">
+            {summary}
+          </Badge>
+        ) : (
+          <span className="ml-auto">Opsional</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="grid gap-3 border-t border-dashed border-border p-2.5 md:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor={textId} className="text-xs text-muted-foreground">
+              Teks bantuan
+            </Label>
+            {/* A textarea, not an Input: the API takes 500 characters and the
+                text this holds is a sizing note or a waiver's full wording,
+                which a one-line box shows ten characters of at a time. */}
+            <Textarea
+              id={textId}
+              value={text}
+              maxLength={HELP_TEXT_MAX}
+              placeholder="Lihat tabel ukuran di samping. Pilih satu ukuran lebih besar jika ragu."
+              className="min-h-19 resize-y text-sm"
+              onChange={(e) => onChange({ help_text: e.target.value || null })}
+            />
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Ditampilkan di bawah pertanyaan pada formulir pendaftaran.
+              </p>
+              {/* Only once it matters. A counter sitting at 500/500 on an
+                  empty box is noise on every row of the page. */}
+              {remaining <= 100 && (
+                <span
+                  className={cn(
+                    "shrink-0 text-xs tabular-nums",
+                    remaining === 0 ? "text-destructive" : "text-muted-foreground",
+                  )}
+                >
+                  {remaining}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <ImageUploadField
+            label="Gambar panduan"
+            value={row.help_image_url ?? ""}
+            onChange={(url) => onChange({ help_image_url: url || null })}
+            onBusyChange={onBusyChange}
+            folder="registration-form"
+            maxDim={1200}
+            previewClassName="aspect-[3/1] w-full"
+            placeholder={
+              <span className="px-3 text-center text-xs text-muted-foreground">
+                Misalnya tabel ukuran jersey
+              </span>
+            }
+            hint="PNG/JPG, maksimal 5 MB."
+          />
+        </div>
+      )}
     </div>
   );
 }
