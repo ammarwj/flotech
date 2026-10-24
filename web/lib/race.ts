@@ -135,3 +135,46 @@ export function blockedReason(
 
   return null;
 }
+
+/**
+ * Why this email cannot enter this category, or null when it can.
+ *
+ * The single answerer on the client, the pattern `blockedReason()` above set —
+ * the card, the inline error under the email input and the submit button all
+ * read this one function, so they cannot disagree about whether the address
+ * qualifies.
+ *
+ * **Deliberately NOT folded into `blockedReason()`.** That one answers "can
+ * this category be entered at all" from the category's own state, and it is
+ * read to label the category card. Mixing the email in would make the card say
+ * "cannot enter" before anyone has typed anything.
+ *
+ * An empty address answers **null** for the same reason: a form nobody has
+ * filled in yet must not be scolded. The server refuses the empty case on its
+ * own (`email` is required there).
+ *
+ * Matching mirrors RaceCategory::acceptsEmail() — exact, never by suffix. Two
+ * matchers that differed would show a green form that 422s on submit.
+ */
+export function emailDomainBlocked(
+  category: Pick<RaceCategory, "email_domains"> | null | undefined,
+  email: string
+): string | null {
+  const domains = category?.email_domains ?? [];
+  if (domains.length === 0) return null;
+
+  const typed = email.trim();
+  if (typed === "") return null;
+
+  const at = typed.lastIndexOf("@");
+  const domain = at === -1 ? "" : typed.slice(at + 1).replace(/\.+$/, "").toLowerCase();
+
+  if (domain !== "" && domains.includes(domain)) return null;
+
+  return `Kategori ini hanya untuk pendaftar dengan email ${allowedDomainList(domains)}.`;
+}
+
+/** The allowed domains as a runner reads them: "@ub.ac.id, @student.ub.ac.id". */
+export function allowedDomainList(domains: string[]): string {
+  return domains.map((d) => `@${d}`).join(", ");
+}

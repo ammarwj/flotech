@@ -12,7 +12,13 @@ import { phoneInput } from "@/lib/phone";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { getPublicRace, registerRaceEntry } from "@/lib/api/race";
 import { getPublicEvent } from "@/lib/api/events";
-import { blockedReason, currentPrice, isEnterable } from "@/lib/race";
+import {
+  allowedDomainList,
+  blockedReason,
+  currentPrice,
+  emailDomainBlocked,
+  isEnterable,
+} from "@/lib/race";
 import {
   missingFor,
   schemaOf,
@@ -100,6 +106,14 @@ function RaceRegisterPage() {
     emergency_contact_relation: "",
   });
 
+  /**
+   * The category's email condition, read proactively so the runner is told
+   * before they pick a payment channel. Reactive too: the server refuses the
+   * same thing with a 422 on `email`, which `setError` already surfaces — the
+   * proactive-and-reactive pair the plan gates use.
+   */
+  const domainError = emailDomainBlocked(selected, runner.email);
+
   // Whatever else this event asks for. Empty lists render nothing at all — an
   // event that defines no documents shows no upload UI.
   const schema = schemaOf(event);
@@ -167,6 +181,7 @@ function RaceRegisterPage() {
   const incomplete =
     !runner.full_name.trim() ||
     !runner.email.trim() ||
+    !!domainError ||
     !resolvedCategoryId ||
     !agreed ||
     !!blocked ||
@@ -264,6 +279,15 @@ function RaceRegisterPage() {
               {selected?.description && (
                 <p className="text-xs text-muted-foreground">{selected.description}</p>
               )}
+              {/* Said here as well as under the email input, because this is
+                  where the choice is made: finding out in the Data Peserta card
+                  means backtracking past the price list to change it. */}
+              {selected && selected.email_domains.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Khusus pendaftar dengan email{" "}
+                  <strong>{allowedDomainList(selected.email_domains)}</strong>.
+                </p>
+              )}
             </div>
 
             {/* The whole price list, current row emphasised. A runner deciding
@@ -348,7 +372,11 @@ function RaceRegisterPage() {
                 onChange={(e) => setRunner({ ...runner, email: e.target.value })}
                 placeholder="nama@email.com"
                 required
+                aria-invalid={!!domainError}
               />
+              {domainError && (
+                <p className="text-xs text-[var(--danger)]">{domainError}</p>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="runner-phone">Nomor HP</Label>

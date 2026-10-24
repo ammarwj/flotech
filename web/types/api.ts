@@ -1621,6 +1621,13 @@ export interface RaceCategory {
   name: string;
   slug: string;
   description: string | null;
+  /**
+   * The email domains allowed to enter, lowercase and without the `@`. **`[]`
+   * means open to anyone** — the column stores null for that, and the server
+   * always publishes an array so there is one shape to read. Matching is
+   * exact: `ub.ac.id` does not admit `student.ub.ac.id`.
+   */
+  email_domains: string[];
   /** Null = unlimited, the convention every quota in this API uses. */
   quota: number | null;
   /** Places held, paid or pending — the reservation, not the paid count. */

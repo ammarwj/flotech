@@ -56,6 +56,7 @@ class RaceCategoryController extends Controller
         $data = $request->validated();
         $prices = $data['prices'] ?? [];
         unset($data['prices']);
+        $data = $this->normalizeDomains($data);
 
         $category = $event->raceCategories()->create([
             ...$data,
@@ -100,6 +101,8 @@ class RaceCategoryController extends Controller
             $data['slug'] = $this->uniqueSlug($category->event, $data['name'], $category->id);
         }
 
+        $data = $this->normalizeDomains($data);
+
         $category->update($data);
 
         if ($prices !== null && $denied = $this->syncPrices($category, $category->event, $prices)) {
@@ -110,6 +113,28 @@ class RaceCategoryController extends Controller
             new RaceCategoryResource($category->fresh()->load(['prices', 'event.racePeriods'])),
             'Kategori lomba diperbarui',
         );
+    }
+
+    /**
+     * Store an empty condition list as null.
+     *
+     * The column's invariant: null means "open to anyone" and `[]` is never
+     * stored, because two spellings of one answer are two branches that will
+     * disagree — the reason `help_text` is nulled rather than kept as `''`.
+     * Done here rather than in the FormRequest because the request's job is to
+     * say whether the key arrived at all: `[]` is a meaningful payload ("clear
+     * the conditions") and only the write side turns it into the stored shape.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function normalizeDomains(array $data): array
+    {
+        if (array_key_exists('email_domains', $data) && empty($data['email_domains'])) {
+            $data['email_domains'] = null;
+        }
+
+        return $data;
     }
 
     /**

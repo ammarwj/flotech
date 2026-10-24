@@ -25,6 +25,13 @@ class RaceCategoryResource extends JsonResource
             'name' => $this->name,
             'slug' => $this->slug,
             'description' => $this->description,
+            // Always an array; `[]` means open to anyone (the column stores
+            // null for that — see the migration). Published publicly on
+            // purpose: a runner has to see the condition BEFORE filling the
+            // form in, not discover it from a 422 after choosing a payment
+            // channel. It is also what makes the proactive client-side gate
+            // possible at all, the same pair the plan gates use.
+            'email_domains' => $this->emailDomains(),
             'quota' => $this->quota,
             'taken' => $this->taken,
             'remaining' => $this->remaining(),

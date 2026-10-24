@@ -149,6 +149,27 @@ class PublicRaceController extends Controller
             );
         }
 
+        // Before the quote for the same reason the quote is before anything is
+        // written: a refused entry must burn no invoice number. Field `email`
+        // and NOT `errors.feature` — with that key isPlanLimitError() swallows
+        // this into a toast and the email input never turns red, the lesson
+        // already written for `discount_code` and `payment_method`. The message
+        // names the domains because the runner can act on the difference: a
+        // student has a second address, and someone who does not belongs in the
+        // open category instead.
+        if (! $category->acceptsEmail($data['email'])) {
+            $allowed = implode(', ', array_map(
+                fn (string $domain) => '@'.$domain,
+                $category->emailDomains(),
+            ));
+
+            return ApiResponse::error(
+                "Kategori ini hanya untuk pendaftar dengan email {$allowed}.",
+                ['email' => ["Gunakan email {$allowed} untuk mendaftar di kategori ini."]],
+                422,
+            );
+        }
+
         // Throws PaymentException (422) when no window is open or this category
         // has no price in it. Asked here, before any row is written, so a
         // refused entry burns no invoice number — the same reason

@@ -14,7 +14,7 @@ import {
   type RaceCategoryInput,
 } from "@/lib/api/race";
 import { parseApiError, type FieldErrors } from "@/lib/api/errors";
-import { currentPeriod } from "@/lib/race";
+import { allowedDomainList, currentPeriod } from "@/lib/race";
 import { rupiah } from "@/lib/labels";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
@@ -234,6 +234,15 @@ export function RaceSetupPanel({
                         </Badge>
                       )}
                     </div>
+                    {/* The condition, in the list rather than only in the edit
+                        dialog: "why did that runner get the cheap price" is
+                        asked of this screen, and an organizer who has to open
+                        each category to find out will not check. */}
+                    {c.email_domains.length > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Khusus email {allowedDomainList(c.email_domains)}
+                      </p>
+                    )}
                     {/* The whole price list, not just today's: a runner
                         deciding when to register wants the next number, and so
                         does the organizer answering them. A window this

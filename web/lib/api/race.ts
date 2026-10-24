@@ -36,6 +36,12 @@ export interface RaceCategoryPriceInput {
 export interface RaceCategoryInput {
   name: string;
   description?: string | null;
+  /**
+   * Who may enter. An empty list is stored as "no condition" — omitting the key
+   * entirely (update only) leaves the stored conditions alone, so a client that
+   * only renames a category does not quietly open it to everyone.
+   */
+  email_domains?: string[] | null;
   quota?: number | null;
   is_active?: boolean;
   /**
