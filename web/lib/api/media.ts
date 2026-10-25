@@ -47,6 +47,11 @@ export interface SponsorInput {
   logo_url: string;
   website_url?: string | null;
   tier?: SponsorTier;
+  /**
+   * Position within the tier. Left out when adding — the API appends to the end
+   * — and only sent by the reorder arrows.
+   */
+  sort_order?: number;
 }
 
 export async function addSponsor(

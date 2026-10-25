@@ -42,9 +42,23 @@ const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttribu
 );
 CardDescription.displayName = "CardDescription";
 
+/**
+ * `*:min-w-0` is load-bearing, not tidying.
+ *
+ * Many callers pass `grid gap-N` here, and a grid track's implicit floor is the
+ * min-content width of its widest item — so one unshrinkable row (a long URL, a
+ * `1fr` column that collapses to one column on a phone) widens the track, the
+ * card, and the page. The dashboard shell's `overflow-x-clip` then hides the
+ * result instead of fixing it, which is exactly how a card can ship looking
+ * correct on a desktop and cut off on a phone.
+ *
+ * Here rather than at each caller because it is the same bug every time, and
+ * the copy that gets forgotten is the one nobody opens on a phone. It is inert
+ * for the non-grid callers: block children already shrink.
+ */
 const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+    <div ref={ref} className={cn("p-6 pt-0 *:min-w-0", className)} {...props} />
   )
 );
 CardContent.displayName = "CardContent";

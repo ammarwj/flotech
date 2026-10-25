@@ -3,7 +3,16 @@
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Handshake, ImagePlus, Images, Loader2, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Handshake,
+  ImagePlus,
+  Images,
+  Loader2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -13,6 +22,7 @@ import {
   deleteSponsor,
   getPhotos,
   getSponsors,
+  updateSponsor,
   type SponsorInput,
 } from "@/lib/api/media";
 import { uploadImage } from "@/lib/api/events";
@@ -35,7 +45,33 @@ import {
   isSponsorLogosEnabled,
 } from "@/lib/plan";
 import { useCatalog } from "@/lib/hooks/use-catalog";
-import type { EventPhoto, SponsorTier } from "@/types/api";
+import type { EventPhoto, EventSponsor, SponsorTier } from "@/types/api";
+
+/**
+ * Group sponsors by tier, in the catalogue's own order.
+ *
+ * Mirrors SponsorStrip on the public page: it walks `sponsor_tiers` and filters
+ * within each, so the organizer arranges exactly the rows a visitor will read.
+ * Tiers with nothing in them are dropped — a heading over an empty list reads
+ * as broken rather than as "none yet".
+ */
+function byTier(
+  sponsors: EventSponsor[],
+  tiers: { key: string; label: string }[],
+): [SponsorTier, EventSponsor[]][] {
+  const known = new Set(tiers.map((t) => t.key));
+
+  // Rows whose tier the admin has since dropped from the catalogue keep their
+  // own key rather than being folded into a real tier: sponsorTierLabel() falls
+  // back to the raw key, so they stay visible and removable under a heading
+  // that is at least honest. Filing them under "Sponsor" would claim a tier
+  // they do not have. Same call as index() returning non-approved adjustments.
+  const orphanKeys = [...new Set(sponsors.map((s) => s.tier).filter((t) => !known.has(t)))];
+
+  return [...tiers.map((t) => t.key as SponsorTier), ...orphanKeys]
+    .map((key) => [key, sponsors.filter((s) => s.tier === key)] as [SponsorTier, EventSponsor[]])
+    .filter(([, list]) => list.length > 0);
+}
 
 /** Group an event's photos by album, default album last. */
 function byAlbum(photos: EventPhoto[]): [string, EventPhoto[]][] {
@@ -160,6 +196,44 @@ export default function EventMediaPage() {
       toast.error(parseApiError(err, "Gagal menyimpan sponsor.").message),
   });
 
+  /**
+   * Renumber a whole tier from the order it should end up in.
+   *
+   * Writing the full list rather than swapping the two neighbours' values is
+   * what makes this work on data that predates the feature: rows added before
+   * `sort_order` was ever set share a value, and swapping two equal numbers
+   * changes nothing — the list falls back to `created_at` and the arrow reports
+   * success while doing nothing. Renumbering also repairs those rows on the
+   * first move instead of leaving them to collide again.
+   *
+   * Only the rows whose position actually changed are sent; a tier of eight
+   * where two swap is two PATCHes, not eight.
+   *
+   * Not optimistic: the requests can land out of order, and a list that snaps
+   * back after appearing to move is worse than one that pauses.
+   */
+  const reorder = useMutation({
+    mutationFn: async (ordered: EventSponsor[]) => {
+      await Promise.all(
+        ordered
+          .map((s, i) => [s, i] as const)
+          .filter(([s, i]) => s.sort_order !== i)
+          .map(([s, i]) => updateSponsor(orgId!, s.id, { sort_order: i })),
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sponsors", orgId, eventId] }),
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengubah urutan sponsor.").message),
+  });
+
+  const moveSponsor = (list: EventSponsor[], index: number, dir: -1 | 1) => {
+    const to = index + dir;
+    if (to < 0 || to >= list.length) return;
+    const next = [...list];
+    [next[index], next[to]] = [next[to], next[index]];
+    reorder.mutate(next);
+  };
+
   const removeSponsor = useMutation({
     mutationFn: (id: string) => deleteSponsor(orgId!, id),
     onSuccess: () => {
@@ -207,7 +281,12 @@ export default function EventMediaPage() {
         backLabel="Kelola event"
       />
 
-      <div className="grid gap-6">
+      {/* `min-w-0` on the cards, not just here: a grid track's implicit floor is
+          the widest min-content among its items, so one unshrinkable row inside
+          a card widens the track — and with it every other card — past the
+          viewport. The dashboard's `overflow-x-clip` then hides the result
+          rather than fixing it, which is how this shipped looking fine. */}
+      <div className="grid gap-6 *:min-w-0">
         {/* ---- Photo albums ---- */}
         <Card>
           <SectionHeader
@@ -318,7 +397,10 @@ export default function EventMediaPage() {
             </CardContent>
           ) : (
             <CardContent className="grid gap-5">
-              <div className="grid gap-4 md:grid-cols-[auto_1fr_1fr_auto_auto] md:items-end">
+              {/* `*:min-w-0` for the reason spelled out on CardContent: on a
+                  phone this collapses to one column, and `1fr` still floors at
+                  the min-content of the widest cell. */}
+              <div className="grid gap-4 *:min-w-0 md:grid-cols-[auto_1fr_1fr_auto_auto] md:items-end">
                 <div className="grid gap-1.5">
                   <Label className="font-semibold">Logo</Label>
                   <input
@@ -390,7 +472,9 @@ export default function EventMediaPage() {
                         tier: e.target.value as SponsorTier,
                       }))
                     }
-                    className="w-40"
+                    // Full width on a phone, where it is a row of its own;
+                    // `w-40` only makes sense beside the other four columns.
+                    className="w-full md:w-40"
                   >
                     {sponsor_tiers.map((t) => (
                       <option key={t.key} value={t.key}>
@@ -415,36 +499,82 @@ export default function EventMediaPage() {
                   Belum ada sponsor.
                 </p>
               ) : (
-                <div className="grid gap-2">
-                  {sponsors.map((s) => (
-                    <div
-                      key={s.id}
-                      className="flex items-center gap-4 rounded-lg border border-border px-3 py-2"
-                    >
-                      <span className="grid h-12 w-20 shrink-0 place-items-center rounded-md bg-[var(--bg-soft)]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={s.logo_url}
-                          alt={s.name}
-                          className="max-h-10 max-w-16 object-contain"
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-semibold">{s.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {sponsorTierLabel(s.tier)}
-                          {s.website_url ? ` · ${s.website_url}` : ""}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeSponsor.mutate(s.id)}
-                        aria-label={`Hapus ${s.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                /* Grouped by tier, because that is how the public page renders
+                   them — SponsorStrip iterates the tiers and filters within
+                   each. A flat list with arrows that cross a tier boundary
+                   would offer a move that changes nothing a visitor can see. */
+                <div className="grid gap-5 *:min-w-0">
+                  {byTier(sponsors, sponsor_tiers).map(([tier, list]) => (
+                    <section key={tier} className="grid gap-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        {sponsorTierLabel(tier)} · {list.length} logo
+                      </h3>
+                      {list.map((s, i) => (
+                        <div
+                          key={s.id}
+                          className="flex min-w-0 items-center gap-3 rounded-lg border border-border px-3 py-2"
+                        >
+                          {/* Narrower on a phone. At 80px wide the thumbnail,
+                              the gaps and three controls left ~70px for the
+                              name, which truncated every sponsor to two
+                              syllables — the one thing the row exists to show. */}
+                          <span className="grid h-10 w-12 shrink-0 place-items-center rounded-md bg-[var(--bg-soft)] sm:h-12 sm:w-20">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={s.logo_url}
+                              alt={s.name}
+                              className="max-h-8 max-w-10 object-contain sm:max-h-10 sm:max-w-16"
+                            />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold">{s.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {s.website_url || "Tanpa tautan"}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center">
+                            {/* Arrows, not a sort_order input: the organizer is
+                                arranging rows they can see, and a number that
+                                only means something relative to its neighbours
+                                makes them do the arithmetic the UI should.
+
+                                Hidden outright in a tier of one — two dead
+                                controls on every row of a one-logo tier read as
+                                broken, and there is nothing to arrange. */}
+                            {list.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSponsor(list, i, -1)}
+                                  disabled={i === 0 || reorder.isPending}
+                                  aria-label={`Naikkan ${s.name}`}
+                                  className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                >
+                                  <ArrowUp className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSponsor(list, i, 1)}
+                                  disabled={i === list.length - 1 || reorder.isPending}
+                                  aria-label={`Turunkan ${s.name}`}
+                                  className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+                                >
+                                  <ArrowDown className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeSponsor.mutate(s.id)}
+                              aria-label={`Hapus ${s.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </section>
                   ))}
                 </div>
               )}
