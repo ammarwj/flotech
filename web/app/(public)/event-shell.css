@@ -109,6 +109,14 @@
 
 .elayout { display: grid; grid-template-columns: 1fr 340px; gap: 32px; align-items: start; }
 @media (max-width: 980px) { .elayout { grid-template-columns: 1fr; } }
+/* A grid track's `1fr` still floors at its content's min-content width, so one
+   long word — a pasted URL in the event description is the usual culprit —
+   widens the column past the container and drags the whole page sideways.
+   `min-width: 0` lets the track shrink; the wrap rule gives the word somewhere
+   to break so it stops being min-content-wide in the first place. Both are
+   needed: shrinking alone just clips, wrapping alone leaves the auto floor. */
+.elayout > * { min-width: 0; }
+.elayout p, .elayout .section-sub { overflow-wrap: anywhere; }
 
 /* schedule */
 .match-day { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text-muted); margin: 24px 0 12px; }
