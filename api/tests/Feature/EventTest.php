@@ -526,4 +526,133 @@ class EventTest extends TestCase
 
         $this->assertDatabaseHas('events', ['id' => $eventId, 'status' => 'open']);
     }
+
+    // ---- description is rich text ------------------------------------------
+
+    /**
+     * > The mutator is the only sanitiser, so the STORED column is what
+     * > matters — asserting the response alone would pass even if the resource
+     * > were doing the cleaning and the row still held the script, which is
+     * > the one place it would actually be served from.
+     */
+    public function test_scripts_are_stripped_from_the_description_before_it_is_stored(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+
+        $id = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload([
+                'description' => '<p>Aman</p><script>alert(1)</script><p onclick="steal()">Klik</p>',
+            ]))
+            ->assertCreated()
+            ->json('data.id');
+
+        $stored = (string) Event::find($id)->description;
+
+        $this->assertStringNotContainsString('<script', $stored);
+        $this->assertStringNotContainsString('onclick', $stored);
+        $this->assertStringContainsString('<p>Aman</p>', $stored);
+    }
+
+    /**
+     * The guard has to sit on the attribute, not in EventController: the column
+     * has three writers already (the controller, DemoEventSeeder,
+     * events:backfill-plan) and a fourth would not fail anywhere — the row
+     * saves and the page renders, the only difference being whose script runs
+     * in every visitor's browser.
+     *
+     * Compared against the same payload through the endpoint, because "model
+     * cleans it" on its own would still pass if the request path had grown a
+     * second, looser way in.
+     */
+    public function test_the_description_is_sanitised_no_matter_which_writer_saves_it(): void
+    {
+        $user = User::factory()->create();
+        $dirty = '<p>Hai</p><script>alert(1)</script>';
+
+        $viaApi = (string) Event::find(
+            $this->actingAs($user, 'api')
+                ->postJson(
+                    "/api/v1/organizations/{$this->orgWithPlan($user)->id}/events",
+                    $this->payload(['description' => $dirty])
+                )
+                ->assertCreated()
+                ->json('data.id')
+        )->description;
+
+        // The second writer: a plain model save, standing in for the seeder and
+        // the backfill command.
+        $direct = Event::find($this->openEvent($user, $this->orgWithPlan($user)));
+        $direct->update(['description' => $dirty]);
+
+        $this->assertStringNotContainsString('<script', $viaApi);
+        $this->assertSame($viaApi, (string) $direct->fresh()->description);
+    }
+
+    /**
+     * An emptied editor emits `<p></p>`, which is 11 characters of "nothing".
+     *
+     * Stored as-is it is truthy everywhere, so the public page prints an empty
+     * paragraph instead of "Belum ada deskripsi untuk event ini." — two
+     * spellings of blank, and the branch that reads one of them is wrong.
+     * Compared against a description that is only an image: that is also
+     * text-free and must NOT be dropped, which is what tells this apart from a
+     * plain `strip_tags` check.
+     */
+    public function test_an_emptied_editor_stores_null_but_an_image_only_description_survives(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+        $id = $this->openEvent($user, $org);
+        $url = "/api/v1/organizations/{$org->id}/events/{$id}";
+
+        $this->actingAs($user, 'api')
+            ->patchJson($url, ['description' => '<p></p>'])
+            ->assertOk()
+            ->assertJsonPath('data.description', null);
+
+        $this->actingAs($user, 'api')
+            ->patchJson($url, ['description' => '<img src="https://cdn.test/poster.webp" alt="">'])
+            ->assertOk();
+
+        $this->assertStringContainsString('<img', (string) Event::find($id)->description);
+    }
+
+    /**
+     * A bare target="_blank" hands the opened tab a live `window.opener` back
+     * into flo-event. The editor sets rel itself, but an organizer posting from
+     * any other client would not — so the guarantee has to hold at the write
+     * path rather than in the toolbar.
+     */
+    public function test_outbound_links_in_a_description_are_given_target_and_rel(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+
+        $id = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload([
+                'description' => '<p><a href="https://contoh.test/aturan.pdf">Aturan</a></p>',
+            ]))
+            ->json('data.id');
+
+        $stored = (string) Event::find($id)->description;
+
+        $this->assertStringContainsString('target="_blank"', $stored);
+        $this->assertStringContainsString('noopener', $stored);
+    }
+
+    /** javascript: survives neither the editor's check nor the server's. */
+    public function test_javascript_urls_do_not_survive_the_description_sanitiser(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgWithPlan($user);
+
+        $id = $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events", $this->payload([
+                'description' => '<p><a href="javascript:alert(1)">klik</a></p>',
+            ]))
+            ->json('data.id');
+
+        $this->assertStringNotContainsString('javascript:', (string) Event::find($id)->description);
+    }
 }

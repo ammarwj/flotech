@@ -1351,11 +1351,17 @@ img { max-width: 100%; display: block; }
 .pill-strip::-webkit-scrollbar { display: none; }
 
 /* ============================================================
-   Article body (.blog-prose) — the public article page and the
-   admin editor wear the same class, which is the point: what the
-   editor shows is what the page renders. A second rule set for
-   the editor would drift, and the drift would only surface after
-   publishing.
+   Sanitised rich text (.rich-prose) — every surface that renders
+   HTML out of RichTextEditor wears this one class: the blog
+   article, the admin editor itself, and the public event's
+   "Tentang Event". That the editor and the page share it is the
+   point — what the editor shows is what the page renders, and a
+   second rule set for the editor would drift, with the drift only
+   surfacing after publishing.
+
+   It is named for the markup, not for the blog, because the
+   second caller arrived: a per-feature copy would be three
+   near-identical blocks whose headings slowly stop matching.
 
    The element selectors are deliberate. The HTML comes from the
    API as one sanitised string, so there is nowhere to hang a
@@ -1363,22 +1369,24 @@ img { max-width: 100%; display: block; }
    App\Support\HtmlSanitizer, which is what keeps this list from
    having to grow.
    ============================================================ */
-.blog-prose {
+.rich-prose {
   color: var(--text-2);
   font-size: 17px;
   line-height: 1.75;
   /* Long URLs and Indonesian compound words are the two things that push an
-     article wider than its column on a phone. */
+     article wider than its column on a phone. A pasted Drive link in an event
+     description is the same shape of problem — see .elayout in event-shell.css,
+     which has to clear the grid track's min-content floor as well. */
   overflow-wrap: break-word;
 }
-.blog-prose > :first-child { margin-top: 0; }
-.blog-prose > :last-child { margin-bottom: 0; }
+.rich-prose > :first-child { margin-top: 0; }
+.rich-prose > :last-child { margin-bottom: 0; }
 
-.blog-prose p { margin: 0 0 1.15em; }
+.rich-prose p { margin: 0 0 1.15em; }
 
-.blog-prose h2,
-.blog-prose h3,
-.blog-prose h4 {
+.rich-prose h2,
+.rich-prose h3,
+.rich-prose h4 {
   font-family: var(--font-display);
   color: var(--text);
   font-weight: 700;
@@ -1388,34 +1396,34 @@ img { max-width: 100%; display: block; }
   margin: 1.9em 0 0.6em;
   scroll-margin-top: 90px; /* clears the sticky nav when an #anchor is opened */
 }
-.blog-prose h2 { font-size: 1.55em; }
-.blog-prose h3 { font-size: 1.25em; }
-.blog-prose h4 { font-size: 1.1em; }
+.rich-prose h2 { font-size: 1.55em; }
+.rich-prose h3 { font-size: 1.25em; }
+.rich-prose h4 { font-size: 1.1em; }
 
-.blog-prose strong { color: var(--text); font-weight: 700; }
+.rich-prose strong { color: var(--text); font-weight: 700; }
 
-.blog-prose a {
+.rich-prose a {
   color: var(--brand-600);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
-.blog-prose a:hover { text-decoration-thickness: 2px; }
+.rich-prose a:hover { text-decoration-thickness: 2px; }
 
 /* The `list-style` declarations are not decoration: Tailwind's preflight sets
    `list-style: none` on every ul/ol, so without them an article's lists render
    as unmarked indented text in both the editor and the published page. */
-.blog-prose ul,
-.blog-prose ol { margin: 0 0 1.15em; padding-left: 1.4em; }
-.blog-prose ul { list-style-type: disc; }
-.blog-prose ol { list-style-type: decimal; }
+.rich-prose ul,
+.rich-prose ol { margin: 0 0 1.15em; padding-left: 1.4em; }
+.rich-prose ul { list-style-type: disc; }
+.rich-prose ol { list-style-type: decimal; }
 /* Tiptap wraps each item's text in its own <p>, which would otherwise inherit
    the paragraph margin and space a tight list out like body copy. */
-.blog-prose li > p { margin: 0; }
-.blog-prose li { margin: 0.35em 0; }
-.blog-prose li::marker { color: var(--brand-600); }
+.rich-prose li > p { margin: 0; }
+.rich-prose li { margin: 0.35em 0; }
+.rich-prose li::marker { color: var(--brand-600); }
 
-.blog-prose blockquote {
+.rich-prose blockquote {
   margin: 1.5em 0;
   padding: 2px 0 2px 18px;
   border-left: 3px solid var(--brand-500);
@@ -1423,7 +1431,7 @@ img { max-width: 100%; display: block; }
   font-style: italic;
 }
 
-.blog-prose code {
+.rich-prose code {
   font-family: var(--font-mono);
   font-size: 0.88em;
   background: var(--bg-soft);
@@ -1431,7 +1439,7 @@ img { max-width: 100%; display: block; }
   border-radius: 6px;
   padding: 1px 5px;
 }
-.blog-prose pre {
+.rich-prose pre {
   margin: 1.5em 0;
   padding: 14px 16px;
   background: var(--bg-soft);
@@ -1440,9 +1448,9 @@ img { max-width: 100%; display: block; }
   overflow-x: auto;
 }
 /* Inside a block the chip styling would draw a box inside a box. */
-.blog-prose pre code { background: none; border: 0; padding: 0; font-size: 0.9em; }
+.rich-prose pre code { background: none; border: 0; padding: 0; font-size: 0.9em; }
 
-.blog-prose img {
+.rich-prose img {
   display: block;
   max-width: 100%;
   height: auto;
@@ -1451,7 +1459,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--border);
 }
 
-.blog-prose hr {
+.rich-prose hr {
   margin: 2.2em 0;
   border: 0;
   border-top: 1px solid var(--border);
@@ -1459,8 +1467,8 @@ img { max-width: 100%; display: block; }
 
 /* The editor only. Tiptap renders an empty document as one empty <p>, which
    has no height of its own and gives the admin nothing to aim at. */
-.blog-prose.ProseMirror p.is-editor-empty:first-child::before,
-.blog-prose.ProseMirror:empty::before {
+.rich-prose.ProseMirror p.is-editor-empty:first-child::before,
+.rich-prose.ProseMirror:empty::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
   float: left;

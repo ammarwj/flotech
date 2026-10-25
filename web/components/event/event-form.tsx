@@ -26,7 +26,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,6 +59,7 @@ import {
   standingsContextOf,
 } from "@/lib/scoring";
 import { RubberFormatEditor } from "@/components/event/rubber-format-editor";
+import { RichTextEditor } from "@/components/shared/rich-text-editor";
 import type {
   ParticipantType,
   PlanSummary,
@@ -657,6 +657,11 @@ export function EventForm({
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  // Images dropped inline into the description upload while the form is still
+  // open, so Save has to wait for them: submitting first would store HTML whose
+  // <img> points at an upload that never finished.
+  const [descriptionUploading, setDescriptionUploading] = useState(false);
 
   // Client-side overrides: a key present here wins over the server error for
   // that field (`undefined`/"" = no error). Lets us validate instantly and
@@ -1833,15 +1838,16 @@ export function EventForm({
             />
             <CardContent>
               <div className="grid gap-2">
-                <Label htmlFor="desc" className="font-semibold">
-                  Tentang event
-                </Label>
-                <Textarea
-                  id="desc"
+                <Label className="font-semibold">Tentang event</Label>
+                {/* No htmlFor: the editor is a contenteditable div, not an
+                    input, so a label pointing at it would name nothing. */}
+                <RichTextEditor
                   value={v.description ?? ""}
-                  onChange={(e) => set("description", e.target.value)}
+                  onChange={(html) => set("description", html)}
+                  onBusyChange={setDescriptionUploading}
+                  imageFolder="events"
+                  minHeight={200}
                   placeholder="Jelaskan turnamen, syarat peserta, hadiah, dan informasi penting lainnya."
-                  aria-invalid={!!errorFor("description")}
                   className={invalidCls("description")}
                 />
                 <FieldError message={errorFor("description")} />
@@ -1902,7 +1908,14 @@ export function EventForm({
             <Link href={cancelHref}>Batal</Link>
           </Button>
         )}
-        <Button type="submit" size="lg" disabled={pending}>
+        {/* Banner uploads already disable their own control, but an inline
+            description image has nowhere else to block from — the only thing
+            that must not happen while one is in flight is the save. */}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={pending || descriptionUploading}
+        >
           {pending ? "Menyimpan…" : submitLabel}
         </Button>
       </div>

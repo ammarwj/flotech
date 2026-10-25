@@ -214,8 +214,11 @@ class DemoEventSeeder extends Seeder
                 'registration_close' => $regClose,
                 'location_name' => $cfg['location_name'],
                 'location_address' => $cfg['location_address'],
-                'description' => "Turnamen {$cfg['name']} terbuka untuk klub komunitas. "
-                    . 'Pendaftaran tim, jadwal pertandingan, dan klasemen dikelola lewat platform flo-event.',
+                // HTML, because the column is rich text now: plain text would
+                // survive the sanitiser untouched and then render as one
+                // unwrapped run with no paragraph spacing.
+                'description' => "<p>Turnamen {$cfg['name']} terbuka untuk klub komunitas.</p>"
+                    . '<p>Pendaftaran tim, jadwal pertandingan, dan klasemen dikelola lewat platform flo-event.</p>',
             ],
         );
     }

@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Services\Catalog;
 use App\Services\PlanGate;
+use App\Support\HtmlSanitizer;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -89,6 +91,56 @@ class Event extends Model
             'rules_config' => 'array',
             'registration_form' => 'array',
         ];
+    }
+
+    /**
+     * The public "Tentang Event" copy, as rich text.
+     *
+     * > **Invariant: `events.description` only ever holds sanitised HTML.**
+     * > That is what lets PublicEventResource ship it verbatim and the event
+     * > page render it with dangerouslySetInnerHTML — the same contract
+     * > `blog_posts.body` has, and for the same reason: sanitising on WRITE
+     * > means every reader is safe without knowing this class exists.
+     *
+     * A mutator rather than a service, because the pattern that holds the blog
+     * — one door the guard cannot be forgotten at — has no equivalent here:
+     * EventController writes the column, so do DemoEventSeeder and
+     * events:backfill-plan, and a fourth writer tomorrow would not fail
+     * anywhere. The row saves, the page renders, and the only difference is
+     * that one event now runs its organizer's script in every visitor's
+     * browser. Attached to the attribute itself, it cannot be bypassed by any
+     * of them.
+     *
+     * Blank in, null out: an editor emptied by the organizer emits `<p></p>`,
+     * and two spellings of "no description" are two branches that will
+     * disagree — the public page already decides on `ev.description` being
+     * falsy. Same call as `help_text` on registration-form fields.
+     */
+    protected function description(): Attribute
+    {
+        return Attribute::set(fn (?string $value) => [
+            'description' => self::cleanDescription($value),
+        ]);
+    }
+
+    /**
+     * Emptiness is asked of the TEXT, not of the markup: `<p></p>` is what an
+     * emptied editor emits and it is 11 characters long. The tag check is what
+     * keeps a description that is only a poster image — no caption — from being
+     * thrown away as blank, which `strip_tags` alone would do.
+     */
+    private static function cleanDescription(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $clean = HtmlSanitizer::clean($value);
+
+        $hasText = HtmlSanitizer::toText($clean) !== '';
+        $hasMedia = (bool) preg_match('/<(img|hr)\b/i', $clean);
+
+        return $hasText || $hasMedia ? $clean : null;
     }
 
     public function organization(): BelongsTo

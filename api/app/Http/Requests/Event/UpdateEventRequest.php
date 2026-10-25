@@ -42,6 +42,7 @@ class UpdateEventRequest extends FormRequest
             'location_address' => ['nullable', 'string'],
             'courts' => ['nullable', 'array', 'max:50'],
             'courts.*' => ['string', 'max:255'],
+            // Rich text; see the store request.
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
             // Same shape as the store request. The controller merges this into

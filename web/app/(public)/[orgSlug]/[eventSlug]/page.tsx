@@ -554,12 +554,21 @@ function PublicEventView() {
                     Tentang Event
                   </h2>
                 </div>
-                <p
-                  className="section-sub"
-                  style={{ whiteSpace: "pre-line", margin: 0 }}
-                >
-                  {ev.description || "Belum ada deskripsi untuk event ini."}
-                </p>
+                {/* dangerouslySetInnerHTML is safe here for the same reason it
+                    is on the article page: `events.description` only ever holds
+                    HTML that went through App\Support\HtmlSanitizer — see the
+                    mutator on the Event model, which is what makes every reader
+                    of this column safe without repeating a filter here. */}
+                {ev.description ? (
+                  <div
+                    className="rich-prose"
+                    dangerouslySetInnerHTML={{ __html: ev.description }}
+                  />
+                ) : (
+                  <p className="section-sub" style={{ margin: 0 }}>
+                    Belum ada deskripsi untuk event ini.
+                  </p>
+                )}
 
                 {ev.photos && <PhotoGallery photos={ev.photos} />}
               </div>

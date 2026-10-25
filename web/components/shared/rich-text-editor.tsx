@@ -31,7 +31,7 @@ import { compressToWebp } from "@/lib/image";
 import { cn } from "@/lib/utils";
 
 /**
- * The article body editor behind /admin/blog.
+ * The rich-text editor behind /admin/blog and an event's "Tentang Event".
  *
  * > **The toolbar and the server's allow-list are a pair.** Everything this
  * > can produce is in `HTML.Allowed` in App\Support\HtmlSanitizer; everything
@@ -41,13 +41,22 @@ import { cn } from "@/lib/utils";
  * > neither.
  *
  * Sanitising stays on the server. Doing it here instead would guard only the
- * one client that happens to run this file.
+ * one client that happens to run this file — which is exactly why the second
+ * caller could be added without touching the guarantee: `events.description`
+ * is cleaned by an Eloquent mutator, not by this toolbar.
+ *
+ * Shared rather than copied per feature. The toolbar, the allow-list it mirrors
+ * and the `.rich-prose` styling are one unit; a second editor would be a second
+ * reader of HTML.Allowed, and the two would drift the first time a button was
+ * added to one of them.
  */
 export function RichTextEditor({
   value,
   onChange,
   onBusyChange,
   placeholder = "Tulis artikelmu di sini…",
+  imageFolder = "blog",
+  minHeight = 320,
   className,
 }: {
   value: string;
@@ -55,6 +64,17 @@ export function RichTextEditor({
   /** Lets the form disable Save while an inline image is uploading. */
   onBusyChange?: (busy: boolean) => void;
   placeholder?: string;
+  /**
+   * Storage prefix for images inserted inline, so an event's poster does not
+   * land in the blog's folder. Same `folder` the rest of the uploads use.
+   */
+  imageFolder?: string;
+  /**
+   * Starting height in px. An event description is a few paragraphs where an
+   * article is a few pages, and a box that tall over a short field reads as a
+   * broken layout rather than as room to write.
+   */
+  minHeight?: number;
   className?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -86,7 +106,11 @@ export function RichTextEditor({
     content: value,
     editorProps: {
       attributes: {
-        class: "blog-prose min-h-[320px] px-4 py-3 focus:outline-none",
+        // Inline, not a Tailwind class: `min-h-[320px]` is compiled from the
+        // literal in the source, so a prop interpolated into it produces a
+        // class name that was never generated and a box with no height at all.
+        class: "rich-prose px-4 py-3 focus:outline-none",
+        style: `min-height:${minHeight}px`,
         "data-placeholder": placeholder,
       },
     },
@@ -125,7 +149,7 @@ export function RichTextEditor({
 
     setBusy(true);
     try {
-      const url = await uploadImage(await compressToWebp(file, { maxDim: 1600 }), "blog");
+      const url = await uploadImage(await compressToWebp(file, { maxDim: 1600 }), imageFolder);
       editor.chain().focus().setImage({ src: url, alt: "" }).run();
     } catch {
       toast.error("Gagal mengunggah gambar.");
@@ -161,9 +185,12 @@ export function RichTextEditor({
     return (
       <div
         className={cn(
-          "grid min-h-[380px] place-items-center rounded-lg border border-input bg-background",
+          "grid place-items-center rounded-lg border border-input bg-background",
           className
         )}
+        // +60px for the toolbar the loaded editor grows above the text area, so
+        // the form does not jump when it mounts.
+        style={{ minHeight: minHeight + 60 }}
       >
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Memuat editor" />
       </div>

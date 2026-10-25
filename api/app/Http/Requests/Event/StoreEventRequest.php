@@ -47,6 +47,8 @@ class StoreEventRequest extends FormRequest
             'location_address' => ['nullable', 'string'],
             'courts' => ['nullable', 'array', 'max:50'],
             'courts.*' => ['string', 'max:255'],
+            // Rich text. Sanitised by the mutator on the Event model, so no HTML
+            // rule here — same call as `body` on BlogPostRequest.
             'description' => ['nullable', 'string'],
             'banner_url' => ['nullable', 'string'],
             // Competition rules, namespaced because this column will get

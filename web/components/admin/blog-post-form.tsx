@@ -15,7 +15,7 @@ import {
 } from "@/lib/api/blog";
 import { parseApiError } from "@/lib/api/errors";
 import { BLOG_STATUS_LABELS, blogStatus, fromDateTimeLocal, toDateTimeLocal } from "@/lib/blog";
-import { RichTextEditor } from "@/components/admin/rich-text-editor";
+import { RichTextEditor } from "@/components/shared/rich-text-editor";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

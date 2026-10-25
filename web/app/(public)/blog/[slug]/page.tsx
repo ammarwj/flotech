@@ -129,7 +129,7 @@ export default async function BlogArticlePage({
                 column, so nothing can reach here unfiltered. Sanitising again on
                 this side would only protect the one client that runs this file. */}
             <div
-              className="blog-prose mt-8"
+              className="rich-prose mt-8"
               dangerouslySetInnerHTML={{ __html: post.body }}
             />
           </div>
