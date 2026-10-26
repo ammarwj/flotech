@@ -202,7 +202,7 @@ class RubberController extends Controller
         ], $confirm);
 
         return ApiResponse::success([
-            'match' => new MatchResource($match->fresh()->load(['homeTeam', 'awayTeam', 'rubbers'])),
+            'match' => new MatchResource($match->fresh()->loadFixtureRelations()),
             'rubbers' => RubberResource::collection($match->rubbers()->get()),
         ], $message);
     }

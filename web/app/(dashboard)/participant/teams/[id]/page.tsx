@@ -40,6 +40,7 @@ import {
 } from "@/lib/registration-form";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { ChannelPicker } from "@/components/payment/channel-picker";
+import { DiscountCodeField } from "@/components/payment/discount-code-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,7 @@ import { RosterEditor, fixedRoster, type PlayerRow } from "@/components/team/ros
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
+import type { DiscountPreview } from "@/types/api";
 
 const LOCKED = ["rejected", "disqualified", "withdrawn"];
 
@@ -83,7 +85,25 @@ export default function ManageTeamPage() {
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [channel, setChannel] = useState<string | null>(null);
-  const requiresChannel = Boolean(team?.event?.requires_payment_channel) && (team?.payment_amount ?? 0) > 0;
+  // Server-resolved, never computed here — same rule as the public forms.
+  const [applied, setApplied] = useState<DiscountPreview | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  // `payment_amount` is already net of any discount this row carries, so a
+  // retry prices itself from the stored number and a fresh code prices itself
+  // from the preview.
+  const payable = applied ? applied.amount : (team?.payment_amount ?? 0);
+  const requiresChannel = Boolean(team?.event?.requires_payment_channel) && payable > 0;
+  /**
+   * The code field is offered only while this bill carries no discount yet.
+   *
+   * Reopening payment is the same bill: the server keeps the stored snapshot
+   * and ignores whatever is sent, so an input here would take a code, say
+   * nothing, and change no number. The badge below says what was already
+   * applied instead.
+   */
+  const canApplyCode =
+    !!team && !team.discount_code && (team.payment_amount ?? 0) > 0 && !!team.event?.organization_slug;
 
   const teamMissing = missingFor(schema.team_fields, schema.team_documents, teamFields, docs);
 
@@ -192,7 +212,8 @@ export default function ManageTeamPage() {
   });
 
   const pay = useMutation({
-    mutationFn: () => payRegistration(params.id, requiresChannel ? channel! : undefined),
+    mutationFn: () =>
+      payRegistration(params.id, requiresChannel ? channel! : undefined, applied?.code),
     onSuccess: (res) => {
       if (!res.mock && res.redirect_url) {
         window.location.href = res.redirect_url;
@@ -280,8 +301,16 @@ export default function ManageTeamPage() {
               <div>
                 <h3 className="font-semibold">Biaya pendaftaran belum dibayar</h3>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Bayar {rupiah(team.payment_amount)} untuk menyelesaikan pendaftaran.
+                  Bayar {rupiah(payable)} untuk menyelesaikan pendaftaran.
                 </p>
+                {/* Already discounted: the amount above is net of it, and the
+                    code cannot be swapped — so this says what happened rather
+                    than offering a field that would change nothing. */}
+                {team.discount_code && (
+                  <p className="mt-0.5 text-sm text-[var(--success)]">
+                    Diskon {team.discount_code} &minus;{rupiah(team.discount_amount)} sudah diterapkan.
+                  </p>
+                )}
               </div>
             </div>
             <Button onClick={() => pay.mutate()} disabled={pay.isPending || (requiresChannel && !channel)}>
@@ -289,14 +318,36 @@ export default function ManageTeamPage() {
               Bayar sekarang
             </Button>
           </CardContent>
-          {requiresChannel && (
-            <CardContent className="pt-0">
-              <ChannelPicker
-                amount={team.payment_amount}
-                audience="registration"
-                value={channel}
-                onChange={setChannel}
-              />
+          {(canApplyCode || requiresChannel) && (
+            <CardContent className="grid gap-4 pt-0">
+              {canApplyCode && team.event?.organization_slug && (
+                <DiscountCodeField
+                  orgSlug={team.event.organization_slug}
+                  eventSlug={team.event.slug}
+                  category={{ categoryId: team.category_id }}
+                  price={team.payment_amount}
+                  applied={applied}
+                  disabled={pay.isPending}
+                  error={codeError}
+                  onError={setCodeError}
+                  onApply={(preview) => {
+                    setApplied(preview);
+                    // A discount moves the amount a percentage fee is taken
+                    // from, so the channel already picked is quoting a stale
+                    // one.
+                    setChannel(null);
+                  }}
+                />
+              )}
+
+              {requiresChannel && (
+                <ChannelPicker
+                  amount={payable}
+                  audience="registration"
+                  value={channel}
+                  onChange={setChannel}
+                />
+              )}
             </CardContent>
           )}
         </Card>

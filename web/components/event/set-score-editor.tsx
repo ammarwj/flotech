@@ -9,6 +9,7 @@ import { parseApiError } from "@/lib/api/errors";
 import type { MatchResultGateway } from "@/lib/match-doors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TeamTags } from "./team-tags";
 import type { Match } from "@/types/api";
 
 type SetInput = { home: string; away: string };
@@ -62,11 +63,17 @@ export function SetScoreEditor({
   return (
     <div className="grid min-w-0 gap-2">
       <div className="flex min-w-0 items-center gap-3 text-sm">
-        <span className="min-w-0 flex-1 truncate text-right font-semibold">{match.home_team?.name}</span>
+        <span className="min-w-0 flex-1 text-right font-semibold">
+          <span className="block truncate">{match.home_team?.name}</span>
+          <TeamTags tags={match.home_team?.tags} />
+        </span>
         <span className="font-extrabold tabular-nums" style={{ fontFamily: "var(--font-display)" }}>
           {homeWon} – {awayWon}
         </span>
-        <span className="min-w-0 flex-1 truncate font-semibold">{match.away_team?.name}</span>
+        <span className="min-w-0 flex-1 font-semibold">
+          <span className="block truncate">{match.away_team?.name}</span>
+          <TeamTags tags={match.away_team?.tags} />
+        </span>
       </div>
 
       {sets.map((s, i) => (

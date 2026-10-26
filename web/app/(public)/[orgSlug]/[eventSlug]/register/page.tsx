@@ -36,6 +36,7 @@ import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { ChannelPicker } from "@/components/payment/channel-picker";
+import { DiscountCodeField } from "@/components/payment/discount-code-field";
 import { compressToWebp } from "@/lib/image";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { RosterEditor, emptyPlayer, fixedRoster, type PlayerRow } from "@/components/team/roster-editor";
 import { OfficialEditor, type OfficialRow } from "@/components/team/official-editor";
 import { participantLabel } from "@/lib/scoring";
+import type { DiscountPreview } from "@/types/api";
 
 function RegisterTeamPage() {
   const params = useParams<{ orgSlug: string; eventSlug: string }>();
@@ -109,10 +111,18 @@ function RegisterTeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [channel, setChannel] = useState<string | null>(null);
-  // Open only between pressing "Kirim Pendaftaran" and choosing how to pay.
+  // Open only between pressing "Kirim Pendaftaran" and settling the payment.
   const [pickingChannel, setPickingChannel] = useState(false);
+  // Server-resolved, never computed here: the channel picker's fee is built
+  // from `applied.amount`, so a discount worked out in the browser would quote
+  // a fee on a price nobody is charged.
+  const [applied, setApplied] = useState<DiscountPreview | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const fee = selectedCategory?.registration_fee ?? 0;
-  const requiresChannel = Boolean(event?.requires_payment_channel) && fee > 0;
+  const payable = applied ? applied.amount : fee;
+  // Reads `payable`, not `fee`: a full discount leaves nothing to pay and so
+  // nothing to pick.
+  const requiresChannel = Boolean(event?.requires_payment_channel) && payable > 0;
 
   // Local blob for instant preview (dev R2 returns a non-renderable mock:// URL).
   const logoShown = logoPreview ?? (team.logo_url && /^https?:\/\//.test(team.logo_url) ? team.logo_url : null);
@@ -179,6 +189,9 @@ function RegisterTeamPage() {
           })),
         documents: docs,
         payment_channel: requiresChannel ? channel! : undefined,
+        // The code the preview accepted, never the raw text: the amount the
+        // picker quoted a fee on came from that preview.
+        discount_code: applied?.code,
       };
       return registerTeam(params.orgSlug, params.eventSlug, payload);
     },
@@ -389,11 +402,16 @@ function RegisterTeamPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
-          // Paid registration on the gateway rail: pick a channel first. The
-          // picker is a step at the end rather than a field in the middle
-          // because it prices the whole registration, and the fee only means
-          // anything once the form is actually being submitted.
-          if (requiresChannel) {
+          // Any paid registration stops here first. The step is at the end
+          // rather than a field in the middle because it prices the whole
+          // registration, and the fee only means anything once the form is
+          // actually being submitted.
+          //
+          // It opens on BOTH rails, not just the gateway one: the discount
+          // field has to be reachable when payment is a manual transfer too.
+          // The channel picker inside it is still gateway-only. Same shape as
+          // the plan checkout dialog.
+          if (fee > 0) {
             setChannel(null);
             setPickingChannel(true);
             return;
@@ -628,16 +646,40 @@ function RegisterTeamPage() {
       >
         <DialogContent>
           <DialogHeader
-            title="Pilih metode pembayaran"
+            title={requiresChannel ? "Pilih metode pembayaran" : "Konfirmasi pendaftaran"}
             description={`Biaya pendaftaran ${selectedCategory?.name ?? ""}.`.trim()}
           />
           <DialogBody>
-            <ChannelPicker
-              amount={fee}
-              audience="registration"
-              value={channel}
-              onChange={setChannel}
-            />
+            <div className="grid gap-4">
+              {resolvedCategoryId && (
+                <DiscountCodeField
+                  orgSlug={params.orgSlug}
+                  eventSlug={params.eventSlug}
+                  category={{ categoryId: resolvedCategoryId }}
+                  price={fee}
+                  applied={applied}
+                  disabled={mutation.isPending}
+                  error={codeError}
+                  onError={setCodeError}
+                  onApply={(preview) => {
+                    setApplied(preview);
+                    // A discount moves the amount a percentage fee is taken
+                    // from, so the channel already picked is quoting a stale
+                    // one.
+                    setChannel(null);
+                  }}
+                />
+              )}
+
+              {requiresChannel && (
+                <ChannelPicker
+                  amount={payable}
+                  audience="registration"
+                  value={channel}
+                  onChange={setChannel}
+                />
+              )}
+            </div>
           </DialogBody>
           <DialogFooter>
             <Button
@@ -648,10 +690,14 @@ function RegisterTeamPage() {
               Batal
             </Button>
             <Button
-              disabled={!channel || mutation.isPending}
+              disabled={(requiresChannel && !channel) || mutation.isPending}
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Mengirim…" : "Daftar & Bayar"}
+              {mutation.isPending
+                ? "Mengirim…"
+                : payable > 0
+                  ? "Daftar & Bayar"
+                  : "Kirim Pendaftaran"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasManualPayment;
+use App\Support\RegistrationForm;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,6 +29,14 @@ class Team extends Model
         'manager_user_id',
         'payment_status',
         'payment_amount',
+        // The discount a participant typed, if any. A SNAPSHOT beside the FK,
+        // not a lookup through it: an issued invoice must keep reading what was
+        // actually charged even after the organizer edits or deletes the code.
+        'event_discount_code_id',
+        'discount_code',
+        'discount_type',
+        'discount_value',
+        'discount_amount',
         'invoice_number',
         'receipt_number',
         'platform_fee',
@@ -60,6 +69,8 @@ class Team extends Model
             'paid_at' => 'datetime',
             'payment_amount' => 'decimal:2',
             'platform_fee' => 'decimal:2',
+            'discount_value' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'gateway_fee' => 'decimal:2',
             // Part of gateway_fee, not on top of it — never add it into gross.
             'gateway_tax' => 'decimal:2',
@@ -92,9 +103,57 @@ class Team extends Model
         return $this->belongsTo(EventCategory::class, 'category_id');
     }
 
+    /**
+     * The code row this registration used, for display only.
+     *
+     * Nullable and `nullOnDelete`: the four snapshot columns are what every
+     * reader actually prints, so a deleted code leaves the bill intact.
+     */
+    public function discountCode(): BelongsTo
+    {
+        return $this->belongsTo(EventDiscountCode::class, 'event_discount_code_id');
+    }
+
     public function players(): HasMany
     {
         return $this->hasMany(Player::class);
+    }
+
+    /**
+     * What this entry prints under its name on a fixture card — the club a
+     * badminton pair represents, the school a squad is from.
+     *
+     * The team's own answers and its players' are folded into ONE list, in that
+     * order, because that is what the surface is: a card has a line under a
+     * name, not a line per person. Tunggal/ganda is the case this exists for and
+     * there the club is typed on the player row — `teams` holds a derived name
+     * and nothing else (see TeamRosterService::syncPlayers) — while a squad
+     * event would ask the team. Reading only one of the two would answer right
+     * for half the formats, and a card that quietly prints nothing is the kind
+     * of failure the organizer finds out about from a spectator.
+     *
+     * Deduplicated by RegistrationForm::scheduleTags() per row and again across
+     * rows here: both players of a pair naming the same club is one club.
+     *
+     * Returns [] when the rosters are not loaded rather than querying for them:
+     * every fixture reader goes through GameMatch::fixtureRelations(), which
+     * loads them only for an event that ticked the flag, and a lazy load here
+     * would be 316 silent queries on a 158-fixture category (preventLazyLoading
+     * is off, so it would not even throw).
+     *
+     * @return list<string>
+     */
+    public function scheduleTags(RegistrationForm $form): array
+    {
+        $tags = $form->scheduleTags('team', $this->custom_fields);
+
+        if ($this->relationLoaded('players')) {
+            foreach ($this->players as $player) {
+                $tags = [...$tags, ...$form->scheduleTags('player', $player->custom_fields)];
+            }
+        }
+
+        return array_values(array_unique($tags));
     }
 
     /** The bench — pelatih, manajer, ofisial. Never Players; see TeamOfficial. */

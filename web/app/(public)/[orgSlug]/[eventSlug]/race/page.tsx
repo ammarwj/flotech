@@ -28,6 +28,7 @@ import {
 import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import { ChannelPicker } from "@/components/payment/channel-picker";
+import { DiscountCodeField } from "@/components/payment/discount-code-field";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -44,6 +45,7 @@ import {
   DialogHeader,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { DiscountPreview } from "@/types/api";
 
 /**
  * The runner's entry form.
@@ -126,8 +128,16 @@ function RaceRegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>(null);
   const [pickingChannel, setPickingChannel] = useState(false);
+  // Server-resolved, never computed here: the channel picker's fee is built
+  // from `applied.amount`, so a discount worked out in the browser would quote
+  // a fee on a price nobody is charged.
+  const [applied, setApplied] = useState<DiscountPreview | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
-  const requiresChannel = Boolean(event?.requires_payment_channel) && (price ?? 0) > 0;
+  const payable = applied ? applied.amount : (price ?? 0);
+  // Reads `payable`, not `price`: a full discount leaves nothing to pay and so
+  // nothing to pick.
+  const requiresChannel = Boolean(event?.requires_payment_channel) && payable > 0;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -156,6 +166,9 @@ function RaceRegisterPage() {
             file_name: d.file_name ?? null,
           })),
         payment_channel: channel,
+        // The code the preview accepted, never the raw text: the amount the
+        // picker quoted a fee on came from that preview.
+        discount_code: applied?.code,
       }),
     onSuccess: (res) => {
       // A paid gateway entry hands off to Midtrans; everything else lands on
@@ -550,10 +563,12 @@ function RaceRegisterPage() {
           }
           onClick={() => {
             setError(null);
-            // The channel picker opens only when there is actually a gateway
-            // charge: a free entry and a manual transfer both settle without
-            // one, and the server refuses a channel it did not ask for.
-            if (requiresChannel) {
+            // Any paid entry stops here first. The dialog opens on BOTH rails,
+            // not only the gateway one: the discount field has to be reachable
+            // when payment is a manual transfer too. The channel picker inside
+            // it is still gateway-only, and the server refuses a channel it did
+            // not ask for.
+            if ((price ?? 0) > 0) {
               setPickingChannel(true);
               return;
             }
@@ -569,19 +584,43 @@ function RaceRegisterPage() {
         <Dialog open onOpenChange={(open) => !open && setPickingChannel(false)}>
           <DialogContent>
             <DialogHeader
-              title="Pilih metode pembayaran"
+              title={requiresChannel ? "Pilih metode pembayaran" : "Konfirmasi pendaftaran"}
               description="Biaya layanan dan biaya gateway mengikuti metode yang kamu pilih."
             />
             <DialogBody>
-              <ChannelPicker
-                amount={price ?? 0}
-                // The fourth audience, not `registration`: that rate is priced
-                // for a whole squad entering at once. See
-                // PaymentFeeCalculator::AUDIENCE_RACE_ENTRY.
-                audience="race_entry"
-                value={channel}
-                onChange={setChannel}
-              />
+              <div className="grid gap-4">
+                {resolvedCategoryId && (
+                  <DiscountCodeField
+                    orgSlug={params.orgSlug}
+                    eventSlug={params.eventSlug}
+                    category={{ raceCategoryId: resolvedCategoryId }}
+                    price={price ?? 0}
+                    applied={applied}
+                    disabled={mutation.isPending}
+                    error={codeError}
+                    onError={setCodeError}
+                    onApply={(preview) => {
+                      setApplied(preview);
+                      // A discount moves the amount a percentage fee is taken
+                      // from, so the channel already picked is quoting a stale
+                      // one.
+                      setChannel(null);
+                    }}
+                  />
+                )}
+
+                {requiresChannel && (
+                  <ChannelPicker
+                    amount={payable}
+                    // The fourth audience, not `registration`: that rate is
+                    // priced for a whole squad entering at once. See
+                    // PaymentFeeCalculator::AUDIENCE_RACE_ENTRY.
+                    audience="race_entry"
+                    value={channel}
+                    onChange={setChannel}
+                  />
+                )}
+              </div>
             </DialogBody>
             <DialogFooter>
               <Button
@@ -591,9 +630,12 @@ function RaceRegisterPage() {
               >
                 Batal
               </Button>
-              <Button onClick={() => mutation.mutate()} disabled={!channel || mutation.isPending}>
+              <Button
+                onClick={() => mutation.mutate()}
+                disabled={(requiresChannel && !channel) || mutation.isPending}
+              >
                 {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Bayar
+                {payable > 0 ? "Bayar" : "Kirim Pendaftaran"}
               </Button>
             </DialogFooter>
           </DialogContent>

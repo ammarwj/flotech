@@ -8,6 +8,7 @@ import { parseApiError } from "@/lib/api/errors";
 import type { MatchResultGateway } from "@/lib/match-doors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TeamTags } from "./team-tags";
 import type { Match } from "@/types/api";
 
 /**
@@ -86,8 +87,9 @@ export function GoalScoreEditor({
   return (
     <>
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold">
-          {match.home_team?.name ?? "TBD"}
+        <span className="min-w-0 flex-1 text-right text-sm font-semibold">
+          <span className="block truncate">{match.home_team?.name ?? "TBD"}</span>
+          <TeamTags tags={match.home_team?.tags} />
         </span>
         <Input
           type="number"
@@ -106,8 +108,9 @@ export function GoalScoreEditor({
           className="h-9 w-14 text-center"
           aria-label={`Skor ${match.away_team?.name ?? "tim tamu"}`}
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {match.away_team?.name ?? "TBD"}
+        <span className="min-w-0 flex-1 text-sm font-semibold">
+          <span className="block truncate">{match.away_team?.name ?? "TBD"}</span>
+          <TeamTags tags={match.away_team?.tags} />
         </span>
         {/* The actions travel as one block. Left loose in the wrapping row they
             break up one at a time, so a phone gets "Simpan" stranded on a line

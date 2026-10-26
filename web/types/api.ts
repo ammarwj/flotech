@@ -139,6 +139,41 @@ export interface DiscountPreview {
   amount: number;
 }
 
+/**
+ * A discount code a participant may type while registering for ONE event,
+ * managed by the organizer at /organizer/events/{id}/discount-codes.
+ *
+ * The participant twin of `DiscountCode`, and a separate type for the same
+ * reasons it is a separate table: it is event-keyed and organizer-owned, it has
+ * no plan scope at all, and `once_per_user` replaces `once_per_organization`.
+ * `redeemed_count`/`reserved_count` are derived from the registrations
+ * themselves (there is no counter column), which is why deleting a code is safe
+ * — every bill snapshots what it charged.
+ *
+ * `DiscountPreview` is shared with plan checkout rather than duplicated: both
+ * answer "what would this code do to this price".
+ */
+export interface EventDiscountCode {
+  id: string;
+  event_id: string;
+  code: string;
+  description: string | null;
+  discount_type: DiscountType;
+  discount_value: number;
+  /** Ceiling for percent codes; null = uncapped, ignored for fixed ones. */
+  max_discount: number | null;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  /** null = no quota. */
+  max_redemptions: number | null;
+  once_per_user: boolean;
+  redeemed_count: number;
+  /** Unpaid registrations holding a quota slot. They release on their own. */
+  reserved_count: number;
+  created_at?: string;
+}
+
 /** Avatar gradients are looked up in `lib/landing.ts`; the API only stores the key. */
 export type AvatarPreset = "brand" | "purple" | "pink" | "success" | "amber" | "blue";
 
@@ -603,6 +638,17 @@ export interface MatchTeamRef {
   id: string;
   name: string;
   logo_url: string | null;
+  /**
+   * What prints under the name on a fixture card — the club a badminton pair
+   * represents, the school a squad is from. Values only, already joined to the
+   * schema and deduplicated by the server (RegistrationForm::scheduleTags), so
+   * a card renders the list it is handed and never matches answers to fields
+   * itself.
+   *
+   * Empty for an event that ticked nothing, which is most of them. Optional on
+   * the wire so a cached payload from before this existed still parses.
+   */
+  tags?: string[];
 }
 
 /**
@@ -1136,6 +1182,12 @@ export interface SportEvent {
   id: string;
   organization_id: string;
   /**
+   * The public URL's first segment. Only present when the event was loaded
+   * with its organization — the participant's own payment page needs it to
+   * preview a discount code against the public endpoint.
+   */
+  organization_slug?: string;
+  /**
    * The plan this event runs on. `plan_id` is always present so the client can
    * tell "no plan" from "not loaded"; `plan` only when eager-loaded. Every
    * entitlement the dashboard gates on is read from here — see lib/plan.ts.
@@ -1497,6 +1549,16 @@ export interface Team extends ManualPaymentFields {
   payment_status: PaymentStatus;
   payment_amount: number;
   platform_fee: number;
+  /**
+   * The discount the participant typed, if any. A snapshot: it keeps reading
+   * what was actually charged even after the organizer edits or deletes the
+   * code. The net price above is already net of it, so the catalogue price is
+   * `net + discount_amount` — the same arithmetic the PDF does.
+   */
+  discount_code: string | null;
+  discount_type: DiscountType | null;
+  discount_value: number | null;
+  discount_amount: number;
   /** Null on a free registration — no bill, so no document to download. */
   invoice_number: string | null;
   receipt_number: string | null;
@@ -1669,6 +1731,16 @@ export interface RaceEntry extends ManualPaymentFields {
   period_name: string;
   price: number;
   platform_fee: number;
+  /**
+   * The discount the participant typed, if any. A snapshot: it keeps reading
+   * what was actually charged even after the organizer edits or deletes the
+   * code. The net price above is already net of it, so the catalogue price is
+   * `net + discount_amount` — the same arithmetic the PDF does.
+   */
+  discount_code: string | null;
+  discount_type: DiscountType | null;
+  discount_value: number | null;
+  discount_amount: number;
   gateway_fee: number;
   gateway_tax: number;
   service_fee: number;

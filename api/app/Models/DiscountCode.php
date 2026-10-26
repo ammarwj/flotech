@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasDiscountFormula;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
 
 /**
  * A discount an organizer may type at plan checkout.
@@ -22,18 +22,14 @@ use Illuminate\Support\Str;
  * for "paid" and two for "released" (the Midtrans webhook and
  * plan-orders:expire-manual), and the drift between them is invisible until a
  * code reports itself exhausted having never been used.
+ *
+ * The arithmetic lives in HasDiscountFormula, shared with EventDiscountCode —
+ * the participant-facing twin of this row. Everything else is deliberately not
+ * shared; see that trait's docblock.
  */
 class DiscountCode extends Model
 {
-    use HasUuids;
-
-    /**
-     * The closed value set for `discount_type`, read by DiscountCodeRequest
-     * through Rule::in — same single-source pattern as Testimonial::PRESETS.
-     *
-     * @var list<string>
-     */
-    public const TYPES = ['percent', 'fixed'];
+    use HasDiscountFormula, HasUuids;
 
     protected $fillable = [
         'code',
@@ -61,12 +57,6 @@ class DiscountCode extends Model
         ];
     }
 
-    /** Codes are case-insensitive to the buyer; the column holds one spelling. */
-    public static function normalize(string $code): string
-    {
-        return Str::upper(trim($code));
-    }
-
     /**
      * The plans this code applies to — an EMPTY relation means every plan.
      *
@@ -89,25 +79,5 @@ class DiscountCode extends Model
     public function appliesToEveryPlan(): bool
     {
         return $this->plans()->doesntExist();
-    }
-
-    /**
-     * What comes off `$price`. The only place either formula lives.
-     *
-     * Clamped to [0, $price] on both ends: a discount may zero a bill (that is
-     * the point of a 100% code) but never make one negative, and a fixed code
-     * worth more than the plan is a free plan, not a refund.
-     */
-    public function discountFor(float $price): float
-    {
-        $discount = $this->discount_type === 'percent'
-            ? round($price * (float) $this->discount_value / 100, 2)
-            : (float) $this->discount_value;
-
-        if ($this->discount_type === 'percent' && $this->max_discount !== null) {
-            $discount = min($discount, (float) $this->max_discount);
-        }
-
-        return round(max(0.0, min($discount, $price)), 2);
     }
 }

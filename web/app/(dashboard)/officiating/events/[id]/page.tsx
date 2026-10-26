@@ -52,6 +52,7 @@ import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { GoalScoreEditor } from "@/components/event/goal-score-editor";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { PillTabs } from "@/components/event/pill-tabs";
+import { TeamTags } from "@/components/event/team-tags";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -396,7 +397,10 @@ function CrewMatchCard({
         )}
       >
         <Crest name={name} logoUrl={team?.logo_url} />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</span>
+        <span className="min-w-0 flex-1 text-sm font-semibold">
+          <span className="block truncate">{name}</span>
+          <TeamTags tags={team?.tags} />
+        </span>
         {sets && (
           <span
             className="flex shrink-0 gap-1.5 tabular-nums"

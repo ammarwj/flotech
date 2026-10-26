@@ -69,10 +69,26 @@ class MatchResource extends JsonResource
             return null;
         }
 
+        // Lewat kategori, dan null kalau relasinya tidak dimuat: setiap pembaca
+        // jadwal lewat GameMatch::fixtureRelations() yang memuatnya, dan menarik
+        // event per baris di sini adalah 316 query diam-diam yang justru
+        // dihindari daftar relasi itu.
+        $event = $this->category?->event;
+
         return [
             'id' => $team->id,
             'name' => $team->name,
             'logo_url' => $team->logo_url,
+            // Apa yang tercetak di bawah namanya — nama PB, sekolah, komunitas.
+            // Digabung di server, bukan dengan mengirim `custom_fields` mentah
+            // lalu membiarkan kartu menjodohkannya dengan skema: itu bug
+            // `effective_payment_method` lagi, dan di sini payload mentahnya
+            // juga akan memuat jawaban yang tidak pernah diminta terbit.
+            // Kosong untuk event yang tidak mencentang apa pun, jadi kartu cukup
+            // merender daftar yang diterimanya.
+            'tags' => $event
+                ? $team->scheduleTags($event->registrationForm())
+                : [],
         ];
     }
 }

@@ -22,8 +22,15 @@ Halo **{{ $entry->full_name }}**, pendaftaranmu untuk **{{ $event->name }}** sud
         // snapshot, never the relation — the period may since have been
         // repriced or deleted.
         'Periode' => $entry->period_name,
-        'Biaya pendaftaran' => $rp($entry->price),
+        // The catalogue price, reconstructed: `price` is already net of the
+        // discount, and the row below has to be a discount *off* something.
+        // Same arithmetic as the PDF.
+        'Biaya pendaftaran' => $rp((float) $entry->price + (float) $entry->discount_amount),
     ];
+
+    if ((float) $entry->discount_amount > 0) {
+        $rows['Diskon '.$entry->discount_code] = '-'.$rp($entry->discount_amount);
+    }
 
     // One runner, one place, so there is no arithmetic to spell out here the
     // way the ticket mail does for a basket of three.

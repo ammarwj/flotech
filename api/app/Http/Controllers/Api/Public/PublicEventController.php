@@ -18,9 +18,11 @@ use App\Notifications\NewTeamRegistered;
 use App\Notifications\TeamRegistrationSubmitted;
 use App\Services\Catalog;
 use App\Services\DisciplineService;
+use App\Services\EventDiscountCodeService;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
 use App\Services\RegistrationService;
+use App\Support\RacePricing;
 use App\Services\StandingService;
 use App\Services\TeamRosterService;
 use App\Support\ApiResponse;
@@ -40,6 +42,8 @@ class PublicEventController extends Controller
         protected PlanGate $gate,
         protected RegistrationService $registration,
         protected TeamRosterService $roster,
+        protected EventDiscountCodeService $discounts,
+        protected RacePricing $pricing,
     ) {}
 
     /**
@@ -146,9 +150,9 @@ class PublicEventController extends Controller
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         $matches = $category->matches()
-            ->with($category->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
-                : ['homeTeam', 'awayTeam', 'category.event'])
+            // Daftar yang sama dengan jadwal organizer — lihat
+            // GameMatch::fixtureRelations().
+            ->with(GameMatch::fixtureRelations($category))
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')
@@ -333,6 +337,90 @@ class PublicEventController extends Controller
     }
 
     /**
+     * What a discount code would do to this registration's price, before paying.
+     *
+     * Both participant rails in one endpoint, because they differ only in where
+     * the catalogue price comes from: a competition category stores
+     * `registration_fee`, a race category's price is whichever sale window the
+     * server's clock is in. The gate itself is EventDiscountCodeService::resolve()
+     * — the very call register() makes — so a code can never be accepted here
+     * and refused at the till. Same reasoning as upgradeOptions().
+     *
+     * Behind `auth:api` like both register routes: the once-per-user rule is
+     * keyed to the account, so there is nothing to preview without one.
+     */
+    public function discountPreview(Request $request, string $orgSlug, string $eventSlug): JsonResponse
+    {
+        $event = $this->resolve($orgSlug, $eventSlug);
+
+        $data = $request->validate([
+            'discount_code' => ['required', 'string', 'max:40'],
+            // Exactly one of the two, and which one says which rail this is.
+            'category_id' => ['nullable', 'uuid', 'required_without:race_category_id'],
+            'race_category_id' => ['nullable', 'uuid', 'required_without:category_id'],
+        ]);
+
+        $price = isset($data['race_category_id'])
+            ? $this->racePrice($event, $data['race_category_id'])
+            : $this->registrationFee($event, $data['category_id']);
+
+        if ($price === null) {
+            return ApiResponse::error(
+                'Kategori tidak ditemukan.',
+                ['discount_code' => ['Pilih kategori dulu sebelum memakai kode diskon.']],
+                422,
+            );
+        }
+
+        // Throws ValidationException (422, field `discount_code`) for every
+        // refusal, which is what the form binds inline.
+        $resolved = $this->discounts->resolve(
+            $data['discount_code'],
+            $event,
+            $price,
+            auth('api')->id(),
+        );
+
+        return ApiResponse::success([
+            'code' => $resolved['code']->code,
+            'description' => $resolved['code']->description,
+            'discount_type' => $resolved['code']->discount_type,
+            'discount_value' => (float) $resolved['code']->discount_value,
+            'discount_amount' => $resolved['discount'],
+            // The catalogue price the discount came off, and the net the client
+            // must hand to the channel picker. The client never computes a
+            // discount itself: a fee previewed over a price nobody is charged is
+            // the `effective_payment_method` bug in another shape.
+            'price' => $price,
+            'amount' => $resolved['amount'],
+        ]);
+    }
+
+    /** This competition category's own fee, or null when it is not this event's. */
+    protected function registrationFee(Event $event, string $categoryId): ?float
+    {
+        $category = $event->categories()->find($categoryId);
+
+        return $category ? (float) $category->registration_fee : null;
+    }
+
+    /**
+     * This race category's price in the window currently open.
+     *
+     * Through RacePricing, never a stored column: the price is whichever window
+     * the server's clock is in, and quote() throws (422) when none is open —
+     * which is the right answer here too, since there is nothing to discount.
+     */
+    protected function racePrice(Event $event, string $categoryId): ?float
+    {
+        $category = $event->raceCategories()
+            ->with(['prices', 'event.racePeriods'])
+            ->find($categoryId);
+
+        return $category ? (float) $this->pricing->quote($category)['price'] : null;
+    }
+
+    /**
      * Register a team for the event (open to the public; links to the
      * authenticated user as manager when a token is provided).
      */
@@ -418,7 +506,11 @@ class PublicEventController extends Controller
 
         // Charge the registration fee when the event has one; free events are
         // settled immediately inside startPayment().
-        $payment = $this->registration->startPayment($team, $data['payment_channel'] ?? null);
+        $payment = $this->registration->startPayment(
+            $team,
+            $data['payment_channel'] ?? null,
+            $data['discount_code'] ?? null,
+        );
 
         $this->announce($team, $org);
 

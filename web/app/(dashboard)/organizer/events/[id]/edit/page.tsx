@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Eye, CalendarClock, ClipboardList, Images } from "lucide-react";
+import { Trash2, Eye, CalendarClock, ClipboardList, Images, TicketPercent } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -218,6 +218,15 @@ export default function EditEventPage() {
               <Link href={`/organizer/events/${eventId}/registration-form`}>
                 <ClipboardList className="h-4 w-4" />
                 Formulir Pendaftaran
+              </Link>
+            </Button>
+            {/* Deliberately NOT gated on `isRace`, unlike the schedule: both
+                participant rails read these codes — a team paying a
+                registration fee and a runner paying an entry fee. */}
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/discount-codes`}>
+                <TicketPercent className="h-4 w-4" />
+                Kode Diskon
               </Link>
             </Button>
             <Button asChild variant="outline">

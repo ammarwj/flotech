@@ -27,6 +27,7 @@ class RegistrationService
         protected PaymentRails $rails,
         protected PaymentFeeCalculator $fees,
         protected DocumentNumberService $numbers,
+        protected EventDiscountCodeService $discounts,
     ) {}
 
     /** @param  'invoice'|'receipt'  $kind */
@@ -50,11 +51,15 @@ class RegistrationService
      * (MyTeamController::pay, PublicEventController::register) would otherwise
      * have to duplicate "is this manual or free" to know whether to demand it.
      *
+     * `$discountCode` is optional and only read on the FIRST attempt — see
+     * discountedAmount().
+     *
      * @return array{snap_token: string|null, redirect_url: string|null, mock: bool, payment_method: string, bank_account: BankAccount|null}
      *
      * @throws PaymentException when the organizer can't collect, or a gateway payment has no channel
+     * @throws \Illuminate\Validation\ValidationException when the discount code cannot be used
      */
-    public function startPayment(Team $team, ?string $channel = null): array
+    public function startPayment(Team $team, ?string $channel = null, ?string $discountCode = null): array
     {
         // The rail is read off the event now, so the caller no longer passes
         // the organization in. PublicEventController::register() sets the
@@ -64,6 +69,14 @@ class RegistrationService
         $org = $event->organization;
         $amount = (float) $team->category->registration_fee;
 
+        // Before destinationFor() and before any fee is computed, and that
+        // ordering is the invariant: forChannel() takes a percentage of
+        // $amount, and destinationFor() branches on $amount <= 0. A discount
+        // applied afterwards leaves `gateway_fee` disagreeing with what
+        // Midtrans is actually charged.
+        $discount = $this->discountedAmount($team, $amount, $discountCode);
+        $amount = $discount['amount'];
+
         // Throws when the event has no gateway entitlement, or the gateway is
         // off and the organizer never set up a bank account. A non-null account
         // is itself the signal that this payment is a manual one.
@@ -71,6 +84,16 @@ class RegistrationService
         $manual = $bank !== null;
 
         if ($amount <= 0) {
+            // A 100% code lands here, which is why the snapshot is written
+            // before settling rather than only in the update() below: without
+            // it the registration goes through free while the row claims it was
+            // never discounted, and the code's quota is never spent. No
+            // document is issued, the same rule a genuinely free category
+            // follows — a Rp 0 invoice claims a transaction that never happened.
+            if ($discount['columns'] !== []) {
+                $team->update(['payment_amount' => $amount, ...$discount['columns']]);
+            }
+
             $this->markPaid($team);
 
             return $this->result(null, null, true, 'gateway', null);
@@ -104,7 +127,12 @@ class RegistrationService
 
         $team->update([
             'payment_status' => 'unpaid',
+            // Net of the discount. That net is also what the wallet is
+            // credited (WalletService::creditRegistration reads this column),
+            // which is how "the organizer bears the discount" holds with no
+            // second rule anywhere.
             'payment_amount' => $amount,
+            ...$discount['columns'],
             // Kept across a retry: reopening payment is the same bill, so it
             // must not burn a second invoice number. Free entries get none.
             'invoice_number' => $team->invoice_number ?? ($amount > 0 ? $this->number('invoice') : null),
@@ -144,6 +172,49 @@ class RegistrationService
         }
 
         return $this->result($snap['token'], $snap['redirect_url'], $snap['mock'], 'gateway', null);
+    }
+
+    /**
+     * The registration's price after any discount, plus the columns that record it.
+     *
+     * **A retry reads the stored snapshot and ignores whatever code was sent.**
+     * Reopening payment is the same bill: resolving again would spend a second
+     * quota slot and could change the amount on an invoice already issued. Same
+     * reasoning as `invoice_number` being kept across a retry a few lines below.
+     *
+     * The first attempt is the only one that resolves, and `columns` is empty
+     * when no code was given — so a registration without one writes nothing and
+     * behaves exactly as it did before this feature existed.
+     *
+     * @return array{amount: float, columns: array<string, mixed>}
+     *
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    protected function discountedAmount(Team $team, float $amount, ?string $code): array
+    {
+        if ($team->event_discount_code_id !== null) {
+            return [
+                'amount' => round($amount - (float) $team->discount_amount, 2),
+                'columns' => [],
+            ];
+        }
+
+        $resolved = $this->discounts->resolve($code, $team->event, $amount, $team->manager_user_id);
+
+        if ($resolved === null) {
+            return ['amount' => $amount, 'columns' => []];
+        }
+
+        return [
+            'amount' => $resolved['amount'],
+            'columns' => [
+                'event_discount_code_id' => $resolved['code']->id,
+                'discount_code' => $resolved['code']->code,
+                'discount_type' => $resolved['code']->discount_type,
+                'discount_value' => $resolved['code']->discount_value,
+                'discount_amount' => $resolved['discount'],
+            ],
+        ];
     }
 
     /**

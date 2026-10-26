@@ -861,7 +861,7 @@ class MatchController extends Controller
         ]);
 
         return ApiResponse::success(
-            new MatchResource($match->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($match->loadFixtureRelations()),
             $decider ? 'Laga penentuan ditambahkan' : 'Pertandingan ditambahkan',
             201,
         );
@@ -985,7 +985,7 @@ class MatchController extends Controller
         $this->results->apply($matchModel, $payload, $autoConfirm);
 
         return ApiResponse::success(
-            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->fresh()->loadFixtureRelations()),
             $finished
                 ? ($autoConfirm ? 'Hasil disimpan & dikonfirmasi' : 'Hasil disimpan — menunggu konfirmasi admin')
                 : 'Pertandingan diperbarui',
@@ -1027,7 +1027,7 @@ class MatchController extends Controller
         ]);
 
         return ApiResponse::success(
-            new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->loadFixtureRelations()),
             'Jadwal pertandingan diperbarui',
         );
     }
@@ -1148,7 +1148,7 @@ class MatchController extends Controller
         }
 
         return ApiResponse::success(
-            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->fresh()->loadFixtureRelations()),
             $cleared > 0
                 ? "Tim diperbarui — {$cleared} pertandingan babak berikutnya direset"
                 : 'Tim di slot bracket diperbarui',
@@ -1260,7 +1260,7 @@ class MatchController extends Controller
             $matchModel->update(['confirmed_at' => null]);
 
             return ApiResponse::success(
-                new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+                new MatchResource($matchModel->loadFixtureRelations()),
                 'Konfirmasi dibatalkan',
             );
         }
@@ -1273,7 +1273,7 @@ class MatchController extends Controller
         $this->propagateFrom($matchModel->fresh());
 
         return ApiResponse::success(
-            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->fresh()->loadFixtureRelations()),
             'Hasil dikonfirmasi',
         );
     }
@@ -1326,7 +1326,7 @@ class MatchController extends Controller
         // the bracket a second time and clearing a slot that was already reset.
         if ($matchModel->status === $validated['status']) {
             return ApiResponse::success(
-                new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+                new MatchResource($matchModel->loadFixtureRelations()),
                 'Status pertandingan tidak berubah',
             );
         }
@@ -1352,7 +1352,7 @@ class MatchController extends Controller
         };
 
         return ApiResponse::success(
-            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->fresh()->loadFixtureRelations()),
             $cleared > 0
                 ? "{$message} — {$cleared} pertandingan babak berikutnya direset"
                 : $message,
@@ -1454,16 +1454,9 @@ class MatchController extends Controller
     protected function orderedMatches(EventCategory $category)
     {
         return $category->matches()
-            // Rosters ride along so a squad tie can name its lineups without a
-            // query per partai — see MatchResource.
-            //
-            // `category.event` ikut karena blok `clock` menurunkan aturannya dari
-            // keduanya. Tanpa itu MatchResource menariknya per baris: 158 laga di
-            // satu kategori = 316 query tambahan, dan `preventLazyLoading` tidak
-            // menyala sehingga ia jalan diam-diam alih-alih melempar.
-            ->with($category->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
-                : ['homeTeam', 'awayTeam', 'category.event'])
+            // Satu daftar, dipakai keempat pembaca jadwal — lihat
+            // GameMatch::fixtureRelations() untuk alasan tiap relasinya.
+            ->with(GameMatch::fixtureRelations($category))
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

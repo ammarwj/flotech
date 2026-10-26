@@ -21,6 +21,12 @@ class EventResource extends JsonResource
         return [
             'id' => $this->id,
             'organization_id' => $this->organization_id,
+            // The public URL's first segment, for the few authenticated pages
+            // that have to reach a public endpoint — the participant's own
+            // registration-fee payment previews a discount code against
+            // `public/events/{orgSlug}/{eventSlug}/discount-preview`. Only when
+            // eager-loaded, so no caller pays for a join it does not read.
+            'organization_slug' => $this->whenLoaded('organization', fn () => $this->organization->slug),
             // The plan this event runs on — every entitlement the dashboard
             // gates on is read from here. Only present when eager-loaded;
             // `plan_id` is always there so the client can tell "no plan" from

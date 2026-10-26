@@ -56,6 +56,14 @@ export interface CustomField {
    * for the same reason — the backend normalizes identically.
    */
   in_album?: boolean;
+  /**
+   * Whether the answer prints under the entrant's name on a fixture card —
+   * schedule and match detail, organizer's and public alike. A third flag
+   * rather than a reading of `is_public`: a card has one line of room under a
+   * name, so a club name belongs there and a date of birth an organizer is
+   * happy to publish does not. Absent-is-false like the other two.
+   */
+  in_schedule?: boolean;
   /** Only meaningful for `select`; [] everywhere else. */
   options: string[];
   /**

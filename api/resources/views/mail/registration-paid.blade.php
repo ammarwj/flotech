@@ -17,8 +17,15 @@ Slot tim kamu aman. Tidak ada lagi yang perlu dibayar untuk pendaftaran ini.
     $rows = [
         'Event' => $event->name,
         'Tim' => $team->name,
-        'Biaya pendaftaran' => $rp($team->payment_amount),
+        // The catalogue fee, reconstructed: `payment_amount` is already net of
+        // the discount, and the row below has to be a discount *off* something.
+        // Same arithmetic as the PDF.
+        'Biaya pendaftaran' => $rp((float) $team->payment_amount + (float) $team->discount_amount),
     ];
+
+    if ((float) $team->discount_amount > 0) {
+        $rows['Diskon '.$team->discount_code] = '-'.$rp($team->discount_amount);
+    }
 
     if ((float) $team->service_fee > 0) {
         $rows['Biaya layanan'] = $rp($team->service_fee);

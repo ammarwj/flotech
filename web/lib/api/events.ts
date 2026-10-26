@@ -321,6 +321,12 @@ export interface RegisterTeamPayload {
   documents?: TeamDocument[];
   /** Required when the category fee is > 0 and the event's rail is gateway. */
   payment_channel?: string;
+  /**
+   * Optional. Send only a code the preview accepted — an unpreviewed string is
+   * not a code, and the amount the channel picker quoted came from that
+   * preview.
+   */
+  discount_code?: string;
 }
 
 export async function registerTeam(
@@ -424,13 +430,22 @@ export async function withdrawMyTeam(teamId: string): Promise<Team> {
   return data.data;
 }
 
+/**
+ * Reopen payment for an unpaid registration fee.
+ *
+ * `discountCode` is read only on the FIRST attempt: once the row carries a
+ * discount snapshot the server keeps it and ignores whatever is sent, because
+ * reopening payment is the same bill — it must not spend a second quota slot or
+ * change what an issued invoice says.
+ */
 export async function payRegistration(
   teamId: string,
-  paymentChannel?: string
+  paymentChannel?: string,
+  discountCode?: string
 ): Promise<PayRegistrationResult> {
   const { data } = await apiClient.post<ApiEnvelope<PayRegistrationResult>>(
     `/my-teams/${teamId}/pay`,
-    { payment_channel: paymentChannel }
+    { payment_channel: paymentChannel, discount_code: discountCode }
   );
   return data.data;
 }

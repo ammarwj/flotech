@@ -100,6 +100,7 @@ import { MatchStatsEditor } from "@/components/event/match-stats-editor";
 import { GoalScoreEditor } from "@/components/event/goal-score-editor";
 import { organizerResultGateway, organizerStatsGateway } from "@/lib/match-doors";
 import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
+import { TeamTags } from "@/components/event/team-tags";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { RubberScoreEditor } from "@/components/event/rubber-score-editor";
 import { MatchCalendar } from "@/components/event/match-calendar";
@@ -1256,16 +1257,18 @@ function MatchCard({
           disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate text-right font-medium">
-            {match.home_team?.name ?? "TBD"}
+          <span className="min-w-0 flex-1 text-right font-medium">
+            <span className="block truncate">{match.home_team?.name ?? "TBD"}</span>
+            <TeamTags tags={match.home_team?.tags} />
           </span>
           <span className="text-xs">
             {match.home_score !== null && match.away_score !== null
               ? `${match.home_score}–${match.away_score}`
               : "vs"}
           </span>
-          <span className="min-w-0 flex-1 truncate font-medium">
-            {match.away_team?.name ?? "TBD"}
+          <span className="min-w-0 flex-1 font-medium">
+            <span className="block truncate">{match.away_team?.name ?? "TBD"}</span>
+            <TeamTags tags={match.away_team?.tags} />
           </span>
           {removeBtn}
         </div>
@@ -1289,7 +1292,10 @@ function MatchCard({
           disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3">
-          <span className="flex-1 font-semibold">{match.home_team.name}</span>
+          <span className="min-w-0 flex-1 font-semibold">
+            <span className="block truncate">{match.home_team.name}</span>
+            <TeamTags tags={match.home_team.tags} />
+          </span>
           {removeBtn}
         </div>
       </Card>
@@ -1311,12 +1317,14 @@ function MatchCard({
           disciplineRules={disciplineRules}
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate text-right font-medium">
-            {match.home_team?.name ?? "TBD"}
+          <span className="min-w-0 flex-1 text-right font-medium">
+            <span className="block truncate">{match.home_team?.name ?? "TBD"}</span>
+            <TeamTags tags={match.home_team?.tags} />
           </span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
-          <span className="min-w-0 flex-1 truncate font-medium">
-            {match.away_team?.name ?? "TBD"}
+          <span className="min-w-0 flex-1 font-medium">
+            <span className="block truncate">{match.away_team?.name ?? "TBD"}</span>
+            <TeamTags tags={match.away_team?.tags} />
           </span>
         </div>
         <div className="mt-3 flex items-start justify-between gap-2 border-t border-border pt-3">

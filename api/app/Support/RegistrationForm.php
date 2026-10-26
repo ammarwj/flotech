@@ -18,12 +18,14 @@ use App\Models\Event;
  * go through is what stops them drifting. Everything here is read-only; the
  * writing side is EventController::syncRegistrationForm().
  *
- * A field also carries two independent visibility flags: `is_public`, which
- * decides whether the answers appear on the public event page, and `in_album`,
- * which decides whether the field gets a row on the printed player album. They
- * are deliberately not one flag — the album is a sheet panitia hand out at the
- * venue, and a birthplace an organizer is happy to print on it is not the same
- * decision as publishing it on a URL anyone can index.
+ * A field also carries three independent visibility flags: `is_public`, which
+ * decides whether the answers appear on the public event page, `in_album`,
+ * which decides whether the field gets a row on the printed player album, and
+ * `in_schedule`, which decides whether the answer is printed beside the entrant's
+ * name on a fixture card. They are deliberately not one flag — the album is a
+ * sheet panitia hand out at the venue, and a birthplace an organizer is happy to
+ * print on it is not the same decision as publishing it on a URL anyone can
+ * index; and a fixture card has room for a club name, not for a date of birth.
  *
  * Documents deliberately have neither flag:
  * they are uploaded files -- an ID card, a birth certificate -- and publishing
@@ -320,6 +322,67 @@ final class RegistrationForm
     }
 
     /**
+     * The answers one entrant's row contributes beside their name on a fixture
+     * card — a club name under "PB. Uncrown Medan", a school, a community.
+     *
+     * **Values only, no labels, and blanks dropped.** That is the whole
+     * difference from the other two readers and it is what the surface is:
+     * a fixture card has one line of room under a name, and "Nama PB: PB.
+     * Uncrown Medan" spends half of it saying what the reader can already see.
+     * publicAnswers() keeps labels because a squad dialog is a list of
+     * questions; albumRows() keeps blanks because a printed sheet is filled in
+     * by hand. Neither is true here, which is why this is its own method rather
+     * than a third flag on one of them.
+     *
+     * Deduplicated: a doubles pair whose two players both typed the same club
+     * is one club, and printing it twice under one entry name is noise the
+     * organizer has no control over.
+     *
+     * @param  array<string, mixed>|null  $answers
+     * @return list<string>
+     */
+    public function scheduleTags(string $section, ?array $answers): array
+    {
+        $answers ??= [];
+        $out = [];
+
+        foreach ($this->fieldsFor($section) as $field) {
+            if (! ($field['in_schedule'] ?? false)) {
+                continue;
+            }
+
+            $value = $answers[$field['key']] ?? null;
+
+            if (! is_scalar($value) || trim((string) $value) === '') {
+                continue;
+            }
+
+            $out[] = self::displayValue($field, trim((string) $value));
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Whether any field in a section is printed on fixture cards at all.
+     *
+     * Asked before a query, not after: the rosters a fixture's tags are read
+     * from are only worth eager loading for an event that opted in, and a
+     * category of 158 fixtures would otherwise pull two squads per row for a
+     * flag nobody ticked. See GameMatch::fixtureRelations(), the only caller.
+     */
+    public function hasScheduleTags(string $section): bool
+    {
+        foreach ($this->fieldsFor($section) as $field) {
+            if ($field['in_schedule'] ?? false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * One stored answer as a human reads it, for every surface that prints one.
      *
      * Only `consent` needs translating: it stores an instant, and "2026-10-17T
@@ -451,6 +514,7 @@ final class RegistrationForm
             $rules[$section.'.*.required'] = ['nullable', 'boolean'];
             $rules[$section.'.*.is_public'] = ['nullable', 'boolean'];
             $rules[$section.'.*.in_album'] = ['nullable', 'boolean'];
+            $rules[$section.'.*.in_schedule'] = ['nullable', 'boolean'];
             $rules[$section.'.*.options'] = ['nullable', 'array', 'max:50'];
             $rules[$section.'.*.options.*'] = ['required', 'string', 'max:100'];
             $rules[$section.'.*.help_text'] = ['nullable', 'string', 'max:500'];
@@ -517,6 +581,11 @@ final class RegistrationForm
                 // a schema saved before this flag existed must not start
                 // growing rows on a sheet the organizer already designed.
                 'in_album' => (bool) ($row['in_album'] ?? false),
+                // Absent reads as "not on the card", the same reasoning again:
+                // a schema saved before this flag existed must not start
+                // printing answers under names on a schedule the organizer and
+                // every visitor already read.
+                'in_schedule' => (bool) ($row['in_schedule'] ?? false),
                 // Options only mean anything for a select; carrying them on the
                 // other types would let a stale list reappear if the organizer
                 // switched the type back.

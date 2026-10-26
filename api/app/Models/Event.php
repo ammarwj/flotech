@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Catalog;
 use App\Services\PlanGate;
 use App\Support\HtmlSanitizer;
+use App\Support\RegistrationForm;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +15,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Event extends Model
 {
     use HasUuids;
+
+    /**
+     * This event's normalized registration form, resolved at most once per
+     * loaded instance. See registrationForm(), the only reader and writer.
+     */
+    protected ?RegistrationForm $registrationFormMemo = null;
 
     /**
      * Which status an event may move to next, keyed by where it is now.
@@ -223,6 +230,18 @@ class Event extends Model
         return $this->hasMany(RaceEntry::class);
     }
 
+    /**
+     * Discount codes a participant may type while registering for this event.
+     *
+     * Both rails read them — team registration fees and fun run entries — so
+     * this is not gated on the sport. Deliberately unordered beyond the default:
+     * the organizer's list is short and `latest()` is applied where it is shown.
+     */
+    public function discountCodes(): HasMany
+    {
+        return $this->hasMany(EventDiscountCode::class);
+    }
+
     public function ticketCategories(): HasMany
     {
         return $this->hasMany(TicketCategory::class);
@@ -284,6 +303,24 @@ class Event extends Model
     public function sportDefinition(): ?array
     {
         return Catalog::sport($this->sport_type);
+    }
+
+    /**
+     * This event's registration form, normalized once per loaded event.
+     *
+     * Memoized on the INSTANCE, which is the only lifetime that is safe to
+     * memoize here — see the DisciplineService note on why a service-level memo
+     * outlives the request that filled it. An Event object lives as long as the
+     * response being built, and the column it reads cannot change inside one,
+     * so a per-fixture caller cannot see a stale schema.
+     *
+     * It exists because MatchResource asks per row: a 158-fixture category would
+     * otherwise re-clean the same six lists 316 times to print the same club
+     * names.
+     */
+    public function registrationForm(): RegistrationForm
+    {
+        return $this->registrationFormMemo ??= RegistrationForm::forEvent($this);
     }
 
     public function isSetBased(): bool

@@ -62,6 +62,7 @@ const EMPTY_FIELD: CustomField = {
   // they want it on the public page, not remember to say they don't.
   is_public: false,
   in_album: false,
+  in_schedule: false,
   options: [],
   help_text: null,
   help_image_url: null,
@@ -575,7 +576,39 @@ function FieldRows({
                   </span>
                 </label>
               )}
+
+              {/* Offered on every section, unlike the album box above: the card
+                  prints one line under an ENTRY's name, and the team's answers
+                  and its players' are folded into that one line by the server
+                  (Team::scheduleTags). Which list the question lives in is
+                  exactly what differs between a squad event asking the team and
+                  a tunggal/ganda category asking the player — in both cases the
+                  answer lands on the same line. */}
+              <label className="flex w-fit items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={row.in_schedule ?? false}
+                  onChange={(e) =>
+                    onChange(section, i, { in_schedule: e.target.checked })
+                  }
+                />
+                <span className="inline-flex items-center gap-1.5">
+                  Tampilkan di jadwal
+                </span>
+              </label>
             </div>
+
+            {/* Said here rather than left to be discovered from the schedule: a
+                card has one line, and three ticked fields spend it on a list
+                nobody can read at a glance. */}
+            {row.in_schedule && (
+              <p className="text-xs text-muted-foreground">
+                Jawabannya dicetak di bawah nama peserta pada kartu jadwal —
+                tanpa label, jadi pilih field yang berdiri sendiri seperti nama
+                klub. Jawaban kosong tidak dicetak.
+              </p>
+            )}
 
             <FieldGuidance
               row={row}

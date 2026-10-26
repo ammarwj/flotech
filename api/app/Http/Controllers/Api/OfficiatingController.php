@@ -8,6 +8,7 @@ use App\Http\Resources\EventResource;
 use App\Http\Resources\MatchResource;
 use App\Models\Event;
 use App\Models\EventPersonnel;
+use App\Models\GameMatch;
 use App\Services\DisciplineService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -101,9 +102,9 @@ class OfficiatingController extends Controller
         $categoryModel = $eventModel->categories()->findOrFail($category);
 
         $matches = $categoryModel->matches()
-            ->with($categoryModel->usesRubbers()
-                ? ['homeTeam.players', 'awayTeam.players', 'rubbers', 'category.event']
-                : ['homeTeam', 'awayTeam', 'category.event'])
+            // Daftar yang sama dengan jadwal organizer — lihat
+            // GameMatch::fixtureRelations().
+            ->with(GameMatch::fixtureRelations($categoryModel))
             ->orderByRaw("coalesce(stage, '') asc")
             ->orderBy('round')
             ->orderBy('order')

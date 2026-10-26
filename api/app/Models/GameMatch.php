@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\RubberService;
+use App\Support\RegistrationForm;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -136,6 +137,62 @@ class GameMatch extends Model
             );
             $match->clock_started_at = null;
         });
+    }
+
+    /**
+     * What a fixture has to carry to render as a card, for every reader of a
+     * whole category's schedule.
+     *
+     * Written once because there are four of them — the organizer's schedule,
+     * the public one, the officiating crew's, and a single fixture read cold —
+     * and they must agree: a list that looks right on one screen and is missing
+     * the club names on another is the "two readers of one rule" bug this
+     * codebase keeps refusing. The three that existed had already been pasted
+     * three times.
+     *
+     * `category.event` is load-bearing twice over: the `clock` block derives its
+     * rules from both, and the schedule tags below are read off the event's
+     * registration form. Without it MatchResource pulls it per row — 158
+     * fixtures = 316 silent extra queries, since preventLazyLoading is off.
+     *
+     * The rosters are the one conditional part, and both conditions are about
+     * cost, not correctness: a racket squad tie names its partai lineups from
+     * them, and an event whose form prints a player answer on the card reads
+     * them for that. An event that does neither must not pay for two squads per
+     * fixture.
+     *
+     * @return list<string>
+     */
+    public static function fixtureRelations(EventCategory $category): array
+    {
+        $needsRosters = $category->usesRubbers()
+            || RegistrationForm::forEvent($category->event)->hasScheduleTags('player');
+
+        return [
+            ...($needsRosters ? ['homeTeam.players', 'awayTeam.players'] : ['homeTeam', 'awayTeam']),
+            ...($category->usesRubbers() ? ['rubbers'] : []),
+            'category.event',
+        ];
+    }
+
+    /**
+     * fixtureRelations() for ONE already-fetched fixture — every door that
+     * answers with a single card after writing to it.
+     *
+     * Needed because those doors cannot ask before the query: the category is
+     * what decides which relations are wanted, and they are handed a match id.
+     * So the rule is applied after the fact, through the same method, rather
+     * than each door guessing: a card that loses its club names the moment a
+     * score is saved, and gets them back on the next refetch, is exactly the
+     * half-application this avoids.
+     */
+    public function loadFixtureRelations(): static
+    {
+        $this->loadMissing('category.event');
+
+        return $this->category
+            ? $this->load(self::fixtureRelations($this->category))
+            : $this->load(['homeTeam', 'awayTeam']);
     }
 
     public function event(): BelongsTo

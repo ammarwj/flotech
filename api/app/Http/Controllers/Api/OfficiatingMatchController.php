@@ -87,7 +87,7 @@ class OfficiatingMatchController extends Controller
         $this->results->apply($matchModel, $payload, false);
 
         return ApiResponse::success(
-            new MatchResource($matchModel->fresh()->load(['homeTeam', 'awayTeam'])),
+            new MatchResource($matchModel->fresh()->loadFixtureRelations()),
             $payload['status'] === 'finished'
                 ? 'Hasil disimpan — menunggu konfirmasi admin'
                 : 'Pertandingan diperbarui',

@@ -67,6 +67,7 @@ class RaceEntryService
      * settlement, and markPaid() mints the QR the same way for the same reason.
      *
      * @param  array{full_name: string, email: string, phone?: string|null, gender?: string|null, birth_date?: string|null, emergency_contact_name?: string|null, emergency_contact_phone?: string|null, emergency_contact_relation?: string|null, custom_fields?: array<string, mixed>|null}  $runner
+     * @param  array{code: \App\Models\EventDiscountCode, discount: float, amount: float}|null  $discount  already resolved by the controller
      *
      * @throws PaymentException when nothing is on sale, or this category is not
      */
@@ -82,11 +83,17 @@ class RaceEntryService
         float $serviceFee = 0.0,
         float $gatewayTax = 0.0,
         ?Carbon $at = null,
+        ?array $discount = null,
     ): RaceEntry {
         $quote = $this->pricing->quote($category, $at);
-        $price = $quote['price'];
+        // Net of the discount the controller already resolved. Resolved THERE
+        // rather than here because it has to happen before the fee breakdown,
+        // which is also the controller's — and because a refused code must burn
+        // no invoice number, the same reason the quote itself is taken before
+        // anything is written.
+        $price = $discount ? $discount['amount'] : $quote['price'];
 
-        return DB::transaction(function () use ($category, $runner, $orderId, $userId, $quote, $price, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee, $gatewayTax) {
+        return DB::transaction(function () use ($category, $runner, $orderId, $userId, $quote, $price, $paymentMethod, $deadline, $paymentChannel, $gatewayFee, $serviceFee, $gatewayTax, $discount) {
             // The reservation, mirroring TicketService: an unpaid entry really
             // is holding a place, which is what race-entries:expire-manual
             // gives back when nobody pays for it.
@@ -109,7 +116,21 @@ class RaceEntryService
                 // two are what the receipt reads.
                 'race_period_id' => $quote['period']->id,
                 'period_name' => $quote['period']->name,
+                // Net of any discount. That net is also what the wallet is
+                // credited (WalletService::creditRaceEntry reads this column),
+                // which is how "the organizer bears the discount" holds with no
+                // second rule anywhere.
                 'price' => $price,
+
+                // The discount snapshot, beside the FK for the same reason the
+                // period's name sits beside `race_period_id`: the code may be
+                // edited or deleted, and a receipt already issued must not
+                // change what it says.
+                'event_discount_code_id' => $discount['code']->id ?? null,
+                'discount_code' => $discount['code']->code ?? null,
+                'discount_type' => $discount['code']->discount_type ?? null,
+                'discount_value' => $discount['code']->discount_value ?? null,
+                'discount_amount' => $discount['discount'] ?? 0,
 
                 // A free entry has no bill, so it gets no document — a Rp 0
                 // invoice claims a transaction that never happened.

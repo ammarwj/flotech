@@ -40,6 +40,15 @@ class RaceEntryResource extends JsonResource
             'price' => (float) $this->price,
 
             'platform_fee' => (float) $this->platform_fee,
+            // The discount a participant typed, if any. A snapshot: it keeps
+            // reading what was actually charged even after the organizer edits
+            // or deletes the code. The net price above is already net of it, so
+            // the catalogue price is reconstructed as net + discount_amount —
+            // the same arithmetic the PDF does.
+            'discount_code' => $this->discount_code,
+            'discount_type' => $this->discount_type,
+            'discount_value' => $this->discount_value === null ? null : (float) $this->discount_value,
+            'discount_amount' => (float) $this->discount_amount,
             // What the runner is actually charged, on top of `price` — see
             // RaceEntry::getGrossAmountAttribute(). Zero on the manual rail,
             // which never carries a gateway or service fee.

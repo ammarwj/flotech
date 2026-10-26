@@ -38,6 +38,13 @@ class RegisterTeamRequest extends FormRequest
             // startPayment(); the organizer's offline entry ignores it.
             'payment_channel' => ['nullable', 'string'],
 
+            // Optional, and only the public route reads it. Deliberately no
+            // `exists` rule: EventDiscountCodeService owns a different refusal
+            // message per reason (not found, outside its window, quota spent,
+            // already used by this account), and `exists` would replace all of
+            // them with "tidak valid". Same call as PlanOrder\CheckoutRequest.
+            'discount_code' => ['nullable', 'string', 'max:40'],
+
             // Roster, bench, documents and custom-field answers. Shared with
             // MyTeamController@update so the two cannot drift.
             ...TeamPayloadRules::make('nullable'),

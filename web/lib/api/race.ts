@@ -223,6 +223,12 @@ export interface RegisterRaceEntryPayload {
     file_size_bytes?: number | null;
   }[];
   payment_channel?: string | null;
+  /**
+   * Optional. Send only a code the preview accepted — an unpreviewed string is
+   * not a code, and the amount the channel picker quoted came from that
+   * preview.
+   */
+  discount_code?: string;
 }
 
 /**

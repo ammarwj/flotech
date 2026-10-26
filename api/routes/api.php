@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
 use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\EventDiscountCodeController;
 use App\Http\Controllers\Api\EventMediaController;
 use App\Http\Controllers\Api\EventPersonnelController;
 use App\Http\Controllers\Api\EventViewStatController;
@@ -200,6 +201,11 @@ Route::prefix('v1')->group(function () {
         // it, and that link is the only way they reach it in "Tim Saya" later.
         // A team registered anonymously would belong to nobody.
         Route::post('register', [PublicEventController::class, 'register'])->middleware('auth:api');
+        // What a discount code would do to this registration's price, for both
+        // participant rails. Behind auth:api like the two register routes, for
+        // the same reason: the once-per-user rule is keyed to the account.
+        Route::post('discount-preview', [PublicEventController::class, 'discountPreview'])
+            ->middleware('auth:api');
         // Schedule, standings & leaderboard are per competition category.
         Route::get('categories/{categorySlug}/matches', [PublicEventController::class, 'matches']);
         Route::get('categories/{categorySlug}/standings', [PublicEventController::class, 'standings']);
@@ -529,6 +535,15 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/race-categories', [RaceCategoryController::class, 'store']);
             Route::patch('race-categories/{raceCategory}', [RaceCategoryController::class, 'update']);
             Route::delete('race-categories/{raceCategory}', [RaceCategoryController::class, 'destroy']);
+
+            // Discount codes a participant may type while registering. Both
+            // rails read them (registration fees and fun run entries), so these
+            // are not gated on the sport. Plain `tenant` like the two category
+            // blocks above: this is a price list, not a payment.
+            Route::get('events/{event}/discount-codes', [EventDiscountCodeController::class, 'index']);
+            Route::post('events/{event}/discount-codes', [EventDiscountCodeController::class, 'store']);
+            Route::patch('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'update']);
+            Route::delete('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'destroy']);
 
             // Printable QR poster pointing at the public ticket shop — taped up
             // at the venue. Plain `tenant`, no org.admin: it carries no buyer

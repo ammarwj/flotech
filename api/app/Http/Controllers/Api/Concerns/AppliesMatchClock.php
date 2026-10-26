@@ -54,7 +54,7 @@ trait AppliesMatchClock
         };
 
         return ApiResponse::success(
-            new MatchResource($match->load(['homeTeam', 'awayTeam', 'category.event'])),
+            new MatchResource($match->loadFixtureRelations()),
             $message,
         );
     }

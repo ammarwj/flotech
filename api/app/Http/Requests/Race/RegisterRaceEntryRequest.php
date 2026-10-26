@@ -67,6 +67,11 @@ class RegisterRaceEntryRequest extends FormRequest
             'documents.*.file_size_bytes' => ['nullable', 'integer', 'min:0'],
 
             'payment_channel' => ['nullable', 'string', 'max:30'],
+
+            // Optional. Deliberately no `exists` rule: EventDiscountCodeService
+            // owns a different refusal message per reason, and `exists` would
+            // replace all of them with "tidak valid".
+            'discount_code' => ['nullable', 'string', 'max:40'],
         ];
     }
 

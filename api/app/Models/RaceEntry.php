@@ -53,6 +53,14 @@ class RaceEntry extends Model
         // buyer picked beforehand, which the gateway fee was computed from.
         'payment_type',
         'platform_fee',
+        // The discount a participant typed, if any. A SNAPSHOT beside the FK,
+        // not a lookup through it: an issued invoice must keep reading what was
+        // actually charged even after the organizer edits or deletes the code.
+        'event_discount_code_id',
+        'discount_code',
+        'discount_type',
+        'discount_value',
+        'discount_amount',
         'gateway_fee',
         'gateway_tax',
         'service_fee',
@@ -85,6 +93,8 @@ class RaceEntry extends Model
             'birth_date' => 'date',
             'price' => 'decimal:2',
             'platform_fee' => 'decimal:2',
+            'discount_value' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'gateway_fee' => 'decimal:2',
             // Part of gateway_fee, not on top of it — never add it into gross.
             'gateway_tax' => 'decimal:2',
@@ -124,6 +134,17 @@ class RaceEntry extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(RaceCategory::class, 'race_category_id');
+    }
+
+    /**
+     * The code row this entry used, for display only.
+     *
+     * Nullable and `nullOnDelete`: the four snapshot columns are what every
+     * reader actually prints, so a deleted code leaves the bill intact.
+     */
+    public function discountCode(): BelongsTo
+    {
+        return $this->belongsTo(EventDiscountCode::class, 'event_discount_code_id');
     }
 
     /**

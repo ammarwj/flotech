@@ -62,7 +62,7 @@ class LineupApprovalController extends Controller
         };
 
         return ApiResponse::success([
-            'match' => new MatchResource($matchModel->load(['homeTeam', 'awayTeam'])),
+            'match' => new MatchResource($matchModel->loadFixtureRelations()),
             'event' => [
                 'id' => $matchModel->event_id,
                 'timezone' => $this->event($request)->timezone,

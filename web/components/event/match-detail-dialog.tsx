@@ -12,6 +12,7 @@ import { useCatalog } from "@/lib/hooks/use-catalog";
 import { useEventBase } from "@/lib/event-base";
 import { useEventTimezone } from "./event-timezone";
 import { PublicStatusBadge } from "./public-status-badge";
+import { TeamTags } from "./team-tags";
 import { cn } from "@/lib/utils";
 import { rubberLineup, setsText } from "@/lib/scoring";
 import type {
@@ -151,6 +152,7 @@ export function MatchDetailDialog({
           <TeamLine
             name={match.home_team?.name ?? "TBD"}
             logoUrl={match.home_team?.logo_url}
+            tags={match.home_team?.tags}
             dimmed={!!winner && winner !== match.home_team_id}
           />
           <div className="shrink-0 text-center">
@@ -169,6 +171,7 @@ export function MatchDetailDialog({
           <TeamLine
             name={match.away_team?.name ?? "TBD"}
             logoUrl={match.away_team?.logo_url}
+            tags={match.away_team?.tags}
             dimmed={!!winner && winner !== match.away_team_id}
             align="right"
           />
@@ -279,11 +282,14 @@ function RubberLine({ rubber }: { rubber: MatchRubber }) {
 function TeamLine({
   name,
   logoUrl,
+  tags,
   dimmed,
   align = "left",
 }: {
   name: string;
   logoUrl?: string | null;
+  /** Club, school, community — see TeamTags. Undefined renders nothing. */
+  tags?: string[];
   dimmed: boolean;
   align?: "left" | "right";
 }) {
@@ -309,7 +315,10 @@ function TeamLine({
           style={{ width: 30, height: 30, borderRadius: 8, background: crestGradient(name) }}
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{name}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{name}</span>
+        <TeamTags tags={tags} />
+      </span>
     </div>
   );
 }

@@ -12,6 +12,7 @@ use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceEntry;
 use App\Services\Catalog;
+use App\Services\EventDiscountCodeService;
 use App\Services\MidtransService;
 use App\Services\ParticipantDocumentService;
 use App\Services\PaymentFeeCalculator;
@@ -44,6 +45,7 @@ class PublicRaceController extends Controller
         protected PaymentRails $rails,
         protected PaymentFeeCalculator $fees,
         protected ParticipantDocumentService $documents,
+        protected EventDiscountCodeService $discounts,
     ) {}
 
     /**
@@ -177,6 +179,20 @@ class PublicRaceController extends Controller
         $quote = $this->pricing->quote($category);
         $price = $quote['price'];
 
+        // Before destinationFor() and before the fee breakdown, and that
+        // ordering is the invariant: forChannel() takes a percentage of the
+        // amount, and destinationFor() branches on amount <= 0. A discount
+        // applied afterwards leaves `gateway_fee` disagreeing with what
+        // Midtrans is actually charged. Refuses 422 on field `discount_code`
+        // before any row exists, so a rejected code burns no invoice number.
+        $discount = $this->discounts->resolve(
+            $data['discount_code'] ?? null,
+            $event,
+            $price,
+            auth('api')->id(),
+        );
+        $price = $discount ? $discount['amount'] : $price;
+
         if ($denied = $this->assertFormComplete($event, $data)) {
             return $denied;
         }
@@ -221,7 +237,7 @@ class PublicRaceController extends Controller
         // One transaction so a half-made entry leaves nothing behind: either
         // the runner's documents are all stored or the place they were holding
         // is never taken. Same reasoning as the team registration form.
-        $entry = DB::transaction(function () use ($category, $data, $orderId, $manual, $channel, $gatewayFee, $serviceFee, $gatewayTax) {
+        $entry = DB::transaction(function () use ($category, $data, $orderId, $manual, $channel, $gatewayFee, $serviceFee, $gatewayTax, $discount) {
             $entry = $this->entries->hold(
                 $category,
                 [
@@ -243,6 +259,8 @@ class PublicRaceController extends Controller
                 $gatewayFee,
                 $serviceFee,
                 $gatewayTax,
+                null,
+                $discount,
             );
 
             foreach ($data['documents'] ?? [] as $doc) {

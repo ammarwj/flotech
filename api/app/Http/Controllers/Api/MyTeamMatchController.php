@@ -45,9 +45,10 @@ class MyTeamMatchController extends Controller
 
         $matches = GameMatch::where('category_id', $model->category_id)
             ->where(fn ($q) => $q->where('home_team_id', $model->id)->orWhere('away_team_id', $model->id))
-            // `category.event` untuk blok `clock` di MatchResource — tanpa itu
-            // ia ditarik per baris.
-            ->with(['homeTeam', 'awayTeam', 'category.event'])
+            // Daftar yang sama dengan jadwal organizer — lihat
+            // GameMatch::fixtureRelations(). Kategorinya sudah diketahui dari
+            // timnya, jadi tidak perlu ditanya setelah query.
+            ->with(GameMatch::fixtureRelations($model->category))
             ->orderByRaw('scheduled_at is null, scheduled_at')
             ->orderBy('round')
             ->orderBy('order')
@@ -158,7 +159,7 @@ class MyTeamMatchController extends Controller
 
         return [
             'team' => $this->teamRef($team),
-            'match' => new MatchResource($match->load(['homeTeam', 'awayTeam'])),
+            'match' => new MatchResource($match->loadFixtureRelations()),
             'lineup' => new MatchLineupResource($lineup),
             'bans' => $discipline['bans'],
             'discipline_rules' => $discipline['rules'],
@@ -208,7 +209,9 @@ class MyTeamMatchController extends Controller
 
     protected function team(string $team): Team
     {
-        return $this->scope()->with('event')->findOrFail($team);
+        // `category.event` karena `GameMatch::fixtureRelations()` diturunkan dari
+        // kategori tim ini, dan form pendaftarannya ada di event-nya.
+        return $this->scope()->with(['event', 'category.event'])->findOrFail($team);
     }
 
     /**

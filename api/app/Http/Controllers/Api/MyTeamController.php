@@ -32,7 +32,7 @@ class MyTeamController extends Controller
     public function index(): JsonResponse
     {
         $teams = $this->scope()
-            ->with(['event', 'category', 'players.documents', 'officials.documents', 'documents'])
+            ->with(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])
             ->latest('registered_at')
             ->get();
 
@@ -44,7 +44,7 @@ class MyTeamController extends Controller
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'category', 'players.documents', 'officials.documents', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -109,7 +109,7 @@ class MyTeamController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'Data tim diperbarui',
         );
     }
@@ -135,16 +135,28 @@ class MyTeamController extends Controller
      */
     public function pay(Request $request, string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event', 'category'])->findOrFail($team);
+        $model = $this->scope()->with(['event.organization', 'category'])->findOrFail($team);
 
         if ($model->payment_status === 'paid') {
             return ApiResponse::error('Pendaftaran ini sudah dibayar.', null, 422);
         }
 
-        $payment = $this->registration->startPayment($model, $request->string('payment_channel')->toString() ?: null);
+        $data = $request->validate([
+            'payment_channel' => ['nullable', 'string'],
+            // Read only on the first attempt — startPayment() keeps the stored
+            // snapshot on a retry, so reopening a discounted bill cannot spend
+            // a second quota slot or change what the invoice already says.
+            'discount_code' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $payment = $this->registration->startPayment(
+            $model,
+            $data['payment_channel'] ?? null,
+            $data['discount_code'] ?? null,
+        );
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            'team' => new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -169,7 +181,7 @@ class MyTeamController extends Controller
         $this->registration->submitProof($model, $data['payment_proof_url']);
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
     }

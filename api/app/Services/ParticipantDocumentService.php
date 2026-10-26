@@ -8,6 +8,7 @@ use App\Models\Team;
 use App\Models\TicketOrder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Barryvdh\DomPDF\PDF as DomPdf;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -69,6 +70,22 @@ class ParticipantDocumentService
         return $this->pdf($kind, $order)->download($this->filename($kind, $order));
     }
 
+    /**
+     * The same document as HTML, before dompdf gets it.
+     *
+     * Public for the reason TicketPosterService::html() is: dompdf output is
+     * compressed streams, so a test holding the bytes can only say that
+     * *something* rendered — and that assertion stays green when the document
+     * stops printing a discount row, or prints the net price where the
+     * catalogue one belongs.
+     *
+     * @param  'invoice'|'receipt'  $kind
+     */
+    public function html(string $kind, TicketOrder|Team|RaceEntry $order): string
+    {
+        return $this->view($kind, $order)->render();
+    }
+
     protected function label(string $kind): string
     {
         return $kind === 'receipt' ? 'Kwitansi' : 'Invoice';
@@ -76,7 +93,13 @@ class ParticipantDocumentService
 
     protected function pdf(string $kind, TicketOrder|Team|RaceEntry $order): DomPdf
     {
-        return Pdf::loadView("pdf.participant-{$kind}", [
+        return Pdf::loadHTML($this->html($kind, $order))->setPaper('a4');
+    }
+
+    /** The view, resolved once so html() and pdf() cannot render differently. */
+    protected function view(string $kind, TicketOrder|Team|RaceEntry $order): View
+    {
+        return view("pdf.participant-{$kind}", [
             'order' => $order,
             'issuer' => config('billing'),
             // The row stores the tax apart from the fee, so the document shows
@@ -95,7 +118,7 @@ class ParticipantDocumentService
                 ? Carbon::parse($d)->timezone(config('wallet.timezone'))->locale('id')->translatedFormat('d F Y')
                 : '—',
             ...$this->subject($order),
-        ])->setPaper('a4');
+        ]);
     }
 
     /**
@@ -171,7 +194,11 @@ class ParticipantDocumentService
                 // entry's own snapshot, never through the relation — the
                 // period may since have been repriced or deleted.
                 'itemNote' => 'Periode '.$order->period_name,
-                'itemAmount' => (float) $order->price,
+                // The catalogue price, reconstructed: `price` is already net of
+                // any discount, and the discount row the layout prints needs
+                // something above it to be a discount *off*. Without a code the
+                // two are equal. Same arithmetic as the plan row.
+                'itemAmount' => (float) $order->price + (float) $order->discount_amount,
                 'methodLabel' => $this->methodLabel($order),
             ];
         }
@@ -184,7 +211,9 @@ class ParticipantDocumentService
             'payerLines' => array_values(array_filter([$order->contact_name, $order->contact_phone])),
             'itemTitle' => 'Biaya pendaftaran — '.($order->category?->name ?? '—'),
             'itemNote' => 'Tim '.$order->name,
-            'itemAmount' => (float) $order->payment_amount,
+            // Reconstructed the same way as the entry above: `payment_amount`
+            // is already net of any discount.
+            'itemAmount' => (float) $order->payment_amount + (float) $order->discount_amount,
             'methodLabel' => $this->methodLabel($order),
         ];
     }

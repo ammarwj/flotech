@@ -6,6 +6,7 @@ import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
 import { PublicStatusBadge } from "./public-status-badge";
 import { MatchDisciplineNotice } from "./match-discipline-notice";
+import { TeamTags } from "./team-tags";
 import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
 /** Team crest: real logo when uploaded, gradient fallback otherwise. */
@@ -153,13 +154,21 @@ export function PublicMatchCard({
       <div className="match-teams">
         <div className={cn("match-team", winner && winner !== m.home_team_id && "lose")}>
           <Crest name={m.home_team?.name ?? "TBD"} logoUrl={m.home_team?.logo_url} />
-          <span className="truncate">{m.home_team?.name ?? "TBD"}</span>
+          {/* The name and its tags share one column so the crest stays beside
+              both and the score column is unaffected by a second line. */}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">{m.home_team?.name ?? "TBD"}</span>
+            <TeamTags tags={m.home_team?.tags} />
+          </span>
           {sets && <SetColumns sets={sets} side="home" />}
           {showScore && <span className={cn("sc", live && "sc--live")}>{m.home_score}</span>}
         </div>
         <div className={cn("match-team", winner && winner !== m.away_team_id && "lose")}>
           <Crest name={m.away_team?.name ?? "TBD"} logoUrl={m.away_team?.logo_url} />
-          <span className="truncate">{m.away_team?.name ?? "TBD"}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">{m.away_team?.name ?? "TBD"}</span>
+            <TeamTags tags={m.away_team?.tags} />
+          </span>
           {sets && <SetColumns sets={sets} side="away" />}
           {showScore && <span className={cn("sc", live && "sc--live")}>{m.away_score}</span>}
         </div>
