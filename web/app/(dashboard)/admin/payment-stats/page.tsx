@@ -8,8 +8,10 @@ import { getAdminPaymentStats } from "@/lib/api/admin-wallet";
 import { angka, rupiah } from "@/lib/labels";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EventCombobox, type EventOption } from "@/components/admin/event-combobox";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -64,7 +66,7 @@ function Share({ value, total }: { value: number; total: number }) {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[var(--tint)] sm:w-24">
+      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--tint)] sm:w-24 sm:flex-none">
         <div
           className="h-full rounded-full bg-[var(--brand-600)]"
           style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }}
@@ -104,54 +106,94 @@ function Breakdown({
   empty: string;
 }) {
   return (
-    <Card className="mt-4 p-6">
+    <Card className="mt-4 p-4 sm:p-6">
       <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
         {title}
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
 
-      <div className="mt-4 overflow-x-auto">
-        {loading ? (
-          <Skeleton className="h-32 w-full" />
-        ) : rows.length ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="pb-2 font-medium">{nameHeader}</th>
-                <th className="pb-2 text-right font-medium">Transaksi</th>
-                <th className="pb-2 text-right font-medium">Nilai jual</th>
-                <th className="pb-2 text-right font-medium">Biaya pembeli</th>
-                <th className="pb-2 text-right font-medium">Total ditagih</th>
-                <th className="pb-2 text-right font-medium">Porsi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.key} className="border-b border-border last:border-0">
-                  <td className="py-2.5 pr-3 font-medium">{row.name}</td>
-                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">
-                    {angka(row.sums.count)}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums">{rupiah(row.sums.amount)}</td>
-                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">
-                    {rupiah(row.sums.gateway_fee + row.sums.service_fee)}
-                  </td>
-                  <td className="py-2.5 text-right font-semibold tabular-nums">
+      {loading ? (
+        <Skeleton className="mt-4 h-32 w-full" />
+      ) : rows.length ? (
+        <>
+          {/* Two layouts rather than a scrolling table: six money columns do not
+              fit any phone, and a horizontally scrolled table hides the figure
+              the row exists for (`Total ditagih`) off-screen behind a gesture
+              nothing on screen advertises. Each row's own numbers are labelled
+              inline below md, so no header has to stay in view for them to be
+              readable. */}
+          <ul className="mt-4 grid gap-2 md:hidden">
+            {rows.map((row) => (
+              <li key={row.key} className="rounded-xl bg-[var(--bg-alt)] p-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 break-words font-medium">{row.name}</span>
+                  <span className="shrink-0 font-semibold tabular-nums">
                     {rupiah(row.sums.gross)}
-                  </td>
-                  <td className="py-2.5 pl-3">
-                    <div className="flex justify-end">
-                      <Share value={row.sums.gross} total={total} />
-                    </div>
-                  </td>
+                  </span>
+                </div>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between gap-2">
+                    <dt>Transaksi</dt>
+                    <dd className="tabular-nums">{angka(row.sums.count)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt>Nilai jual</dt>
+                    <dd className="tabular-nums">{rupiah(row.sums.amount)}</dd>
+                  </div>
+                  <div className="col-span-2 flex justify-between gap-2">
+                    <dt>Biaya pembeli</dt>
+                    <dd className="tabular-nums">
+                      {rupiah(row.sums.gateway_fee + row.sums.service_fee)}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="mt-2">
+                  <Share value={row.sums.gross} total={total} />
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-4 hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="pb-2 font-medium">{nameHeader}</th>
+                  <th className="pb-2 text-right font-medium">Transaksi</th>
+                  <th className="pb-2 text-right font-medium">Nilai jual</th>
+                  <th className="pb-2 text-right font-medium">Biaya pembeli</th>
+                  <th className="pb-2 text-right font-medium">Total ditagih</th>
+                  <th className="pb-2 text-right font-medium">Porsi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.key} className="border-b border-border last:border-0">
+                    <td className="py-2.5 pr-3 font-medium">{row.name}</td>
+                    <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                      {angka(row.sums.count)}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">{rupiah(row.sums.amount)}</td>
+                    <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                      {rupiah(row.sums.gateway_fee + row.sums.service_fee)}
+                    </td>
+                    <td className="py-2.5 text-right font-semibold tabular-nums">
+                      {rupiah(row.sums.gross)}
+                    </td>
+                    <td className="py-2.5 pl-3">
+                      <div className="flex justify-end">
+                        <Share value={row.sums.gross} total={total} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
+      )}
     </Card>
   );
 }
@@ -159,11 +201,20 @@ function Breakdown({
 export default function AdminPaymentStatsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const filtered = Boolean(from || to);
+  // The whole pair, not just the id: the event search is keyed by name, so the
+  // chosen event's label cannot be re-derived from an id without a second
+  // request — and the notice below the filters has to be able to name it.
+  const [event, setEvent] = useState<EventOption | null>(null);
+  const filtered = Boolean(from || to || event);
 
   const query = useQuery({
-    queryKey: ["admin-payment-stats", from, to],
-    queryFn: () => getAdminPaymentStats({ from: from || undefined, to: to || undefined }),
+    queryKey: ["admin-payment-stats", from, to, event?.id ?? null],
+    queryFn: () =>
+      getAdminPaymentStats({
+        from: from || undefined,
+        to: to || undefined,
+        event_id: event?.id,
+      }),
   });
 
   const data = query.data;
@@ -201,47 +252,82 @@ export default function AdminPaymentStatsPage() {
         description="Seluruh pembayaran yang sudah lunas di platform, dirinci per instrumen Midtrans, channel, dan jenis pemasukan."
       />
 
-      <Card className="mb-6 p-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            Dibayar dari
-            <Input
-              type="date"
+      <Card className="mb-6 p-4 sm:p-5">
+        {/* One column on a phone: a date pair side by side at 375px leaves each
+            picker narrower than the date it has to print, and the event box is
+            a search field that needs the full width to be usable at all. */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_minmax(0,1.4fr)] lg:items-end">
+          <div className="grid gap-1.5">
+            <Label htmlFor="paid-from" className="text-xs text-muted-foreground">
+              Dibayar dari
+            </Label>
+            <DatePicker
+              id="paid-from"
               value={from}
               max={to || undefined}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={setFrom}
+              clearable
+              placeholder="Awal mula"
             />
-          </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            sampai
-            <Input
-              type="date"
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="paid-to" className="text-xs text-muted-foreground">
+              Sampai
+            </Label>
+            <DatePicker
+              id="paid-to"
               value={to}
               min={from || undefined}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={setTo}
+              clearable
+              placeholder="Hari ini"
             />
-          </label>
+          </div>
+          {/* Full width below lg: at the sm two-column step the event box would
+              sit in half a card next to a date, and a search field that cannot
+              show the name it matched is a filter you have to trust blind. */}
+          <div className="grid gap-1.5 sm:col-span-2 lg:col-span-1">
+            <Label htmlFor="paid-event" className="text-xs text-muted-foreground">
+              Event
+            </Label>
+            <EventCombobox id="paid-event" value={event} onChange={setEvent} />
+          </div>
+        </div>
+
+        {/* Said out loud: a dashboard that silently covers all time reads as
+            "this is everything" when a filter is still applied, and vice versa.
+            The event half is spelled separately because its consequence is one
+            nobody would guess from the controls — see the API client's note on
+            unclaimed plan credits. */}
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">
+            {event ? (
+              <>
+                Hanya pembayaran event <span className="font-medium">{event.name}</span>
+                {from || to ? " dalam rentang tanggal di atas" : ""}. Kredit paket yang dibeli
+                tapi belum dipakai tidak ikut terhitung — kreditnya belum menempel ke event
+                mana pun.
+              </>
+            ) : from || to ? (
+              "Hanya pembayaran yang lunas dalam rentang tanggal di atas, seluruh event."
+            ) : (
+              "Seluruh pembayaran yang pernah lunas, sepanjang waktu."
+            )}
+          </p>
           {filtered && (
             <Button
               variant="ghost"
               size="sm"
-              className="justify-self-start"
               onClick={() => {
                 setFrom("");
                 setTo("");
+                setEvent(null);
               }}
             >
               Reset filter
             </Button>
           )}
         </div>
-        {/* Said out loud: a dashboard that silently covers all time reads as
-            "this is everything" when a filter is still applied, and vice versa. */}
-        <p className="mt-3 text-xs text-muted-foreground">
-          {filtered
-            ? "Hanya pembayaran yang lunas dalam rentang tanggal di atas."
-            : "Seluruh pembayaran yang pernah lunas, sepanjang waktu."}
-        </p>
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -282,11 +368,13 @@ export default function AdminPaymentStatsPage() {
         <EmptyState
           className="mt-6"
           icon={Receipt}
-          title={filtered ? "Tidak ada pembayaran di rentang ini" : "Belum ada pembayaran lunas"}
+          title={filtered ? "Tidak ada pembayaran yang cocok" : "Belum ada pembayaran lunas"}
           description={
-            filtered
-              ? "Coba lebarkan rentang tanggalnya."
-              : "Angka akan muncul begitu ada tiket, pendaftaran, atau paket yang lunas."
+            event
+              ? "Event ini belum punya pembayaran lunas. Coba lepas filter event atau lebarkan rentang tanggalnya."
+              : filtered
+                ? "Coba lebarkan rentang tanggalnya."
+                : "Angka akan muncul begitu ada tiket, pendaftaran, atau paket yang lunas."
           }
         />
       ) : (
@@ -311,7 +399,7 @@ export default function AdminPaymentStatsPage() {
             empty="Belum ada pembayaran lewat payment gateway."
           />
 
-          <Card className="mt-4 p-6">
+          <Card className="mt-4 p-4 sm:p-6">
             <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
               Per jenis pemasukan
             </h3>

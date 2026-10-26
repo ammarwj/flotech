@@ -199,9 +199,14 @@ export async function rejectPlanOrder(id: string, reason: string): Promise<Event
 /**
  * Settled money broken down by how people paid — the payment dashboard's one
  * call. Both dates are inclusive `YYYY-MM-DD` and either may be omitted.
+ *
+ * `event_id` narrows every figure to one event. Note it deliberately drops paid
+ * plan credits that nobody has spent yet: those carry no `event_id` until an
+ * organizer creates the event, so they belong to the organization rather than
+ * to any event (the server's EVENT_COLUMN docblock spells out why).
  */
 export async function getAdminPaymentStats(
-  params: { from?: string; to?: string } = {}
+  params: { from?: string; to?: string; event_id?: string } = {}
 ): Promise<AdminPaymentStats> {
   const { data } = await apiClient.get<ApiEnvelope<AdminPaymentStats>>("/admin/payment-stats", {
     params,

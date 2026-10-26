@@ -411,6 +411,104 @@ class PaymentInstrumentTest extends TestCase
         $this->assertEquals(325000, $data['totals']['gross']);
     }
 
+    /**
+     * The event filter, compared against a second event in the **same
+     * organization** so the org cannot explain the difference.
+     *
+     * Asserting the chosen event's own figure alone would pass a build that
+     * ignored `event_id` entirely whenever only one event had revenue, which is
+     * every fixture that does not go out of its way to build two. Both halves
+     * of the pair are asserted, plus the unfiltered roll-up above them.
+     */
+    public function test_the_event_filter_narrows_the_figures_to_one_event(): void
+    {
+        $org = $this->org();
+        $cup = $this->event($org);
+        $other = $this->event($org);
+
+        $this->notify($this->payload(
+            $this->ticketOrder($cup, 'TIX-CUPAAAAAAA')->midtrans_order_id,
+            '100000.00',
+            ['payment_type' => 'qris'],
+        ))->assertOk();
+        $this->notify($this->payload(
+            $this->ticketOrder($other, 'TIX-OTHERBBBBB')->midtrans_order_id,
+            '100000.00',
+            ['payment_type' => 'qris'],
+        ))->assertOk();
+
+        $admin = $this->superAdmin();
+
+        $this->assertSame(2, $this->actingAs($admin, 'api')
+            ->getJson('/api/v1/admin/payment-stats')
+            ->assertOk()->json('data.totals.count'));
+
+        foreach ([$cup, $other] as $event) {
+            $data = $this->actingAs($admin, 'api')
+                ->getJson('/api/v1/admin/payment-stats?event_id='.$event->id)
+                ->assertOk()->json('data');
+
+            $this->assertSame(1, $data['totals']['count']);
+            $this->assertSame(1, $data['by_source']['ticket_order']['count']);
+            // The breakdowns are filtered by the same query, not just the cards.
+            $this->assertSame(1, collect($data['by_payment_type'])
+                ->firstWhere('payment_type', 'qris')['count']);
+        }
+    }
+
+    /**
+     * A paid plan credit nobody has spent yet carries no `event_id`, so it falls
+     * out of an event-scoped figure — and stays in the unfiltered one.
+     *
+     * Compared both ways round in one test: asserting only that the filtered
+     * figure excludes it would pass a build where the credit was never counted
+     * at all, which is a very different bug on a page whose whole job is to say
+     * what the platform took in.
+     */
+    public function test_an_unclaimed_plan_credit_leaves_the_event_scoped_figures(): void
+    {
+        // Settling a plan order mails a receipt PDF; see the rails test above.
+        Notification::fake();
+
+        $org = $this->org();
+        $event = $this->event($org);
+
+        $this->notify($this->payload(
+            $this->ticketOrder($event)->midtrans_order_id,
+            '100000.00',
+            ['payment_type' => 'qris'],
+        ))->assertOk();
+
+        $plan = Plan::create(['name' => 'Pro X', 'slug' => 'pro-'.uniqid(), 'price' => 350000]);
+        $credit = $org->planOrders()->create([
+            'plan_id' => $plan->id,
+            'amount' => 350000,
+            'status' => 'past_due',
+            'payment_method' => 'gateway',
+            'payment_channel' => 'va',
+            'midtrans_order_id' => 'PLN-IDLEAAAAAA',
+        ]);
+        $this->notify($this->payload($credit->midtrans_order_id, '350000.00', [
+            'payment_type' => 'gopay',
+        ]))->assertOk();
+
+        // The credit is real revenue and is counted while nothing is filtered.
+        $this->assertNull($credit->fresh()->event_id);
+        $admin = $this->superAdmin();
+
+        $all = $this->actingAs($admin, 'api')
+            ->getJson('/api/v1/admin/payment-stats')
+            ->assertOk()->json('data');
+        $this->assertSame(1, $all['by_source']['event_plan_order']['count']);
+        $this->assertSame(2, $all['totals']['count']);
+
+        $scoped = $this->actingAs($admin, 'api')
+            ->getJson('/api/v1/admin/payment-stats?event_id='.$event->id)
+            ->assertOk()->json('data');
+        $this->assertSame(0, $scoped['by_source']['event_plan_order']['count']);
+        $this->assertSame(1, $scoped['totals']['count']);
+    }
+
     public function test_a_regular_user_cannot_read_payment_stats(): void
     {
         $this->actingAs(User::factory()->create(), 'api')

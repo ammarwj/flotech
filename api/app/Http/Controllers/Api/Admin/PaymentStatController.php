@@ -48,6 +48,19 @@ class PaymentStatController extends Controller
     ];
 
     /**
+     * The column every rail above happens to spell the same way.
+     *
+     * Named once rather than per entry in SOURCES, because the one rail where
+     * it differs is a difference of *meaning*, not of spelling:
+     * `event_plan_orders.event_id` is null until an organizer spends the credit
+     * on an event, so filtering by event deliberately drops paid plan credits
+     * that nobody has claimed yet. That is the right answer for "what did this
+     * event take in" — unspent credit belongs to the organization, not to any
+     * event — and `/admin/plan-orders/idle` is where it is accounted for.
+     */
+    private const EVENT_COLUMN = 'event_id';
+
+    /**
      * The key a null `payment_type`/`payment_channel` is reported under.
      *
      * Null is three real things — a manual or box-office order that never went
@@ -62,21 +75,22 @@ class PaymentStatController extends Controller
     {
         $from = $request->query('from');
         $to = $request->query('to');
+        $event = $request->query('event_id');
 
         // One call, then split: `totals` must be the sum of the rails it is
         // printed above, not a second query that can disagree with them.
-        $bySource = $this->bySource($from, $to);
+        $bySource = $this->bySource($from, $to, $event);
         $totals = $bySource['_all'];
         unset($bySource['_all']);
 
         return ApiResponse::success([
-            'by_payment_type' => $this->breakdown('payment_type', $from, $to),
+            'by_payment_type' => $this->breakdown('payment_type', $from, $to, $event),
             // Labelled here, unlike the instruments above: a channel's human
             // name lives in config/payment_fees.php and is already what the
             // checkout picker shows the buyer, so the dashboard must read the
             // same source rather than grow a second copy that drifts the day a
             // channel is renamed.
-            'by_channel' => $this->breakdown('payment_channel', $from, $to, withLabel: true),
+            'by_channel' => $this->breakdown('payment_channel', $from, $to, $event, withLabel: true),
             'by_source' => $bySource,
             'totals' => $totals,
         ]);
@@ -92,12 +106,12 @@ class PaymentStatController extends Controller
      *
      * @return list<array<string, mixed>>
      */
-    private function breakdown(string $column, ?string $from, ?string $to, bool $withLabel = false): array
+    private function breakdown(string $column, ?string $from, ?string $to, ?string $event = null, bool $withLabel = false): array
     {
         $totals = [];
 
         foreach (self::SOURCES as $config) {
-            $rows = $this->query($config['table'], $config['amount'], $from, $to)
+            $rows = $this->query($config['table'], $config['amount'], $from, $to, $event)
                 ->selectRaw("coalesce({$column}, ?) as bucket", [self::UNKNOWN])
                 ->groupBy('bucket')
                 ->get();
@@ -129,12 +143,12 @@ class PaymentStatController extends Controller
      *
      * @return array<string, array<string, float|int>>
      */
-    private function bySource(?string $from, ?string $to): array
+    private function bySource(?string $from, ?string $to, ?string $event = null): array
     {
         $out = ['_all' => $this->zero()];
 
         foreach (self::SOURCES as $source => $config) {
-            $row = $this->query($config['table'], $config['amount'], $from, $to)->first();
+            $row = $this->query($config['table'], $config['amount'], $from, $to, $event)->first();
 
             $out[$source] = $this->add($this->zero(), $row);
             $out['_all'] = $this->add($out['_all'], $row);
@@ -151,12 +165,15 @@ class PaymentStatController extends Controller
      * allowed to settle each kind of order, so "has a paid_at" and "the money
      * arrived" cannot drift apart the way a status value could.
      */
-    private function query(string $table, string $amountColumn, ?string $from, ?string $to): Builder
+    private function query(string $table, string $amountColumn, ?string $from, ?string $to, ?string $event = null): Builder
     {
         return DB::table($table)
             ->whereNotNull('paid_at')
             ->when($from, fn (Builder $q) => $q->whereDate('paid_at', '>=', $from))
             ->when($to, fn (Builder $q) => $q->whereDate('paid_at', '<=', $to))
+            // See EVENT_COLUMN: unclaimed plan credits carry a null event_id and
+            // are meant to fall out of an event-scoped figure.
+            ->when($event, fn (Builder $q) => $q->where(self::EVENT_COLUMN, $event))
             ->selectRaw('count(*) as count')
             ->selectRaw("coalesce(sum({$amountColumn}), 0) as amount")
             ->selectRaw('coalesce(sum(gateway_fee), 0) as gateway_fee')
