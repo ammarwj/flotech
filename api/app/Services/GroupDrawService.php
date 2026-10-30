@@ -37,8 +37,14 @@ class GroupDrawService
             return $teams;
         }
 
-        // A pot draw needs the pot of every team; the payload wins over what's stored.
-        if ($method === 'pot' && $pots !== []) {
+        // The pot is read by two things that have nothing to do with each other:
+        // byPot() deals the groups out of it, and the `drawing_lots` tiebreaker
+        // orders an unplayed table by it (see StandingService::lotOf()). Saving
+        // it only on a pot draw left the second one unreachable — the organizer
+        // who placed every team by hand had no door to the slot order at all,
+        // and reaching it through 'pot' would reshuffle the groups they just
+        // set. So the payload wins wherever it is sent.
+        if ($pots !== []) {
             foreach ($teams as $team) {
                 $team->seed_pot = $pots[$team->id] ?? $team->seed_pot;
             }

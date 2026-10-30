@@ -100,37 +100,18 @@ function DrawDialog({ teams, config, hasMatches, pending, onClose, onSubmit }: D
           {method !== "random" && teams.length > 0 && (
             <div className="grid gap-2">
               <Label className="font-semibold">
-                {method === "pot" ? "Pot tiap tim" : "Grup tiap tim"}
+                {method === "pot" ? "Pot tiap tim" : "Grup & urutan tiap tim"}
               </Label>
               <div className="grid gap-1.5 rounded-lg border border-border p-2">
                 {teams.map((t) => (
                   <div key={t.id} className="flex items-center gap-3">
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.name}</span>
-                    {method === "pot" ? (
-                      <Input
-                        type="number"
-                        min={1}
-                        max={16}
-                        value={pots[t.id] ?? ""}
-                        placeholder="Pot"
-                        onChange={(e) => {
-                          // Clearing the box has to leave it *empty*: folding
-                          // the blank back to 1 on every keystroke puts a "1"
-                          // the caret then types behind, so pot 2 becomes 12.
-                          // The pot is optional anyway — an unset row drops out
-                          // of `pots` entirely.
-                          const raw = e.target.value;
-                          setPots((p) => {
-                            const next = { ...p };
-                            if (raw.trim() === "") delete next[t.id];
-                            else next[t.id] = Math.max(1, Math.min(16, Number(raw)));
-                            return next;
-                          });
-                        }}
-                        className="h-9 w-20"
-                        aria-label={`Pot ${t.name}`}
-                      />
-                    ) : (
+                    {/* The group picker belongs to the manual draw only — a pot
+                        draw deals the groups out itself. The slot box is on
+                        both: it feeds byPot() here and the `drawing_lots`
+                        tiebreaker there, which is the only thing that orders a
+                        table where nothing has been played yet. */}
+                    {method === "manual" && (
                       <Select
                         value={assignments[t.id] ?? ""}
                         onChange={(e) => setAssignments((a) => ({ ...a, [t.id]: e.target.value }))}
@@ -145,12 +126,37 @@ function DrawDialog({ teams, config, hasMatches, pending, onClose, onSubmit }: D
                         ))}
                       </Select>
                     )}
+                    <Input
+                      type="number"
+                      min={1}
+                      max={16}
+                      value={pots[t.id] ?? ""}
+                      placeholder={method === "pot" ? "Pot" : "No."}
+                      onChange={(e) => {
+                        // Clearing the box has to leave it *empty*: folding
+                        // the blank back to 1 on every keystroke puts a "1"
+                        // the caret then types behind, so pot 2 becomes 12.
+                        // The pot is optional anyway — an unset row drops out
+                        // of `pots` entirely.
+                        const raw = e.target.value;
+                        setPots((p) => {
+                          const next = { ...p };
+                          if (raw.trim() === "") delete next[t.id];
+                          else next[t.id] = Math.max(1, Math.min(16, Number(raw)));
+                          return next;
+                        });
+                      }}
+                      className="h-9 w-20"
+                      aria-label={method === "pot" ? `Pot ${t.name}` : `Urutan ${t.name}`}
+                    />
                   </div>
                 ))}
               </div>
               {method === "manual" && (
                 <p className="text-xs text-muted-foreground">
-                  Tim tanpa grup akan ditaruh otomatis di grup yang paling sedikit isinya.
+                  Tim tanpa grup akan ditaruh otomatis di grup yang paling sedikit isinya. Nomor
+                  urut menentukan posisi di klasemen selama belum ada laga yang dimainkan —
+                  kosongkan kalau tidak perlu.
                 </p>
               )}
             </div>

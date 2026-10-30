@@ -147,6 +147,64 @@ class HybridFormatTest extends TestCase
         $this->assertSame('B', Team::find($ids[7])->group_name);
     }
 
+    /**
+     * The slot is what orders a table where nothing has been played yet (see
+     * StandingService::lotOf()), and a manual draw is the only door an
+     * organizer who placed every team by hand ever opens — reaching it through
+     * 'pot' would deal the groups out again and undo their work.
+     *
+     * Asserted by *comparing* two manual draws over the same teams: "the slots
+     * were saved" proves nothing on its own if the groups were reshuffled
+     * underneath them, and a manual draw that sends no slots at all must leave
+     * the column alone rather than wiping it.
+     */
+    public function test_a_manual_draw_saves_the_slot_without_touching_the_groups(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->hybridEvent($org);
+        $category = $event->categories->first();
+
+        $ids = $event->teams()->orderBy('name')->pluck('id')->all();
+        $assignments = [];
+        $pots = [];
+        foreach ($ids as $i => $id) {
+            $assignments[$id] = $i < 4 ? 'A' : 'B';
+            // Slots against the alphabet, so neither the stored order nor the
+            // name can explain the result.
+            $pots[$id] = 4 - ($i % 4);
+        }
+
+        $draw = fn (array $payload) => $this->actingAs($user, 'api')
+            ->postJson("/api/v1/organizations/{$org->id}/events/{$event->id}/categories/{$category->id}/draw", $payload)
+            ->assertOk();
+
+        $draw(['method' => 'manual', 'assignments' => $assignments, 'pots' => $pots]);
+
+        foreach ($ids as $i => $id) {
+            $team = Team::find($id);
+            $this->assertSame($i < 4 ? 'A' : 'B', $team->group_name);
+            $this->assertSame(4 - ($i % 4), (int) $team->seed_pot);
+        }
+
+        // The table reads in slot order, which the hash fallback would not give.
+        $groupA = collect(app(StandingService::class)->compute($category->fresh()))
+            ->where('group_name', 'A')
+            ->pluck('team.id')
+            ->all();
+
+        $this->assertSame(
+            collect($ids)->take(4)->sortByDesc(fn ($id, $i) => $i)->values()->all(),
+            $groupA,
+        );
+
+        // A second manual draw that sends no slots leaves the column alone —
+        // a client that does not know the field exists must not wipe it.
+        $draw(['method' => 'manual', 'assignments' => $assignments]);
+
+        $this->assertSame(4, (int) Team::find($ids[0])->seed_pot);
+    }
+
     public function test_standings_use_configured_points_and_are_grouped(): void
     {
         $user = User::factory()->create();
