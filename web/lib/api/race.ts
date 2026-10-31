@@ -115,31 +115,75 @@ export async function deleteRaceCategory(orgId: string, categoryId: string): Pro
   await apiClient.delete(`/organizations/${orgId}/race-categories/${categoryId}`);
 }
 
+/**
+ * The status pills on the runner list.
+ *
+ * `awaiting_verification` sits beside the five `status` column values without
+ * being one — it is derived from the proof columns, and the API answers it with
+ * HasManualPayment's own scope. The headline already counts it, so leaving it
+ * out of the pills would print a number with no way to see the rows behind it.
+ */
+export type RaceEntryFilter =
+  | "all"
+  | "paid"
+  | "pending"
+  | "awaiting_verification"
+  | "cancelled"
+  | "expired"
+  | "refunded";
+
 export interface RaceEntryPage {
   items: RaceEntry[];
   meta: {
     page: number;
     last_page: number;
-    total: number;
     /**
-     * Event-wide counts, NOT counts of `items`.
-     *
-     * Published rather than derived on the client because the screen prints
-     * them in one sentence with `total`: counted from the loaded rows they
-     * would be measured against a different population, and a fully paid event
-     * would read "120 pendaftar · 25 lunas" with nothing on screen to say which
-     * number to believe.
+     * How many rows the current filter matches — what the pager counts.
+     * Distinct from `summary.total`, which ignores the status pill on purpose.
      */
+    count: number;
+  };
+  /**
+   * The cards above the list, NOT counts of `items`.
+   *
+   * Published rather than derived on the client because they are the event's
+   * standing tally: counted from the loaded rows they would be measured against
+   * a different population, and a fully paid event would read "120 pendaftar ·
+   * 25 lunas" with nothing on screen to say which number to believe.
+   *
+   * All of them follow the search and the category but ignore the status pill,
+   * the same call the buyer list's summary cards make — narrowing them would
+   * have "Dibatalkan" read "12 pendaftar · 0 lunas" over a list doing exactly
+   * what was asked.
+   */
+  summary: {
+    total: number;
     paid: number;
     /** Manual, unsettled, proof in hand, not yet ruled on. */
     awaiting_verification: number;
+    /** Of the PAID ones — an unpaid entry has no code to scan. */
+    checked_in: number;
+    /**
+     * The organizer's net (`price`), not the gross the runner was charged: the
+     * gateway and service fees on top are the platform's, and this is the
+     * column the wallet credit reads.
+     */
+    revenue: number;
   };
+  /** Every category the event runs, including ones nobody has entered. */
+  categories: { id: string; name: string }[];
 }
 
 export async function getRaceEntries(
   orgId: string,
   eventId: string,
-  params: { page?: number; per_page?: number; search?: string; status?: string; category_id?: string } = {}
+  params: {
+    page?: number;
+    per_page?: number;
+    search?: string;
+    status?: Exclude<RaceEntryFilter, "all">;
+    category_id?: string;
+  } = {}
 ): Promise<RaceEntryPage> {
   const { data } = await apiClient.get<ApiEnvelope<RaceEntryPage>>(
     `/organizations/${orgId}/events/${eventId}/race-entries`,

@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -49,6 +50,15 @@ class TenantScope
             ? $routeOrg
             : $request->header('X-Organization-Id');
 
-        return $id ? Organization::find($id) : null;
+        // Anything that is not a uuid is a 404, never a query. Postgres raises
+        // 22P02 on `where id = 'null'` rather than matching nothing, so the one
+        // client bug that reaches here — a template string over a null org id,
+        // spelling `/organizations/null/...` — came back as a 500 naming the
+        // table and the connection instead of "organisasi tidak ditemukan".
+        if (! is_string($id) || ! Str::isUuid($id)) {
+            return null;
+        }
+
+        return Organization::find($id);
     }
 }

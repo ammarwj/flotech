@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
-  AlertCircle,
   CalendarDays,
   FileText,
   ImagePlus,
@@ -28,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DatePicker } from "@/components/ui/date-picker";
+import { FieldError } from "@/components/ui/field-error";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoHint } from "@/components/ui/info-hint";
 import { SectionHeader } from "@/components/event/section-header";
@@ -87,16 +87,6 @@ const newCategory = (tournament_format = ""): CategoryDraft => ({
 });
 
 /** Inline validation message shown under a field. */
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-destructive">
-      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      {message}
-    </p>
-  );
-}
-
 /** Hint text under a field; rendered only when there's no error to show. */
 function FieldHint({ children }: { children: React.ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>;

@@ -3,17 +3,21 @@
 namespace Tests\Feature;
 
 use App\Exports\RaceEntriesExport;
+use App\Exports\TicketBuyersExport;
 use App\Models\Event;
 use App\Models\Organization;
+use App\Models\Plan;
 use App\Models\RaceCategory;
 use App\Models\RaceEntry;
 use App\Models\User;
 use App\Services\PlatformSettings;
+use App\Services\RaceEntryService;
 use App\Services\RefundService;
 use App\Services\WalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
@@ -73,7 +77,7 @@ class RaceEntryTest extends TestCase
      * restricted plan set on the trait alone would be silently ignored and the
      * gate test would pass against a permissive plan.
      */
-    private function raceEvent(Organization $org, ?\App\Models\Plan $plan = null): Event
+    private function raceEvent(Organization $org, ?Plan $plan = null): Event
     {
         $event = $this->eventOn($org, $plan, [
             'sport_type' => 'fun_run',
@@ -101,7 +105,7 @@ class RaceEntryTest extends TestCase
     {
         $category = $event->raceCategories()->create([
             'name' => $name,
-            'slug' => \Illuminate\Support\Str::slug($name),
+            'slug' => Str::slug($name),
             'quota' => $quota,
         ]);
 
@@ -1016,8 +1020,8 @@ class RaceEntryTest extends TestCase
         $this->assertCount(1, $second['items']);
 
         foreach ([$first, $second] as $page) {
-            $this->assertSame(3, $page['meta']['total']);
-            $this->assertSame(2, $page['meta']['paid']);
+            $this->assertSame(3, $page['summary']['total']);
+            $this->assertSame(2, $page['summary']['paid']);
         }
     }
 
@@ -1042,18 +1046,230 @@ class RaceEntryTest extends TestCase
                     'full_name' => $name,
                 ])['entry']['id'],
             );
-            app(\App\Services\RaceEntryService::class)->markPaid($entry);
+            app(RaceEntryService::class)->markPaid($entry);
         }
 
         $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
 
-        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data.meta');
-        $one = $this->actingAs($owner, 'api')->getJson($url.'?search=Dimas')->json('data.meta');
+        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data.summary');
+        $one = $this->actingAs($owner, 'api')->getJson($url.'?search=Dimas')->json('data.summary');
 
         $this->assertSame(2, $all['total']);
         $this->assertSame(2, $all['paid']);
         $this->assertSame(1, $one['total']);
         $this->assertSame(1, $one['paid']);
+        // Revenue follows too, and it is `price` — the organizer's net, which
+        // is the column the wallet credit reads. A card quoting `gross_amount`
+        // would read higher than the wallet it feeds.
+        $this->assertEquals(150_000, $all['revenue']);
+        $this->assertEquals(75_000, $one['revenue']);
+    }
+
+    /**
+     * Filter status menyaring barisnya.
+     *
+     * Dibandingkan **dua status pada satu daftar**, bukan satu: assert
+     * "`?status=paid` mengembalikan 1 baris" sendirian lolos penuh walau
+     * filternya tidak pernah sampai ke query — sebuah daftar yang memang cuma
+     * berisi satu baris lunas menjawab sama. Yang memisahkannya adalah
+     * `pending` di request yang sama mengembalikan baris yang **lain**.
+     */
+    public function test_the_status_filter_narrows_the_rows(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        // No Midtrans key in the suite, so both settle on registration; one is
+        // pushed back to pending.
+        $paid = $this->register(User::factory()->create(), $org, $event, $category, ['full_name' => 'Ammar'])['entry']['id'];
+        $pending = $this->register(User::factory()->create(), $org, $event, $category, ['full_name' => 'Dimas'])['entry']['id'];
+        RaceEntry::whereKey($pending)->update(['status' => 'pending', 'paid_at' => null]);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $lunas = $this->actingAs($owner, 'api')->getJson($url.'?status=paid')->json('data');
+        $menunggu = $this->actingAs($owner, 'api')->getJson($url.'?status=pending')->json('data');
+
+        $this->assertSame([$paid], array_column($lunas['items'], 'id'));
+        $this->assertSame([$pending], array_column($menunggu['items'], 'id'));
+
+        // `count` follows the pill — it is what the pager counts.
+        $this->assertSame(1, $lunas['meta']['count']);
+        $this->assertSame(1, $menunggu['meta']['count']);
+    }
+
+    /**
+     * Invarian: hitungan headline MENGABAIKAN pill status.
+     *
+     * `total`/`paid`/`awaiting_verification` dicetak dalam satu kalimat sebagai
+     * neraca event, jadi menyempitkannya bersama pill membuat tab "Dibatalkan"
+     * berbunyi "1 pendaftar · 0 lunas" di atas daftar yang justru sedang
+     * melakukan apa yang diminta — persis panggilan yang sudah diambil
+     * `TicketOrderController::summary()`.
+     *
+     * Dibandingkan **ketiga angka pada dua pill berbeda**: keduanya wajib
+     * identik, sementara `count` wajib berbeda. Assert satu pill saja akan
+     * lolos walau hitungannya ikut tersaring, karena di pill "Semua" kedua
+     * bacaan menjawab sama.
+     */
+    public function test_the_headline_counts_ignore_the_status_pill(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        foreach (range(1, 3) as $i) {
+            $id = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+            if ($i === 3) {
+                RaceEntry::whereKey($id)->update(['status' => 'cancelled', 'paid_at' => null]);
+            }
+        }
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data');
+        $cancelled = $this->actingAs($owner, 'api')->getJson($url.'?status=cancelled')->json('data');
+
+        // The pill really did narrow the list, otherwise the equality below is
+        // two reads of the same thing.
+        $this->assertSame(3, $all['meta']['count']);
+        $this->assertSame(1, $cancelled['meta']['count']);
+
+        foreach (['total', 'paid', 'awaiting_verification', 'checked_in', 'revenue'] as $key) {
+            $this->assertSame(
+                $all['summary'][$key],
+                $cancelled['summary'][$key],
+                "summary.{$key} ikut tersaring pill status",
+            );
+        }
+
+        $this->assertSame(3, $all['summary']['total']);
+        $this->assertSame(2, $all['summary']['paid']);
+    }
+
+    /**
+     * `awaiting_verification` boleh jadi pill walau ia BUKAN nilai kolom
+     * `status` — dijawab scope HasManualPayment, bukan `where('status', …)`.
+     *
+     * Dibandingkan dengan `?status=pending` pada data yang sama: keduanya
+     * `pending` di kolomnya, jadi assert "pill-nya mengembalikan satu baris"
+     * sendirian lolos walau filternya diam-diam jatuh ke `where('status',
+     * 'awaiting_verification')` — yang tidak cocok dengan apa pun dan
+     * mengembalikan nol, atau lebih buruk, diabaikan dan mengembalikan
+     * semuanya. Angka headline-nya ikut dibandingkan karena itulah angka yang
+     * pill ini ada untuk ditelusuri.
+     */
+    public function test_awaiting_verification_is_a_pill_even_though_it_is_not_a_status_value(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $this->bankAccount($org);
+        $this->gateway(false);
+
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $waiting = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+        $noProof = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+
+        $this->postJson("/api/v1/race-entries/{$waiting}/proof", [
+            'payment_proof_url' => 'https://cdn.test/bukti.webp',
+        ])->assertOk();
+
+        // Both rows are `pending` in the column — that is the whole point.
+        $this->assertSame('pending', RaceEntry::findOrFail($waiting)->status);
+        $this->assertSame('pending', RaceEntry::findOrFail($noProof)->status);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $awaiting = $this->actingAs($owner, 'api')->getJson($url.'?status=awaiting_verification')->json('data');
+        $pending = $this->actingAs($owner, 'api')->getJson($url.'?status=pending')->json('data');
+
+        $this->assertSame([$waiting], array_column($awaiting['items'], 'id'));
+        // The derived state is a SUBSET of `pending`, not a sibling of it: the
+        // same row appears under both pills, and the one without proof only
+        // under `pending`.
+        $this->assertCount(2, $pending['items']);
+
+        // And it is the number the headline prints, which is why the pill is
+        // offered at all.
+        $this->assertSame(1, $awaiting['summary']['awaiting_verification']);
+        $this->assertSame(1, $awaiting['meta']['count']);
+    }
+
+    /**
+     * Filter kategori menyaring baris DAN kartunya, dan daftar opsinya datang
+     * dari kategori event — bukan dari baris yang ada di layar.
+     *
+     * Dibandingkan **dua kategori pada satu event**: assert "`?category_id=`
+     * mengembalikan 1 baris" sendirian lolos walau filternya tidak pernah
+     * sampai ke query. Opsinya dibandingkan terhadap kategori yang **belum
+     * punya pendaftar sama sekali** — menurunkannya dari baris akan
+     * menyembunyikannya, padahal memfilter ke sana persis cara organizer tahu
+     * ia belum laku.
+     */
+    public function test_the_category_filter_narrows_rows_and_cards(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+
+        $fiveK = $this->category($event, '5K', ['Early Bird' => 75_000]);
+        $tenK = $this->category($event, '10K', ['Early Bird' => 120_000]);
+        $kosong = $this->category($event, '21K', ['Early Bird' => 200_000]);
+
+        $this->register(User::factory()->create(), $org, $event, $fiveK);
+        $this->register(User::factory()->create(), $org, $event, $tenK);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data');
+        $only = $this->actingAs($owner, 'api')->getJson($url."?category_id={$tenK->id}")->json('data');
+
+        $this->assertSame(2, $all['summary']['total']);
+        $this->assertEquals(195_000, $all['summary']['revenue']);
+
+        // Narrowed on both halves. Revenue is what separates "the rows were
+        // filtered" from "the cards were too" — a build that filtered only the
+        // list would still read 195.000 beside one row.
+        $this->assertSame(1, $only['meta']['count']);
+        $this->assertSame(1, $only['summary']['total']);
+        $this->assertEquals(120_000, $only['summary']['revenue']);
+
+        // Every category, including the one nobody entered.
+        $this->assertSame(
+            ['10K', '21K', '5K'],
+            array_column($all['categories'], 'name'),
+        );
+        $this->assertContains($kosong->id, array_column($all['categories'], 'id'));
+    }
+
+    /**
+     * Nilai pill yang tidak dikenal DITOLAK, bukan diabaikan.
+     *
+     * Dibandingkan dengan nilai yang sah dalam satu test: tanpa pembanding,
+     * `assertStatus(422)` lolos walau seluruh filter ditolak. Yang diabaikan
+     * akan mengembalikan daftar penuh di bawah pill yang tampak terpilih —
+     * salah ketik yang tersimpan sukses lalu tak ada yang membacanya, bentuk
+     * yang sama dengan `plan_features.feature_key`.
+     */
+    public function test_an_unknown_status_value_is_rejected(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $this->actingAs($owner, 'api')->getJson($url.'?status=lunas')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('status');
+
+        $this->actingAs($owner, 'api')->getJson($url.'?status=paid')->assertOk();
     }
 
     /**
@@ -1079,8 +1295,8 @@ class RaceEntryTest extends TestCase
             ], range(1, 12)),
         ]]);
 
-        $wide = new \App\Exports\RaceEntriesExport($event->fresh());
-        $narrow = new \App\Exports\TicketBuyersExport($event->fresh());
+        $wide = new RaceEntriesExport($event->fresh());
+        $narrow = new TicketBuyersExport($event->fresh());
 
         $this->assertGreaterThan(
             count($narrow->headings()),

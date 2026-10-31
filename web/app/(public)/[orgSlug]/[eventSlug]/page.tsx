@@ -272,6 +272,12 @@ function PublicEventView() {
   const raceCategories = raceQuery.data?.categories ?? [];
   const racePeriod = raceQuery.data?.current_period ?? null;
 
+  // Satu-satunya penjawab "berapa kategori event ini" di halaman ini, dibaca
+  // badge hero dan kartu "Kategori & Biaya". Dua salinan `isRace ? … : …` akan
+  // menyimpang, dan penyimpangannya persis bug yang ada: badge berkata nol di
+  // atas kartu yang mendaftar tiga.
+  const categoryCount = isRace ? raceCategories.length : categories.length;
+
   // Which categories a panel can actually show anything for. An event may mix
   // formats — a badminton event runs Tunggal as a league and Ganda as a knockout
   // — so the tab decides which categories are on offer, not the other way round.
@@ -410,9 +416,17 @@ function PublicEventView() {
                 >
                   {sportLabel(ev.sport_type)}
                 </span>
-                <span className="ehero-badge">
-                  {categories.length} kategori
-                </span>
+                {/* Dua tabel, dan badge ini harus membaca yang sama dengan
+                    kartu "Kategori & Biaya" di bawah: `categories` adalah
+                    `event_categories`, yang fun run **tidak punya satu pun** —
+                    membacanya polos di sini mengumumkan "0 kategori" di atas
+                    kartu yang mendaftar tiga. Hilang saat nol, bukan mencetak
+                    nol: `raceQuery` dimuat terpisah dari event, jadi angka itu
+                    juga keadaan "belum tahu", dan heading tanpa isi sudah jadi
+                    alasan kartunya ikut hilang seluruhnya. */}
+                {categoryCount > 0 && (
+                  <span className="ehero-badge">{categoryCount} kategori</span>
+                )}
                 {/* Badge ini **status event**, bukan ajakan — jadi ia membaca
                     `ev.status` dan tetap tampil apa pun paketnya, termasuk
                     berbunyi "Pendaftaran Dibuka" pada event yang form publiknya
@@ -587,7 +601,7 @@ function PublicEventView() {
                     event, and a heading with no rows under it reads as broken
                     rather than as "none yet" — the same call Proof() makes by
                     returning null instead of a lone label. */}
-                {(isRace ? raceCategories.length > 0 : categories.length > 0) && (
+                {categoryCount > 0 && (
                   <div className="card scard">
                     <h3>
                       <Trophy />

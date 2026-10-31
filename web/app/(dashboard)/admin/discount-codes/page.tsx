@@ -13,12 +13,14 @@ import {
   type DiscountCodeInput,
 } from "@/lib/api/discount-codes";
 import { getAdminPlans } from "@/lib/api/plans";
-import { parseApiError } from "@/lib/api/errors";
+import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { FieldError } from "@/components/ui/field-error";
 import type { DiscountCode } from "@/types/api";
 
 const EMPTY: DiscountCodeInput = {
@@ -35,7 +37,24 @@ const EMPTY: DiscountCodeInput = {
   plan_ids: [],
 };
 
-/** `<input type="datetime-local">` wants `YYYY-MM-DDTHH:mm`, not an ISO string. */
+/**
+ * Fields that render their own refusal below themselves; see the catch-all
+ * above the submit button for why anything else the server names is still
+ * printed. `plan_ids` is in here because its own block renders one.
+ */
+const BOUND_FIELDS = [
+  "code",
+  "description",
+  "discount_type",
+  "discount_value",
+  "max_discount",
+  "max_redemptions",
+  "starts_at",
+  "ends_at",
+  "plan_ids",
+];
+
+/** `DateTimePicker` wants `YYYY-MM-DDTHH:mm`, not an ISO string. */
 function toLocalInput(value: string | null): string {
   if (!value) return "";
   const d = new Date(value);
@@ -58,12 +77,20 @@ export default function AdminDiscountCodesPage() {
 
   const [form, setForm] = useState<DiscountCodeInput>(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /**
+   * The server's per-field refusals, rendered under the fields they name — the
+   * same reasoning as the organizer's event-level page: every message this
+   * endpoint produces is field-shaped, and a toast is gone by the time anyone
+   * starts looking for which input it meant.
+   */
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-discount-codes"] });
 
   const reset = () => {
     setForm(EMPTY);
     setEditingId(null);
+    setFieldErrors({});
   };
 
   const save = useMutation({
@@ -73,7 +100,13 @@ export default function AdminDiscountCodesPage() {
       reset();
       invalidate();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan kode diskon.").message),
+    onError: (err) => {
+      const parsed = parseApiError(err, "Gagal menyimpan kode diskon.");
+      setFieldErrors(parsed.fieldErrors);
+      // Kept alongside the inline messages: a refusal on a field scrolled out
+      // of view would otherwise be a submit that looks ignored.
+      toast.error(parsed.message);
+    },
   });
 
   const remove = useMutation({
@@ -87,6 +120,9 @@ export default function AdminDiscountCodesPage() {
 
   const startEdit = (c: DiscountCode) => {
     setEditingId(c.id);
+    // Last submit's refusals named the row that was in the form before this
+    // one; keeping them would mark fields this row has not been judged on.
+    setFieldErrors({});
     setForm({
       code: c.code,
       description: c.description ?? "",
@@ -113,6 +149,15 @@ export default function AdminDiscountCodesPage() {
   };
 
   const planName = (id: string) => plansQuery.data?.find((p) => p.id === id)?.name ?? id;
+
+  /**
+   * The refusal for a field, or for one entry of it — Laravel names an array
+   * member `plan_ids.0`, which a plain lookup on `plan_ids` never finds, and
+   * the message would then only reach the catch-all at the bottom.
+   */
+  const errorFor = (field: string): string | undefined =>
+    fieldErrors[field] ??
+    Object.entries(fieldErrors).find(([k]) => k.startsWith(`${field}.`))?.[1];
 
   return (
     <div>
@@ -145,8 +190,10 @@ export default function AdminDiscountCodesPage() {
             placeholder="mis. LAUNCH50"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+            aria-invalid={!!fieldErrors.code}
             required
           />
+          <FieldError message={fieldErrors.code} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="description">Catatan</Label>
@@ -155,7 +202,9 @@ export default function AdminDiscountCodesPage() {
             placeholder="mis. Promo peluncuran"
             value={form.description ?? ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+            aria-invalid={!!fieldErrors.description}
           />
+          <FieldError message={fieldErrors.description} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="discount_type">Jenis</Label>
@@ -175,6 +224,7 @@ export default function AdminDiscountCodesPage() {
             <option value="percent">Persentase (%)</option>
             <option value="fixed">Nominal (Rp)</option>
           </Select>
+          <FieldError message={fieldErrors.discount_type} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="discount_value">
@@ -188,8 +238,10 @@ export default function AdminDiscountCodesPage() {
             step={form.discount_type === "percent" ? 1 : 1000}
             value={form.discount_value}
             onChange={(e) => setForm({ ...form, discount_value: Number(e.target.value) })}
+            aria-invalid={!!fieldErrors.discount_value}
             required
           />
+          <FieldError message={fieldErrors.discount_value} />
         </div>
         {form.discount_type === "percent" && (
           <div className="grid gap-1.5">
@@ -207,7 +259,9 @@ export default function AdminDiscountCodesPage() {
                   max_discount: e.target.value === "" ? null : Number(e.target.value),
                 })
               }
+              aria-invalid={!!fieldErrors.max_discount}
             />
+            <FieldError message={fieldErrors.max_discount} />
           </div>
         )}
         <div className="grid gap-1.5">
@@ -224,25 +278,34 @@ export default function AdminDiscountCodesPage() {
                 max_redemptions: e.target.value === "" ? null : Number(e.target.value),
               })
             }
+            aria-invalid={!!fieldErrors.max_redemptions}
           />
+          <FieldError message={fieldErrors.max_redemptions} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="starts_at">Mulai berlaku</Label>
-          <Input
+          <DateTimePicker
             id="starts_at"
-            type="datetime-local"
             value={toLocalInput(form.starts_at)}
-            onChange={(e) => setForm({ ...form, starts_at: e.target.value || null })}
+            onChange={(val) => setForm({ ...form, starts_at: val || null })}
+            datePlaceholder="Kosong = langsung berlaku"
+            clearable
+            aria-invalid={!!fieldErrors.starts_at}
           />
+          <FieldError message={fieldErrors.starts_at} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="ends_at">Berakhir</Label>
-          <Input
+          <DateTimePicker
             id="ends_at"
-            type="datetime-local"
             value={toLocalInput(form.ends_at)}
-            onChange={(e) => setForm({ ...form, ends_at: e.target.value || null })}
+            min={toLocalInput(form.starts_at).slice(0, 10) || undefined}
+            onChange={(val) => setForm({ ...form, ends_at: val || null })}
+            datePlaceholder="Kosong = tanpa batas"
+            clearable
+            aria-invalid={!!fieldErrors.ends_at}
           />
+          <FieldError message={fieldErrors.ends_at} />
         </div>
 
         <div className="grid gap-1.5 lg:col-span-3">
@@ -264,6 +327,11 @@ export default function AdminDiscountCodesPage() {
               </label>
             ))}
           </div>
+          {/* `plan_ids.*` names one checkbox the server refused; printed here
+              rather than beside it, because the message already carries the
+              index and the row it refers to may have since disappeared from
+              the catalogue. */}
+          <FieldError message={errorFor("plan_ids")} />
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -285,16 +353,27 @@ export default function AdminDiscountCodesPage() {
           Aktif
         </label>
 
-        <div className="flex gap-2 lg:col-span-3">
-          <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? "Menyimpan…" : editingId ? "Simpan perubahan" : "Tambah kode"}
-          </Button>
-          {editingId && (
-            <Button type="button" variant="ghost" onClick={reset}>
-              <X className="h-4 w-4" />
-              Batal
+        <div className="grid gap-2 lg:col-span-3">
+          {/* Anything the server refused that no field above renders — the two
+              checkboxes, or a key added to the API before this form knows about
+              it. Without this a refusal on one of them is a submit that looks
+              ignored. */}
+          {Object.entries(fieldErrors)
+            .filter(([field]) => !BOUND_FIELDS.some((f) => field === f || field.startsWith(`${f}.`)))
+            .map(([field, message]) => (
+              <FieldError key={field} message={message} />
+            ))}
+          <div className="flex gap-2">
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? "Menyimpan…" : editingId ? "Simpan perubahan" : "Tambah kode"}
             </Button>
-          )}
+            {editingId && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                <X className="h-4 w-4" />
+                Batal
+              </Button>
+            )}
+          </div>
         </div>
       </form>
 

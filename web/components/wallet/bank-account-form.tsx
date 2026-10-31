@@ -12,11 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return <p className="text-xs font-medium text-[var(--danger)]">{message}</p>;
-}
+import { FieldError } from "@/components/ui/field-error";
 
 /**
  * The payout destination — a bank account or an e-wallet. Saving a new one makes

@@ -1709,6 +1709,14 @@ export interface RaceCategory {
   created_at: string;
 }
 
+/**
+ * A runner's payment lifecycle. Five values, and `awaiting_verification` is
+ * deliberately not among them: a manual entry under review is still `pending`,
+ * and the state is derived from the proof columns — see HasManualPayment for
+ * why slipping it in here would walk past every by-value guard in the API.
+ */
+export type RaceEntryStatus = "pending" | "paid" | "cancelled" | "expired" | "refunded";
+
 /** One runner's entry. The fun run counterpart of both Team and TicketOrder. */
 export interface RaceEntry extends ManualPaymentFields {
   id: string;
@@ -1749,7 +1757,7 @@ export interface RaceEntry extends ManualPaymentFields {
   /** Null on a free entry, which never had a bill to document. */
   invoice_number: string | null;
   receipt_number: string | null;
-  status: "pending" | "paid" | "cancelled" | "expired" | "refunded";
+  status: RaceEntryStatus;
   paid_at: string | null;
   created_at: string;
   /** Where to transfer. Only while a manual entry is still unpaid. */

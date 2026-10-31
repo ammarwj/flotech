@@ -3,6 +3,7 @@ import type {
   EventStatus,
   MatchStatus,
   PlanOrderStatus,
+  RaceEntryStatus,
   TeamStatus,
   TicketOrderStatus,
   TicketPaymentMethod,
@@ -71,6 +72,28 @@ export const TICKET_ORDER_STATUS_LABELS: Record<TicketOrderStatus, string> = {
   pending: "Menunggu Pembayaran",
   paid: "Lunas",
   cancelled: "Dibatalkan",
+  refunded: "Dikembalikan",
+};
+
+/**
+ * A runner's payment state in words.
+ *
+ * The same five words as a ticket order's wherever the two share a value, plus
+ * `expired` — the hourly sweep writes it to abandoned manual entries, and a raw
+ * "expired" was being rendered straight into the status column. Separate from
+ * TICKET_ORDER_STATUS_LABELS rather than widened into it: that map is keyed by
+ * TicketOrderStatus, which has no such member, and a cast to borrow it would be
+ * a lie the next value gets caught by.
+ *
+ * `awaiting_verification` is absent on purpose — it is not a `status` value but
+ * a derived flag, so the badge takes it as its own prop (the call
+ * PlanOrderStatusBadge already makes).
+ */
+export const RACE_ENTRY_STATUS_LABELS: Record<RaceEntryStatus, string> = {
+  pending: "Menunggu Pembayaran",
+  paid: "Lunas",
+  cancelled: "Dibatalkan",
+  expired: "Kedaluwarsa",
   refunded: "Dikembalikan",
 };
 

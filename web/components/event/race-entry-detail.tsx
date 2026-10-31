@@ -1,7 +1,12 @@
 "use client";
 
-import { Check, ChevronDown, ExternalLink, FileText, Minus } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronDown, Eye, FileText, Minus } from "lucide-react";
 
+import {
+  DocumentViewerDialog,
+  type ViewerDocument,
+} from "@/components/shared/document-viewer-dialog";
 import type { RaceEntry } from "@/types/api";
 import {
   formatAnswer,
@@ -409,9 +414,15 @@ function Row({
 }
 
 /**
- * Uploaded files as links, titled by the slot they answer rather than the
- * stored filename — "Bukti Mahasiswa" is what the organizer is looking for,
+ * Uploaded files, titled by the slot they answer rather than the stored
+ * filename — "Bukti Mahasiswa" is what the organizer is looking for,
  * "IMG_2043.webp" is not.
+ *
+ * Buttons opening a dialog, not links opening a tab: checking a scan is done
+ * against the row it belongs to, and a tab throws that row away along with the
+ * scroll position, the open panel and the filter that got here. The escape
+ * hatches — a real tab, a download — live inside the dialog, where they are a
+ * choice rather than the only behaviour.
  */
 function DocLinks({
   docs,
@@ -420,40 +431,47 @@ function DocLinks({
   docs: NonNullable<RaceEntry["documents"]>;
   slots: DocumentSlot[];
 }) {
-  return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
-      {docs.map((d) => {
-        const url = /^https?:\/\//.test(d.file_url) ? d.file_url : null;
-        const label =
-          slots.find((s) => s.key === d.document_type)?.label ??
-          d.file_name ??
-          d.document_type ??
-          "Dokumen";
+  const [open, setOpen] = useState<ViewerDocument | null>(null);
 
-        return url ? (
-          <a
-            key={d.id}
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 truncate rounded-md border border-border px-3 py-2 text-[13px] transition-colors hover:border-[var(--brand-500)]"
-          >
-            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
-            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          </a>
-        ) : (
-          <div
-            key={d.id}
-            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-muted-foreground"
-          >
-            <FileText className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-            <span className="shrink-0 text-[11px]">tidak tersedia</span>
-          </div>
-        );
-      })}
-    </div>
+  return (
+    <>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {docs.map((d) => {
+          const url = /^https?:\/\//.test(d.file_url) ? d.file_url : null;
+          const label =
+            slots.find((s) => s.key === d.document_type)?.label ??
+            d.file_name ??
+            d.document_type ??
+            "Dokumen";
+
+          return url ? (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() =>
+                setOpen({ title: label, url, fileName: d.file_name })
+              }
+              className="flex items-center gap-2 truncate rounded-md border border-border px-3 py-2 text-left text-[13px] transition-colors hover:border-[var(--brand-500)]"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+              <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            </button>
+          ) : (
+            <div
+              key={d.id}
+              className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[13px] text-muted-foreground"
+            >
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+              <span className="shrink-0 text-[11px]">tidak tersedia</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <DocumentViewerDialog document={open} onClose={() => setOpen(null)} />
+    </>
   );
 }
 

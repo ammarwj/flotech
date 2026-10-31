@@ -28,7 +28,7 @@ import type { Plan } from "@/types/api";
  * live and carried no discount field at all, so this page — the one an organizer
  * actually reaches when buying — was where a code could not be typed.
  */
-export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
+export function PlanPurchaseNotice({ orgId }: { orgId: string | null }) {
   const { org } = useActiveOrg();
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Building2 } from "lucide-react";
 
 import { createEvent, type EventInput } from "@/lib/api/events";
 import { getPlanOrders } from "@/lib/api/organizations";
@@ -14,6 +16,8 @@ import { EventForm } from "@/components/event/event-form";
 import { PlanPurchaseNotice } from "@/components/event/plan-purchase-notice";
 import { PlanOrderPicker } from "@/components/event/plan-order-picker";
 import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -83,10 +87,24 @@ export default function NewEventPage() {
         backLabel="Daftar event"
       />
 
-      {ordersQuery.isLoading ? (
+      {/* No org, no credits to spend and nobody to bill — and `orgId` goes
+          straight into the checkout URL. /organizer/layout exempts super admins
+          from onboarding, so they are who lands here with none. */}
+      {!orgId ? (
+        <EmptyState
+          icon={Building2}
+          title="Belum punya organisasi"
+          description="Event dibuat atas nama organisasi. Buat organisasi dulu untuk mulai."
+          action={
+            <Button asChild>
+              <Link href="/onboarding">Buat organisasi</Link>
+            </Button>
+          }
+        />
+      ) : ordersQuery.isLoading ? (
         <Skeleton className="h-48 w-full max-w-2xl rounded-xl" />
       ) : credits.length === 0 ? (
-        <PlanPurchaseNotice orgId={orgId ?? undefined} />
+        <PlanPurchaseNotice orgId={orgId} />
       ) : (
         <>
           {credits.length > 1 && (

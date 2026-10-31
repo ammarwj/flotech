@@ -44,7 +44,13 @@ export function PlanCheckoutDialog({
 }: {
   /** The plan being bought; null closes the dialog. */
   plan: Plan | null;
-  orgId?: string;
+  /**
+   * Null until the org list resolves — and for a super admin, who owns none.
+   * Required rather than optional-defaulted: every call here puts it straight
+   * into the URL, so an absent one spells `/organizations/null/…` and Postgres
+   * refuses the string "null" as a uuid. Both buttons below check it.
+   */
+  orgId: string | null;
   gatewayLive: boolean;
   onClose: () => void;
   /** Settled on the spot — the credit is in hand. Say so and go wherever it is spent. */
@@ -176,7 +182,9 @@ export function PlanCheckoutDialog({
                   />
                   <Button
                     variant="secondary"
-                    disabled={!codeInput.trim() || discount.isPending || checkout.isPending}
+                    disabled={
+                      !codeInput.trim() || !orgId || discount.isPending || checkout.isPending
+                    }
                     onClick={() => discount.mutate({ plan, code: codeInput.trim() })}
                   >
                     {discount.isPending ? "Memeriksa…" : "Pakai"}

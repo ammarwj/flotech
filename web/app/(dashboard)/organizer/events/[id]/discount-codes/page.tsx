@@ -14,13 +14,15 @@ import {
   deleteEventDiscountCode,
   type EventDiscountCodeInput,
 } from "@/lib/api/event-discount-codes";
-import { parseApiError } from "@/lib/api/errors";
+import { parseApiError, type FieldErrors } from "@/lib/api/errors";
 import { rupiah } from "@/lib/labels";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { FieldError } from "@/components/ui/field-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import type { EventDiscountCode } from "@/types/api";
@@ -38,7 +40,24 @@ const EMPTY: EventDiscountCodeInput = {
   once_per_user: true,
 };
 
-/** `<input type="datetime-local">` wants `YYYY-MM-DDTHH:mm`, not an ISO string. */
+/**
+ * Fields that render their own refusal below themselves. Anything else the
+ * server names falls through to the catch-all above the submit button, so a
+ * message is never dropped on the floor just because this list is behind the
+ * API.
+ */
+const BOUND_FIELDS = [
+  "code",
+  "description",
+  "discount_type",
+  "discount_value",
+  "max_discount",
+  "max_redemptions",
+  "starts_at",
+  "ends_at",
+];
+
+/** `DateTimePicker` wants `YYYY-MM-DDTHH:mm`, not an ISO string. */
 function toLocalInput(value: string | null): string {
   if (!value) return "";
   const d = new Date(value);
@@ -83,6 +102,16 @@ export default function EventDiscountCodesPage() {
 
   const [form, setForm] = useState<EventDiscountCodeInput>(EMPTY);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /**
+   * The server's per-field refusals, rendered under the fields they name.
+   *
+   * A toast alone was all this form had, and the messages that matter here are
+   * all field-shaped — "kode itu sudah dipakai di event ini", "diskon
+   * persentase tidak boleh lebih dari 100%", "tanggal berakhir harus setelah
+   * tanggal mulai". None of them says which input to go back to, and a toast
+   * is gone by the time the organizer starts looking.
+   */
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["event-discount-codes", orgId, eventId] });
@@ -90,6 +119,7 @@ export default function EventDiscountCodesPage() {
   const reset = () => {
     setForm(EMPTY);
     setEditingId(null);
+    setFieldErrors({});
   };
 
   const save = useMutation({
@@ -102,7 +132,14 @@ export default function EventDiscountCodesPage() {
       reset();
       invalidate();
     },
-    onError: (err) => toast.error(parseApiError(err, "Gagal menyimpan kode diskon.").message),
+    onError: (err) => {
+      const parsed = parseApiError(err, "Gagal menyimpan kode diskon.");
+      setFieldErrors(parsed.fieldErrors);
+      // The banner stays even when the fields carry the detail: a refusal on a
+      // field scrolled out of view would otherwise be a submit that does
+      // nothing at all.
+      toast.error(parsed.message);
+    },
   });
 
   const remove = useMutation({
@@ -116,6 +153,9 @@ export default function EventDiscountCodesPage() {
 
   const startEdit = (c: EventDiscountCode) => {
     setEditingId(c.id);
+    // Last submit's refusals named the row that was in the form before this
+    // one; keeping them would mark fields this row has not been judged on.
+    setFieldErrors({});
     setForm({
       code: c.code,
       description: c.description ?? "",
@@ -167,8 +207,10 @@ export default function EventDiscountCodesPage() {
             placeholder="mis. EARLYBIRD"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+            aria-invalid={!!fieldErrors.code}
             required
           />
+          <FieldError message={fieldErrors.code} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="description">Catatan</Label>
@@ -177,7 +219,9 @@ export default function EventDiscountCodesPage() {
             placeholder="mis. Promo pendaftaran awal"
             value={form.description ?? ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+            aria-invalid={!!fieldErrors.description}
           />
+          <FieldError message={fieldErrors.description} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="discount_type">Jenis</Label>
@@ -197,6 +241,7 @@ export default function EventDiscountCodesPage() {
             <option value="percent">Persentase (%)</option>
             <option value="fixed">Nominal (Rp)</option>
           </Select>
+          <FieldError message={fieldErrors.discount_type} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="discount_value">
@@ -210,8 +255,10 @@ export default function EventDiscountCodesPage() {
             step={form.discount_type === "percent" ? 1 : 1000}
             value={form.discount_value}
             onChange={(e) => setForm({ ...form, discount_value: Number(e.target.value) })}
+            aria-invalid={!!fieldErrors.discount_value}
             required
           />
+          <FieldError message={fieldErrors.discount_value} />
         </div>
         {form.discount_type === "percent" && (
           <div className="grid gap-1.5">
@@ -229,7 +276,9 @@ export default function EventDiscountCodesPage() {
                   max_discount: e.target.value === "" ? null : Number(e.target.value),
                 })
               }
+              aria-invalid={!!fieldErrors.max_discount}
             />
+            <FieldError message={fieldErrors.max_discount} />
           </div>
         )}
         <div className="grid gap-1.5">
@@ -246,25 +295,34 @@ export default function EventDiscountCodesPage() {
                 max_redemptions: e.target.value === "" ? null : Number(e.target.value),
               })
             }
+            aria-invalid={!!fieldErrors.max_redemptions}
           />
+          <FieldError message={fieldErrors.max_redemptions} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="starts_at">Mulai berlaku</Label>
-          <Input
+          <DateTimePicker
             id="starts_at"
-            type="datetime-local"
             value={toLocalInput(form.starts_at)}
-            onChange={(e) => setForm({ ...form, starts_at: e.target.value || null })}
+            onChange={(val) => setForm({ ...form, starts_at: val || null })}
+            datePlaceholder="Kosong = langsung berlaku"
+            clearable
+            aria-invalid={!!fieldErrors.starts_at}
           />
+          <FieldError message={fieldErrors.starts_at} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="ends_at">Berakhir</Label>
-          <Input
+          <DateTimePicker
             id="ends_at"
-            type="datetime-local"
             value={toLocalInput(form.ends_at)}
-            onChange={(e) => setForm({ ...form, ends_at: e.target.value || null })}
+            min={toLocalInput(form.starts_at).slice(0, 10) || undefined}
+            onChange={(val) => setForm({ ...form, ends_at: val || null })}
+            datePlaceholder="Kosong = tanpa batas"
+            clearable
+            aria-invalid={!!fieldErrors.ends_at}
           />
+          <FieldError message={fieldErrors.ends_at} />
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -286,16 +344,27 @@ export default function EventDiscountCodesPage() {
           Aktif
         </label>
 
-        <div className="flex gap-2 lg:col-span-3">
-          <Button type="submit" disabled={save.isPending || !orgId}>
-            {save.isPending ? "Menyimpan…" : editingId ? "Simpan perubahan" : "Tambah kode"}
-          </Button>
-          {editingId && (
-            <Button type="button" variant="ghost" onClick={reset}>
-              <X className="h-4 w-4" />
-              Batal
+        <div className="grid gap-2 lg:col-span-3">
+          {/* Anything the server refused that no field above renders — the two
+              checkboxes, or a key added to the API before this form knows about
+              it. Without this a refusal on one of them is a submit that looks
+              ignored. */}
+          {Object.entries(fieldErrors)
+            .filter(([field]) => !BOUND_FIELDS.includes(field))
+            .map(([field, message]) => (
+              <FieldError key={field} message={message} />
+            ))}
+          <div className="flex gap-2">
+            <Button type="submit" disabled={save.isPending || !orgId}>
+              {save.isPending ? "Menyimpan…" : editingId ? "Simpan perubahan" : "Tambah kode"}
             </Button>
-          )}
+            {editingId && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                <X className="h-4 w-4" />
+                Batal
+              </Button>
+            )}
+          </div>
         </div>
       </form>
 

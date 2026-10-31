@@ -2,6 +2,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import {
   EVENT_STATUS_LABELS,
   PLAN_ORDER_STATUS_LABELS,
+  RACE_ENTRY_STATUS_LABELS,
   TEAM_STATUS_LABELS,
   TICKET_ORDER_STATUS_LABELS,
   WALLET_TX_STATUS_LABELS,
@@ -13,6 +14,7 @@ import type {
   MatchLineup,
   MatchLineupStatus,
   PlanOrderStatus,
+  RaceEntryStatus,
   TeamStatus,
   TicketOrderStatus,
   WalletTxStatus,
@@ -148,6 +150,38 @@ export function TicketOrderStatusBadge({ status }: { status: TicketOrderStatus }
   return (
     <Badge variant={TICKET_ORDER_VARIANT[status]}>{TICKET_ORDER_STATUS_LABELS[status]}</Badge>
   );
+}
+
+const RACE_ENTRY_VARIANT: Record<RaceEntryStatus, Variant> = {
+  pending: "warning",
+  paid: "success",
+  cancelled: "neutral",
+  // Neutral, not danger: an abandoned entry is the sweep doing its job, the
+  // same non-event `cancelled` is. Red is kept for money that went back out.
+  expired: "neutral",
+  refunded: "danger",
+};
+
+/**
+ * One runner's payment state.
+ *
+ * `awaitingVerification` is a separate prop for the reason spelled out on
+ * PlanOrderStatusBadge below: it is derived from the proof columns, not a
+ * sixth `status` value, and widening RaceEntryStatus to carry it would leave
+ * both maps silently undefined for the new member.
+ */
+export function RaceEntryStatusBadge({
+  status,
+  awaitingVerification = false,
+}: {
+  status: RaceEntryStatus;
+  awaitingVerification?: boolean;
+}) {
+  if (awaitingVerification) {
+    return <Badge variant="warning">Menunggu verifikasi</Badge>;
+  }
+
+  return <Badge variant={RACE_ENTRY_VARIANT[status]}>{RACE_ENTRY_STATUS_LABELS[status]}</Badge>;
 }
 
 const PLAN_ORDER_VARIANT: Record<PlanOrderStatus, Variant> = {

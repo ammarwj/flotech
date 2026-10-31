@@ -20,6 +20,10 @@ const Select = React.forwardRef<HTMLSelectElement, React.ComponentProps<"select"
         ref={ref}
         className={cn(
           "flex h-10 w-full appearance-none rounded-md border border-input bg-background px-3 py-2 pr-9 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          // Sejajar dengan `input.tsx`/`date-picker.tsx`: `aria-invalid` saja
+          // sudah mewarnai bordernya, jadi field yang ditandai untuk pembaca
+          // layar tak mungkin lupa ditandai di layar.
+          "aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
           className
         )}
         {...props}

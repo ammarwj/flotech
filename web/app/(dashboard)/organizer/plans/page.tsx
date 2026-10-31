@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Building2 } from "lucide-react";
 
 import { getPublicPlans } from "@/lib/api/plans";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { PlanCard } from "@/components/subscription/plan-card";
 import { PlanGrid } from "@/components/subscription/plan-grid";
@@ -46,6 +50,29 @@ export default function PlansPage() {
     );
   }
 
+  // A plan is bought *by* an organization, and the id goes straight into the
+  // URL — so no org means there is nothing to buy on behalf of, not a form to
+  // render and fail at the till. /organizer/layout sends an ordinary user to
+  // onboarding, but a super admin is exempt there (they legitimately own none),
+  // and they are exactly who reaches this page with `orgId` null.
+  if (!orgId) {
+    return (
+      <div>
+        <PageHeader title="Beli paket" backHref="/organizer/billing" backLabel="Pembelian Paket" />
+        <EmptyState
+          icon={Building2}
+          title="Belum punya organisasi"
+          description="Paket dibeli atas nama organisasi. Buat organisasi dulu, lalu pilih paketnya di sini."
+          action={
+            <Button asChild>
+              <Link href="/onboarding">Buat organisasi</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
@@ -76,7 +103,7 @@ export default function PlansPage() {
 
       <PlanCheckoutDialog
         plan={dialogPlan}
-        orgId={orgId ?? undefined}
+        orgId={orgId}
         gatewayLive={!!org?.payment_gateway_enabled}
         onClose={() => {
           setDialogPlan(null);
