@@ -2,23 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PackagePlus } from "lucide-react";
 
 import { getPublicPlans } from "@/lib/api/plans";
-import { checkoutPlan } from "@/lib/api/organizations";
-import { parseApiError } from "@/lib/api/errors";
-import { checkoutOutcome } from "@/lib/checkout";
+import { useQuery } from "@tanstack/react-query";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { ChannelPicker } from "@/components/payment/channel-picker";
 import { PlanCard } from "@/components/subscription/plan-card";
 import { PlanGrid } from "@/components/subscription/plan-grid";
+import { PlanCheckoutDialog } from "@/components/subscription/plan-checkout-dialog";
 import type { Plan } from "@/types/api";
 
 /**
@@ -28,64 +22,23 @@ import type { Plan } from "@/types/api";
  * came to create an event should not have to go elsewhere, buy, and find their
  * way back. This replaces the old "batas event aktif tercapai" card — that limit
  * is gone, because every event is bought separately now.
+ *
+ * Checkout itself is `PlanCheckoutDialog`, the same component `/organizer/plans`
+ * renders. It used to be a second copy that opened only while the gateway was
+ * live and carried no discount field at all, so this page — the one an organizer
+ * actually reaches when buying — was where a code could not be typed.
  */
 export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
-  const router = useRouter();
-  const qc = useQueryClient();
   const { org } = useActiveOrg();
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
-  // Set only while the gateway is live and a plan is waiting on a channel
-  // choice — manual checkout never shows this dialog.
-  const [channelPlan, setChannelPlan] = useState<Plan | null>(null);
-  const [channel, setChannel] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dialogPlan, setDialogPlan] = useState<Plan | null>(null);
 
   const plansQuery = useQuery({ queryKey: ["public-plans"], queryFn: getPublicPlans });
 
-  const checkout = useMutation({
-    mutationFn: ({ plan, channel }: { plan: Plan; channel: string | null }) =>
-      checkoutPlan(orgId!, plan.id, channel ?? undefined),
-    onSuccess: (res) => {
-      const outcome = checkoutOutcome(res);
-
-      if (outcome === "redirect") {
-        window.location.assign(res.redirect_url!);
-        return;
-      }
-
-      qc.invalidateQueries({ queryKey: ["organizations"] });
-      qc.invalidateQueries({ queryKey: ["plan-orders"] });
-
-      if (outcome === "manual") {
-        toast.info("Selesaikan transfer manual", {
-          description:
-            "Payment gateway sedang mati. Transfer ke rekening flo-event dan unggah buktinya.",
-        });
-        router.push("/organizer/billing");
-        return;
-      }
-
-      if (outcome === "failed") {
-        toast.error("Pembayaran belum bisa dibuka", {
-          description: "Tagihan sudah terbit tapi belum lunas. Cek halaman Pembelian Paket.",
-        });
-        router.push("/organizer/billing");
-        return;
-      }
-
-      // Paid on the spot — the form appears as soon as the credit lands.
-      toast.success("Paket siap dipakai", { description: "Lanjutkan mengisi detail eventmu." });
-    },
-    onError: (err) => toast.error(parseApiError(err, "Gagal memproses pembelian.").message),
-    onSettled: () => {
-      setPendingPlanId(null);
-      setChannelPlan(null);
-      setChannel(null);
-    },
-  });
-
   return (
     <div>
-      <Card className="mb-6 max-w-2xl border-[color-mix(in_srgb,var(--brand-600)_40%,transparent)] bg-[color-mix(in_srgb,var(--brand-600)_6%,transparent)] p-6">
+      <Card className="mb-6 border-[color-mix(in_srgb,var(--brand-600)_40%,transparent)] bg-[color-mix(in_srgb,var(--brand-600)_6%,transparent)] p-6">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--brand-600)_14%,transparent)] text-[var(--brand-600)]">
             <PackagePlus className="h-5 w-5" />
@@ -95,8 +48,7 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
               Pilih paket untuk event ini
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Setiap event dibeli sekali, tanpa langganan bulanan. Batasan paket yang kamu pilih
-              berlaku untuk event ini saja — event berikutnya bisa pakai paket berbeda.
+              Bayar sekali, berlaku untuk satu event. Tanpa langganan.
             </p>
           </div>
         </div>
@@ -119,16 +71,11 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
           <PlanCard
             key={plan.id}
             plan={plan}
-            isPending={pendingPlanId === plan.id}
-            disabled={checkout.isPending || !orgId}
+            isPending={pendingPlanId === plan.id && busy}
+            disabled={busy || !orgId}
             onSelect={(p) => {
-              if (org?.payment_gateway_enabled) {
-                setChannel(null);
-                setChannelPlan(p);
-                return;
-              }
               setPendingPlanId(p.id);
-              checkout.mutate({ plan: p, channel: null });
+              setDialogPlan(p);
             }}
           />
         ))}
@@ -142,46 +89,21 @@ export function PlanPurchaseNotice({ orgId }: { orgId?: string }) {
         .
       </p>
 
-      <Dialog
-        open={!!channelPlan}
-        onOpenChange={(next) => !checkout.isPending && !next && setChannelPlan(null)}
-      >
-        <DialogContent>
-          <DialogHeader
-            title="Pilih metode pembayaran"
-            description={channelPlan ? `Beli paket ${channelPlan.name}.` : undefined}
-          />
-          <DialogBody>
-            {channelPlan && (
-              <ChannelPicker
-                amount={channelPlan.price}
-                audience="organizer"
-                value={channel}
-                onChange={setChannel}
-              />
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              variant="secondary"
-              onClick={() => setChannelPlan(null)}
-              disabled={checkout.isPending}
-            >
-              Batal
-            </Button>
-            <Button
-              disabled={!channel || checkout.isPending}
-              onClick={() => {
-                if (!channelPlan) return;
-                setPendingPlanId(channelPlan.id);
-                checkout.mutate({ plan: channelPlan, channel });
-              }}
-            >
-              Lanjutkan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PlanCheckoutDialog
+        plan={dialogPlan}
+        orgId={orgId}
+        gatewayLive={!!org?.payment_gateway_enabled}
+        onClose={() => {
+          setDialogPlan(null);
+          setPendingPlanId(null);
+        }}
+        onBusyChange={setBusy}
+        onPaid={() => {
+          // Paid on the spot — the form appears as soon as the credit lands, so
+          // there is nowhere to send them.
+          toast.success("Paket siap dipakai", { description: "Lanjutkan mengisi detail eventmu." });
+        }}
+      />
     </div>
   );
 }
