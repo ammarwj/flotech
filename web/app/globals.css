@@ -89,6 +89,16 @@
 
 * { box-sizing: border-box; }
 
+/* How far down the dashboard's sticky chrome starts.
+   The impersonation strip is a sibling of the sidebar and the header, and all
+   three are sticky — so when it is mounted the other two must offset by its
+   height or they slide underneath it. `:has()` asks the one question that
+   decides it, which keeps the answer in one place: no prop threaded through the
+   layout, and no second rule to keep in step with the strip's own markup. Its
+   height is pinned by `h-9` in that component; change one, change both. */
+.dash { --chrome-top: 0px; }
+.dash:has(> .impersonation-strip) { --chrome-top: 2.25rem; }
+
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

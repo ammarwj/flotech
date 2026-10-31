@@ -10,7 +10,6 @@ import { refreshAccessToken } from "@/lib/api/client";
 import { me as fetchMe } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 
 /**
  * Shown while a super admin is "logged in as" another user.
@@ -19,6 +18,20 @@ import { Card } from "@/components/ui/card";
  * impersonated account has role "user", so admin/layout.tsx bounces it out to
  * /organizer — a banner living under /admin would vanish exactly when it is
  * needed. Without it there is no visible sign you are acting as someone else.
+ *
+ * It sits *above everything*, sidebar included, rather than at the top of
+ * `main`: this is a statement about the whole session, not about the page being
+ * viewed, and a card inside the content scrolled away the moment anyone started
+ * working — which is exactly when forgetting whose account this is costs
+ * something. A strip, not a card, for the same reason the header is 64px: it is
+ * chrome, and it must not push the page down on every screen.
+ *
+ * **`.impersonation-strip` is load-bearing**, not styling. The sidebar and the
+ * header are sticky too, and they have to start *below* this strip when it is
+ * there and at 0 when it is not — so `.dash:has(> .impersonation-strip)` in
+ * globals.css sets `--chrome-top`, which both of them offset by. Renaming the
+ * class, or wrapping this in another element, leaves them sliding underneath it.
+ * Its height is pinned (`h-9` = `--chrome-top`); one line, never two.
  */
 export function ImpersonationBanner() {
   const router = useRouter();
@@ -67,34 +80,33 @@ export function ImpersonationBanner() {
   };
 
   return (
-    <Card
-      className="mb-4 flex flex-col gap-3 p-3 sm:mb-5 sm:flex-row sm:items-center sm:p-4"
+    <div
+      className="impersonation-strip sticky top-0 z-40 flex h-9 items-center gap-2.5 border-b px-5 md:col-span-2 md:px-6"
       style={{
         borderColor: `color-mix(in srgb, var(--warning) 45%, transparent)`,
-        background: `color-mix(in srgb, var(--warning) 8%, transparent)`,
+        // Mixed into `--surface`, not into `transparent`: this is sticky chrome
+        // and the page scrolls underneath it, so a tint that is 88% see-through
+        // shows the content sliding through the words. The header next to it
+        // gets away with translucency because it also carries backdrop-blur;
+        // one row of 14px text has no room to blur anything legibly.
+        background: `color-mix(in srgb, var(--warning) 14%, var(--surface))`,
       }}
     >
-      <div className="flex min-w-0 flex-1 items-start gap-2.5 sm:gap-3">
-        <UserCog className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)] sm:h-5 sm:w-5" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold sm:text-base">
-            Login sebagai {user?.full_name || user?.email || "user ini"}
-          </p>
-          {/* Detail panjang hanya di layar lebar: di mobile kartunya jadi setinggi
-              setengah viewport dan tombolnya terdorong jauh ke bawah. */}
-          <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
-            Semua tindakan di sini tercatat atas nama user tersebut.
-          </p>
-        </div>
-      </div>
+      <UserCog className="h-4 w-4 shrink-0 text-[var(--warning)]" />
+      {/* One line, truncated: the strip is chrome and must stay one row tall at
+          375px, where the name alone can outrun the width. */}
+      <p className="min-w-0 flex-1 truncate text-sm">
+        <span className="font-semibold">Login sebagai </span>
+        {user?.full_name || user?.email || "user ini"}
+      </p>
       <Button
         size="sm"
-        className="w-full shrink-0 sm:w-auto"
+        className="h-7 shrink-0 px-3"
         onClick={handleReturn}
         disabled={pending}
       >
         {pending ? "Kembali…" : "Kembali ke admin"}
       </Button>
-    </Card>
+    </div>
   );
 }
