@@ -54,7 +54,12 @@ export function DocumentViewerDialog({
     // broken too, however fine it is.
     <Dialog open={!!doc} onOpenChange={(open) => !open && onClose()}>
       {doc && (
-        <DialogContent className="max-h-[92vh] max-w-3xl">
+        // A definite height, not `max-h`. The body below has to fill whatever
+        // is left over after the header and the footer, and "whatever is left
+        // over" only exists once the panel's own height is resolved — under
+        // `max-h` it is the content that decides, which is the thing being
+        // constrained.
+        <DialogContent className="h-[88vh] max-h-[88vh] max-w-3xl">
           {/* The description always renders, which is why no
               `aria-describedby={undefined}` is needed to silence Radix: an
               upload with no stored filename falls back to the format rather
@@ -124,32 +129,38 @@ function Body({ doc }: { doc: ViewerDocument }) {
   }
 
   if (isPdf) {
+    // `min-h-0`, not the `min-h-[60vh]` this started as: a minimum taller than
+    // the space left over pushes the footer down past the panel, which is the
+    // same bug the image had. The panel's own height is what guarantees the
+    // viewer is big enough.
     return (
       <iframe
         src={doc.url}
         title={doc.title}
-        className="min-h-[60vh] flex-1 bg-[var(--bg-alt)]"
+        className="min-h-0 flex-1 bg-[var(--bg-alt)]"
       />
     );
   }
 
   return (
-    // Capped in `vh`, not `max-h-full`. The ceiling has to come from the
-    // viewport: inside a flex child whose own height is content-derived,
-    // `max-h-full` resolves against that content and the image sizes itself
-    // first, so a tall KTP scan simply ran past the panel and got clipped. The
-    // number is the panel's 92vh less its header and footer.
+    // The image is sized by this box, never by the viewport. A `vh` cap was
+    // tried and is wrong twice over: it does not know the panel's header and
+    // footer, so a tall scan overshot the footer; and it ignores the gutter
+    // the overlay adds, so the number can only ever be a guess kept in step by
+    // hand. `h-full` against a parent with a definite height has neither
+    // problem — the panel is `88vh`, flex gives this child the remainder, and
+    // `object-contain` fits the scan inside it whichever way round it is.
     //
     // `object-contain` rather than `w-full`: a KTP scan is wider than it is
     // tall and a passport photo is the reverse, and stretching either to the
     // panel's width is what makes the small print unreadable.
-    <div className="grid min-h-0 flex-1 place-items-center bg-[var(--bg-alt)] p-3">
+    <div className="min-h-0 flex-1 bg-[var(--bg-alt)] p-3">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={doc.url}
         alt={doc.title}
         onError={() => setBroken(true)}
-        className="max-h-[70vh] w-auto max-w-full object-contain"
+        className="mx-auto h-full w-full object-contain"
       />
     </div>
   );
