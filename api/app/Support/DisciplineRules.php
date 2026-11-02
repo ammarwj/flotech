@@ -4,9 +4,16 @@ namespace App\Support;
 
 use App\Models\EventCategory;
 use App\Services\Catalog;
+use Illuminate\Validation\Rule;
 
 /**
  * When a card turns into a ban, resolved for one category.
+ *
+ * Two rules here look alike and are not. `reset_yellow_on_knockout` wipes the
+ * *running cautions* at the bracket and leaves an outstanding ban standing;
+ * `ban_amnesty_round` discharges the ban itself from a named round on. An
+ * organizer who wants nobody to miss the final needs the second — the first
+ * would still sit down the player whose third yellow arrived in the semifinal.
  *
  * Three layers, shallow-merged per key: the fallbacks below, then the sport's
  * defaults (`sports.discipline_config`, editable at /admin/sports), then the
@@ -35,7 +42,22 @@ final class DisciplineRules
         'yellows_per_expulsion' => 2,
         'expulsion_ban_matches' => 1,
         'reset_yellow_on_knockout' => false,
+        'ban_amnesty_round' => 'off',
     ];
+
+    /**
+     * From which knockout round an outstanding ban is wiped.
+     *
+     * A round rather than a boolean because the two answers an organizer
+     * actually gives are different tournaments: "nobody misses a final" and
+     * "nobody misses the last four". One switch would serve whichever of the two
+     * we happened to pick and leave the other asking for a second setting.
+     *
+     * 'off' is the stored spelling of "no amnesty" on purpose: a null here means
+     * "inherit the layer below", which is what a cleared field in the form sends
+     * — so the two cannot be told apart if absence also meant off.
+     */
+    public const AMNESTY_ROUNDS = ['off', 'semifinal', 'final'];
 
     private function __construct(
         /** Does this sport track cards at all? Everything else is moot when false. */
@@ -55,6 +77,13 @@ final class DisciplineRules
         public readonly int $yellowsPerExpulsion,
         public readonly int $expulsionBanMatches,
         public readonly bool $resetYellowOnKnockout,
+        /**
+         * 'off' | 'semifinal' | 'final' — the bracket round from which nobody
+         * is suspended any more. Unlike the reset above this one discharges
+         * bans that were already issued, so it is a separate rule rather than
+         * another reading of the same flag.
+         */
+        public readonly string $banAmnestyRound,
     ) {}
 
     public static function forCategory(EventCategory $category): self
@@ -92,7 +121,36 @@ final class DisciplineRules
             yellowsPerExpulsion: max(0, (int) $merged['yellows_per_expulsion']),
             expulsionBanMatches: max(0, (int) $merged['expulsion_ban_matches']),
             resetYellowOnKnockout: (bool) $merged['reset_yellow_on_knockout'],
+            // Guarded like the thresholds above: a value written before the rule
+            // existed, or one that slipped past validation, must read as "no
+            // amnesty" rather than silently matching no round at all.
+            banAmnestyRound: in_array($merged['ban_amnesty_round'], self::AMNESTY_ROUNDS, true)
+                ? (string) $merged['ban_amnesty_round']
+                : 'off',
         );
+    }
+
+    /** Is there an amnesty at all? Everything downstream is moot when false. */
+    public function hasAmnesty(): bool
+    {
+        return $this->banAmnestyRound !== 'off';
+    }
+
+    /**
+     * How many rounds before the final the amnesty starts, or null for none.
+     *
+     * Counted from the end rather than forwards, because the round *number* says
+     * nothing on its own — "round 2" is the semifinal of a four-team draw and
+     * the round of 16 in a draw of thirty-two. Only the distance to the final
+     * names a round the same way in every bracket.
+     */
+    public function amnestyRoundsBeforeFinal(): ?int
+    {
+        return match ($this->banAmnestyRound) {
+            'final' => 0,
+            'semifinal' => 1,
+            default => null,
+        };
     }
 
     /**
@@ -116,6 +174,7 @@ final class DisciplineRules
             'yellows_per_expulsion' => $this->yellowsPerExpulsion,
             'expulsion_ban_matches' => $this->expulsionBanMatches,
             'reset_yellow_on_knockout' => $this->resetYellowOnKnockout,
+            'ban_amnesty_round' => $this->banAmnestyRound,
             'yellow_stat_key' => $this->yellowKey,
             'red_stat_key' => $this->redKey,
         ];
@@ -138,6 +197,9 @@ final class DisciplineRules
             $prefix.'yellows_per_expulsion' => ['nullable', 'integer', 'min:0', 'max:10'],
             $prefix.'expulsion_ban_matches' => ['nullable', 'integer', 'min:0', 'max:10'],
             $prefix.'reset_yellow_on_knockout' => ['nullable', 'boolean'],
+            // A string, not a boolean: see AMNESTY_ROUNDS. Nullable because a
+            // cleared field means "inherit", and 'off' is the explicit no.
+            $prefix.'ban_amnesty_round' => ['nullable', Rule::in(self::AMNESTY_ROUNDS)],
         ];
     }
 

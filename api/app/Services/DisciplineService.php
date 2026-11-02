@@ -30,6 +30,11 @@ use Illuminate\Support\Facades\DB;
  *   would have produced: recording one incident twice is what an organizer
  *   actually types, and banning them for two matches over it is the error that
  *   would be noticed.
+ * - An amnesty (`ban_amnesty_round`) is resolved to one position in the timeline
+ *   below, so the rest of this engine never branches on which bracket format is
+ *   running. From that fixture on, bans are discharged and none are issued; the
+ *   cards themselves still tally, because they are the sport's record and the
+ *   amnesty is about who may play.
  * - Nothing records who actually took the field, so a ban is assumed to have been
  *   served by the team's next official fixture. `match_lineups` now exists and is
  *   deliberately not read here: it is a sheet submitted before kick-off, and a
@@ -92,6 +97,12 @@ class DisciplineService
         $timeline = $this->timeline($category);
         [$cards, $people] = $this->cards($category, $rules);
 
+        // The point in the timeline from which nobody is suspended any more, or
+        // null when the category has no amnesty (or no bracket to hang one on).
+        $cutoff = $this->amnestyCutoff($category, $timeline, $rules);
+        $position = $timeline->pluck('id')->flip();
+        $amnestied = fn (GameMatch $m): bool => $cutoff !== null && ($position[$m->id] ?? -1) >= $cutoff;
+
         $rows = [];
         /** @var array<string, array<int, array<string, mixed>>> $bans */
         $bans = [];
@@ -115,6 +126,12 @@ class DisciplineService
             // the fixture is already being played.
             $pending = $mine->filter(fn (GameMatch $m) => $this->isPending($m))->values();
 
+            // Fixtures that may still carry a warning. An amnestied one may not:
+            // from that round on nobody is suspended, so tagging it would print
+            // a ban beside the one fixture the organizer switched the rule on to
+            // protect.
+            $enforceable = $pending->reject($amnestied)->values();
+
             $running = [];   // yellows since the last ban, per person
             $owed = [];      // bans issued but not yet sat out
             $issued = [];
@@ -124,6 +141,17 @@ class DisciplineService
             $resetDone = false;
 
             foreach ($official as $match) {
+                // The amnesty discharges what is owed, which is the whole of its
+                // difference from the knockout reset below: this one wipes
+                // $owed as well as $running. Cards shown *in* the amnestied
+                // round still tally — they are the sport's record, and a red in
+                // the final is read by the next competition, not by this one —
+                // they just cannot produce a ban anyone here will serve.
+                if ($amnestied($match)) {
+                    $owed = [];
+                    $running = [];
+                }
+
                 // A knockout stage wipes the running yellows but never an
                 // outstanding ban — that is still owed. Only hybrid categories
                 // set stage='knockout'; in a straight knockout every fixture is
@@ -239,6 +267,19 @@ class DisciplineService
                         $reason[$personKey] = 'red_card';
                     }
                 }
+
+                // And again on the way out, for the cards this very fixture
+                // produced. Clearing only on entry would let a red shown in the
+                // semifinal ban its holder from the final — the one outcome the
+                // setting exists to prevent — while clearing only on exit would
+                // make the amnestied fixture itself discharge a ban it was
+                // supposed to be free of. `bans_issued` deliberately keeps
+                // counting: the card was shown and the punishment was handed
+                // out, the amnesty is what let it lapse.
+                if ($amnestied($match)) {
+                    $owed = [];
+                    $running = [];
+                }
             }
 
             foreach (array_keys($totals + $owed) as $personKey) {
@@ -249,6 +290,19 @@ class DisciplineService
                 }
 
                 $remaining = $owed[$personKey] ?? 0;
+
+                // Under an amnesty the tally may not out-count the fixtures that
+                // can still enforce it. A ban issued in the quarterfinal of a
+                // bracket whose semifinal is amnestied is owed by the engine and
+                // served by nothing — reported raw, the table would print "1
+                // larangan" above a schedule where no fixture carries it, which
+                // is the same screen-level contradiction as a standings table
+                // disagreeing with the gate reading it. Without an amnesty this
+                // is left alone: running out of fixtures is the person's own
+                // problem and the number is still the truth about them.
+                if ($cutoff !== null) {
+                    $remaining = min($remaining, $enforceable->count());
+                }
 
                 $rows[] = [
                     ...$person,
@@ -263,7 +317,7 @@ class DisciplineService
                 // One outstanding ban match maps onto one upcoming fixture. A
                 // person owing two sits out the next two; one owing more than
                 // the team has left simply runs out of fixtures.
-                foreach ($pending->take($remaining) as $match) {
+                foreach ($enforceable->take($remaining) as $match) {
                     $bans[$match->id][] = [
                         ...$person,
                         'reason' => $reason[$personKey] ?? 'yellow_accumulation',
@@ -288,6 +342,124 @@ class DisciplineService
     }
 
     /**
+     * The timeline index from which an amnesty applies, or null when there is
+     * none to apply.
+     *
+     * An *index*, not a round number, and that is the whole point: the three
+     * bracket engines number their rounds differently (a single-elimination
+     * final is stage-null round 3, a hybrid one is stage 'knockout' round 3, a
+     * double-elimination one is bracket 'grand_final' round 1), and three
+     * comparisons would be three chances to disagree. Reduced to one position in
+     * the list everybody already walks, the rest of the engine needs no branch
+     * on engine at all.
+     *
+     * A fixture at or after the cutoff is free: bans are discharged there and
+     * none are issued onto it. Everything before it is unchanged.
+     *
+     * @param  Collection<int, GameMatch>  $timeline
+     */
+    private function amnestyCutoff(EventCategory $category, Collection $timeline, DisciplineRules $rules): ?int
+    {
+        $before = $rules->amnestyRoundsBeforeFinal();
+
+        if ($before === null) {
+            return null;
+        }
+
+        $depths = $this->bracketDepths($category, $timeline);
+
+        foreach ($timeline as $index => $match) {
+            if (($depths[$match->id] ?? null) !== null && $depths[$match->id] <= $before) {
+                return $index;
+            }
+        }
+
+        // A league, or a hybrid whose bracket has not been generated yet. The
+        // setting is not wrong, it simply has nothing to name — and a cutoff
+        // guessed from the last matchday would amnesty the group stage.
+        return null;
+    }
+
+    /**
+     * How many rounds *after* each bracket fixture there are, keyed by fixture
+     * id; absent for anything outside the bracket.
+     *
+     * 0 is the final, 1 the semifinal, and so on — counted backwards because the
+     * round number alone names nothing (see
+     * DisciplineRules::amnestyRoundsBeforeFinal()). The third-place tie shares
+     * the final's round and so comes out 0, which is right: it is played on
+     * finals day, and an organizer who frees the final means that one too.
+     *
+     * Double elimination is counted per lane. Both the winners' and the losers'
+     * last rounds feed the grand final, so both are the semifinal — there is no
+     * single round of four to point at, and treating one lane as deeper than the
+     * other would free one semifinalist and suspend their opponent.
+     *
+     * @param  Collection<int, GameMatch>  $timeline
+     * @return array<string, int>
+     */
+    private function bracketDepths(EventCategory $category, Collection $timeline): array
+    {
+        $engine = $category->engine();
+
+        if ($engine === 'knockout_double') {
+            $lastOf = [];
+
+            foreach ($timeline as $match) {
+                if (in_array($match->bracket, ['winners', 'losers'], true)) {
+                    $lastOf[$match->bracket] = max($lastOf[$match->bracket] ?? 0, $match->round);
+                }
+            }
+
+            $depths = [];
+
+            foreach ($timeline as $match) {
+                if ($match->bracket === 'grand_final') {
+                    // Both grand-final legs are the final; the reset is the same
+                    // fixture played twice.
+                    $depths[$match->id] = 0;
+                } elseif (isset($lastOf[$match->bracket])) {
+                    $depths[$match->id] = $lastOf[$match->bracket] - $match->round + 1;
+                }
+            }
+
+            return $depths;
+        }
+
+        // The two single-lane engines differ only in how a bracket fixture is
+        // marked, so the test is the marker and the arithmetic is shared.
+        $isBracket = match ($engine) {
+            'knockout_single' => fn (GameMatch $m) => $m->stage === null,
+            'hybrid' => fn (GameMatch $m) => $m->stage === 'knockout',
+            default => null,
+        };
+
+        if ($isBracket === null) {
+            return [];
+        }
+
+        $bracket = $timeline->filter($isBracket);
+        $final = (int) $bracket->max('round');
+
+        if ($final === 0) {
+            return [];
+        }
+
+        return $bracket
+            // A hand-added fixture in a single-elimination category shares
+            // `stage null` with the bracket and keeps counting past its last
+            // slot — the same trap firstRoundSlots() guards. A round holds
+            // 2^(final - round) ties, so anything past that is a friendly, and
+            // in a four-team draw it would otherwise read as a semifinal and
+            // move the cutoff onto itself. The third-place tie is the one real
+            // fixture outside the count: it borrows the final's round.
+            ->filter(fn (GameMatch $m) => $m->bracket === 'third_place'
+                || $m->order < 2 ** ($final - $m->round))
+            ->mapWithKeys(fn (GameMatch $m) => [$m->id => $final - $m->round])
+            ->all();
+    }
+
+    /**
      * Every fixture of the category in the order they are played.
      *
      * Sorted once here rather than per team: N sorts of the same list can drift,
@@ -298,7 +470,7 @@ class DisciplineService
     private function timeline(EventCategory $category): Collection
     {
         return $category->matches()
-            ->select(['id', 'stage', 'round', 'order', 'home_team_id', 'away_team_id', 'status', 'confirmed_at', 'scheduled_at'])
+            ->select(['id', 'stage', 'bracket', 'round', 'order', 'home_team_id', 'away_team_id', 'status', 'confirmed_at', 'scheduled_at'])
             ->get()
             ->sortBy(fn (GameMatch $m) => self::sortKey($m), SORT_REGULAR)
             ->values();

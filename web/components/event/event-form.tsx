@@ -60,7 +60,9 @@ import {
 } from "@/lib/scoring";
 import { RubberFormatEditor } from "@/components/event/rubber-format-editor";
 import { RichTextEditor } from "@/components/shared/rich-text-editor";
+import { BAN_AMNESTY_ROUNDS } from "@/types/api";
 import type {
+  BanAmnestyRound,
   ParticipantType,
   PlanSummary,
   SportDef,
@@ -587,6 +589,11 @@ export function EventForm({
       yellows_per_expulsion: d?.yellows_per_expulsion?.toString() ?? "",
       expulsion_ban_matches: d?.expulsion_ban_matches?.toString() ?? "",
       reset_yellow_on_knockout: d?.reset_yellow_on_knockout ?? false,
+      // A string, not a number, and so it keeps its own spelling of "unset":
+      // "" leaves as an absent key (inherit the sport), "off" is the explicit
+      // no. Collapsing the two would make an organizer who looked at the field
+      // and left it alone overwrite the sport default with its own value.
+      ban_amnesty_round: (d?.ban_amnesty_round ?? "") as BanAmnestyRound | "",
     };
   });
 
@@ -782,6 +789,7 @@ export function EventForm({
     yellows_per_expulsion: num(discipline.yellows_per_expulsion),
     expulsion_ban_matches: num(discipline.expulsion_ban_matches),
     reset_yellow_on_knockout: discipline.reset_yellow_on_knockout,
+    ban_amnesty_round: discipline.ban_amnesty_round || undefined,
   };
   // `label` ikut lewat `num`-nya sendiri: string kosong harus absen, bukan ""
   // — `clean()` di server memang membuang keduanya, tapi mengirim "" berarti
@@ -1401,6 +1409,55 @@ export function EventForm({
                     </FieldHint>
                   </span>
                 </label>
+
+                <div className="grid gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="ban-amnesty" className="font-semibold">
+                      Hapus larangan bermain mulai babak
+                    </Label>
+                    <InfoHint label="Penjelasan penghapusan larangan di babak penentuan">
+                      Dari babak yang dipilih, <b>larangan yang belum dijalani
+                      dibatalkan</b> dan akumulasi {yellowWord} dinolkan — jadi
+                      tidak ada pemain yang absen di laga penentuan. Beda dari
+                      switch di atas, yang hanya menghapus akumulasi dan
+                      membiarkan larangannya tetap berlaku. Kartu tetap tercatat
+                      di statistik. Berlaku untuk semua format berbabak gugur;
+                      format liga tidak punya babak ini sehingga setelannya
+                      tidak berpengaruh.
+                    </InfoHint>
+                  </div>
+                  <Select
+                    id="ban-amnesty"
+                    value={discipline.ban_amnesty_round}
+                    onChange={(e) =>
+                      setDiscipline((d) => ({
+                        ...d,
+                        ban_amnesty_round: e.target.value as BanAmnestyRound | "",
+                      }))
+                    }
+                  >
+                    {/* Blank is "inherit the sport", which is why it is not the
+                        same option as "Tidak ada" — that one is an answer. */}
+                    <option value="">
+                      Ikut bawaan cabang (
+                      {BAN_AMNESTY_ROUNDS.find(
+                        (r) =>
+                          r.value ===
+                          (sportDiscipline.ban_amnesty_round ?? "off")
+                      )?.label ?? "Tidak ada"}
+                      )
+                    </option>
+                    {BAN_AMNESTY_ROUNDS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <FieldHint>
+                    Perebutan juara 3 ikut babak final — keduanya dimainkan di
+                    hari yang sama.
+                  </FieldHint>
+                </div>
               </CardContent>
             </Card>
           )}

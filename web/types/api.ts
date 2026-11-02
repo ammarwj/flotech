@@ -499,7 +499,22 @@ export interface DisciplineRuleValues {
   expulsion_ban_matches?: number;
   /** Group-stage yellows wiped at the bracket. Hybrid categories only. */
   reset_yellow_on_knockout?: boolean;
+  /**
+   * Bracket round from which an outstanding ban is discharged — "nobody misses
+   * the final". Distinct from `reset_yellow_on_knockout`, which only wipes the
+   * running cautions and leaves an issued ban standing.
+   */
+  ban_amnesty_round?: BanAmnestyRound;
 }
+
+/** Mirrors DisciplineRules::AMNESTY_ROUNDS. 'off' is the explicit no. */
+export type BanAmnestyRound = "off" | "semifinal" | "final";
+
+export const BAN_AMNESTY_ROUNDS: { value: BanAmnestyRound; label: string }[] = [
+  { value: "off", label: "Tidak ada — larangan tetap berlaku" },
+  { value: "semifinal", label: "Mulai semifinal" },
+  { value: "final", label: "Mulai final" },
+];
 
 /**
  * Berapa babak sebuah pertandingan dimainkan, dan berapa lama tiap babaknya.

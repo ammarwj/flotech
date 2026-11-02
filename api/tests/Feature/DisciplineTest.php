@@ -915,4 +915,199 @@ class DisciplineTest extends TestCase
         $this->assertSame(1, $bans[$third][0]['bans_remaining']);
         $this->assertSame('upcoming', $bans[$third][0]['status']);
     }
+
+    // ---- ban_amnesty_round ----
+
+    /**
+     * A hybrid category with a group fixture and a two-round bracket, which is
+     * the smallest shape that can tell a semifinal from a final.
+     *
+     * The bracket is stamped by hand for the same reason the knockout tests
+     * above do it: generateHybridKnockout() needs a finished, confirmed group
+     * stage and a draw, none of which this rule reads. `order` is set along with
+     * the round because a hand-added fixture keeps counting past the bracket's
+     * last slot, and the depth maths uses that cut-off to tell a bracket tie
+     * from a friendly.
+     *
+     * @return array{0: Event, 1: array<string, string>, 2: string, 3: string, 4: string, 5?: array{0: string, 1: string}}
+     *                                                                                                                     event, player name => id, group id, semifinal id, final id, [home, away]
+     */
+    private function bracketEvent(string $amnesty): array
+    {
+        $event = $this->event('mini_soccer', 'hybrid', [
+            'rules_config' => ['discipline' => ['ban_amnesty_round' => $amnesty]],
+        ]);
+        [$home, $players] = $this->team($event, 'Garuda FC', ['Budi', 'Andi']);
+        [$away] = $this->team($event, 'Rajawali United', ['Lawan']);
+
+        $group = $this->fixture($event, $home, $away, '2026-08-01 10:00:00');
+        GameMatch::where('id', $group)->update(['stage' => 'group', 'round' => 1, 'order' => 0]);
+
+        $semi = $this->fixture($event, $home, $away, '2026-08-10 10:00:00');
+        GameMatch::where('id', $semi)->update(['stage' => 'knockout', 'round' => 1, 'order' => 0]);
+
+        $final = $this->fixture($event, $home, $away, '2026-08-11 10:00:00');
+        GameMatch::where('id', $final)->update(['stage' => 'knockout', 'round' => 2, 'order' => 0]);
+
+        return [$event, $players, $group, $semi, $final, [$home, $away]];
+    }
+
+    public function test_the_amnesty_round_decides_which_bracket_fixture_is_free(): void
+    {
+        // Three categories, identical cards and identical fixtures: only the
+        // setting differs. Asserting one of them alone proves nothing — an
+        // engine that frees every bracket fixture and an engine that frees none
+        // each pass a third of this test.
+        $carried = [];
+
+        foreach (['off', 'semifinal', 'final'] as $amnesty) {
+            [$event, $players, $group, $semi, $final] = $this->bracketEvent($amnesty);
+
+            $this->finish($group);
+            $this->cards($group, [$players['Budi'] => ['red' => 1]]);
+
+            $payload = $this->discipline($event);
+            $bans = (array) $payload['matches'];
+
+            $carried[$amnesty] = [
+                'semi' => in_array($players['Budi'], array_column($bans[$semi] ?? [], 'person_id'), true),
+                'final' => in_array($players['Budi'], array_column($bans[$final] ?? [], 'person_id'), true),
+                'remaining' => $this->playerRow($payload, $players['Budi'])['bans_remaining'],
+                'issued' => $this->playerRow($payload, $players['Budi'])['bans_issued'],
+            ];
+        }
+
+        // No amnesty: the red is served by the next fixture, the semifinal.
+        $this->assertTrue($carried['off']['semi'], 'the ban vanished with the rule switched off');
+        $this->assertFalse($carried['off']['final'], 'a one-match ban reached a second fixture');
+        $this->assertSame(1, $carried['off']['remaining']);
+
+        // Freed from the semifinal: nothing left to serve anywhere.
+        $this->assertFalse($carried['semifinal']['semi'], 'the semifinal still carried the ban');
+        $this->assertFalse($carried['semifinal']['final']);
+        $this->assertSame(0, $carried['semifinal']['remaining'], 'the tally still owed a ban no fixture enforces');
+
+        // Freed from the final only: the semifinal is still a normal fixture.
+        $this->assertTrue($carried['final']['semi'], 'the semifinal was freed by a final-only amnesty');
+        $this->assertFalse($carried['final']['final']);
+        $this->assertSame(1, $carried['final']['remaining']);
+
+        // The card was shown and the punishment was handed out in all three —
+        // the amnesty is what let it lapse, and the record has to say so.
+        $this->assertSame(1, $carried['semifinal']['issued'], 'the amnesty rewrote history instead of discharging a ban');
+    }
+
+    public function test_a_card_shown_in_the_semifinal_cannot_ban_from_an_amnestied_final(): void
+    {
+        // The reason the clearing runs on the way out of a fixture as well as on
+        // the way in: cleared only on entry, the semifinal's own red would still
+        // be owed walking into the final. Compared against the same card with
+        // the rule off, where the ban stands — a build that never bans anybody
+        // from the final would otherwise pass this on its own.
+        $reached = [];
+
+        foreach (['off' => 'off', 'final' => 'final'] as $label => $amnesty) {
+            [$event, $players, $group, $semi, $final] = $this->bracketEvent($amnesty);
+
+            $this->finish($group);
+            $this->finish($semi);
+            $this->cards($semi, [$players['Budi'] => ['red' => 1]]);
+
+            $bans = (array) $this->discipline($event)['matches'];
+            $reached[$label] = in_array($players['Budi'], array_column($bans[$final] ?? [], 'person_id'), true);
+        }
+
+        $this->assertFalse($reached['final'], 'a red in the semifinal banned its holder from an amnestied final');
+        $this->assertTrue(
+            $reached['off'],
+            'the final carried no ban even with the rule switched off',
+        );
+    }
+
+    public function test_the_amnesty_clears_running_cautions_as_well_as_bans(): void
+    {
+        // The whole difference from reset_yellow_on_knockout is that this one
+        // discharges the ban too, so both halves need pinning. Andi carries two
+        // cautions into the bracket and must not pick up a third-yellow ban in
+        // the final; Budi's outstanding ban beside him is what proves the two
+        // behave as one rule rather than one of them happening to work.
+        [$event, $players, $group, $semi, $final] = $this->bracketEvent('semifinal');
+
+        $this->finish($group);
+        $this->cards($group, [
+            $players['Budi'] => ['red' => 1],
+            $players['Andi'] => ['yellow' => 2],
+        ]);
+
+        $this->finish($semi);
+        $this->cards($semi, [$players['Andi'] => ['yellow' => 1]]);
+
+        $payload = $this->discipline($event);
+
+        $this->assertSame(
+            0,
+            $this->playerRow($payload, $players['Andi'])['yellow_running'],
+            'the cautions carried across the amnesty and a third yellow banned him',
+        );
+        $this->assertSame(0, $this->playerRow($payload, $players['Budi'])['bans_remaining']);
+        $this->assertSame([], (array) ($payload['matches']->{$final} ?? []), 'the amnestied final carried a ban');
+
+        // The cards themselves are the sport's record and stay counted.
+        $this->assertSame(3, $this->playerRow($payload, $players['Andi'])['yellow_total']);
+        $this->assertSame(1, $this->playerRow($payload, $players['Budi'])['red_total']);
+    }
+
+    public function test_an_amnesty_does_nothing_in_a_league_that_has_no_bracket(): void
+    {
+        // The setting is not wrong in a league, it has no round to name — and a
+        // cutoff guessed from the last matchday would free fixtures the rule was
+        // never pointed at. Compared against the same league without it, so an
+        // engine that quietly stops banning anybody fails here.
+        $remaining = [];
+
+        foreach (['off', 'final'] as $amnesty) {
+            $event = $this->event('mini_soccer', 'league', [
+                'rules_config' => ['discipline' => ['ban_amnesty_round' => $amnesty]],
+            ]);
+            [$home, $players] = $this->team($event, 'Garuda FC', ['Budi']);
+            [$away] = $this->team($event, 'Rajawali United', ['Lawan']);
+
+            $first = $this->fixture($event, $home, $away, '2026-08-01 10:00:00');
+            $this->finish($first);
+            $this->cards($first, [$players['Budi'] => ['red' => 1]]);
+            $this->fixture($event, $home, $away, '2026-08-02 10:00:00');
+
+            $remaining[$amnesty] = $this->playerRow($this->discipline($event), $players['Budi'])['bans_remaining'];
+        }
+
+        $this->assertSame(1, $remaining['off']);
+        $this->assertSame(1, $remaining['final'], 'the amnesty found a final in a format that has none');
+    }
+
+    public function test_the_third_place_tie_follows_the_final(): void
+    {
+        // It borrows the final's round, so it comes out at the same depth — and
+        // it is played the same day, so an organizer who frees the final means
+        // that one too. Compared against the semifinal beside it under the same
+        // setting, which is still a normal fixture.
+        [$event, $players, $group, $semi, $final, [$home, $away]] = $this->bracketEvent('final');
+
+        $third = $this->fixture($event, $home, $away, '2026-08-11 14:00:00');
+
+        $this->finish($group);
+        $this->cards($group, [$players['Budi'] => ['red' => 1]]);
+
+        GameMatch::where('id', $third)->update([
+            'stage' => 'knockout', 'bracket' => 'third_place', 'round' => 2, 'order' => 1,
+        ]);
+
+        $bans = (array) $this->discipline($event)['matches'];
+
+        $this->assertSame([], $bans[$third] ?? [], 'the third-place tie carried a ban the final was freed of');
+        $this->assertContains(
+            $players['Budi'],
+            array_column($bans[$semi] ?? [], 'person_id'),
+            'the semifinal was freed by a final-only amnesty',
+        );
+    }
 }

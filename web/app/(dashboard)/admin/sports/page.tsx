@@ -32,7 +32,9 @@ import {
   tracksClock,
   tracksDiscipline,
 } from "@/lib/scoring";
+import { BAN_AMNESTY_ROUNDS } from "@/types/api";
 import type {
+  BanAmnestyRound,
   DisciplineRuleValues,
   ParticipantType,
   PeriodConfigValues,
@@ -508,6 +510,35 @@ export default function AdminSportsPage() {
                   onChange={(e) => setRule("expulsion_ban_matches", e.target.value)}
                   placeholder="1"
                 />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="disc-amnesty">Hapus larangan mulai babak</Label>
+                <Select
+                  id="disc-amnesty"
+                  value={form.discipline_config.ban_amnesty_round ?? ""}
+                  onChange={(e) =>
+                    setForm((f) => {
+                      const next = { ...f.discipline_config };
+                      // Blank = no key = the platform default ('off'), the same
+                      // contract setRule() keeps for the numbers beside it.
+                      if (e.target.value === "") delete next.ban_amnesty_round;
+                      else next.ban_amnesty_round = e.target.value as BanAmnestyRound;
+                      return { ...f, discipline_config: next };
+                    })
+                  }
+                >
+                  <option value="">Bawaan platform (tidak ada)</option>
+                  {BAN_AMNESTY_ROUNDS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Larangan yang belum dijalani dibatalkan dari babak itu — beda
+                  dari akumulasi, yang hanya dinolkan. Format liga tidak punya
+                  babak ini.
+                </p>
               </div>
             </div>
           </div>
