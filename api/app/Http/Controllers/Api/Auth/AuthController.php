@@ -111,23 +111,33 @@ class AuthController extends Controller
      * same absence, so it has to be loaded on every response the client learns
      * its identity from, not just on me().
      *
-     * `loadExists` on the other three is the second half of the same question:
+     * `loadExists` on the other four is the second half of the same question:
      * they are what `account_types` is derived from, and the shell asks that to
      * tell a crew-only account (plain "Area Petugas" label) from a referee who
      * also manages a team — they really do have two hats, and keep the mode
      * switcher. Existence, not rows: this response prints none of them, `teams`
      * is wide (payment snapshots, proof uploads) and one manager can hold many,
      * and loading them would also start publishing `managed_teams` &c. here,
-     * which is the admin screen's payload, not the shell's. All three land in
+     * which is the admin screen's payload, not the shell's. All four land in
      * one statement as subqueries, and `accountTypes()` reads either shape.
      *
-     * Two extra queries, said out loud.
+     * `raceEntries` is the fourth, and it is not optional: a fun run sells no
+     * teams, so a runner with three entries came out of here as an account with
+     * nothing in it — the same absence a referee's used to be, landing them on
+     * an organizer dashboard and then in /onboarding.
+     *
+     * One extra query, said out loud.
      */
     protected function withAuth(User $user): User
     {
         return $user
             ->load('personnelAssignments.event')
-            ->loadExists(['ownedOrganizations', 'organizationMemberships', 'managedTeams']);
+            ->loadExists([
+                'ownedOrganizations',
+                'organizationMemberships',
+                'managedTeams',
+                'raceEntries',
+            ]);
     }
 
     /**

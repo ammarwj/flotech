@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\LineupApprovalController;
 use App\Http\Controllers\Api\LineupSheetController;
 use App\Http\Controllers\Api\MatchController;
 use App\Http\Controllers\Api\MatchReportController;
+use App\Http\Controllers\Api\MyRaceEntryController;
 use App\Http\Controllers\Api\MyTeamController;
 use App\Http\Controllers\Api\MyTeamMatchController;
 use App\Http\Controllers\Api\OfficiatingController;
@@ -281,6 +282,12 @@ Route::prefix('v1')->group(function () {
         Route::get('my-teams/{team}/receipt', [MyTeamController::class, 'receipt']);
         // Same printable player album the organizer can print, scoped by session.
         Route::get('my-teams/{team}/album', [MyTeamController::class, 'album']);
+
+        // Participant: fun run entries I filed. A list and nothing more — every
+        // door onto a single entry (proof, invoice, receipt, QR) already lives
+        // behind its unguessable id under `race-entries/*`, public for the
+        // reason written there. See MyRaceEntryController.
+        Route::get('my-race-entries', [MyRaceEntryController::class, 'index']);
 
         // The manager's team sheet, handed to the referee before kick-off.
         // Same tier and same `scope()` as the rest of my-teams/*: a manager is an

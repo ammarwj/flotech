@@ -33,7 +33,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
 
     // The success card sends the manager straight into their team area to finish
     // the roster & documents (§5.2), not just back to the event page.
-    await page.getByRole("link", { name: "Ke Tim Saya" }).click();
+    await page.getByRole("link", { name: "Ke Pendaftaran Saya" }).click();
     await expect(page).toHaveURL(/\/participant/);
 
     // A team is not in the tournament until the organizer says so (§4.2).
@@ -136,7 +136,7 @@ test.describe("§5.2 Peserta — daftar tim", () => {
     const participant = await api.registerUser("peserta");
 
     // A team belongs to the account that filed it — that link is the only way it
-    // ever shows up in "Tim Saya". So a guest is stopped here, not at submit.
+    // ever shows up in "Pendaftaran Saya". So a guest is stopped here, not at submit.
     await page.goto(`/${organizer.org.slug}/${event.slug}/register`);
     await expect(page.getByRole("heading", { name: /masuk dulu untuk mendaftar/i })).toBeVisible();
     await expect(page.getByLabel("Nama tim")).toBeHidden();

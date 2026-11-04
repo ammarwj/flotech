@@ -130,6 +130,20 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(Team::class, 'manager_user_id');
     }
 
+    /**
+     * Fun run entries filed by this account.
+     *
+     * The second way an account becomes a participant, and the reason
+     * `accountTypes()` reads two relations rather than one: a fun run sells no
+     * teams at all, so a runner who has entered three races held zero
+     * `managedTeams` and came out of that method as "belum ada aktivitas" —
+     * which is also the badge /admin/users printed over three entries.
+     */
+    public function raceEntries(): HasMany
+    {
+        return $this->hasMany(RaceEntry::class);
+    }
+
     /** Events this account is a referee or match staff on. */
     public function personnelAssignments(): HasMany
     {
@@ -151,7 +165,15 @@ class User extends Authenticatable implements JWTSubject
      * jadi hasilnya list, bukan satu nilai. List kosong = akun baru yang belum
      * melakukan apa pun.
      *
-     * Membaca relasi yang sudah dimuat — pemanggilnya wajib menyiapkan ketiganya
+     * **Peserta punya DUA jejak, bukan satu**: mendaftarkan tim, atau mendaftar
+     * fun run. Membaca `managedTeams` saja sudah terbukti salah — fun run tidak
+     * menjual tim sama sekali, jadi pelari yang sudah ikut tiga lomba terbaca
+     * "belum ada aktivitas", dan itu pula badge yang dicetak /admin/users di
+     * atas tiga pendaftarannya. Ujilah dengan **membandingkan** pelari murni
+     * dan manajer tim murni dalam satu daftar; assert satu akun saja akan lolos
+     * walau salah satu jejak tidak pernah dibaca.
+     *
+     * Membaca relasi yang sudah dimuat — pemanggilnya wajib menyiapkan keempatnya
      * lewat `load()` **atau** `loadExists()` (lihat `hasAccountContext()`).
      * Layar admin memang butuh barisnya; shell auth cuma butuh ada/tidak, dan
      * memuat `teams` yang lebar untuk pertanyaan itu lebih mahal dari jawabannya.
@@ -166,7 +188,7 @@ class User extends Authenticatable implements JWTSubject
             $types[] = 'organizer';
         }
 
-        if ($this->hasAny('managedTeams')) {
+        if ($this->hasAny('managedTeams') || $this->hasAny('raceEntries')) {
             $types[] = 'participant';
         }
 
@@ -174,19 +196,22 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * Ketiga relasi di atas sudah siap dibaca `accountTypes()` — lewat `load()`
+     * Keempat relasi di atas sudah siap dibaca `accountTypes()` — lewat `load()`
      * (barisnya ada) atau `loadExists()` (cuma ada/tidak).
      *
      * Ini gerbang `UserResource::account_types`. Tanpa gerbang, "tidak dimuat"
      * tak bisa dibedakan dari "tidak punya" dan setiap organizer akan terkirim
      * sebagai akun kosong — persis kesalahan yang membuat mode switcher-nya
-     * hilang.
+     * hilang. `raceEntries` wajib ikut di sini dengan alasan yang sama satu
+     * tingkat lebih dalam: tanpa gerbang atasnya, pelari murni lolos sebagai
+     * akun kosong justru di respons yang memutuskan halaman pendaratannya.
      */
     public function hasAccountContext(): bool
     {
         return $this->accountRelationLoaded('ownedOrganizations')
             && $this->accountRelationLoaded('organizationMemberships')
-            && $this->accountRelationLoaded('managedTeams');
+            && $this->accountRelationLoaded('managedTeams')
+            && $this->accountRelationLoaded('raceEntries');
     }
 
     private function accountRelationLoaded(string $relation): bool

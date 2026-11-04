@@ -8,6 +8,7 @@ import { CheckCircle2, Clock, Flag } from "lucide-react";
 
 import { getRaceEntry, submitRaceEntryProof } from "@/lib/api/race";
 import { parseApiError } from "@/lib/api/errors";
+import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { Card } from "@/components/ui/card";
 import { QrCode } from "@/components/event/qr-code";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,15 @@ function fmtDate(d: string | null | undefined) {
   if (!d) return "Tanggal menyusul";
   return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 }
+
+/**
+ * Where a guest lands after signing in, encoded once.
+ *
+ * `/participant` and not this page: the dashboard is the thing they were sent
+ * to log in *for*, and it carries this entry among the rest. Encoded because
+ * `safeNext()` on the other side only honours same-site paths.
+ */
+const PARTICIPANT_NEXT = encodeURIComponent("/participant");
 
 /**
  * The runner's proof of entry — this phase's answer to "what do I show on race
@@ -38,6 +48,12 @@ function fmtDate(d: string | null | undefined) {
 export default function RaceEntryPage() {
   const params = useParams<{ entryId: string }>();
   const qc = useQueryClient();
+
+  // Public route, so nothing has restored the session yet: the access token
+  // lives in memory and is gone after every navigation into a public page.
+  // Never redirects — a guest is a legitimate visitor here, which is the whole
+  // reason this page has no login in front of it.
+  const { ready: sessionReady, isAuthenticated } = useOptionalSession();
 
   const query = useQuery({
     queryKey: ["race-entry", params.entryId],
@@ -266,11 +282,54 @@ export default function RaceEntryPage() {
         </Card>
       )}
 
-      {paid && (
-        <p className="text-center text-sm text-muted-foreground">
-          Simpan halaman ini atau cetak kwitansinya. Kamu juga menerima salinannya
-          lewat email.
-        </p>
+      {/* The page's footer: the receipt note and the way back to the rest of
+          this account's registrations, in one centred block rather than two.
+          Deliberately NOT a Card — it is the fifth on the page, and a
+          display-font heading in one made plain navigation read as a section
+          of content ranking with "QR Check-in".
+
+          The link is rendered only once `sessionReady`, because the two
+          branches say opposite things: before the refresh cookie has been
+          exchanged a signed-in runner would be told to sign in, on the page
+          their own account owns. A guest gets `?next=/participant` rather than
+          a link straight there — AuthGate would bounce them to /login anyway
+          and land them at its own home instead of back here. */}
+      {(paid || sessionReady) && (
+        <div className="mt-8 border-t border-border pt-5 text-center text-sm text-muted-foreground">
+          {paid && (
+            <p>
+              Simpan halaman ini atau cetak kwitansinya. Kamu juga menerima
+              salinannya lewat email.
+            </p>
+          )}
+          {sessionReady && (
+            <p className={paid ? "mt-2" : undefined}>
+              {isAuthenticated ? (
+                <>
+                  Semua lomba dan tim yang kamu daftarkan ada di{" "}
+                  <Link
+                    href="/participant"
+                    className="font-medium text-[var(--brand-600)] hover:underline"
+                  >
+                    Pendaftaran Saya
+                  </Link>
+                  .
+                </>
+              ) : (
+                <>
+                  <Link
+                    href={`/login?next=${PARTICIPANT_NEXT}`}
+                    className="font-medium text-[var(--brand-600)] hover:underline"
+                  >
+                    Masuk
+                  </Link>{" "}
+                  untuk melihat semua lomba dan tim yang kamu daftarkan di satu
+                  halaman.
+                </>
+              )}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

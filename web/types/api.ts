@@ -2693,6 +2693,19 @@ export interface AdminUser {
   memberships: { organization_id: string; organization_name: string | null; role: string }[];
   managed_teams: { id: string; name: string; event_name: string | null }[];
   /**
+   * Pendaftaran fun run yang diajukan akun ini — jejak peserta yang **kedua**,
+   * di samping `managed_teams` dan bukan dilipat ke dalamnya: fun run tidak
+   * menjual tim, jadi yang dicetak kartunya adalah nama kategori (5K, Umum).
+   * Satu daftar dengan dua arti kolom akan mencetak nama kategori di bawah
+   * judul "Tim".
+   */
+  race_entries: {
+    id: string;
+    category_name: string | null;
+    event_name: string | null;
+    status: RaceEntryStatus;
+  }[];
+  /**
    * Event tempat akun ini bertugas sebagai wasit/staf. **Bukan** bagian dari
    * `account_types` — itu diturunkan dari organisasi & tim saja, jadi akun
    * petugas murni terbaca kosong di sana. Inilah satu-satunya yang membedakan
@@ -2700,10 +2713,14 @@ export interface AdminUser {
    */
   officiating: OfficiatingAssignment[];
   /**
-   * Jenis akun yang diturunkan server dari jejak user (punya/anggota organisasi
-   * = organizer, mendaftarkan tim = peserta) — bukan `default_mode`, yang cuma
-   * topi terakhir yang dipakai di switcher dashboard. Bisa keduanya sekaligus,
-   * dan kosong untuk akun yang belum melakukan apa pun.
+   * Jenis akun yang diturunkan server dari jejak user — bukan `default_mode`,
+   * yang cuma topi terakhir yang dipakai di switcher dashboard. Bisa keduanya
+   * sekaligus, dan kosong untuk akun yang belum melakukan apa pun.
+   *
+   * Peserta punya **dua** jejak: mendaftarkan tim, atau mendaftar fun run. Yang
+   * kedua bukan tambahan belakangan yang opsional — fun run tidak menjual tim
+   * sama sekali, jadi tanpa itu pelari yang sudah ikut tiga lomba terbaca
+   * "belum ada aktivitas".
    */
   account_types: AccountType[];
 }

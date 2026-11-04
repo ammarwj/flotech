@@ -62,7 +62,7 @@ function RegisterTeamPage() {
 
   // Public route, so nothing has restored the session: without this the request
   // goes out unauthenticated even for a signed-in visitor, the team is stored
-  // with no manager, and it never shows up under "Tim Saya".
+  // with no manager, and it never shows up under "Pendaftaran Saya".
   const { ready: sessionReady, isAuthenticated } = useOptionalSession();
 
   // The sport drives the position suggestions in the roster editor.
@@ -250,7 +250,7 @@ function RegisterTeamPage() {
           onSubmit={(url) => proof.mutate({ teamId: registered.id, url })}
         />
         <Button asChild size="lg" variant="outline" className="w-full">
-          <Link href="/participant">Ke Tim Saya</Link>
+          <Link href="/participant">Ke Pendaftaran Saya</Link>
         </Button>
       </div>
     );
@@ -288,18 +288,18 @@ function RegisterTeamPage() {
             {paidReturn ? (
               <>
                 Pembayaran biaya pendaftaran diterima. Pendaftaran tim sedang menunggu persetujuan penyelenggara.
-                Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Tim Saya</b>.
+                Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Pendaftaran Saya</b>.
               </>
             ) : (
               <>
                 Tim <b className="text-foreground">{team.name}</b> berhasil didaftarkan dan menunggu persetujuan
-                penyelenggara. Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Tim Saya</b>.
+                penyelenggara. Lengkapi roster &amp; dokumen kapan saja di <b className="text-foreground">Pendaftaran Saya</b>.
               </>
             )}
           </p>
           <div className="mt-6 grid gap-2 sm:grid-cols-2">
             <Button asChild size="lg">
-              <Link href="/participant">Ke Tim Saya</Link>
+              <Link href="/participant">Ke Pendaftaran Saya</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
               <Link href={`/${params.orgSlug}/${params.eventSlug}`}>Ke halaman event</Link>
@@ -345,7 +345,7 @@ function RegisterTeamPage() {
   }
 
   // Registration needs an account: the team is tied to whoever files it, and
-  // that link is what puts it in their "Tim Saya" afterwards — where the roster
+  // that link is what puts it in their "Pendaftaran Saya" afterwards — where the roster
   // gets completed, documents uploaded and the fee paid. Sending them off with
   // `next` brings them straight back to this form.
   if (sessionReady && !isAuthenticated) {
@@ -533,7 +533,7 @@ function RegisterTeamPage() {
             <CardDescription>
               {isFixed
                 ? "Nama pendaftaran diambil dari sini — mis. “Dimas / Ammar”."
-                : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Tim Saya."}
+                : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya."}
               {/* "Optional" stays true — an empty roster is still accepted. What
                   changes is that a name once typed brings obligations with it,
                   and that is worth saying before someone types one. */}
@@ -560,7 +560,7 @@ function RegisterTeamPage() {
               <span className="font-normal text-muted-foreground">(opsional)</span>
             </CardTitle>
             <CardDescription>
-              Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Tim Saya.
+              Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya.
               {(schema.team_official_fields.length > 0 || schema.team_official_documents.length > 0) &&
                 " Setiap ofisial yang dimasukkan wajib dilengkapi data dan berkasnya."}
             </CardDescription>

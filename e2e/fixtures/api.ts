@@ -334,7 +334,7 @@ export class Api {
   /**
    * `managerToken` is not optional: registration requires an account, because
    * the team belongs to whoever filed it and that link is what puts it in their
-   * "Tim Saya". An anonymous POST here is a 401.
+   * "Pendaftaran Saya". An anonymous POST here is a 401.
    */
   async registerTeam(
     orgSlug: string,

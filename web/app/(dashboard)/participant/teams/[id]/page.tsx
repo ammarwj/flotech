@@ -266,7 +266,7 @@ export default function ManageTeamPage() {
         className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" />
-        Kembali ke Tim Saya
+        Kembali ke Pendaftaran Saya
       </Link>
 
       <div className="mb-6 mt-3 flex flex-wrap items-center justify-between gap-3">

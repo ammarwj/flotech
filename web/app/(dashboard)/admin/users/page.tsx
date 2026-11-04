@@ -17,6 +17,7 @@ import {
   KeyRound,
   Megaphone,
   Shirt,
+  Flag,
   ClipboardList,
   Search as SearchIcon,
   X,
@@ -54,9 +55,13 @@ const orgRoleLabel = (role: string) => (role === "admin" ? "Admin" : role === "o
 
 // Jenis akun turunan dari server (lihat AdminUser["account_types"]). Ikon + label
 // dikunci di sini supaya badge dan opsi filter di bawah tidak bisa menyimpang.
+// "Peserta", bukan "Tim Peserta" seperti dulu: `participant` punya dua jejak di
+// server (mendaftarkan tim, atau mendaftar fun run), dan fun run tidak menjual
+// tim sama sekali — label lama mengklaim tim di atas kartu yang chip-nya justru
+// berisi nama kategori lomba. Chip-nya di bawahlah yang mengatakan jejak mana.
 const ACCOUNT_TYPES: Record<AccountType, { label: string; icon: typeof Megaphone }> = {
   organizer: { label: "Organizer", icon: Megaphone },
-  participant: { label: "Tim Peserta", icon: Shirt },
+  participant: { label: "Peserta", icon: Shirt },
 };
 
 /**
@@ -417,6 +422,9 @@ function UserCard({
   // Server yang menurunkannya; `?? []` cuma menjaga klien yang lebih baru dari API.
   const accountTypes = user.account_types ?? [];
   const teams = user.managed_teams ?? [];
+  // Jejak peserta yang kedua. Daftarnya sendiri, bukan dilipat ke `teams`: yang
+  // dicetak chip-nya nama kategori lomba, bukan nama tim.
+  const raceEntries = user.race_entries ?? [];
   const crew = user.officiating ?? [];
   // "Belum ada aktivitas" harus melihat petugas juga, persis seperti filter
   // `none` di server — kalau tidak, satu kartu bisa berbadge "Wasit" DAN
@@ -529,7 +537,11 @@ function UserCard({
               Aktif terakhir {relative(user.last_seen_at)}
             </p>
 
-            {(ownsOrgs || user.memberships.length > 0 || teams.length > 0 || crew.length > 0) && (
+            {(ownsOrgs ||
+              user.memberships.length > 0 ||
+              teams.length > 0 ||
+              raceEntries.length > 0 ||
+              crew.length > 0) && (
               <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
                 {user.owned_organizations.map((o) => (
                   <Chip key={o.id} icon={Building2} tone="brand">
@@ -550,6 +562,21 @@ function UserCard({
                 {teams.length > CHIP_LIMIT && (
                   <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
                     +{teams.length - CHIP_LIMIT} tim lain
+                  </span>
+                )}
+                {/* Lomba yang dia ikuti. Yang dicetak nama **event**-nya dengan
+                    kategori sebagai keterangan — urutan yang sama dengan chip
+                    tim di atas, dan bukan sebaliknya: "5K" sendirian tidak
+                    mengatakan lomba mana. */}
+                {raceEntries.slice(0, CHIP_LIMIT).map((e) => (
+                  <Chip key={e.id} icon={Flag} title={e.event_name ?? undefined}>
+                    {e.event_name ?? "Event"}
+                    {e.category_name && <span className="opacity-70"> · {e.category_name}</span>}
+                  </Chip>
+                ))}
+                {raceEntries.length > CHIP_LIMIT && (
+                  <span className="inline-flex items-center rounded-full bg-[var(--bg-soft)] px-2 py-0.5 text-xs text-[var(--text-2)]">
+                    +{raceEntries.length - CHIP_LIMIT} lomba lain
                   </span>
                 )}
                 {/* Event tempat dia bertugas. Ini juga jawaban yang dicari

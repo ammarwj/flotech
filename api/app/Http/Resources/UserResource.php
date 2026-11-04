@@ -49,6 +49,18 @@ class UserResource extends JsonResource
                 'name' => $t->name,
                 'event_name' => $t->event?->name,
             ])->values()),
+            // Jejak peserta yang kedua, di samping `managed_teams` dan bukan
+            // dilipat ke dalamnya: fun run tidak punya tim, jadi yang dicetak
+            // kartunya adalah nama **kategori** (5K, Umum), dan satu daftar
+            // dengan dua arti kolom adalah bentuk yang codebase ini terus
+            // tolak. `status` ikut karena pendaftaran yang belum lunas bukan
+            // keikutsertaan yang sama dengan yang sudah.
+            'race_entries' => $this->whenLoaded('raceEntries', fn () => $this->raceEntries->map(fn ($e) => [
+                'id' => $e->id,
+                'category_name' => $e->category?->name,
+                'event_name' => $e->event?->name,
+                'status' => $e->status,
+            ])->values()),
             // Events this account is crew on. Unlike the three above, every
             // auth response eager-loads this one (see AuthController::withAuth)
             // — it decides the landing page, and a task account owns no
@@ -63,7 +75,7 @@ class UserResource extends JsonResource
                     'event_name' => $p->event->name,
                     'kind' => $p->kind,
                 ])->values()),
-            // Diturunkan dari ketiga relasi di atas — butuh ketiganya disiapkan,
+            // Diturunkan dari keempat relasi di atas — butuh keempatnya disiapkan,
             // karena "tidak dimuat" tidak bisa dibedakan dari "tidak punya" dan
             // akan melabeli setiap organizer sebagai akun kosong. Gerbangnya di
             // model, bukan di sini: respons auth menyiapkannya lewat

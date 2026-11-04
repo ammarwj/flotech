@@ -14,7 +14,7 @@ import { useAuthStore } from "@/stores/auth-store";
  * on the dashboard, but public pages have no gate — which meant a signed-in
  * visitor filled in the team registration form and the request went out with no
  * Authorization header at all. The team was then stored with no manager, and it
- * never appeared under "Tim Saya" (PRD §5.2 promises exactly that it does).
+ * never appeared under "Pendaftaran Saya" (PRD §5.2 promises exactly that it does).
  *
  * Unlike AuthGate this never redirects: a guest is a legitimate visitor here.
  * Callers should wait for `ready` before firing a request whose behaviour

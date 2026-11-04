@@ -107,13 +107,24 @@ export const ORGANIZER_NAV: NavSection[] = [
  * Participant navigation. The same account can wear both hats, so this is a
  * separate mode reachable from the header switcher rather than an item mixed
  * into the organizer menu.
+ *
+ * "Pendaftaran Saya" and not "Tim Saya", which it used to be: a fun run sells
+ * no teams, so the word promised a runner a page about something they do not
+ * have — and the page behind it now holds both lists. One row for the two,
+ * because a second one would need a cross-section view that has no meaning.
  */
 export const PARTICIPANT_NAV: NavSection[] = [
   {
     id: "participant",
     label: null,
     items: [
-      { href: "/participant", label: "Tim Saya", icon: Users, mobile: true },
+      {
+        href: "/participant",
+        label: "Pendaftaran Saya",
+        icon: ClipboardList,
+        mobile: true,
+        short: "Pendaftaran",
+      },
       { href: "/event", label: "Jelajahi Event", icon: Compass, mobile: true, short: "Jelajahi" },
     ],
   },

@@ -30,7 +30,7 @@ class UserController extends Controller
      * Relasi yang membentuk konteks satu user di layar admin.
      *
      * Satu daftar untuk semua respons di controller ini karena
-     * `UserResource::account_types` hanya terisi kalau **ketiganya** dimuat —
+     * `UserResource::account_types` hanya terisi kalau **keempatnya** dimuat —
      * memuat sebagian di salah satu endpoint membuat badge jenis akun hilang
      * diam-diam di respons itu saja.
      *
@@ -55,6 +55,13 @@ class UserController extends Controller
             'managedTeams' => fn ($q) => $q->select('id', 'manager_user_id', 'event_id', 'name')
                 ->with('event:id,name')
                 ->latest('created_at'),
+            // Jejak peserta yang kedua, dan kolomnya dibatasi dengan alasan
+            // yang sama: `race_entries` lebih lebar lagi (snapshot harga,
+            // diskon, fee, bukti transfer, QR). Yang dibutuhkan kartu cuma
+            // nama kategori dan event-nya.
+            'raceEntries' => fn ($q) => $q->select('id', 'user_id', 'event_id', 'race_category_id', 'status')
+                ->with(['event:id,name', 'category:id,name'])
+                ->latest('created_at'),
             'personnelAssignments' => fn ($q) => $q->select('id', 'user_id', 'event_id', 'kind')
                 ->with('event:id,name'),
         ];
@@ -63,11 +70,13 @@ class UserController extends Controller
     /**
      * Semua jalan dari sebuah user ke sebuah event, sebagai kondisi OR.
      *
-     * Ada empat, dan mengabaikan salah satunya membuat kotak pencarian menjawab
+     * Ada lima, dan mengabaikan salah satunya membuat kotak pencarian menjawab
      * "tidak ada" untuk orang yang jelas-jelas ada di event itu: manajer tim,
-     * pemilik organisasi penyelenggara, anggota organisasi itu, dan petugas
-     * (wasit/staf) yang ditugaskan ke event-nya. Nama kolomnya datang dari kode;
-     * yang di-bind cuma `$term` (lihat `Search`).
+     * pemilik organisasi penyelenggara, anggota organisasi itu, petugas
+     * (wasit/staf) yang ditugaskan ke event-nya, dan **pelari yang mendaftar
+     * fun run-nya** — satu-satunya jalan ke event bagi akun yang tidak punya
+     * tim sama sekali. Nama kolomnya datang dari kode; yang di-bind cuma
+     * `$term` (lihat `Search`).
      *
      * @param  Builder<User>  $query
      */
@@ -77,6 +86,7 @@ class UserController extends Controller
 
         $query
             ->orWhereHas('managedTeams.event', $matches)
+            ->orWhereHas('raceEntries.event', $matches)
             ->orWhereHas('ownedOrganizations.events', $matches)
             ->orWhereHas('organizationMemberships.organization.events', $matches)
             ->orWhereHas('personnelAssignments.event', $matches);
@@ -115,7 +125,14 @@ class UserController extends Controller
                 'organizer' => $query->where(fn ($w) => $w
                     ->whereHas('ownedOrganizations')
                     ->orWhereHas('organizationMemberships')),
-                'participant' => $query->whereHas('managedTeams'),
+                // Dua jejak, sama dengan `accountTypes()`: mendaftarkan tim,
+                // atau mendaftar fun run. `managedTeams` saja membuat filter
+                // ini mengembalikan daftar tanpa satu pun pelari, sementara
+                // kartu mereka berbadge "Tim Peserta" — filter dan badge
+                // saling membantah, persis yang dijaga docblock di atas.
+                'participant' => $query->where(fn ($w) => $w
+                    ->whereHas('managedTeams')
+                    ->orWhereHas('raceEntries')),
                 // Petugas bukan `account_types` (itu diturunkan dari organisasi &
                 // tim saja) — ia hidup di `officiating`. Filternya di sini dan
                 // bukan di filter `role`: `users.role` cuma super_admin|user, dan
@@ -129,6 +146,7 @@ class UserController extends Controller
                     ->whereDoesntHave('ownedOrganizations')
                     ->whereDoesntHave('organizationMemberships')
                     ->whereDoesntHave('managedTeams')
+                    ->whereDoesntHave('raceEntries')
                     ->whereDoesntHave('personnelAssignments'),
                 default => $query,
             })

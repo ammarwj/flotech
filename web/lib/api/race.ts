@@ -294,6 +294,25 @@ export async function registerRaceEntry(
   return data.data;
 }
 
+// ---- Participant (session-scoped) ----
+
+/**
+ * Fun run entries the signed-in account filed, newest first.
+ *
+ * Twin of `getMyTeams()`, and the second half of what makes the participant
+ * dashboard complete: a runner registers no team at all, so before this the
+ * page they landed on could only ever say "belum ada tim".
+ *
+ * A list and nothing more. Everything a runner can *do* to one entry stays on
+ * the public proof page (`/race-entries/{id}`) the cards link to — the upload,
+ * the invoice, the receipt, the QR — because a participant may have reached it
+ * from an email rather than from here.
+ */
+export async function getMyRaceEntries(): Promise<RaceEntry[]> {
+  const { data } = await apiClient.get<ApiEnvelope<RaceEntry[]>>("/my-race-entries");
+  return data.data;
+}
+
 export async function getRaceEntry(entryId: string): Promise<RaceEntry> {
   const { data } = await apiClient.get<ApiEnvelope<RaceEntry>>(`/race-entries/${entryId}`);
   return data.data;
