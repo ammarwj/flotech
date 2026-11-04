@@ -21,7 +21,6 @@ use App\Services\PlanGate;
 use App\Services\RaceEntryService;
 use App\Support\ApiResponse;
 use App\Support\RacePricing;
-use App\Support\RegistrationForm;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -249,7 +248,7 @@ class PublicRaceController extends Controller
                     'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
                     'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
                     'emergency_contact_relation' => $data['emergency_contact_relation'] ?? null,
-                    'custom_fields' => $this->cleanAnswers($category->event, $data['custom_fields'] ?? []),
+                    'custom_fields' => $this->entries->cleanAnswers($category->event, $data['custom_fields'] ?? []),
                 ],
                 $orderId,
                 auth('api')->id(),
@@ -403,6 +402,46 @@ class PublicRaceController extends Controller
     }
 
     /**
+     * The runner asks for their entry fee back.
+     *
+     * Here, beside `proof()`, and public for the identical reason written there
+     * and on `entry()`: a runner may have entered from a link in an email and
+     * never signed up at all, so the unguessable id IS the credential. Putting
+     * this one door behind `auth:api` would lock exactly the people this feature
+     * is for out of it — and `race_entries.user_id` is nullable precisely
+     * because an entry outlives the account that filed it.
+     *
+     * The four conditions are the model's (`canRequestRefund()`), asked by the
+     * service and published to the client from the same method, so the button on
+     * screen and the guard behind it cannot drift — the `effective_payment_method`
+     * lesson. A `PaymentException` renders 422 with a message that names the
+     * cause, because a runner can act on the difference between "sudah
+     * check-in" and "masih menunggu keputusan".
+     *
+     * The reason is required: the organizer is being asked to hand money back
+     * and the next thing they do is read this sentence.
+     */
+    public function requestRefund(Request $request, string $raceEntry): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $entry = RaceEntry::findOrFail($raceEntry);
+
+        $this->entries->requestRefund($entry, $data['reason']);
+
+        return ApiResponse::success(
+            new RaceEntryResource($entry->fresh()->load([
+                'category',
+                'event.organization.bankAccounts',
+                'documents',
+            ])),
+            'Pengajuan refund terkirim. Menunggu keputusan penyelenggara.',
+        );
+    }
+
+    /**
      * Refuse an entry that leaves a required field or document empty.
      *
      * The event's own registration form, reused rather than reinvented: the
@@ -415,81 +454,17 @@ class PublicRaceController extends Controller
      */
     protected function assertFormComplete(Event $event, array $data): ?JsonResponse
     {
-        $form = RegistrationForm::forEvent($event);
-        $answers = $data['custom_fields'] ?? [];
-        $uploaded = array_column($data['documents'] ?? [], 'document_type');
-        $errors = [];
-
-        foreach ($form->teamFields as $field) {
-            if (! ($field['required'] ?? false)) {
-                continue;
-            }
-
-            // A question this runner was never shown is not one they skipped.
-            if (! RegistrationForm::isVisible($field, $answers)) {
-                continue;
-            }
-
-            // Consent is read through normalizeAnswer() so "ticked" is decided
-            // in one place; its stored value is an instant the server writes,
-            // and the payload's own text is never what is checked.
-            $value = $field['type'] === 'consent'
-                ? RegistrationForm::normalizeAnswer('consent', $answers[$field['key']] ?? null)
-                : $answers[$field['key']] ?? null;
-
-            if (! is_scalar($value) || trim((string) $value) === '') {
-                $errors["custom_fields.{$field['key']}"] = $field['type'] === 'consent'
-                    ? "{$field['label']} wajib disetujui."
-                    : "{$field['label']} wajib diisi.";
-            }
-        }
-
-        foreach ($form->teamDocuments as $doc) {
-            if (($doc['required'] ?? false) && ! in_array($doc['key'], $uploaded, true)) {
-                $errors['documents'] = "Dokumen \"{$doc['label']}\" wajib diunggah.";
-            }
-        }
+        $errors = $this->entries->formErrors(
+            $event,
+            $data['custom_fields'] ?? [],
+            array_column($data['documents'] ?? [], 'document_type'),
+        );
 
         if ($errors === []) {
             return null;
         }
 
         return ApiResponse::error('Ada data yang belum lengkap.', $errors, 422);
-    }
-
-    /**
-     * Keep only the answers this event actually asks for.
-     *
-     * Mirrors TeamRosterService::cleanAnswers(): a public form is exactly where
-     * a key nobody defined would arrive, and storing it would leave a column
-     * nothing ever renders.
-     *
-     * @param  array<string, mixed>  $answers
-     * @return array<string, mixed>|null
-     */
-    protected function cleanAnswers(Event $event, array $answers): ?array
-    {
-        $clean = [];
-
-        foreach (RegistrationForm::forEvent($event)->teamFields as $field) {
-            // Hidden means not stored, not just not demanded — see the same
-            // pair in TeamRosterService::cleanAnswers() for why one without
-            // the other leaves a NIM on a runner who ended up picking UMUM.
-            if (! RegistrationForm::isVisible($field, $answers)) {
-                continue;
-            }
-
-            $value = RegistrationForm::normalizeAnswer(
-                $field['type'],
-                $answers[$field['key']] ?? null,
-            );
-
-            if ($value !== null) {
-                $clean[$field['key']] = $value;
-            }
-        }
-
-        return $clean === [] ? null : $clean;
     }
 
     /**

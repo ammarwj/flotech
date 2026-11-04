@@ -1790,6 +1790,30 @@ export interface RaceEntry extends ManualPaymentFields {
   bib_number: string | null;
   /** Set the instant the desk scans them in. */
   checked_in_at: string | null;
+  /**
+   * The refund conversation.
+   *
+   * Note what is NOT here: a sixth `RaceEntryStatus`. The state is derived from
+   * these columns the same way `awaiting_verification` is derived from the proof
+   * ones — three backend services guard on `in_array($status, [...])`, so a new
+   * value would walk silently past all of them.
+   *
+   * `can_request_refund` is the SERVER's answer to the question the button asks,
+   * published rather than reassembled here: four conditions read twice drift,
+   * and the drift looks like a button that submits into a 422. Never recompute
+   * it from `status`/`checked_in_at` — that is the `effective_payment_method`
+   * bug in another shape.
+   */
+  can_request_refund: boolean;
+  /** Ever asked, decided or not — what makes the history block render. */
+  refund_requested: boolean;
+  /** Asked and still waiting on the organizer. */
+  refund_pending: boolean;
+  refund_reason: string | null;
+  refund_requested_at: string | null;
+  refund_decided_at: string | null;
+  /** Null on an approval, where `status` reads `refunded` instead. */
+  refund_rejected_reason: string | null;
   category?: { id: string; name: string; slug: string };
   event?: {
     id: string;

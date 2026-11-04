@@ -84,6 +84,14 @@ class RaceEntry extends Model
         'qr_code',
         'checked_in_at',
         'checked_in_by',
+        // The refund conversation. NOT a sixth `status` value — see the
+        // migration, and hasOpenRefundRequest() below, for why the state is
+        // derived from these columns the same way "awaiting verification" is.
+        'refund_reason',
+        'refund_requested_at',
+        'refund_decided_at',
+        'refund_decided_by',
+        'refund_rejected_reason',
     ];
 
     protected function casts(): array
@@ -104,7 +112,66 @@ class RaceEntry extends Model
             'payment_deadline_at' => 'datetime',
             'verified_at' => 'datetime',
             'checked_in_at' => 'datetime',
+            'refund_requested_at' => 'datetime',
+            'refund_decided_at' => 'datetime',
         ];
+    }
+
+    /**
+     * A request the organizer has not ruled on yet.
+     *
+     * Derived, never stored as a status value, for the reason written at length
+     * in the migration: three services guard on `in_array($this->status, [...])`
+     * and a sixth value would walk past all of them. This is the same shape
+     * HasManualPayment uses for isAwaitingVerification().
+     */
+    public function hasOpenRefundRequest(): bool
+    {
+        return $this->refund_requested_at !== null && $this->refund_decided_at === null;
+    }
+
+    /** Ruled on, and the ruling was no. */
+    public function refundWasRejected(): bool
+    {
+        return $this->refund_decided_at !== null && $this->status !== 'refunded';
+    }
+
+    /**
+     * May this runner ask for their money back?
+     *
+     * Four conditions, and each one is a thing the runner can see for
+     * themselves on the page that offers the button — which is why the server
+     * publishes the answer rather than letting the client reassemble it: two
+     * readers of one rule drift, and the drift here looks like a button that
+     * submits into a 422.
+     *
+     * There is deliberately NO deadline and no per-event policy. The organizer's
+     * answer was that the decision is theirs to make case by case; a rule in
+     * software would only decide which requests they never get to see.
+     */
+    public function canRequestRefund(): bool
+    {
+        return $this->status === 'paid'
+            && (float) $this->price > 0
+            // Already at the start line: there is nothing left to refund, the
+            // counterpart of the used-ticket guard on a ticket order.
+            && $this->checked_in_at === null
+            && ! $this->hasOpenRefundRequest();
+    }
+
+    /**
+     * This event's open requests, oldest first — the organizer's queue.
+     *
+     * A scope rather than two `where`s at each call site, the same reasoning as
+     * `scopeAwaitingVerification()`: the queue screen and the count above it
+     * must not be able to disagree about which rows are waiting.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<RaceEntry>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<RaceEntry>
+     */
+    public function scopeAwaitingRefundDecision($query)
+    {
+        return $query->whereNotNull('refund_requested_at')->whereNull('refund_decided_at');
     }
 
     /**
@@ -171,5 +238,11 @@ class RaceEntry extends Model
     public function checkedInBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'checked_in_by');
+    }
+
+    /** The org admin who ruled on the refund request; null until they do. */
+    public function refundDecidedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'refund_decided_by');
     }
 }

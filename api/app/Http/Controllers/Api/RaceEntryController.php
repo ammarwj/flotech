@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Race\UpdateRaceEntryRequest;
 use App\Http\Resources\RaceEntryResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceEntry;
+use App\Services\RaceEntryService;
 use App\Support\ApiResponse;
 use App\Support\Search;
 use Illuminate\Database\Eloquent\Builder;
@@ -15,17 +17,32 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * The organizer's list of runners.
+ * The organizer's list of runners, and the two corrections they may make to one.
  *
- * Read-only on purpose. Everything that *changes* an entry already has a door:
- * the runner pays through PublicRaceController, an org admin rules on their
- * proof through PaymentVerificationController, a super admin refunds through
- * RefundService, and the hourly sweep expires the abandoned ones. A write
- * endpoint here would be a second way to move money state, and the two would
- * drift — the same reason MatchResultService owns both result doors.
+ * > **Invariant: this door touches the runner, never the money.** `update()`
+ * > writes contact details, form answers and the bib; it cannot reach `status`,
+ * > `paid_at`, `price`, the fee columns, `qr_code`, `checked_in_at` or
+ * > `race_category_id` — see UpdateRaceEntryRequest, where each absence is
+ * > spelled out. Every one of those has exactly one writer already (the runner
+ * > through PublicRaceController, an org admin ruling on proof through
+ * > PaymentVerificationController, a super admin refunding through
+ * > RefundService, the hourly sweep, RaceEntryService::checkIn()), and a second
+ * > way to move money state is the drift MatchResultService owns both result
+ * > doors to prevent.
+ *
+ * There is **no hard delete**, and that is the shape of the feature rather than
+ * a missing endpoint. A settled entry carries a wallet credit keyed
+ * `(race_entry, id)`, a numbered receipt and a QR already on somebody's phone;
+ * deleting the row would leave a balance claiming money for a registration that
+ * no longer exists, which is the `EventController::destroy()` hazard again.
+ * `cancel()` gives the place back and keeps the row, so nothing ever disappears
+ * from a report — and it routes through RaceEntryService, which is the only
+ * thing allowed to decrement `taken`.
  */
 class RaceEntryController extends Controller
 {
+    public function __construct(protected RaceEntryService $entries) {}
+
     /**
      * The filter values the status pills may send.
      *
@@ -82,6 +99,108 @@ class RaceEntryController extends Controller
                 ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
                 ->all(),
         ]);
+    }
+
+    /**
+     * Correct one runner's details.
+     *
+     * The organizer's valve, and it is the only one: a runner who typed their
+     * name wrong, or whose phone changed, has no other way to fix it once the
+     * registration window has shut — `MyTeamController` freezes a participant's
+     * own edits then, and this list is where the organizer is already standing.
+     *
+     * Not gated on the window, nor on the entry's status, and both are
+     * deliberate. The window is the participant's clock, not the organizer's —
+     * that asymmetry is exactly what makes freezing the participant side safe
+     * to enforce tightly. And a `cancelled` entry still wants its typo fixed:
+     * the row stays in the report, and a wrong name there is wrong forever.
+     * What a status *could* gate here is money, and money is not reachable from
+     * this endpoint at all.
+     *
+     * Answers go through the same RaceEntryService pair the public form uses,
+     * so a field this event does not ask for cannot be stored from here and a
+     * required one cannot be emptied. `array_key_exists`, not `??`: an absent
+     * key leaves the stored answers alone, while `custom_fields: {}` really
+     * does clear them — the same reading `officials` takes on a team update.
+     */
+    public function update(UpdateRaceEntryRequest $request, string $organization, string $event, string $raceEntry): JsonResponse
+    {
+        $eventModel = $this->findEvent($request, $event);
+        $entry = $eventModel->raceEntries()->findOrFail($raceEntry);
+
+        $data = $request->validated();
+
+        if (array_key_exists('custom_fields', $data)) {
+            $answers = $data['custom_fields'] ?? [];
+
+            // Checked against the answers as they will be STORED, which is the
+            // whole payload merged over nothing — not over the row. An organizer
+            // sending `custom_fields` is replacing the set, so a required field
+            // left out of that payload really is missing.
+            $errors = $this->entries->formErrors(
+                $eventModel,
+                $answers,
+                // The runner's own uploads, untouched by this door: a required
+                // document already in storage must not read as missing just
+                // because this request does not mention it.
+                $entry->documents()->pluck('document_type')->all(),
+            );
+
+            if ($errors !== []) {
+                return ApiResponse::error('Ada data yang belum lengkap.', $errors, 422);
+            }
+
+            $data['custom_fields'] = $this->entries->cleanAnswers($eventModel, $answers);
+        }
+
+        $entry->update($data);
+
+        return ApiResponse::success(
+            new RaceEntryResource($entry->fresh()->load(['category', 'documents'])),
+            'Data peserta diperbarui',
+        );
+    }
+
+    /**
+     * Cancel an entry and give its place back.
+     *
+     * The answer to "hapus peserta", and the row survives it. What an organizer
+     * wants is the quota freed and the runner off the start list; what they do
+     * not want — and would get from a delete — is a wallet credit pointing at
+     * nothing, a receipt number issued for a row that cannot be found, and a QR
+     * already on a phone that now scans to a 404.
+     *
+     * The guard lives in RaceEntryService::cancel(), which refuses `paid`,
+     * `cancelled` and `refunded` by value and is therefore idempotent: a double
+     * click cannot hand back a place nobody was holding. A paid entry needs a
+     * refund, which is RefundService's job because reversing the ledger is, so
+     * this says so rather than failing silently — the service's early return
+     * would otherwise answer 200 over an entry still holding its place.
+     */
+    public function cancel(Request $request, string $organization, string $event, string $raceEntry): JsonResponse
+    {
+        $entry = $this->findEvent($request, $event)
+            ->raceEntries()
+            ->findOrFail($raceEntry);
+
+        if ($entry->status === 'paid') {
+            return ApiResponse::error(
+                'Pendaftaran yang sudah lunas tidak bisa dibatalkan dari sini. Ajukan pengembalian dana ke admin platform.',
+                null,
+                422,
+            );
+        }
+
+        if (in_array($entry->status, ['cancelled', 'refunded'], true)) {
+            return ApiResponse::error('Pendaftaran ini sudah tidak aktif.', null, 422);
+        }
+
+        $this->entries->cancel($entry);
+
+        return ApiResponse::success(
+            new RaceEntryResource($entry->fresh()->load(['category', 'documents'])),
+            'Pendaftaran dibatalkan dan kuotanya dikembalikan',
+        );
     }
 
     /**

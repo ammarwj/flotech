@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RaceCategoryController;
 use App\Http\Controllers\Api\RaceEntryController;
+use App\Http\Controllers\Api\RaceRefundController;
 use App\Http\Controllers\Api\RaceScanController;
 use App\Http\Controllers\Api\RacePeriodController;
 use App\Http\Controllers\Api\RegistrationController;
@@ -240,6 +241,11 @@ Route::prefix('v1')->group(function () {
     // start line — a login would lock them out of their only proof.
     Route::get('race-entries/{raceEntry}', [PublicRaceController::class, 'entry']);
     Route::post('race-entries/{raceEntry}/proof', [PublicRaceController::class, 'proof']);
+    // Asking for the entry fee back. Public for the same reason as the three
+    // doors around it, written above and in the controller: a runner may have
+    // arrived from an email and never signed up, and `user_id` is nullable
+    // precisely because an entry outlives the account that filed it.
+    Route::post('race-entries/{raceEntry}/refund-request', [PublicRaceController::class, 'requestRefund']);
     Route::get('race-entries/{raceEntry}/invoice', [PublicRaceController::class, 'invoice']);
     Route::get('race-entries/{raceEntry}/receipt', [PublicRaceController::class, 'receipt']);
 
@@ -642,14 +648,35 @@ Route::prefix('v1')->group(function () {
                 [TicketOrderController::class, 'index'],
             );
 
-            // Runner list. Narrowed the same way the buyer list above is, and
-            // for the same reason: these rows carry a runner's email, phone and
+            // Runner list, and the two corrections an organizer may make to one
+            // row. Narrowed the same way the buyer list above is, and for the
+            // same reason: these rows carry a runner's email, phone and
             // emergency contact — more contact detail than any other
-            // participant list in the app, not less.
-            Route::middleware('org.admin')->get(
-                'events/{event}/race-entries',
-                [RaceEntryController::class, 'index'],
-            );
+            // participant list in the app, not less. The two writes belong here
+            // for a second reason on top of that: cancelling frees a place and
+            // editing rewrites somebody's identity documents, neither of which
+            // is a check-in desk's job.
+            //
+            // There is no `destroy`, deliberately — see RaceEntryController.
+            Route::middleware('org.admin')->group(function () {
+                Route::get('events/{event}/race-entries', [RaceEntryController::class, 'index']);
+                Route::patch('events/{event}/race-entries/{raceEntry}', [RaceEntryController::class, 'update']);
+                Route::post('events/{event}/race-entries/{raceEntry}/cancel', [RaceEntryController::class, 'cancel']);
+            });
+
+            // The refund queue: runners asking for their entry fee back.
+            //
+            // `org.admin` for the reason the wallet endpoints are — approving
+            // reverses a wallet credit and may push the balance negative, which
+            // locks the next withdrawal, so a gate operator must not be able to.
+            // Its own controller rather than more methods above: that list is
+            // the start list, this is a queue of decisions. See
+            // RaceRefundController.
+            Route::middleware('org.admin')->group(function () {
+                Route::get('events/{event}/race-refunds', [RaceRefundController::class, 'index']);
+                Route::post('events/{event}/race-refunds/{raceEntry}/approve', [RaceRefundController::class, 'approve']);
+                Route::post('events/{event}/race-refunds/{raceEntry}/reject', [RaceRefundController::class, 'reject']);
+            });
 
             // Manual-transfer verification. Approving a receipt issues a valid
             // ticket on someone's say-so, so it is owner/admin only — a gate
@@ -763,6 +790,10 @@ Route::prefix('v1')->group(function () {
             Route::get('payments', [AdminRefundController::class, 'index']);
             Route::post('ticket-orders/{ticketOrder}/refund', [AdminRefundController::class, 'refundTicketOrder']);
             Route::post('teams/{team}/refund', [AdminRefundController::class, 'refundTeam']);
+            // The fourth rail. Kept beside the organizer's own refund queue
+            // rather than replaced by it: that one rules on a request a runner
+            // filed, this is the hatch for one nobody asked for.
+            Route::post('race-entries/{raceEntry}/refund', [AdminRefundController::class, 'refundRaceEntry']);
 
             // Manual plan payments waiting on us. Unlike the organizer's own
             // verification queue, this money lands in the platform's account —

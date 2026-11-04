@@ -6,13 +6,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, Flag } from "lucide-react";
 
-import { getRaceEntry, submitRaceEntryProof } from "@/lib/api/race";
+import { getRaceEntry, requestRaceEntryRefund, submitRaceEntryProof } from "@/lib/api/race";
 import { parseApiError } from "@/lib/api/errors";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { Card } from "@/components/ui/card";
 import { QrCode } from "@/components/event/qr-code";
 import { Badge } from "@/components/ui/badge";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
+import { RefundRequestPanel } from "@/components/payment/refund-request-panel";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { rupiah } from "@/lib/labels";
@@ -84,6 +85,27 @@ export default function RaceEntryPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti.").message),
   });
 
+  /**
+   * Asking for the fee back.
+   *
+   * A toast and nothing inline, unlike the forms that bind 422s to fields: the
+   * only field here is the reason, the dialog validates it before sending, and
+   * every other refusal is about the entry rather than about what was typed —
+   * "sudah check-in", "masih menunggu keputusan". Those are sentences to read,
+   * not a field to correct.
+   */
+  const refund = useMutation({
+    mutationFn: (reason: string) => requestRaceEntryRefund(params.entryId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
+      toast.success("Pengajuan terkirim", {
+        description: "Menunggu keputusan penyelenggara.",
+      });
+    },
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal mengirim pengajuan refund.").message),
+  });
+
   if (query.isLoading) {
     return (
       <div className="container" style={{ paddingBlock: 96, textAlign: "center", color: "var(--text-muted)" }}>
@@ -107,7 +129,17 @@ export default function RaceEntryPage() {
   const entry = query.data;
   const paid = entry.status === "paid";
   const manual = entry.payment_method === "manual" && entry.status === "pending";
-  const dead = entry.status === "cancelled" || entry.status === "expired";
+  // `refunded` belongs here and not with the pending states: before it was
+  // added, a refunded entry fell through to the warning banner and read
+  // "Menunggu pembayaran · Selesaikan pembayaran agar pendaftaran aktif" over a
+  // registration whose money had already gone back. It is grouped with the two
+  // cancelled kinds because the consequence is the same — there is no place at
+  // the start line — and the sentence below still names which of the three it
+  // is, because they differ in what the runner should do next.
+  const dead =
+    entry.status === "cancelled" ||
+    entry.status === "expired" ||
+    entry.status === "refunded";
 
   const rows: [string, string][] = [
     ["Event", entry.event?.name ?? "—"],
@@ -157,9 +189,11 @@ export default function RaceEntryPage() {
           <h1 className="text-lg font-bold" style={{ fontFamily: "var(--font-display)" }}>
             {paid
               ? "Pendaftaran berhasil 🎉"
-              : dead
-                ? "Pendaftaran dibatalkan"
-                : "Menunggu pembayaran"}
+              : entry.status === "refunded"
+                ? "Pendaftaran direfund"
+                : dead
+                  ? "Pendaftaran dibatalkan"
+                  : "Menunggu pembayaran"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {paid
@@ -167,7 +201,9 @@ export default function RaceEntryPage() {
               : dead
                 ? entry.status === "expired"
                   ? "Tenggat pembayaran sudah lewat. Daftar ulang kalau kuotanya masih ada."
-                  : "Pendaftaran ini sudah dibatalkan."
+                  : entry.status === "refunded"
+                    ? "Biaya pendaftaranmu dikembalikan dan tempatnya sudah dilepas. Detail pengembalian dana ada di bawah."
+                    : "Pendaftaran ini sudah dibatalkan."
                 : "Selesaikan pembayaran agar pendaftaran aktif. Halaman ini akan diperbarui otomatis."}
           </p>
         </div>
@@ -184,6 +220,16 @@ export default function RaceEntryPage() {
           onSubmit={(url) => proof.mutate(url)}
         />
       )}
+
+      {/* The refund conversation. Above the detail card rather than below it,
+          with the status banner: it is news, and news belongs where the eye
+          already is. Renders nothing when there is neither a request to report
+          nor a button to offer — see the component. */}
+      <RefundRequestPanel
+        entry={entry}
+        pending={refund.isPending}
+        onSubmit={(reason) => refund.mutate(reason)}
+      />
 
       <Card className="mb-6 p-5">
         <h2 className="mb-3 text-base font-semibold" style={{ fontFamily: "var(--font-display)" }}>

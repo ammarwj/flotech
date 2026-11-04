@@ -80,6 +80,27 @@ class RaceEntryResource extends JsonResource
             'rejected_reason' => $this->rejected_reason,
             'verified_at' => $this->verified_at,
 
+            // The refund conversation. Note what is NOT here: a sixth `status`
+            // value. The state is derived from these columns the same way
+            // `awaiting_verification` above is derived from the proof ones, and
+            // for the reason the migration gives at length — three services
+            // guard on `in_array($status, [...])`.
+            //
+            // `can_request_refund` is the server's answer to the question the
+            // button asks, published rather than reassembled on the client:
+            // four conditions read twice drift, and the drift looks like a
+            // button that submits into a 422. Same call as
+            // `effective_payment_method`.
+            'can_request_refund' => $this->canRequestRefund(),
+            'refund_requested' => $this->refund_requested_at !== null,
+            'refund_pending' => $this->hasOpenRefundRequest(),
+            'refund_reason' => $this->refund_reason,
+            'refund_requested_at' => $this->refund_requested_at,
+            'refund_decided_at' => $this->refund_decided_at,
+            // Null on an approval — `status` reads `refunded` there, and a
+            // granted request needs no explanation.
+            'refund_rejected_reason' => $this->refund_rejected_reason,
+
             // Where the runner must transfer. Only while a manual entry is
             // still unpaid — there is nothing to pay once it is settled.
             'bank_account' => $this->when($this->isManual() && ! $this->isSettled(), fn () => $this->payTo()),

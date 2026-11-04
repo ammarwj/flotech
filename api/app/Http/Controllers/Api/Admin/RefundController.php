@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Wallet\RefundRequest;
+use App\Models\RaceEntry;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\RefundService;
@@ -110,5 +111,26 @@ class RefundController extends Controller
         );
 
         return ApiResponse::success(null, 'Pendaftaran direfund. Jangan lupa refund juga di dashboard Midtrans.');
+    }
+
+    /**
+     * A fun run entry, the fourth rail.
+     *
+     * Its own arm rather than a branch inside refundTeam(), mirroring the split
+     * in RefundService: the ledger row it reverses is keyed on its own
+     * `(source_type, category)` pair. Deliberately kept alongside the
+     * organizer's own queue (RaceRefundController) and not replaced by it —
+     * that one rules on a request the runner filed, while this is the escape
+     * hatch for a refund nobody asked for, which is a different authority.
+     */
+    public function refundRaceEntry(RefundRequest $request, string $raceEntry): JsonResponse
+    {
+        $this->refunds->refundRaceEntry(
+            RaceEntry::findOrFail($raceEntry),
+            auth('api')->user(),
+            $request->validated('reason'),
+        );
+
+        return ApiResponse::success(null, 'Pendaftaran lomba direfund. Jangan lupa refund juga di dashboard Midtrans.');
     }
 }

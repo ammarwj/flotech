@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Exceptions\PaymentException;
 use App\Mail\RaceEntryPaidMail;
+use App\Models\Event;
 use App\Models\RaceCategory;
 use App\Models\RaceEntry;
 use App\Models\User;
 use App\Support\RacePricing;
+use App\Support\RegistrationForm;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -292,6 +294,97 @@ class RaceEntryService
         });
     }
 
+    // ---- refund requests ----
+
+    /**
+     * The runner asks for their entry fee back.
+     *
+     * Only the asking lives here. Granting one reverses a wallet credit, and
+     * `RefundService` is the only thing allowed to do that — the same split
+     * `approveProof()` keeps with `markPaid()`, and the reason this method can
+     * sit in a service that knows nothing about the ledger.
+     *
+     * The four conditions are `RaceEntry::canRequestRefund()`, asked here and
+     * published to the client from the same method, so the button and the guard
+     * cannot drift. The messages differ per cause because the runner can act on
+     * the difference: an unpaid entry is cancelled rather than refunded, a free
+     * one has nothing to give back, a checked-in one already ran, and a second
+     * request is simply the first one still waiting.
+     *
+     * @throws PaymentException
+     */
+    public function requestRefund(RaceEntry $entry, string $reason): void
+    {
+        if ($entry->status !== 'paid') {
+            throw new PaymentException('Hanya pendaftaran lunas yang bisa diajukan refund.');
+        }
+
+        if ((float) $entry->price <= 0) {
+            throw new PaymentException('Pendaftaran gratis tidak bisa direfund.');
+        }
+
+        if ($entry->checked_in_at !== null) {
+            throw new PaymentException('Pendaftaran ini sudah check-in di lokasi, tidak bisa direfund.');
+        }
+
+        if ($entry->hasOpenRefundRequest()) {
+            throw new PaymentException('Pengajuan refund kamu masih menunggu keputusan penyelenggara.');
+        }
+
+        // The decision columns are cleared, which is what lets a runner ask
+        // again after a refusal — the same shape as `rejectProof()` clearing
+        // `payment_proof_url` to put an order back in the queue. A refusal is a
+        // verdict on this request, not on the entry.
+        $entry->update([
+            'refund_reason' => $reason,
+            'refund_requested_at' => Carbon::now(),
+            'refund_decided_at' => null,
+            'refund_decided_by' => null,
+            'refund_rejected_reason' => null,
+        ]);
+    }
+
+    /**
+     * Turn a request down. The entry stays paid and keeps its place.
+     *
+     * `refund_requested_at` is deliberately LEFT standing: the runner's page
+     * reads it beside `refund_rejected_reason` to say "kamu mengajukan tanggal
+     * ini, ditolak karena ini". Clearing it would erase the question the answer
+     * belongs to, and the organizer's own history of having been asked.
+     *
+     * @throws PaymentException
+     */
+    public function rejectRefund(RaceEntry $entry, User $admin, string $reason): void
+    {
+        if (! $entry->hasOpenRefundRequest()) {
+            throw new PaymentException('Tidak ada pengajuan refund yang menunggu keputusan.');
+        }
+
+        $entry->update([
+            'refund_decided_at' => Carbon::now(),
+            'refund_decided_by' => $admin->id,
+            'refund_rejected_reason' => $reason,
+        ]);
+    }
+
+    /**
+     * Stamp the verdict half of an approval.
+     *
+     * Called by the controller INSIDE the same transaction as
+     * `RefundService::refundRaceEntry()`, never on its own: a row marked decided
+     * whose ledger was not reversed is an organizer credited for money that went
+     * back, which `wallet:audit` cannot see. The reversal is the refund; this is
+     * only the record of who said yes.
+     */
+    public function markRefundApproved(RaceEntry $entry, User $admin): void
+    {
+        $entry->update([
+            'refund_decided_at' => Carbon::now(),
+            'refund_decided_by' => $admin->id,
+            'refund_rejected_reason' => null,
+        ]);
+    }
+
     /**
      * A check-in credential.
      *
@@ -363,5 +456,96 @@ class RaceEntryService
     public function newOrderId(): string
     {
         return 'RUN-'.Str::upper(Str::random(10));
+    }
+
+    // ---- the event's own registration form ----
+
+    /**
+     * Which required answers and documents are missing, keyed by field path.
+     *
+     * Here rather than in a controller because there are now TWO doors onto a
+     * race entry's answers — the runner's public form and the organizer's edit
+     * — and the codebase already carries this pair twice (TeamRosterService for
+     * teams, here for runners) with a note saying to touch both. A third copy
+     * is how one door starts demanding a field the other does not.
+     *
+     * Empty array = complete. The caller shapes the refusal, because the two
+     * differ: the public form answers 422 with these paths, and the organizer's
+     * does the same — but only the caller knows which.
+     *
+     * @param  array<string, mixed>  $answers
+     * @param  list<string>  $uploadedTypes  document slot keys already in hand
+     * @return array<string, string>
+     */
+    public function formErrors(Event $event, array $answers, array $uploadedTypes): array
+    {
+        $form = RegistrationForm::forEvent($event);
+        $errors = [];
+
+        foreach ($form->teamFields as $field) {
+            if (! ($field['required'] ?? false)) {
+                continue;
+            }
+
+            // A question this runner was never shown is not one they skipped.
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
+
+            // Consent goes through normalizeAnswer() so "ticked" is decided in
+            // one place; its stored value is an instant the server writes, and
+            // the payload's own text is never what is checked.
+            $value = $field['type'] === 'consent'
+                ? RegistrationForm::normalizeAnswer('consent', $answers[$field['key']] ?? null)
+                : $answers[$field['key']] ?? null;
+
+            if (! is_scalar($value) || trim((string) $value) === '') {
+                $errors["custom_fields.{$field['key']}"] = $field['type'] === 'consent'
+                    ? "{$field['label']} wajib disetujui."
+                    : "{$field['label']} wajib diisi.";
+            }
+        }
+
+        foreach ($form->teamDocuments as $doc) {
+            if (($doc['required'] ?? false) && ! in_array($doc['key'], $uploadedTypes, true)) {
+                $errors['documents'] = "Dokumen \"{$doc['label']}\" wajib diunggah.";
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Keep only the answers this event actually asks for.
+     *
+     * Mirrors TeamRosterService::cleanAnswers(), and lives beside
+     * formErrors() for the reason written there.
+     *
+     * Hidden means not stored, not merely not demanded — one without the other
+     * leaves a NIM on a runner who ended up picking UMUM.
+     *
+     * @param  array<string, mixed>  $answers
+     * @return array<string, mixed>|null
+     */
+    public function cleanAnswers(Event $event, array $answers): ?array
+    {
+        $clean = [];
+
+        foreach (RegistrationForm::forEvent($event)->teamFields as $field) {
+            if (! RegistrationForm::isVisible($field, $answers)) {
+                continue;
+            }
+
+            $value = RegistrationForm::normalizeAnswer(
+                $field['type'],
+                $answers[$field['key']] ?? null,
+            );
+
+            if ($value !== null) {
+                $clean[$field['key']] = $value;
+            }
+        }
+
+        return $clean === [] ? null : $clean;
     }
 }

@@ -3,10 +3,12 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { ScanLine, Search, Users } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ScanLine, Search, Undo2, Users } from "lucide-react";
 
-import { getRaceEntries, type RaceEntryFilter } from "@/lib/api/race";
+import { cancelRaceEntry, getRaceEntries, type RaceEntryFilter } from "@/lib/api/race";
+import { parseApiError } from "@/lib/api/errors";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled } from "@/lib/plan";
 import { rupiah } from "@/lib/labels";
@@ -26,8 +28,11 @@ import {
   DetailToggle,
   RaceEntryDetail,
 } from "@/components/event/race-entry-detail";
+import { RaceEntryEditDialog } from "@/components/event/race-entry-edit-dialog";
 import { ExportButtons } from "@/components/event/export-buttons";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import { schemaOf } from "@/lib/registration-form";
+import type { RaceEntry, RaceEntryStatus } from "@/types/api";
 
 /**
  * The status pills, in the order a runner's entry moves through them.
@@ -53,6 +58,18 @@ const isFilter = (v: string | null): v is RaceEntryFilter =>
   !!v && FILTERS.some(([key]) => key === v);
 
 /**
+ * The statuses the cancel endpoint accepts, mirroring its guard.
+ *
+ * A mirror rather than a second rule: the server refuses `paid` (that needs a
+ * refund, which reverses a wallet credit and is the platform admin's to issue),
+ * and `cancelled`/`refunded` have already given their place back. This list
+ * only decides whether the control is offered — the refusal itself still lives
+ * there, so the two cannot disagree about what happens, only about what is
+ * shown.
+ */
+const CANCELLABLE: RaceEntryStatus[] = ["pending", "expired"];
+
+/**
  * The runners who entered a fun run, and what the event has taken for them.
  *
  * The categories and the sale windows they are priced against are set up on the
@@ -69,6 +86,8 @@ export default function EventRacePage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
   const { orgId } = useActiveOrg();
+  const qc = useQueryClient();
+  const confirm = useConfirm();
 
   const { params: sp, setParams } = useUrlState();
 
@@ -93,6 +112,49 @@ export default function EventRacePage() {
   // entrants is the reason an organizer opens one in the first place, and a
   // detail that closes the previous row makes that the one thing it cannot do.
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
+
+  /**
+   * The row whose edit dialog is open — one dialog for the whole list, not one
+   * per row: mounting 25 hidden dialogs to show at most one is waste, and the
+   * dialog seeds its form from whichever entry it is handed.
+   */
+  const [editing, setEditing] = useState<RaceEntry | null>(null);
+
+  const cancelMutation = useMutation({
+    mutationFn: (entryId: string) => cancelRaceEntry(orgId!, eventId, entryId),
+    onSuccess: () => {
+      // Every page of the list: the row may be on any of them, and the cards
+      // above are counted server-side from the same query.
+      qc.invalidateQueries({ queryKey: ["race-entries", orgId, eventId] });
+      toast.success("Pendaftaran dibatalkan", {
+        description: "Kuota kategorinya sudah dikembalikan.",
+      });
+    },
+    onError: (err) =>
+      toast.error(parseApiError(err, "Gagal membatalkan pendaftaran.").message),
+  });
+
+  /**
+   * Confirm, then cancel.
+   *
+   * The consequences strip says what actually happens, because "hapus" is what
+   * the organizer came looking for and this is not that: the row stays, which
+   * is deliberate — a settled entry's wallet credit, receipt number and QR all
+   * point at it, and so does every report.
+   */
+  const cancelEntry = async (entry: RaceEntry) => {
+    const ok = await confirm({
+      title: `Batalkan pendaftaran ${entry.full_name}?`,
+      description:
+        "Pendaftaran ini tidak lagi aktif dan kuota kategorinya dikembalikan.",
+      consequences:
+        "Datanya tetap tersimpan sebagai riwayat dengan status Dibatalkan, jadi masih terlihat di daftar dan laporan. Peserta harus mendaftar ulang kalau berubah pikiran.",
+      confirmLabel: "Batalkan pendaftaran",
+      tone: "danger",
+    });
+
+    if (ok) cancelMutation.mutate(entry.id);
+  };
 
   const setPage = (p: number) =>
     setParams({ page: p > 1 ? String(p) : undefined });
@@ -185,12 +247,25 @@ export default function EventRacePage() {
         description="Kategori, periode harga, dan daftar pendaftar."
         backHref={`/organizer/events/${eventId}/edit`}
         actions={
-          <Button asChild variant="outline">
-            <Link href={`/organizer/events/${eventId}/race-scan`}>
-              <ScanLine className="h-4 w-4" />
-              Check-in Peserta
-            </Link>
-          </Button>
+          <>
+            {/* Always shown, never gated on there being an open request: the
+                queue also holds what was already decided, and a link that
+                appears only while somebody is waiting is one nobody can use to
+                check what they ruled last week. Same call as the manual
+                payments queue. */}
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/race-refunds`}>
+                <Undo2 className="h-4 w-4" />
+                Pengajuan Refund
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/race-scan`}>
+                <ScanLine className="h-4 w-4" />
+                Check-in Peserta
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -381,11 +456,41 @@ export default function EventRacePage() {
                             awaitingVerification={e.awaiting_verification}
                           />
                         </td>
+                        {/* Detail, then the two writes. `whitespace-nowrap`
+                            because three controls on one line is exactly what
+                            wraps first in a table that already scrolls. */}
                         <td className="py-2.5 text-right">
-                          <DetailToggle
-                            open={openRows.has(e.id)}
-                            onToggle={() => toggleRow(e.id)}
-                          />
+                          <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                            <DetailToggle
+                              open={openRows.has(e.id)}
+                              onToggle={() => toggleRow(e.id)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setEditing(e)}
+                              className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                            >
+                              Ubah
+                            </button>
+                            {/* Hidden rather than disabled for an entry that
+                                cannot be cancelled: the API refuses `paid`,
+                                `cancelled` and `refunded`, and a greyed control
+                                beside four live ones invites a click that can
+                                only ever answer 422. The reason it is refused —
+                                a wallet credit and a receipt already issued —
+                                is not something a tooltip can usefully say to
+                                somebody who just wants the row gone. */}
+                            {CANCELLABLE.includes(e.status) && (
+                              <button
+                                type="button"
+                                onClick={() => cancelEntry(e)}
+                                disabled={cancelMutation.isPending}
+                                className="text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80 disabled:opacity-50"
+                              >
+                                Batalkan
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {/* Its own row spanning the table, not a panel outside
@@ -440,6 +545,21 @@ export default function EventRacePage() {
             </div>
           )}
         </Card>
+
+        {/* Outside the table, keyed by the row it is editing: remounting on a
+            different entry is what reseeds the form, so opening a second
+            runner never shows the first one's answers. `orgId` is non-null
+            inside the guard — the list query above is gated on it. */}
+        {editing && orgId && (
+          <RaceEntryEditDialog
+            key={editing.id}
+            entry={editing}
+            schema={schema}
+            orgId={orgId}
+            eventId={eventId}
+            onClose={() => setEditing(null)}
+          />
+        )}
       </RaceRouteGuard>
     </div>
   );

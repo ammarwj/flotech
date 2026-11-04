@@ -192,6 +192,76 @@ export async function getRaceEntries(
   return data.data;
 }
 
+/**
+ * What an organizer may correct on one runner's row.
+ *
+ * Every key optional, and that is the contract the API enforces: one left out
+ * leaves the stored value alone, while `null` on a nullable column really does
+ * clear it.
+ *
+ * What is NOT here is the shape of the feature, not an omission — no
+ * `race_category_id` (it decides the price, the quota and the email condition,
+ * three answers this screen cannot ask for), no `price` or fee column (those
+ * are snapshots, and a wallet credit already points at them), no `status`,
+ * `qr_code` or `checked_in_at` (each has exactly one writer). See
+ * UpdateRaceEntryRequest, which spells out each absence.
+ */
+export interface UpdateRaceEntryPayload {
+  full_name?: string;
+  email?: string;
+  phone?: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
+  /**
+   * The whole set, replaced. Sending the key at all means the server validates
+   * it against the event's form — a required answer left out is a 422, not a
+   * silent blank — so a caller changing only a name must omit it entirely.
+   */
+  custom_fields?: Record<string, string>;
+  /** Free text: "A-014" and "5K-07" are both bib numbers. */
+  bib_number?: string | null;
+}
+
+export async function updateRaceEntry(
+  orgId: string,
+  eventId: string,
+  entryId: string,
+  payload: UpdateRaceEntryPayload
+): Promise<RaceEntry> {
+  const { data } = await apiClient.patch<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/race-entries/${entryId}`,
+    payload
+  );
+  return data.data;
+}
+
+/**
+ * Cancel an entry and give its place back.
+ *
+ * This is the answer to "hapus peserta", and there is deliberately no delete:
+ * a settled entry carries a wallet credit, a numbered receipt and a QR already
+ * on somebody's phone, so removing the row would leave a balance claiming money
+ * for a registration that no longer exists. The row survives with
+ * `status: "cancelled"`, which is also what keeps it in every report.
+ *
+ * Refuses a paid entry with a 422 — that needs a refund, which is the platform
+ * admin's to issue.
+ */
+export async function cancelRaceEntry(
+  orgId: string,
+  eventId: string,
+  entryId: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/race-entries/${entryId}/cancel`,
+    {}
+  );
+  return data.data;
+}
+
 // ---- Check-in desk (tenant-scoped) ----
 
 /**
@@ -325,6 +395,86 @@ export async function submitRaceEntryProof(
   const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
     `/race-entries/${entryId}/proof`,
     { payment_proof_url: proofUrl }
+  );
+  return data.data;
+}
+
+/**
+ * Ask for the entry fee back.
+ *
+ * On the public proof page beside the upload, not behind the participant
+ * dashboard, for the reason written on `getRaceEntry()`: a runner may have
+ * arrived from an email and never signed up, and `user_id` is nullable precisely
+ * because an entry outlives the account that filed it.
+ *
+ * Whether the button may be shown at all is `entry.can_request_refund`, which
+ * the server answers — do not reassemble it from `status`/`checked_in_at`.
+ */
+export async function requestRaceEntryRefund(
+  entryId: string,
+  reason: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/race-entries/${entryId}/refund-request`,
+    { reason }
+  );
+  return data.data;
+}
+
+// ---- Organizer: the refund queue ----
+
+/**
+ * Runners asking for their entry fee back, and what was decided before.
+ *
+ * One payload for both rather than a `?status=` filter: the queue is usually
+ * empty, and an empty screen that cannot show last week's decisions reads as a
+ * feature that lost its data.
+ */
+export interface RaceRefundQueue {
+  /** Oldest first — a queue of people waiting, not a feed. */
+  pending: RaceEntry[];
+  /** The last 50 rulings, newest first. */
+  decided: RaceEntry[];
+}
+
+export async function getRaceRefunds(
+  orgId: string,
+  eventId: string
+): Promise<RaceRefundQueue> {
+  const { data } = await apiClient.get<ApiEnvelope<RaceRefundQueue>>(
+    `/organizations/${orgId}/events/${eventId}/race-refunds`
+  );
+  return data.data;
+}
+
+/**
+ * Grant it: the entry is voided, the organizer's wallet credit reversed, and
+ * the place goes back on offer.
+ *
+ * The money does NOT reach the runner automatically — it sits in the platform's
+ * Midtrans account, so the transfer back is a separate manual step. The success
+ * message says so, and the dialog says it before the click.
+ */
+export async function approveRaceRefund(
+  orgId: string,
+  eventId: string,
+  entryId: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/race-refunds/${entryId}/approve`
+  );
+  return data.data;
+}
+
+export async function rejectRaceRefund(
+  orgId: string,
+  eventId: string,
+  entryId: string,
+  reason: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/race-refunds/${entryId}/reject`,
+    { reason }
   );
   return data.data;
 }
