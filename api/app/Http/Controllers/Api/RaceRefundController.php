@@ -122,6 +122,75 @@ class RaceRefundController extends Controller
     }
 
     /**
+     * Refund a runner the organizer decided to refund, with nobody having asked.
+     *
+     * The duplicate-payment case, and it is the common one: somebody pays
+     * twice because the first attempt looked like it failed, and they are not
+     * going to file a request for a registration they do not know they have.
+     * Without this the only way out was the platform admin's own refund screen,
+     * which makes a support ticket out of an organizer's own money.
+     *
+     * One endpoint, not a second refund engine: the money still moves through
+     * `RefundService`, in one transaction, with the verdict stamped beside it —
+     * the same pairing `approve()` makes. What differs is only which of the two
+     * `RaceEntryService` stampers runs, and therefore whether
+     * `refund_requested_at` ends up null.
+     *
+     * > **It refuses an entry with an OPEN request**, which reads backwards
+     * > until you look at what the two write: `approve()` answers the runner
+     * > and leaves their reason standing as the question, while this one writes
+     * > the organizer's reason over `refund_reason`. Run here, a pending
+     * > request would have the runner's own words replaced by the organizer's
+     * > and their page would show an answer to a question it can no longer
+     * > print. The refusal names the queue, so there is one door for that row
+     * > and it is the right one.
+     *
+     * The reason is required for the same reason `reject()`'s is: the runner
+     * reads it on their own page, and a refund appearing on a registration
+     * somebody paid for with no word about why is worse than no feature at all.
+     */
+    public function issue(Request $request, string $organization, string $event, string $raceEntry): JsonResponse
+    {
+        $entry = $this->entry($request, $event, $raceEntry);
+        $admin = $request->user();
+
+        $reason = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ])['reason'];
+
+        if ($entry->hasOpenRefundRequest()) {
+            return ApiResponse::error(
+                'Peserta ini sudah mengajukan refund. Setujui atau tolak pengajuannya di antrean.',
+                null,
+                422,
+            );
+        }
+
+        // Asked here and nowhere else, because RefundService refuses an entry
+        // that is not `paid` and one that is free but knows nothing about the
+        // start line. Not folded into that service: a checked-in TICKET is
+        // already refused there by its own used-check, and a race entry's
+        // equivalent column had no writer when it was written.
+        if ($entry->checked_in_at !== null) {
+            return ApiResponse::error(
+                'Peserta ini sudah check-in di lokasi, pendaftarannya tidak bisa direfund.',
+                null,
+                422,
+            );
+        }
+
+        DB::transaction(function () use ($entry, $admin, $reason) {
+            $this->entries->markRefundIssued($entry, $admin, $reason);
+            $this->refunds->refundRaceEntry($entry->fresh(), $admin, $reason);
+        });
+
+        return ApiResponse::success(
+            new RaceEntryResource($entry->fresh()->load('category')),
+            'Pendaftaran direfund. Uangnya belum kembali ke peserta — transfer balik masih dilakukan manual.',
+        );
+    }
+
+    /**
      * Turn it down. The entry stays paid and keeps its place in the quota.
      *
      * The reason is required for the same reason `standing_adjustments.reason`

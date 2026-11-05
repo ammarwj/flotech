@@ -478,3 +478,34 @@ export async function rejectRaceRefund(
   );
   return data.data;
 }
+
+/**
+ * Refund a runner the organizer decided to refund, with nobody having asked —
+ * the duplicate-payment case, where the person does not know they have a second
+ * registration to query.
+ *
+ * Same money, same service, same manual transfer back as `approveRaceRefund`.
+ * What differs is that the entry keeps `refund_requested_at` null, which is
+ * what lets the runner's own page say "direfund penyelenggara" rather than
+ * claiming they filed a request.
+ *
+ * Refuses (422) an entry that HAS an open request — that row's door is
+ * `approveRaceRefund`, so the runner's own words stay standing as the question
+ * — and one already checked in at the start line.
+ *
+ * The reason is required: the runner reads it on their own page, and it is the
+ * only thing explaining why money came back on a registration they thought was
+ * fine.
+ */
+export async function issueRaceRefund(
+  orgId: string,
+  eventId: string,
+  entryId: string,
+  reason: string
+): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/organizations/${orgId}/events/${eventId}/race-refunds/${entryId}/issue`,
+    { reason }
+  );
+  return data.data;
+}

@@ -52,8 +52,15 @@ export function RefundRequestPanel({
   const refunded = entry.status === "refunded";
   const rejected = !!entry.refund_decided_at && !refunded;
 
-  // Nothing asked, nothing askable — the panel is not owed to this entry.
-  if (!entry.refund_requested && !entry.can_request_refund) return null;
+  // Nothing asked, nothing askable, nothing refunded — the panel is not owed
+  // to this entry.
+  //
+  // `refunded` is load-bearing in that test, not belt-and-braces: a refund the
+  // organizer issued on their own has `refund_requested` false (nobody asked)
+  // AND `can_request_refund` false (it is no longer paid), so without it the
+  // one runner who most needs an explanation — money came back on a
+  // registration they never queried — is the one shown nothing at all.
+  if (!refunded && !entry.refund_requested && !entry.can_request_refund) return null;
 
   const submit = () => {
     const text = reason.trim();
@@ -74,13 +81,29 @@ export function RefundRequestPanel({
 
   return (
     <>
-      {/* ---- Granted ---- */}
-      {refunded && (
+      {/* ---- Granted ----
+          Two sentences for one outcome, told apart by `refund_requested`: a
+          refund the organizer issued on their own — a duplicate payment, most
+          often — was never asked for, so "disetujui" describes an approval of
+          nothing. That branch prints the reason because it is the only thing on
+          screen explaining why money came back on a registration the runner
+          thought was fine; the asked-for one does not, since they wrote it. */}
+      {refunded && entry.refund_requested && (
         <StatusCard
           tone="success"
           icon={CheckCircle2}
           title="Refund disetujui"
-          body="Penyelenggara menyetujui pengajuanmu. Pengembalian dananya diproses manual, jadi uangnya tidak langsung masuk — hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja."
+          body="Dananya ditransfer manual, jadi tidak langsung masuk. Hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja."
+          at={entry.refund_decided_at}
+        />
+      )}
+
+      {refunded && !entry.refund_requested && (
+        <StatusCard
+          tone="success"
+          icon={CheckCircle2}
+          title="Pendaftaran ini direfund penyelenggara"
+          body={`Alasannya: "${entry.refund_reason ?? "—"}". Dananya ditransfer manual, jadi tidak langsung masuk. Hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja.`}
           at={entry.refund_decided_at}
         />
       )}
@@ -159,9 +182,8 @@ export function RefundRequestPanel({
                 things a runner gets wrong about this are thinking it is
                 automatic and thinking it is instant. */}
             <p className={dialogConsequences.default}>
-              Pengajuan ini tidak otomatis disetujui, dan pengembalian dananya
-              diproses manual oleh penyelenggara — bukan langsung oleh sistem.
-              Selama menunggu, pendaftaranmu tetap aktif.
+              Penyelenggara yang menyetujui, dan dananya ditransfer manual.
+              Pendaftaranmu tetap aktif selama menunggu.
             </p>
           </DialogBody>
           <DialogFooter>

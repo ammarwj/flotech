@@ -7,7 +7,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ScanLine, Search, Undo2, Users } from "lucide-react";
 
-import { cancelRaceEntry, getRaceEntries, type RaceEntryFilter } from "@/lib/api/race";
+import {
+  cancelRaceEntry,
+  getRaceEntries,
+  issueRaceRefund,
+  type RaceEntryFilter,
+} from "@/lib/api/race";
 import { parseApiError } from "@/lib/api/errors";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled } from "@/lib/plan";
@@ -30,7 +35,7 @@ import {
 } from "@/components/event/race-entry-detail";
 import { RaceEntryEditDialog } from "@/components/event/race-entry-edit-dialog";
 import { ExportButtons } from "@/components/event/export-buttons";
-import { useConfirm } from "@/components/shared/confirm-provider";
+import { useConfirm, usePrompt } from "@/components/shared/confirm-provider";
 import { schemaOf } from "@/lib/registration-form";
 import type { RaceEntry, RaceEntryStatus } from "@/types/api";
 
@@ -70,6 +75,23 @@ const isFilter = (v: string | null): v is RaceEntryFilter =>
 const CANCELLABLE: RaceEntryStatus[] = ["pending", "expired"];
 
 /**
+ * Whether the organizer may refund this row on their own.
+ *
+ * `paid` and a real amount is what `RefundService` enforces; the check-in is
+ * what `issue()` adds on top, because somebody already at the start line has
+ * nothing left to give back. A mirror of those guards, not a second rule — the
+ * refusal still lives on the server, so the two can only disagree about what is
+ * SHOWN, never about what happens.
+ *
+ * Deliberately NOT gated on `refund_pending`: that row is refused too, but by a
+ * message pointing at the queue rather than by a vanished control — an entry
+ * whose refund button disappears the moment the runner asks for one reads as the
+ * feature breaking at exactly the wrong time.
+ */
+const canRefund = (entry: RaceEntry): boolean =>
+  entry.status === "paid" && entry.price > 0 && !entry.checked_in_at;
+
+/**
  * The runners who entered a fun run, and what the event has taken for them.
  *
  * The categories and the sale windows they are priced against are set up on the
@@ -88,6 +110,7 @@ export default function EventRacePage() {
   const { orgId } = useActiveOrg();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const prompt = usePrompt();
 
   const { params: sp, setParams } = useUrlState();
 
@@ -154,6 +177,59 @@ export default function EventRacePage() {
     });
 
     if (ok) cancelMutation.mutate(entry.id);
+  };
+
+  const refundMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      issueRaceRefund(orgId!, eventId, id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["race-entries", orgId, eventId] });
+      // The queue, because the row now has a decision on it and shows up in the
+      // decided half; and the wallet, because the credit was just reversed — a
+      // balance left on screen from before the click overstates what the
+      // organizer can withdraw, by exactly what they gave back.
+      qc.invalidateQueries({ queryKey: ["race-refunds", orgId, eventId] });
+      qc.invalidateQueries({ queryKey: ["wallet", orgId] });
+      qc.invalidateQueries({ queryKey: ["wallet-transactions", orgId] });
+      toast.success("Pendaftaran direfund", {
+        description: "Transfer balik ke peserta masih dilakukan manual.",
+      });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal merefund pendaftaran.").message),
+  });
+
+  /**
+   * Refund one runner, with nobody having asked — the duplicate-payment case.
+   *
+   * A prompt rather than a plain confirm because the reason is required, and it
+   * is required for a reason worth the extra field: the runner reads it on their
+   * own page, where it is the only thing explaining why money came back on a
+   * registration they thought was fine.
+   *
+   * An entry that HAS asked is sent to the queue instead. The server refuses it
+   * too (422), so this is the message rather than the enforcement — without it
+   * the organizer gets a refusal naming a screen they then have to go find.
+   */
+  const refundEntry = async (entry: RaceEntry) => {
+    if (entry.refund_pending) {
+      toast.error("Peserta ini sudah mengajukan refund.", {
+        description: "Setujui atau tolak pengajuannya di halaman Pengajuan Refund.",
+      });
+      return;
+    }
+
+    const reason = await prompt({
+      title: `Refund pendaftaran ${entry.full_name}?`,
+      description: `${rupiah(entry.price)} dikembalikan dan tempatnya dilepas.`,
+      consequences:
+        "Saldo dompetmu berkurang dan QR check-in peserta ini mati. Transfer uangnya manual — sistem tidak mengirimnya.",
+      label: "Alasan refund",
+      placeholder: "mis. pembayaran ganda, peserta batal ikut",
+      confirmLabel: "Refund pendaftaran",
+      tone: "danger",
+    });
+
+    if (reason) refundMutation.mutate({ id: entry.id, reason });
   };
 
   const setPage = (p: number) =>
@@ -488,6 +564,22 @@ export default function EventRacePage() {
                                 className="text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80 disabled:opacity-50"
                               >
                                 Batalkan
+                              </button>
+                            )}
+                            {/* Refund and Batalkan are never both offered: one
+                                needs the entry paid, the other needs it not to
+                                be. They share the column because they are the
+                                same intent — get this registration off the
+                                start list — answered differently by whether
+                                money has moved. */}
+                            {canRefund(e) && (
+                              <button
+                                type="button"
+                                onClick={() => refundEntry(e)}
+                                disabled={refundMutation.isPending}
+                                className="text-xs font-medium text-[var(--danger)] transition-opacity hover:opacity-80 disabled:opacity-50"
+                              >
+                                Refund
                               </button>
                             )}
                           </div>

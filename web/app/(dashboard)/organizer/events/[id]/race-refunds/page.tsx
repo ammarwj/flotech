@@ -105,7 +105,7 @@ export default function RaceRefundsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Pengajuan Refund"
-        description="Peserta lomba yang meminta biaya pendaftarannya dikembalikan. Menyetujui melepas tempatnya dan mengurangi saldo dompetmu — uangnya sendiri masih kamu transfer balik secara manual."
+        description="Menyetujui melepas tempatnya dan memotong saldo dompetmu."
         backHref={`/organizer/events/${eventId}/race`}
         backLabel="Peserta Lomba"
       />

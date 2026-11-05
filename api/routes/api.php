@@ -676,6 +676,12 @@ Route::prefix('v1')->group(function () {
                 Route::get('events/{event}/race-refunds', [RaceRefundController::class, 'index']);
                 Route::post('events/{event}/race-refunds/{raceEntry}/approve', [RaceRefundController::class, 'approve']);
                 Route::post('events/{event}/race-refunds/{raceEntry}/reject', [RaceRefundController::class, 'reject']);
+                // A refund the organizer starts, with nobody having asked —
+                // the duplicate-payment case. Beside the two verdicts rather
+                // than on the runner list: it is the same money moving through
+                // the same service, and the one door for an entry that DID ask
+                // is `approve` above (see issue()).
+                Route::post('events/{event}/race-refunds/{raceEntry}/issue', [RaceRefundController::class, 'issue']);
             });
 
             // Manual-transfer verification. Approving a receipt issues a valid

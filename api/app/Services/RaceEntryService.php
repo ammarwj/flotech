@@ -386,6 +386,39 @@ class RaceEntryService
     }
 
     /**
+     * Stamp the verdict half of a refund the ORGANIZER started.
+     *
+     * Called inside the same transaction as `RefundService::refundRaceEntry()`,
+     * exactly like `markRefundApproved()` above and for the same reason.
+     *
+     * > **Invariant: `refund_requested_at` is left NULL, and that null is what
+     * > says who started this.** It is the only thing separating "the runner
+     * > asked and we agreed" from "we refunded them without being asked", and
+     * > two screens act on the difference: the runner's own page cannot say
+     * > "penyelenggara menyetujui pengajuanmu" over a refund they never asked
+     * > for, and the organizer's queue must not show a decided row as an answer
+     * > to a question nobody put. Stamping it here — which would make this
+     * > method one line shorter — is how a refund grows a request that never
+     * > happened. Test it by COMPARING the two paths in one test: assert the
+     * > issued one has `refund_requested_at` null while the approved one does
+     * > not; asserting `status === 'refunded'` holds on both and proves nothing.
+     *
+     * `refund_reason` is written either way, and the author is read off that
+     * same null rather than from a second column: one reason per refund, whoever
+     * typed it, and a `refund_initiated_by` beside it would be a second
+     * spelling of a fact this one already carries.
+     */
+    public function markRefundIssued(RaceEntry $entry, User $admin, string $reason): void
+    {
+        $entry->update([
+            'refund_reason' => $reason,
+            'refund_decided_at' => Carbon::now(),
+            'refund_decided_by' => $admin->id,
+            'refund_rejected_reason' => null,
+        ]);
+    }
+
+    /**
      * A check-in credential.
      *
      * `RUN-` prefixed and a lowercase ULID, the shape TicketService uses for

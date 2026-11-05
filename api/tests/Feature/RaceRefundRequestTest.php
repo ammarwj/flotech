@@ -438,4 +438,224 @@ class RaceRefundRequestTest extends TestCase
         $this->assertFalse($read($fresh)['refund_pending']);
         $this->assertTrue($read($asking)['refund_pending']);
     }
+
+    // ---- refund yang dimulai organizer ----
+
+    private function issue(Organization $org, Event $event, RaceEntry $entry, string $reason = 'Pembayaran ganda')
+    {
+        return $this->postJson(
+            "/api/v1/organizations/{$org->id}/events/{$event->id}/race-refunds/{$entry->id}/issue",
+            ['reason' => $reason],
+        );
+    }
+
+    /**
+     * > **Invarian: refund terbitan organizer meninggalkan `refund_requested_at`
+     * > NULL, dan null itulah yang mengatakan siapa yang memulainya.**
+     *
+     * Dibandingkan **jalur terbitan dengan jalur disetujui dalam satu test**:
+     * keduanya mendarat di `status = 'refunded'` dengan ledger yang sama-sama
+     * berbalik, jadi assert salah satunya sendirian lolos penuh walau
+     * `markRefundIssued()` ikut menstempel `refund_requested_at` — dan dengan
+     * stempel itu halaman peserta akan berbunyi "penyelenggara menyetujui
+     * pengajuanmu" di atas refund yang tak pernah ia ajukan, serta antrean
+     * organizer menampilkannya sebagai jawaban atas pertanyaan yang tak pernah
+     * ada.
+     */
+    public function test_an_issued_refund_leaves_no_request_behind_unlike_an_approved_one(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event);
+
+        $issued = $this->paidEntry($org, $event, $category);
+        $approved = $this->paidEntry($org, $event, $category);
+
+        $this->ask($approved, 'Cedera')->assertOk();
+
+        $this->actingAs($owner, 'api')->postJson(
+            "/api/v1/organizations/{$org->id}/events/{$event->id}/race-refunds/{$approved->id}/approve",
+        )->assertOk();
+
+        $this->actingAs($owner, 'api');
+        $this->issue($org, $event, $issued)->assertOk();
+
+        $issued->refresh();
+        $approved->refresh();
+
+        // Keduanya sampai di tempat yang sama — itu yang membuat pasangannya
+        // perlu: tanpa pembanding, assert di bawah tidak membuktikan apa pun.
+        $this->assertSame('refunded', $issued->status);
+        $this->assertSame('refunded', $approved->status);
+
+        // Dan inilah yang memisahkannya.
+        $this->assertNull($issued->refund_requested_at);
+        $this->assertNotNull($approved->refund_requested_at);
+
+        // Alasannya ditulis di kedua jalur, cuma penulisnya beda — organizer di
+        // satu sisi, peserta di sisi lain.
+        $this->assertSame('Pembayaran ganda', $issued->refund_reason);
+        $this->assertSame('Cedera', $approved->refund_reason);
+        $this->assertSame($owner->id, $issued->refund_decided_by);
+    }
+
+    /**
+     * Terbitan organizer membalik ledger dan mengembalikan tempatnya, persis
+     * seperti jalur disetujui.
+     *
+     * Dibandingkan dengan entry lunas di sebelahnya yang **tidak** direfund:
+     * assert "kredit jadi cancelled" sendirian lolos walau endpoint-nya
+     * membalik setiap kredit event itu.
+     */
+    public function test_issuing_reverses_only_that_entrys_credit_and_frees_its_place(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event);
+
+        $refunded = $this->paidEntry($org, $event, $category);
+        $untouched = $this->paidEntry($org, $event, $category);
+
+        $this->assertSame(2, $category->fresh()->taken);
+
+        $this->actingAs($owner, 'api');
+        $this->issue($org, $event, $refunded)->assertOk();
+
+        $status = fn (RaceEntry $e) => WalletTransaction::where('source_type', 'race_entry')
+            ->where('source_id', $e->id)
+            ->where('category', 'race_entry')
+            ->firstOrFail()
+            ->status;
+
+        $this->assertSame('cancelled', $status($refunded));
+        // Tetangganya tidak tersentuh — itu yang mengikatnya.
+        $this->assertSame('pending', $status($untouched));
+        $this->assertSame('paid', $untouched->fresh()->status);
+        // Satu tempat dilepas, bukan dua.
+        $this->assertSame(1, $category->fresh()->taken);
+    }
+
+    /**
+     * Entry yang SUDAH mengajukan ditolak di sini, dan alasan peserta tetap utuh.
+     *
+     * Dibandingkan dengan entry tanpa pengajuan yang berhasil: assert "yang
+     * mengajukan 422" sendirian lolos walau endpoint-nya menolak semuanya.
+     * Kolom `refund_reason` ikut di-assert karena itulah **sebab** penolakannya
+     * — `issue()` menulis alasan organizer ke kolom yang sama, jadi lewat di
+     * sini akan menimpa kata-kata peserta dan halamannya menampilkan jawaban
+     * atas pertanyaan yang sudah tidak bisa ia cetak.
+     */
+    public function test_an_entry_with_an_open_request_is_sent_to_the_queue_instead(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event);
+
+        $asked = $this->paidEntry($org, $event, $category);
+        $didnt = $this->paidEntry($org, $event, $category);
+
+        $this->ask($asked, 'Cedera lutut')->assertOk();
+
+        $this->actingAs($owner, 'api');
+        $this->issue($org, $event, $asked)->assertStatus(422);
+        $this->issue($org, $event, $didnt)->assertOk();
+
+        // Alasan peserta selamat, dan entry-nya masih lunas menunggu keputusan.
+        $this->assertSame('Cedera lutut', $asked->fresh()->refund_reason);
+        $this->assertSame('paid', $asked->fresh()->status);
+        $this->assertTrue($asked->fresh()->hasOpenRefundRequest());
+        $this->assertSame('refunded', $didnt->fresh()->status);
+    }
+
+    /**
+     * Yang sudah check-in, yang belum lunas, dan yang gratis ditolak.
+     *
+     * Ketiganya satu test karena masing-masing dijaga di tempat berbeda —
+     * check-in oleh `issue()`, dua sisanya oleh `RefundService` — dan assert
+     * satu di antaranya lolos walau dua guard lainnya tidak pernah jalan.
+     */
+    public function test_issuing_is_refused_for_checked_in_unpaid_and_free_entries(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event);
+        $free = $this->category($event, 'Gratis', 0);
+
+        $ran = $this->paidEntry($org, $event, $category);
+        app(RaceEntryService::class)->checkIn($ran, null);
+
+        $unpaid = $this->paidEntry($org, $event, $category);
+        $unpaid->update(['status' => 'pending', 'paid_at' => null]);
+
+        $gratis = $this->paidEntry($org, $event, $free);
+        $ok = $this->paidEntry($org, $event, $category);
+
+        $this->actingAs($owner, 'api');
+
+        $this->issue($org, $event, $ran)->assertStatus(422);
+        $this->issue($org, $event, $unpaid)->assertStatus(422);
+        $this->issue($org, $event, $gratis)->assertStatus(422);
+        // Pasangannya: endpoint yang menolak segalanya lolos tanpa ini.
+        $this->issue($org, $event, $ok)->assertOk();
+
+        $this->assertSame('paid', $ran->fresh()->status);
+        $this->assertSame('pending', $unpaid->fresh()->status);
+        $this->assertSame('paid', $gratis->fresh()->status);
+        $this->assertSame('refunded', $ok->fresh()->status);
+    }
+
+    /** Alasan wajib — pesertanya yang membacanya di halamannya sendiri. */
+    public function test_issuing_requires_a_reason(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $entry = $this->paidEntry($org, $event, $this->category($event));
+
+        $this->actingAs($owner, 'api')
+            ->postJson(
+                "/api/v1/organizations/{$org->id}/events/{$event->id}/race-refunds/{$entry->id}/issue",
+                ['reason' => '  '],
+            )
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->assertSame('paid', $entry->fresh()->status);
+    }
+
+    /**
+     * Tiga aktor, satu payload: owner / `operator` / anggota org lain.
+     *
+     * Assert "owner sukses" lolos **identik** di bawah `tenant` saja — yang akan
+     * meloloskan petugas scan untuk mendorong saldo organizer jadi minus.
+     */
+    public function test_issuing_is_owner_admin_only(): void
+    {
+        $owner = User::factory()->create();
+        $operator = User::factory()->create();
+        $outsider = User::factory()->create();
+
+        $org = $this->orgFor($owner);
+        $org->members()->create(['user_id' => $operator->id, 'role' => 'operator']);
+
+        $event = $this->raceEvent($org);
+        $category = $this->category($event);
+        $entry = $this->paidEntry($org, $event, $category);
+
+        $this->actingAs($operator, 'api');
+        $this->issue($org, $event, $entry)->assertForbidden();
+        $this->actingAs($outsider, 'api');
+        $this->issue($org, $event, $entry)->assertForbidden();
+
+        // Tidak satu pun dari keduanya menyentuh uangnya.
+        $this->assertSame('paid', $entry->fresh()->status);
+        $this->assertSame(1, $category->fresh()->taken);
+
+        $this->actingAs($owner, 'api');
+        $this->issue($org, $event, $entry)->assertOk();
+    }
 }
