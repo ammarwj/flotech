@@ -29,6 +29,7 @@ export function ImageUploadField({
   className,
   previewClassName,
   placeholder,
+  disabled,
 }: {
   label: string;
   /** Stored URL, or "" when unset. */
@@ -53,6 +54,12 @@ export function ImageUploadField({
   previewClassName?: string;
   /** Rendered inside the empty preview box. */
   placeholder?: React.ReactNode;
+  /**
+   * Freezes the buttons while still showing what is stored — for forms the
+   * server has closed (a participant's team page once registration ends).
+   * The preview stays, because the point is to see the crest, not to change it.
+   */
+  disabled?: boolean;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -128,14 +135,14 @@ export function ImageUploadField({
           type="button"
           variant="outline"
           size="sm"
-          disabled={uploading}
+          disabled={uploading || disabled}
           onClick={() => inputRef.current?.click()}
         >
           <ImagePlus className="h-4 w-4" />
           {shown ? `Ganti ${label.toLowerCase()}` : `Unggah ${label.toLowerCase()}`}
         </Button>
         {shown && (
-          <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={clear}>
+          <Button type="button" variant="ghost" size="sm" disabled={uploading || disabled} onClick={clear}>
             <X className="h-4 w-4" />
             Hapus
           </Button>

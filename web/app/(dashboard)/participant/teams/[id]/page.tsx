@@ -12,6 +12,7 @@ import {
   Loader2,
   LogOut,
   Printer,
+  Shield,
   UserCog,
   Users,
 } from "lucide-react";
@@ -39,6 +40,7 @@ import {
   type DocumentRow,
 } from "@/lib/registration-form";
 import { useConfirm } from "@/components/shared/confirm-provider";
+import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { ChannelPicker } from "@/components/payment/channel-picker";
 import { DiscountCodeField } from "@/components/payment/discount-code-field";
 import { Button } from "@/components/ui/button";
@@ -79,6 +81,10 @@ export default function ManageTeamPage() {
   const schema = schemaOf(team?.event);
 
   const [info, setInfo] = useState({ name: "", contact_name: "", contact_phone: "" });
+  const [logoUrl, setLogoUrl] = useState("");
+  // Blocks Save while the crest is still uploading, so the team isn't written
+  // without the URL the upload is about to produce.
+  const [logoUploading, setLogoUploading] = useState(false);
   const [teamFields, setTeamFields] = useState<CustomFieldAnswers>({});
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [officials, setOfficials] = useState<OfficialRow[]>([]);
@@ -115,6 +121,7 @@ export default function ManageTeamPage() {
       contact_name: team.contact_name ?? "",
       contact_phone: team.contact_phone ?? "",
     });
+    setLogoUrl(team.logo_url ?? "");
     setTeamFields(team.custom_fields ?? {});
     setPlayers(
       (team.players ?? []).map((p) => ({
@@ -168,6 +175,10 @@ export default function ManageTeamPage() {
         // A tunggal/ganda entry is its players — the backend renames it from the
         // roster, so what travels here is only a placeholder.
         name: isFixed ? roster.map((p) => p.full_name.trim()).join(" / ") : info.name,
+        // Same reading as the registration form and the organizer's dialog: a
+        // tunggal/ganda entry has no crest of its own. Null rather than "" so a
+        // cleared logo actually clears.
+        logo_url: isFixed ? null : logoUrl || null,
         custom_fields: teamFields,
         players: roster
           .filter((p) => p.full_name.trim())
@@ -422,6 +433,21 @@ export default function ManageTeamPage() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             {!isFixed && (
+              <ImageUploadField
+                className="sm:col-span-2"
+                label="Logo tim"
+                value={logoUrl}
+                onChange={setLogoUrl}
+                onBusyChange={setLogoUploading}
+                disabled={!editable}
+                folder="teams"
+                maxDim={512}
+                previewClassName="h-24 w-24"
+                placeholder={<Shield className="h-7 w-7 text-muted-foreground" />}
+                hint="Opsional. Maksimal 5 MB, otomatis dikonversi ke WebP. Bentuk persegi paling rapi."
+              />
+            )}
+            {!isFixed && (
               <div className="grid gap-2">
                 <Label>Nama tim</Label>
                 <Input value={info.name} onChange={(e) => setInfo({ ...info, name: nameInput(e.target.value) })} disabled={!editable} required />
@@ -565,6 +591,7 @@ export default function ManageTeamPage() {
                 disabled={
                   save.isPending ||
                   uploading ||
+                  logoUploading ||
                   teamMissing.length > 0 ||
                   hasIncompletePlayer(schema, players) ||
                   hasIncompleteOfficial(schema, officials)
