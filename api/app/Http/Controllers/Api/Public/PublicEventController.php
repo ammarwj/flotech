@@ -76,6 +76,13 @@ class PublicEventController extends Controller
             // cancelled ones sink but stay browsable as an archive.
             ->orderByRaw("case when status in ('open', 'registration_closed', 'ongoing') then 0 else 1 end")
             ->orderBy('start_date', 'desc')
+            // Tiebreaker wajib, bukan kosmetik: dua kunci di atas bisa seri
+            // (dua event `ongoing` dengan `start_date` sama), dan urutan yang
+            // tidak ditentukan + LIMIT/OFFSET memotong tepat di tengah seri —
+            // satu baris terbit di dua halaman sementara kembarnya hilang dari
+            // katalog sama sekali, padahal `total` tetap benar dan pencarian
+            // tetap menemukannya. `id` unik, jadi tidak ada seri yang tersisa.
+            ->orderBy('id')
             ->paginate(min((int) $request->query('per_page', 12), 50));
 
         return ApiResponse::success([
