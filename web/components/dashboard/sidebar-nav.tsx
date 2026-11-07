@@ -31,6 +31,7 @@ import {
   BarChart3,
   Gauge,
   Globe,
+  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import { create } from "zustand";
@@ -98,6 +99,10 @@ export const ORGANIZER_NAV: NavSection[] = [
       // a sixth would be dropped silently rather than shown.
       { href: "/organizer/id-cards", label: "ID Card", icon: IdCard },
       { href: "/organizer/billing", label: "Pembelian Paket", icon: CreditCard },
+      // Beside the wallet rather than inside it: these transfers deliberately
+      // never touch the ledger, so a row here would promise a balance movement
+      // the wallet page cannot show.
+      { href: "/organizer/refund-payouts", label: "Transfer Refund", icon: ArrowRightLeft },
       { href: "/organizer/settings", label: "Pengaturan", icon: Settings, mobile: true },
     ],
   },
@@ -183,6 +188,11 @@ export const ADMIN_NAV: NavSection[] = [
         short: "Penarikan",
       },
       { href: "/admin/payments", label: "Pembayaran & Refund", icon: ReceiptText },
+      // What a refund leaves behind. Its own row rather than a tab on the page
+      // above: that one is the list of payments to act on, this is a queue of
+      // transfers the platform owes, and it is the only place the debt appears
+      // at all.
+      { href: "/admin/refund-payouts", label: "Transfer Refund", icon: ArrowRightLeft },
       // PieChart, not ReceiptText: the page above is the list of individual
       // payments an admin acts on, this one is the aggregate behind them, and
       // the same icon on both would read as one page duplicated.

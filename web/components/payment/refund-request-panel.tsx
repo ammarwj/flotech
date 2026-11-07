@@ -52,6 +52,24 @@ export function RefundRequestPanel({
   const refunded = entry.status === "refunded";
   const rejected = !!entry.refund_decided_at && !refunded;
 
+  // Where the money actually is, which is the one thing this panel could not
+  // say before: a refund is granted instantly, but the transfer out is manual
+  // and runs through two hands. The generic sentence stays the fallback for a
+  // refund that owes no transfer at all — a free entry, the manual rail, or a
+  // credit reversed before it was ever released.
+  const transferNote = (() => {
+    switch (entry.refund_transfer?.stage) {
+      case "queued":
+        return "Dananya sedang diproses flo-event untuk dikirim ke penyelenggara, lalu diteruskan ke kamu.";
+      case "with_organizer":
+        return "Dananya sudah sampai ke penyelenggara dan sedang menunggu diteruskan ke kamu.";
+      case "forwarded":
+        return "Penyelenggara sudah menandai dananya diteruskan ke kamu. Hubungi mereka kalau belum masuk dalam beberapa hari kerja.";
+      default:
+        return "Dananya ditransfer manual, jadi tidak langsung masuk. Hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja.";
+    }
+  })();
+
   // Nothing asked, nothing askable, nothing refunded — the panel is not owed
   // to this entry.
   //
@@ -93,7 +111,7 @@ export function RefundRequestPanel({
           tone="success"
           icon={CheckCircle2}
           title="Refund disetujui"
-          body="Dananya ditransfer manual, jadi tidak langsung masuk. Hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja."
+          body={transferNote}
           at={entry.refund_decided_at}
         />
       )}
@@ -103,7 +121,7 @@ export function RefundRequestPanel({
           tone="success"
           icon={CheckCircle2}
           title="Pendaftaran ini direfund penyelenggara"
-          body={`Alasannya: "${entry.refund_reason ?? "—"}". Dananya ditransfer manual, jadi tidak langsung masuk. Hubungi penyelenggara kalau belum diterima dalam beberapa hari kerja.`}
+          body={`Alasannya: "${entry.refund_reason ?? "—"}". ${transferNote}`}
           at={entry.refund_decided_at}
         />
       )}

@@ -150,4 +150,14 @@ class Organization extends Model
     {
         return $this->hasMany(Withdrawal::class);
     }
+
+    /**
+     * Refunds whose money the platform owes this organizer, or that they owe
+     * onward to a participant. Not a wallet relation: these transfers happen
+     * outside the ledger on purpose — see RefundPayoutService.
+     */
+    public function refundPayouts(): HasMany
+    {
+        return $this->hasMany(RefundPayout::class);
+    }
 }

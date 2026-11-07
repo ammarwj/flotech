@@ -71,6 +71,13 @@ class RaceRefundController extends Controller
     {
         $eventModel = $this->event($request, $event);
 
+        // `refundPayout` on the decided list only, and the asymmetry is the
+        // point: a payout row cannot exist until a refund is granted, so
+        // loading it beside the pending queue would be a query per row that
+        // always answers null. Without it on this side `refund_transfer` is
+        // absent — `whenLoaded` never fires — and the screen says "Disetujui"
+        // forever over money that has already been transferred twice, which is
+        // exactly the silence this feature was built to end.
         return ApiResponse::success([
             'pending' => RaceEntryResource::collection(
                 $eventModel->raceEntries()
@@ -82,7 +89,7 @@ class RaceRefundController extends Controller
             'decided' => RaceEntryResource::collection(
                 $eventModel->raceEntries()
                     ->whereNotNull('refund_decided_at')
-                    ->with('category')
+                    ->with(['category', 'refundPayout'])
                     ->latest('refund_decided_at')
                     ->limit(50)
                     ->get(),

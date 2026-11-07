@@ -101,6 +101,32 @@ class RaceEntryResource extends JsonResource
             // granted request needs no explanation.
             'refund_rejected_reason' => $this->refund_rejected_reason,
 
+            // How far the money has actually travelled back, which is the one
+            // thing this page could not say before: a refund is granted
+            // instantly but the transfer out is manual and two-hop, so
+            // "ditransfer manual" was the whole answer a runner got for a wait
+            // that could run days. `null` while no payout row exists (a free
+            // entry, a manual-rail one, or a credit refunded before it was
+            // released) — the panel keeps its old wording there rather than
+            // claiming a transfer nobody owes.
+            //
+            // Three strings, not the row: the payout carries the organizer's
+            // own bank snapshot and the platform's internal notes, and none of
+            // that is the runner's. `forwarded` is the only one that means
+            // their money has left somebody's account towards them.
+            'refund_transfer' => $this->whenLoaded('refundPayout', function () {
+                if (! $this->refundPayout) {
+                    return null;
+                }
+
+                return [
+                    'stage' => $this->refundPayout->forwarded_at !== null
+                        ? 'forwarded'
+                        : ($this->refundPayout->status === 'completed' ? 'with_organizer' : 'queued'),
+                    'forwarded_at' => $this->refundPayout->forwarded_at,
+                ];
+            }),
+
             // Where the runner must transfer. Only while a manual entry is
             // still unpaid — there is nothing to pay once it is settled.
             'bank_account' => $this->when($this->isManual() && ! $this->isSettled(), fn () => $this->payTo()),

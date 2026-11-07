@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Admin\PlanFeatureController;
 use App\Http\Controllers\Api\Admin\PlanOrderController as AdminPlanOrderController;
 use App\Http\Controllers\Api\Admin\PlatformSettingController;
 use App\Http\Controllers\Api\Admin\RefundController as AdminRefundController;
+use App\Http\Controllers\Api\Admin\RefundPayoutController as AdminRefundPayoutController;
 use App\Http\Controllers\Api\Admin\SiteSettingController;
 use App\Http\Controllers\Api\Admin\SportController;
 use App\Http\Controllers\Api\Admin\StatController as AdminStatController;
@@ -64,6 +65,7 @@ use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RaceCategoryController;
 use App\Http\Controllers\Api\RaceEntryController;
 use App\Http\Controllers\Api\RaceRefundController;
+use App\Http\Controllers\Api\RefundPayoutController;
 use App\Http\Controllers\Api\RaceScanController;
 use App\Http\Controllers\Api\RacePeriodController;
 use App\Http\Controllers\Api\RegistrationController;
@@ -394,6 +396,16 @@ Route::prefix('v1')->group(function () {
                 Route::post('plan-orders/{planOrder}/proof', [PlanOrderController::class, 'proof']);
                 Route::get('plan-orders/{planOrder}/invoice', [PlanOrderController::class, 'invoice']);
                 Route::get('plan-orders/{planOrder}/receipt', [PlanOrderController::class, 'receipt']);
+
+                // Refunds the platform owes this organizer, and the ones they
+                // owe onward to a participant. Behind org.admin with the wallet
+                // for the same reason: marking a refund forwarded is a
+                // statement about money having been sent, which the participant
+                // reads and acts on. This half can only touch `forwarded_*` —
+                // the platform's own transfer columns have exactly one writer,
+                // in Admin\RefundPayoutController.
+                Route::get('refund-payouts', [RefundPayoutController::class, 'index']);
+                Route::patch('refund-payouts/{refundPayout}/forward', [RefundPayoutController::class, 'forward']);
             });
 
             // Event CRUD + registrations management.
@@ -800,6 +812,15 @@ Route::prefix('v1')->group(function () {
             // rather than replaced by it: that one rules on a request a runner
             // filed, this is the hatch for one nobody asked for.
             Route::post('race-entries/{raceEntry}/refund', [AdminRefundController::class, 'refundRaceEntry']);
+
+            // What a refund leaves behind: the buyer's money is in the
+            // platform's own Midtrans account, so every granted refund owes a
+            // manual transfer out to the organizer. Before this queue nothing
+            // notified anybody and race entries were not even listed on
+            // /admin/payments, so the debt was invisible even to somebody
+            // looking for it.
+            Route::get('refund-payouts', [AdminRefundPayoutController::class, 'index']);
+            Route::patch('refund-payouts/{refundPayout}/complete', [AdminRefundPayoutController::class, 'complete']);
 
             // Manual plan payments waiting on us. Unlike the organizer's own
             // verification queue, this money lands in the platform's account —

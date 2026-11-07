@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, Inbox, Undo2, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowRightLeft, Check, Inbox, Undo2, X } from "lucide-react";
 
 import {
   approveRaceRefund,
@@ -44,6 +45,55 @@ import type { RaceEntry } from "@/types/api";
  * queue is usually empty, and an empty screen that cannot show what was ruled
  * on last week reads as a feature that lost its data.
  */
+
+/**
+ * How far the refund has travelled, for a row the organizer already granted.
+ *
+ * "Disetujui" is the verdict, not the outcome, and on this page it was the only
+ * thing on screen — so a runner chasing their money got an organizer looking at
+ * the one step that had definitely happened. These three read the payout the
+ * platform and the organizer each write a half of.
+ */
+function transferNote(stage: "queued" | "with_organizer" | "forwarded"): string {
+  switch (stage) {
+    case "queued":
+      return "Dana menunggu ditransfer flo-event ke rekening Anda.";
+    case "with_organizer":
+      return "Dana sudah masuk ke rekening Anda — teruskan ke peserta di halaman Transfer Refund.";
+    case "forwarded":
+      return "Sudah Anda teruskan ke peserta.";
+  }
+}
+
+/**
+ * The badge follows the TRANSFER once there is one, because that is what is
+ * still outstanding; the verdict is already spelled by the row being in this
+ * list at all. A refusal keeps its own tone — nothing was transferred, and
+ * nothing is owed.
+ */
+function badgeLabel(entry: RaceEntry): string {
+  if (entry.status !== "refunded") return "Ditolak";
+
+  switch (entry.refund_transfer?.stage) {
+    case "queued":
+      return "Menunggu transfer";
+    case "with_organizer":
+      return "Perlu diteruskan";
+    case "forwarded":
+      return "Selesai";
+    default:
+      return "Disetujui";
+  }
+}
+
+function badgeTone(entry: RaceEntry): "success" | "danger" | "warning" {
+  if (entry.status !== "refunded") return "danger";
+
+  // Amber for the one stage that is waiting on the organizer themselves —
+  // "Perlu diteruskan" in the same green as a finished row is a to-do item
+  // dressed as a receipt.
+  return entry.refund_transfer?.stage === "with_organizer" ? "warning" : "success";
+}
 export default function RaceRefundsPage() {
   const params = useParams<{ id: string }>();
   const eventId = params.id;
@@ -101,6 +151,14 @@ export default function RaceRefundsPage() {
   const pending = query.data?.pending ?? [];
   const decided = query.data?.decided ?? [];
 
+  // Counted off `refund_transfer`, the same field the badges read, so the
+  // shortcut's number cannot disagree with the rows under it. Scoped to THIS
+  // event while the page it links to is org-wide — the count says what is
+  // waiting here, and the list there may hold more.
+  const needsForwarding = decided.filter(
+    (e) => e.refund_transfer?.stage === "with_organizer"
+  ).length;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -108,6 +166,26 @@ export default function RaceRefundsPage() {
         description="Menyetujui melepas tempatnya dan memotong saldo dompetmu."
         backHref={`/organizer/events/${eventId}/race`}
         backLabel="Peserta Lomba"
+        // The way out to where the money is actually moved. Without it this
+        // page prints "Perlu diteruskan" with nowhere to go — the badge names a
+        // task whose only door is a sidebar entry under a different section,
+        // and the transfer page is org-wide so it is not reachable from this
+        // event's own menu at all.
+        actions={
+          <Button
+            variant={needsForwarding > 0 ? "default" : "outline"}
+            size="sm"
+            asChild
+          >
+            <Link href="/organizer/refund-payouts">
+              <ArrowRightLeft className="h-4 w-4" />
+              Transfer Refund
+              {needsForwarding > 0 && (
+                <span className="ml-0.5 tabular-nums">({needsForwarding})</span>
+              )}
+            </Link>
+          </Button>
+        }
       />
 
       <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="race">
@@ -246,10 +324,34 @@ export default function RaceRefundsPage() {
                         Ditolak: {entry.refund_rejected_reason}
                       </p>
                     )}
+                    {/* Where the money actually got to. Without this the row
+                        reads "Disetujui" forever — true, and useless to an
+                        organizer whose runner is asking where their refund is,
+                        since granting it is the one step that already happened.
+                        Absent when the refund owes no transfer at all (free, the
+                        manual rail, or a credit reversed before release), and
+                        the line is simply left off there rather than claiming a
+                        transfer nobody owes. */}
+                    {entry.refund_transfer && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {transferNote(entry.refund_transfer.stage)}
+                      </p>
+                    )}
+                    {/* A link on the one stage that is a task, from the row
+                        that names it: the header shortcut is for the page, this
+                        is for the runner somebody is asking about. Absent on
+                        the other stages, where there is nothing to do there. */}
+                    {entry.refund_transfer?.stage === "with_organizer" && (
+                      <Link
+                        href="/organizer/refund-payouts"
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-600)] underline"
+                      >
+                        <ArrowRightLeft className="h-3 w-3" />
+                        Catat transfernya
+                      </Link>
+                    )}
                   </div>
-                  <Badge variant={entry.status === "refunded" ? "success" : "danger"}>
-                    {entry.status === "refunded" ? "Disetujui" : "Ditolak"}
-                  </Badge>
+                  <Badge variant={badgeTone(entry)}>{badgeLabel(entry)}</Badge>
                 </Card>
               ))}
             </div>

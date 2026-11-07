@@ -1,0 +1,418 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Alur Refund Fun Run</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: satu kolom terbaca (65ch) untuk prosa, figure melebar ke lebar penuh kolom */
+  :root {
+    --paper: #f7f6f2;
+    --ink: #1c2422;
+    --ink-soft: #5b6764;
+    --rule: #d8d5cc;
+    --panel: #fffefb;
+    --teal: #0f6b63;
+    --amber: #9a6410;
+    --crimson: #a22f36;
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14191a;
+      --ink: #e8e9e4;
+      --ink-soft: #9aa5a2;
+      --rule: #2e3739;
+      --panel: #1b2223;
+      --teal: #52c9ba;
+      --amber: #e0a94a;
+      --crimson: #e8858c;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14191a;
+    --ink: #e8e9e4;
+    --ink-soft: #9aa5a2;
+    --rule: #2e3739;
+    --panel: #1b2223;
+    --teal: #52c9ba;
+    --amber: #e0a94a;
+    --crimson: #e8858c;
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 40px 72px;
+  }
+  main { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+
+  .masthead { display: flex; flex-direction: column; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 18px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--teal);
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700; font-size: clamp(28px, 5vw, 44px);
+    line-height: 1.08; margin: 0; text-wrap: balance; letter-spacing: -0.015em;
+  }
+  .standfirst { max-width: 62ch; color: var(--ink-soft); font-size: 17px; margin: 0; }
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+  h2 {
+    font-family: var(--display); font-weight: 600; font-size: 21px; margin: 0;
+    display: flex; align-items: baseline; gap: 12px; text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--teal);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 2px 6px; flex: none;
+  }
+  p { margin: 0; max-width: 65ch; }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; padding: 0.08em 0.32em; }
+
+  figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .scroller { overflow-x: auto; min-width: 0; }
+  svg { display: block; max-width: 100%; height: auto; min-width: 640px; }
+  figcaption { font-size: 14px; color: var(--ink-soft); max-width: 70ch; }
+
+  .dbox { fill: var(--panel); stroke: var(--rule); stroke-width: 1.25; }
+  .dengine { fill: none; stroke: var(--teal); stroke-width: 2; }
+  .dlabel { font-family: var(--display); font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .dsub { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-soft); }
+  .dedge { stroke: var(--ink-soft); stroke-width: 1.4; fill: none; }
+  .dedge-hot { stroke: var(--teal); stroke-width: 2; fill: none; }
+  .dedge-dash { stroke: var(--ink-soft); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .darrowtext { font-family: var(--mono); font-size: 10px; fill: var(--ink-soft); }
+  .dkey { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--teal); }
+  .dwarn { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--crimson); }
+  .dhold { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--amber); }
+
+  table { border-collapse: collapse; font-size: 14.5px; min-width: 520px; }
+  caption { text-align: left; font-size: 13px; color: var(--ink-soft); padding-bottom: 8px; }
+  th, td { text-align: left; padding: 9px 14px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 500; border-bottom: 1px solid var(--ink);
+  }
+  td code { background: none; border: none; padding: 0; }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .note { background: var(--panel); padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .note h3 { font-family: var(--display); font-size: 14px; font-weight: 600; margin: 0; }
+  .note p { font-size: 14px; color: var(--ink-soft); max-width: none; }
+
+  .absent { border-left: 3px solid var(--crimson); padding-left: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .absent p { font-size: 15px; }
+  .absent strong { font-family: var(--display); }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+</style>
+
+<main>
+  <header class="masthead">
+    <div class="eyebrow">flo-event · dompet organizer</div>
+    <h1>Alur Refund Fun Run</h1>
+    <p class="standfirst">Tiga pintu masuk, satu mesin yang menggeser uang, dan satu saldo yang boleh minus. Uangnya tidak pernah pulang ke pelari secara otomatis.</p>
+  </header>
+
+  <section>
+    <h2><span class="num">01</span>Tiga pintu, satu mesin</h2>
+    <p>Siapa pun yang memulai, uangnya lewat <code>RefundService::refundRaceEntry()</code>. Ia yang void entry, balik kredit ledger, dan kembalikan kuota — tiga hal dalam satu transaksi.</p>
+    <figure>
+      <div class="scroller">
+        <svg viewBox="0 0 880 400" role="img" aria-label="Tiga pintu refund — pengajuan pelari, refund terbitan organizer, dan hatch super admin — semuanya memanggil RefundService, yang menghasilkan tiga efek: entry refunded, kredit dompet dibalik, dan kuota kategori kembali.">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <text class="dsub" x="8" y="14">PINTU MASUK</text>
+          <text class="dsub" x="330" y="14">MESIN UANG</text>
+          <text class="dsub" x="625" y="14">EFEK, SATU TRANSAKSI</text>
+
+          <!-- doors -->
+          <rect class="dbox" x="8" y="28" width="212" height="76" rx="3"/>
+          <text class="dlabel" x="22" y="51">Pelari mengajukan</text>
+          <text class="dsub" x="22" y="69">POST race-entries/{id}/</text>
+          <text class="dsub" x="22" y="83">refund-request · publik</text>
+          <text class="dsub" x="22" y="97">lalu organizer approve</text>
+
+          <rect class="dbox" x="8" y="124" width="212" height="76" rx="3"/>
+          <text class="dlabel" x="22" y="147">Organizer terbitkan</text>
+          <text class="dsub" x="22" y="165">race-refunds/{id}/issue</text>
+          <text class="dsub" x="22" y="179">org.admin · tanpa diminta</text>
+          <text class="dsub" x="22" y="193">kasus bayar dua kali</text>
+
+          <rect class="dbox" x="8" y="220" width="212" height="76" rx="3"/>
+          <text class="dlabel" x="22" y="243">Super_admin</text>
+          <text class="dsub" x="22" y="261">admin/race-entries/</text>
+          <text class="dsub" x="22" y="275">{id}/refund</text>
+          <text class="dsub" x="22" y="289">katup terakhir</text>
+
+          <!-- arrows into engine -->
+          <g color="var(--teal)">
+            <path class="dedge-hot" d="M220 66 L300 66 L300 152" marker-end="url(#a1)"/>
+            <path class="dedge-hot" d="M220 162 L324 162" marker-end="url(#a1)"/>
+            <path class="dedge-hot" d="M220 258 L300 258 L300 176" marker-end="url(#a1)"/>
+          </g>
+
+          <!-- engine -->
+          <rect class="dengine" x="330" y="104" width="190" height="116" rx="3"/>
+          <text class="dlabel" x="346" y="130">RefundService</text>
+          <text class="dkey" x="346" y="150">refundRaceEntry()</text>
+          <text class="dsub" x="346" y="172">guard: status = paid</text>
+          <text class="dsub" x="346" y="186">guard: price &gt; 0</text>
+          <text class="dsub" x="346" y="206">DB::transaction</text>
+
+          <!-- arrows out -->
+          <g color="var(--ink-soft)">
+            <path class="dedge" d="M520 162 L560 162 L560 62 L616 62" marker-end="url(#a1)"/>
+            <path class="dedge" d="M520 162 L616 162" marker-end="url(#a1)"/>
+            <path class="dedge" d="M520 162 L560 162 L560 262 L616 262" marker-end="url(#a1)"/>
+          </g>
+
+          <!-- effects -->
+          <rect class="dbox" x="616" y="28" width="256" height="68" rx="3"/>
+          <text class="dlabel" x="630" y="51">Entry di-void</text>
+          <text class="dsub" x="630" y="69">race_entries.status = refunded</text>
+          <text class="dsub" x="630" y="85">barisnya tetap ada, tidak dihapus</text>
+
+          <rect class="dbox" x="616" y="128" width="256" height="68" rx="3"/>
+          <text class="dlabel" x="630" y="151">Kredit dompet dibalik</text>
+          <text class="dsub" x="630" y="169">reverse(race_entry, id, race_entry)</text>
+          <text class="dsub" x="630" y="185">→ WalletService::reverseCredit()</text>
+
+          <rect class="dbox" x="616" y="228" width="256" height="68" rx="3"/>
+          <text class="dlabel" x="630" y="251">Kuota kembali</text>
+          <text class="dsub" x="630" y="269">race_categories.taken −1</text>
+          <text class="dsub" x="630" y="285">tempatnya ditawarkan lagi</text>
+
+          <!-- manual transfer, the thing that does NOT happen -->
+          <g color="var(--crimson)">
+            <path class="dedge-dash" d="M744 196 L744 228" stroke="var(--crimson)"/>
+          </g>
+          <rect class="dbox" x="616" y="326" width="256" height="60" rx="3" stroke="var(--crimson)"/>
+          <text class="dwarn" x="630" y="348">Transfer balik ke pelari</text>
+          <text class="dsub" x="630" y="365">TIDAK otomatis — manual di</text>
+          <text class="dsub" x="630" y="379">dashboard Midtrans platform</text>
+          <path class="dedge-dash" d="M520 220 L520 356 L616 356" stroke="var(--crimson)" marker-end="url(#a1)" color="var(--crimson)"/>
+          <text class="darrowtext" x="528" y="348" fill="var(--crimson)">langkah terpisah</text>
+        </svg>
+      </div>
+      <figcaption>Garis tebal = pintu yang memanggil mesin. Garis putus-putus merah = langkah yang sistem tidak kerjakan; uang pelari ada di akun Midtrans platform, jadi transfer baliknya manual. Tiap pesan sukses mengatakannya.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>Saldo berkurang di kolom mana</h2>
+    <p>Seketika, di dalam transaksi yang sama — tapi kolom yang bergerak bergantung status kredit aslinya. Kredit jadi <code>available</code> setelah lewat jam 01:00 WIB berikutnya; sebelum itu ia masih <code>pending</code>.</p>
+    <figure>
+      <div class="scroller">
+        <svg viewBox="0 0 880 340" role="img" aria-label="reverseCredit bercabang pada status kredit: kredit pending di-cancelled dan balance_pending turun tanpa baris debit; kredit available menulis baris debit baru dan balance_available turun, boleh sampai minus, yang lalu mengunci penarikan berikutnya.">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <rect class="dengine" x="8" y="118" width="178" height="92" rx="3"/>
+          <text class="dlabel" x="22" y="144">WalletService</text>
+          <text class="dkey" x="22" y="164">reverseCredit()</text>
+          <text class="dsub" x="22" y="186">bercabang pada</text>
+          <text class="dsub" x="22" y="200">$credit-&gt;status</text>
+
+          <g color="var(--amber)">
+            <path class="dedge" d="M186 150 L250 150 L250 70 L312 70" stroke="var(--amber)" marker-end="url(#a2)"/>
+          </g>
+          <text class="darrowtext" x="196" y="96" fill="var(--amber)">pending</text>
+
+          <g color="var(--crimson)">
+            <path class="dedge" d="M186 178 L250 178 L250 244 L312 244" stroke="var(--crimson)" marker-end="url(#a2)"/>
+          </g>
+          <text class="darrowtext" x="196" y="236" fill="var(--crimson)">available</text>
+
+          <!-- pending branch -->
+          <rect class="dbox" x="312" y="26" width="266" height="88" rx="3" stroke="var(--amber)"/>
+          <text class="dhold" x="326" y="48">Kredit belum cair</text>
+          <text class="dsub" x="326" y="68">baris kredit → status cancelled</text>
+          <text class="dsub" x="326" y="84">balance_pending −amount</text>
+          <text class="dsub" x="326" y="100">total_earned −amount</text>
+
+          <rect class="dbox" x="614" y="26" width="258" height="88" rx="3"/>
+          <text class="dlabel" x="628" y="48">Tanpa baris debit</text>
+          <text class="dsub" x="628" y="68">tidak ada minus, tidak ada</text>
+          <text class="dsub" x="628" y="84">jejak baru di ledger</text>
+          <text class="dsub" x="628" y="100">return null</text>
+          <path class="dedge" d="M578 70 L614 70" marker-end="url(#a2)" color="var(--ink-soft)"/>
+
+          <!-- available branch -->
+          <rect class="dbox" x="312" y="200" width="266" height="88" rx="3" stroke="var(--crimson)"/>
+          <text class="dwarn" x="326" y="222">Kredit sudah cair</text>
+          <text class="dsub" x="326" y="242">tulis baris debit baru</text>
+          <text class="dsub" x="326" y="258">category = refund · available</text>
+          <text class="dsub" x="326" y="274">balance_available −amount</text>
+
+          <rect class="dbox" x="614" y="200" width="258" height="88" rx="3"/>
+          <text class="dwarn" x="628" y="222">Saldo boleh minus</text>
+          <text class="dsub" x="628" y="242">tanpa guard &quot;cukup saldo&quot; —</text>
+          <text class="dsub" x="628" y="258">organizer mungkin sudah menarik.</text>
+          <text class="dsub" x="628" y="274">Minusnya mengunci penarikan</text>
+          <path class="dedge" d="M578 244 L614 244" marker-end="url(#a2)" color="var(--ink-soft)"/>
+
+          <text class="dsub" x="8" y="256">Kedua cabang di</text>
+          <text class="dsub" x="8" y="270">dalam lockForUpdate</text>
+          <text class="dsub" x="8" y="284">atas baris wallets.</text>
+          <text class="dsub" x="8" y="306">Ledger tetap sumber</text>
+          <text class="dsub" x="8" y="320">kebenaran; saldo</text>
+          <text class="dsub" x="8" y="334">didenormalisasi.</text>
+        </svg>
+      </div>
+      <figcaption>Satu-satunya cabang yang menulis baris ledger baru adalah kredit yang sudah cair. Kredit <code>pending</code> cukup dibatalkan di tempat — tidak ada apa pun yang perlu dibalik karena belum pernah bisa ditarik.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>&ldquo;Sedang diajukan&rdquo; diturunkan, bukan status keenam</h2>
+    <p>Empat kolom di <code>race_entries</code> memegang percakapannya. <code>status</code> berarti apa yang <strong>uangnya</strong> lakukan; kolom <code>refund_*</code> berarti apa yang <strong>diminta</strong>. Nilai keenam di <code>status</code> akan melewati tiga guard <code>in_array($status, ['paid','cancelled','refunded'])</code> tanpa error.</p>
+    <figure>
+      <div class="scroller">
+        <svg viewBox="0 0 880 320" role="img" aria-label="Lima keadaan refund diturunkan dari dua kolom timestamp. requested_at null dan decided_at null berarti belum ada pengajuan; requested_at terisi dengan decided_at null adalah pengajuan terbuka; keduanya terisi dengan status refunded berarti disetujui; keduanya terisi dengan status masih paid berarti ditolak dan pelari boleh mengajukan lagi; requested_at null dengan decided_at terisi adalah refund terbitan organizer.">
+          <defs>
+            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <!-- idle -->
+          <rect class="dbox" x="8" y="96" width="150" height="72" rx="3"/>
+          <text class="dlabel" x="22" y="120">Belum diajukan</text>
+          <text class="dsub" x="22" y="139">requested_at null</text>
+          <text class="dsub" x="22" y="155">decided_at null</text>
+
+          <path class="dedge-hot" d="M158 132 L242 132" marker-end="url(#a3)" color="var(--teal)"/>
+          <text class="darrowtext" x="164" y="124" fill="var(--teal)">requestRefund()</text>
+
+          <!-- open -->
+          <rect class="dbox" x="242" y="96" width="166" height="72" rx="3" stroke="var(--amber)"/>
+          <text class="dhold" x="256" y="120">Menunggu keputusan</text>
+          <text class="dsub" x="256" y="139">requested_at terisi</text>
+          <text class="dsub" x="256" y="155">decided_at null</text>
+          <text class="dsub" x="256" y="186">hasOpenRefundRequest()</text>
+          <text class="dsub" x="256" y="200">= satu-satunya penjawab</text>
+
+          <!-- to approved -->
+          <path class="dedge" d="M408 118 L478 118 L478 56 L560 56" marker-end="url(#a3)" color="var(--ink-soft)"/>
+          <text class="darrowtext" x="414" y="78">approve()</text>
+
+          <!-- to rejected -->
+          <path class="dedge" d="M408 148 L478 148 L478 210 L560 210" marker-end="url(#a3)" color="var(--ink-soft)"/>
+          <text class="darrowtext" x="414" y="202">reject()</text>
+
+          <!-- approved -->
+          <rect class="dbox" x="560" y="20" width="312" height="72" rx="3" stroke="var(--teal)"/>
+          <text class="dkey" x="574" y="44">Disetujui</text>
+          <text class="dsub" x="574" y="63">decided_at + decided_by terisi · status refunded</text>
+          <text class="dsub" x="574" y="79">requested_at DIBIARKAN — itu pertanyaannya</text>
+
+          <!-- rejected -->
+          <rect class="dbox" x="560" y="174" width="312" height="72" rx="3"/>
+          <text class="dlabel" x="574" y="198">Ditolak</text>
+          <text class="dsub" x="574" y="217">decided_at + rejected_reason · status tetap paid</text>
+          <text class="dsub" x="574" y="233">entry tetap memegang kuotanya</text>
+
+          <!-- re-request loop -->
+          <path class="dedge-dash" d="M716 246 L716 282 L325 282 L325 168" marker-end="url(#a3)" color="var(--ink-soft)"/>
+          <text class="darrowtext" x="340" y="276">ajukan lagi — requestRefund() membersihkan kolom keputusan</text>
+
+          <!-- organizer-issued -->
+          <rect class="dbox" x="8" y="20" width="150" height="56" rx="3"/>
+          <text class="dlabel" x="22" y="42">Organizer issue</text>
+          <text class="dsub" x="22" y="60">tanpa pengajuan</text>
+          <path class="dedge-hot" d="M158 48 L560 48" stroke-dasharray="6 4" marker-end="url(#a3)" color="var(--teal)"/>
+          <text class="darrowtext" x="200" y="40" fill="var(--teal)">markRefundIssued() — requested_at tetap NULL, dan null itu yang menyatakan siapa yang memulai</text>
+        </svg>
+      </div>
+      <figcaption>Lima keadaan dari dua timestamp. <code>refund_requested_at</code> yang null pada baris <code>refunded</code> adalah satu-satunya pemisah &ldquo;pelari minta lalu disetujui&rdquo; dari &ldquo;kami refund tanpa diminta&rdquo; — dan dua layar bertindak atas bedanya.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>Empat rail, guard masing-masing</h2>
+    <div class="scroller">
+      <table>
+        <caption>Semuanya di <code>RefundService</code>. Hanya fun run punya alur pengajuan peserta.</caption>
+        <thead>
+          <tr><th>Subjek</th><th>Method</th><th>Guard</th><th>Efek tambahan</th><th>Pengajuan peserta</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Pendaftaran fun run</td>
+            <td><code>refundRaceEntry()</code></td>
+            <td><code>paid</code> · <code>price &gt; 0</code> · belum check-in<sup>*</sup></td>
+            <td><code>taken −1</code></td>
+            <td>Ada</td>
+          </tr>
+          <tr>
+            <td>Pendaftaran tim</td>
+            <td><code>refundTeam()</code></td>
+            <td><code>payment_status = paid</code> · <code>payment_amount &gt; 0</code></td>
+            <td>—</td>
+            <td>Tidak ada</td>
+          </tr>
+          <tr>
+            <td>Tiket penonton</td>
+            <td><code>refundTicketOrder()</code></td>
+            <td><code>paid</code> · belum ada tiket dipakai check-in</td>
+            <td>tiket di-release</td>
+            <td>Tidak ada</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:14px;color:var(--ink-soft)"><sup>*</sup> Check-in diperiksa di pintunya (<code>canRequestRefund()</code> dan <code>issue()</code>), bukan di dalam service — kolomnya belum punya penulis saat service-nya ditulis.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>Wewenang & jam</h2>
+    <div class="notes">
+      <div class="note">
+        <h3>Pintu pelari publik</h3>
+        <p>Tanpa <code>auth:api</code>. Pelari bisa tiba dari email dan belum tentu pernah login — <code>race_entries.user_id</code> nullable justru karena entry hidup lebih lama dari akunnya.</p>
+      </div>
+      <div class="note">
+        <h3>Keputusan organizer <code>org.admin</code></h3>
+        <p>Bukan <code>tenant</code>. Menyetujui membalik kredit dompet dan bisa membuat saldo minus, yang mengunci penarikan berikutnya. Petugas scan tiket tidak boleh.</p>
+      </div>
+      <div class="note">
+        <h3>Antrean oldest-first</h3>
+        <p>Beda dari tiap daftar lain di app: ini orang yang sedang menunggu jawaban. <code>decided</code> ikut di payload yang sama, bukan di balik <code>?status=</code>.</p>
+      </div>
+      <div class="note">
+        <h3><code>issue()</code> menolak pengajuan terbuka</h3>
+        <p>Ia menulis alasan organizer ke <code>refund_reason</code>. Dijalankan di atas pengajuan terbuka, kata-kata pelari tertimpa. Satu baris, satu pintu — dan pintunya antrean.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span>Yang sengaja tidak ada</h2>
+    <div class="absent">
+      <p><strong>Refund parsial.</strong> Selalu seluruh <code>price</code>. Tidak ada kolom <code>refund_amount</code> — parsial butuh <code>WalletService</code> membalik sebagian kredit yang <code>wallet:audit</code> rekonstruksi dari baris utuh.</p>
+      <p><strong>Tenggat dan kebijakan per event.</strong> Keputusan itu milik organizer kasus per kasus; aturan di software cuma menentukan pengajuan mana yang tidak pernah ia lihat.</p>
+      <p><strong>Hard delete.</strong> Pendaftaran lunas memegang kredit dompet, nomor kwitansi, dan QR yang sudah ada di ponsel orang. Barisnya tetap ada supaya tidak ada yang hilang dari laporan.</p>
+      <p><strong>Seeder dan backfill.</strong> Null di tiap kolom <code>refund_*</code> adalah keadaan produksi yang benar.</p>
+    </div>
+  </section>
+
+  <footer>
+    api/app/Services/RefundService.php · app/Services/WalletService.php:178 · app/Http/Controllers/Api/RaceRefundController.php · app/Services/RaceEntryService.php:297 · app/Models/RaceEntry.php:120
+  </footer>
+</main>

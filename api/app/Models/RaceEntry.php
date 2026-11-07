@@ -204,6 +204,21 @@ class RaceEntry extends Model
     }
 
     /**
+     * The transfer owed back after this entry was refunded, if any.
+     *
+     * Source-keyed rather than an FK on this table, because one table serves
+     * all three refund rails — see the `refund_payouts` migration. Absent for
+     * an entry that was never refunded, and also for one whose refund moved no
+     * money through the platform (free, manual rail, or a credit still pending
+     * when it was reversed).
+     */
+    public function refundPayout(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(RefundPayout::class, 'source_id')
+            ->where('source_type', 'race_entry');
+    }
+
+    /**
      * The code row this entry used, for display only.
      *
      * Nullable and `nullOnDelete`: the four snapshot columns are what every

@@ -1814,6 +1814,19 @@ export interface RaceEntry extends ManualPaymentFields {
   refund_decided_at: string | null;
   /** Null on an approval, where `status` reads `refunded` instead. */
   refund_rejected_reason: string | null;
+  /**
+   * How far the money has travelled back, when the refund owes a transfer.
+   *
+   * `queued` = waiting on flo-event, `with_organizer` = flo-event paid the
+   * organizer, `forwarded` = the organizer sent it on. Absent or null when no
+   * transfer is owed at all (a free entry, the manual rail, or a credit
+   * reversed before it was released) — the panel keeps its generic wording
+   * there rather than claiming a transfer nobody owes.
+   */
+  refund_transfer?: {
+    stage: "queued" | "with_organizer" | "forwarded";
+    forwarded_at: string | null;
+  } | null;
   category?: { id: string; name: string; slug: string };
   event?: {
     id: string;
@@ -2329,6 +2342,57 @@ export interface Withdrawal {
   admin_note: string | null;
   processed_at: string | null;
   completed_at: string | null;
+  created_at: string;
+}
+
+export type RefundPayoutSource = "race_entry" | "team" | "ticket_order";
+export type RefundPayoutStatus = "pending" | "completed";
+
+/**
+ * Money owed back after a refund, and which of its two hops it waits on.
+ *
+ * A refund reverses the organizer's wallet credit immediately, but the buyer's
+ * money sits in the platform's own Midtrans account — so the transfer out is
+ * manual, and this row is what records it. Two hops: the platform pays the
+ * organizer (`status`), the organizer forwards to their own participant
+ * (`forwarded_at`). The platform never holds the participant's bank details.
+ *
+ * `awaiting_transfer` / `awaiting_forwarding` come from the SERVER. Never
+ * reassemble them from `status` + `forwarded_at` — the same call
+ * `can_request_refund` makes, and for the same reason: two readers of one rule
+ * drift, and the drift here is a button that submits into a 422.
+ */
+export interface RefundPayout {
+  id: string;
+  source_type: RefundPayoutSource;
+  source_id: string;
+  source_label: string;
+  organization_id: string;
+  organization_name?: string | null;
+  event_id: string | null;
+  event_name?: string | null;
+  /** Read from the ledger debit, never the category price. */
+  amount: number;
+  recipient_name: string;
+  reason: string | null;
+  status: RefundPayoutStatus;
+  /** The organizer's own destination, snapshotted. Null when they had none. */
+  account_type: PayoutAccountType;
+  bank_name: string | null;
+  bank_code: string | null;
+  account_number: string | null;
+  account_holder: string | null;
+  /** Hop one: platform → organizer. */
+  proof_url: string | null;
+  transfer_reference: string | null;
+  admin_note: string | null;
+  completed_at: string | null;
+  /** Hop two: organizer → participant. */
+  forwarded_proof_url: string | null;
+  forwarded_reference: string | null;
+  forwarded_at: string | null;
+  awaiting_transfer: boolean;
+  awaiting_forwarding: boolean;
   created_at: string;
 }
 

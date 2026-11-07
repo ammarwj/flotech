@@ -318,6 +318,12 @@ class PublicRaceController extends Controller
      *
      * The organization chain is what lets an unpaid manual entry tell the
      * runner where to transfer (see RaceEntryResource::payTo()).
+     *
+     * `refundPayout` rides along because `refund_transfer` is `whenLoaded` —
+     * without it the page falls back to "ditransfer manual" with no idea where
+     * the money actually is, which is the whole thing a refunded runner is
+     * trying to find out. It carries no money state of its own: the resource
+     * publishes three strings from it and nothing else.
      */
     public function entry(string $raceEntry): JsonResponse
     {
@@ -325,6 +331,7 @@ class PublicRaceController extends Controller
             'category',
             'event.organization.bankAccounts',
             'documents',
+            'refundPayout',
         ])->findOrFail($raceEntry);
 
         // The one read in this app that writes, and it is confined to here on
@@ -339,6 +346,7 @@ class PublicRaceController extends Controller
             'category',
             'event.organization.bankAccounts',
             'documents',
+            'refundPayout',
         ])));
     }
 
