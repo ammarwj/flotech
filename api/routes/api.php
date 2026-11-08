@@ -57,6 +57,7 @@ use App\Http\Controllers\Api\Public\EventViewController;
 use App\Http\Controllers\Api\Public\PublicBlogController;
 use App\Http\Controllers\Api\Public\PublicCertificateController;
 use App\Http\Controllers\Api\Public\PublicEventController;
+use App\Http\Controllers\Api\Public\PublicIdCardController;
 use App\Http\Controllers\Api\Public\PublicOrganizationController;
 use App\Http\Controllers\Api\Public\PublicPaymentController;
 use App\Http\Controllers\Api\Public\PublicRaceController;
@@ -64,10 +65,10 @@ use App\Http\Controllers\Api\Public\PublicTicketController;
 use App\Http\Controllers\Api\PublicStatController;
 use App\Http\Controllers\Api\RaceCategoryController;
 use App\Http\Controllers\Api\RaceEntryController;
-use App\Http\Controllers\Api\RaceRefundController;
-use App\Http\Controllers\Api\RefundPayoutController;
-use App\Http\Controllers\Api\RaceScanController;
 use App\Http\Controllers\Api\RacePeriodController;
+use App\Http\Controllers\Api\RaceRefundController;
+use App\Http\Controllers\Api\RaceScanController;
+use App\Http\Controllers\Api\RefundPayoutController;
 use App\Http\Controllers\Api\RegistrationController;
 use App\Http\Controllers\Api\RubberController;
 use App\Http\Controllers\Api\ScanController;
@@ -188,6 +189,12 @@ Route::prefix('v1')->group(function () {
 
     // Certificate verification — what the QR printed on every certificate opens.
     Route::get('public/certificates/{number}', [PublicCertificateController::class, 'show']);
+
+    // ID card verification — what the QR printed on a card opens. Its own route
+    // rather than one endpoint branching on the number's prefix: the two prove
+    // different documents and print different things, and a shared page would
+    // be a second reader of which kind it was handed.
+    Route::get('public/id-cards/{number}', [PublicIdCardController::class, 'show']);
 
     // Fee breakdown per channel, for the picker shown before any checkout
     // (tickets, registrations, plan orders) creates its Snap token.
@@ -652,6 +659,13 @@ Route::prefix('v1')->group(function () {
             Route::post('events/{event}/id-cards', [IdCardController::class, 'generate']);
             Route::get('id-card-batches/{batch}', [IdCardController::class, 'status']);
             Route::get('id-card-batches/{batch}/download', [IdCardController::class, 'download']);
+
+            // Issued cards — the print history, and what the send button reads
+            // to know there is anything to send. `id-cards/issued` rather than
+            // `id-cards` so no future `id-cards/{card}` can shadow it.
+            Route::get('id-cards/issued', [IdCardController::class, 'index']);
+            Route::post('events/{event}/id-cards/send', [IdCardController::class, 'send']);
+            Route::get('id-cards/{card}/download', [IdCardController::class, 'downloadCard']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

@@ -136,6 +136,12 @@ class Organization extends Model
         return $this->hasMany(Certificate::class);
     }
 
+    /** Issued ID cards. The templates above are the design; these are the prints. */
+    public function idCards(): HasMany
+    {
+        return $this->hasMany(IdCard::class);
+    }
+
     public function wallet(): HasOne
     {
         return $this->hasOne(Wallet::class);

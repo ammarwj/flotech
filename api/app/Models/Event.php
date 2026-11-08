@@ -192,6 +192,11 @@ class Event extends Model
         return $this->hasMany(EventPersonnel::class)->orderBy('sort_order')->orderBy('created_at');
     }
 
+    public function idCards(): HasMany
+    {
+        return $this->hasMany(IdCard::class);
+    }
+
     public function photos(): HasMany
     {
         return $this->hasMany(EventPhoto::class)->orderBy('sort_order')->orderBy('created_at');

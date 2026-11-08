@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Trash2, User } from "lucide-react";
+import { QrCode, Trash2, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,11 +19,32 @@ const SAMPLE: Record<string, string> = {
   event_name: "Jakarta Cup 2026",
 };
 
-/** What a newly added field starts as. Photo and text begin life differently. */
+/**
+ * What a newly added field starts as. Three shapes begin life differently, and
+ * the API refuses any mixture — see IdCardTemplateRules::check().
+ *
+ * The QR default is 20% of card width, which on CR80 is ~17mm: at 300 DPI that
+ * is roughly 0.5mm per module for a verification URL, about the smallest a phone
+ * camera reads reliably at arm's length. Smaller is allowed; the warning below
+ * is what says so.
+ */
 const DEFAULTS = {
   photo: { x: 8, y: 12, w: 28, h: 58, fit: "cover", radius: 6 },
+  // No `fit`, no `radius`: `contain` means nothing on something already square,
+  // and rounding the corners eats the finder patterns a scanner locates the
+  // code by. Both are refused by the API rather than ignored.
+  qr: { x: 70, y: 56, w: 20, h: 20 },
   text: { x: 42, y: 30, size: 4, color: "#111827", align: "left", wrap: 55 },
 } as const;
+
+/**
+ * Below this, a module falls under ~0.4mm and the printed code stops scanning
+ * reliably. A warning rather than a floor: card stock and printer quality
+ * decide the real limit, and an organizer who tested theirs should not be
+ * blocked by our guess. The renderer draws nothing at all once a module would
+ * be under one pixel, which is far smaller still.
+ */
+const QR_MIN_MM = 14;
 
 /** Which part of a field the pointer grabbed. */
 type Drag = {
@@ -119,15 +140,27 @@ export function TemplateEditor({
 
   const add = (key: string) => {
     if (!key) return;
-    // The two shapes are not interchangeable and the API refuses a mixture, so
-    // a new field is born with exactly the keys its shape is allowed to carry.
-    onChange([...fields, { key, ...(key === "photo" ? DEFAULTS.photo : DEFAULTS.text) }]);
+    // The three shapes are not interchangeable and the API refuses a mixture,
+    // so a new field is born with exactly the keys its shape is allowed to
+    // carry.
+    const shape =
+      key === "photo" ? DEFAULTS.photo : key === "qr" ? DEFAULTS.qr : DEFAULTS.text;
+
+    onChange([...fields, { key, ...shape }]);
     setSelected(fields.length);
   };
 
   const unused = fieldDefs.filter((def) => !fields.some((f) => f.key === def.key));
   const active = selected !== null ? fields[selected] : undefined;
   const labelOf = (key: string) => fieldDefs.find((d) => d.key === key)?.label ?? key;
+
+  // The printed side of the selected QR, squared off the shorter side exactly
+  // as the renderer does. Zero when the selection is not a QR; the branch that
+  // reads it is already behind that check.
+  const qrSideMm = Math.min(
+    ((active?.w ?? 0) / 100) * widthMm,
+    ((active?.h ?? 0) / 100) * heightMm
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
@@ -151,7 +184,13 @@ export function TemplateEditor({
           {fields.map((field, index) => {
             const isSelected = selected === index;
 
-            if (field.key === "photo") {
+            // `qr` shares the photo's geometry — a box anchored at its top-left
+            // and resized from the far corner — because a QR is a square drawn
+            // into an area, not a string hanging off an alignment point. Only
+            // what goes *inside* the box differs, which is why this branch is
+            // shared rather than copied.
+            if (field.key === "photo" || field.key === "qr") {
+              const isQr = field.key === "qr";
               const boxW = ((field.w ?? 0) / 100) * canvasWidth;
               const boxH = ((field.h ?? 0) / 100) * canvasHeight;
 
@@ -182,7 +221,17 @@ export function TemplateEditor({
                     className="grid h-full w-full place-items-center border border-dashed border-[var(--brand-600)] bg-white/70 text-[var(--brand-600)]"
                     style={{ borderRadius: "inherit" }}
                   >
-                    <User className="h-1/3 w-1/3" />
+                    {isQr ? (
+                      // Squared off the shorter side, exactly as the renderer
+                      // does: w != h leaves slack rather than stretching the
+                      // code, so the preview must not show it filling a
+                      // rectangle it will never fill.
+                      <QrCode
+                        style={{ width: Math.min(boxW, boxH) * 0.8, height: Math.min(boxW, boxH) * 0.8 }}
+                      />
+                    ) : (
+                      <User className="h-1/3 w-1/3" />
+                    )}
                   </div>
 
                   {isSelected && (
@@ -333,7 +382,7 @@ export function TemplateEditor({
               </div>
             </div>
 
-            {active.key === "photo" ? (
+            {active.key === "photo" || active.key === "qr" ? (
               <>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -358,36 +407,69 @@ export function TemplateEditor({
                   </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="f-fit">Penyesuaian</Label>
-                  <Select
-                    id="f-fit"
-                    value={active.fit ?? "cover"}
-                    onChange={(e) => update(selected, { fit: e.target.value as IdCardField["fit"] })}
-                    className="mt-1"
-                  >
-                    <option value="cover">Penuhi kotak (dipotong)</option>
-                    <option value="contain">Muat seluruhnya</option>
-                  </Select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Pasfoto 3:4 di kotak yang lebih lebar akan terpotong di ubun-ubun — pilih
-                    &ldquo;muat seluruhnya&rdquo; kalau itu masalah.
-                  </p>
-                </div>
+                {active.key === "qr" ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      QR selalu digambar penuh dan bersudut tajam — sudut membulat memakan pola
+                      pencari yang dibaca pemindai. Kotaknya dibuat bujur sangkar dari sisi
+                      terpendek, jadi lebar dan tinggi yang berbeda hanya menyisakan ruang
+                      kosong.
+                    </p>
 
-                <div>
-                  <Label htmlFor="f-radius">Sudut membulat (%)</Label>
-                  <Input
-                    id="f-radius"
-                    type="number"
-                    min={0}
-                    max={50}
-                    value={active.radius ?? 0}
-                    onChange={(e) => update(selected, { radius: Number(e.target.value) })}
-                    className="mt-1"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">0 = kotak, 50 = lingkaran.</p>
-                </div>
+                    {/* In millimetres, not percent: 20% of an A6 card and 20% of
+                        a CR80 card are very different codes, and the mm figure
+                        is the one an organizer can hold a ruler against — the
+                        same reason `size` is in mm. */}
+                    <p
+                      className={cn(
+                        "text-xs",
+                        qrSideMm < QR_MIN_MM ? "text-[var(--danger)]" : "text-muted-foreground"
+                      )}
+                    >
+                      Ukuran cetak QR: {qrSideMm.toFixed(1)} mm.
+                      {qrSideMm < QR_MIN_MM
+                        ? ` Di bawah ~${QR_MIN_MM} mm, kamera ponsel sering gagal memindainya dari jarak lengan — uji cetak dulu sebelum memakai ukuran ini.`
+                        : " Cukup untuk dipindai dari jarak lengan."}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <Label htmlFor="f-fit">Penyesuaian</Label>
+                      <Select
+                        id="f-fit"
+                        value={active.fit ?? "cover"}
+                        onChange={(e) =>
+                          update(selected, { fit: e.target.value as IdCardField["fit"] })
+                        }
+                        className="mt-1"
+                      >
+                        <option value="cover">Penuhi kotak (dipotong)</option>
+                        <option value="contain">Muat seluruhnya</option>
+                      </Select>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pasfoto 3:4 di kotak yang lebih lebar akan terpotong di ubun-ubun — pilih
+                        &ldquo;muat seluruhnya&rdquo; kalau itu masalah.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="f-radius">Sudut membulat (%)</Label>
+                      <Input
+                        id="f-radius"
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={active.radius ?? 0}
+                        onChange={(e) => update(selected, { radius: Number(e.target.value) })}
+                        className="mt-1"
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        0 = kotak, 50 = lingkaran.
+                      </p>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <>

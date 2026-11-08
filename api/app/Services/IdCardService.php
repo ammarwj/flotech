@@ -3,8 +3,14 @@
 namespace App\Services;
 
 use App\Models\Event;
+use App\Models\IdCard;
 use App\Models\IdCardTemplate;
+use BaconQrCode\Common\ErrorCorrectionLevel;
+use BaconQrCode\Encoder\Encoder;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -25,9 +31,11 @@ use ZipArchive;
  * on GD. That is why there is no JPEG re-encode step here — dompdf cannot read
  * WebP and everything we store is WebP, but GD can.
  *
- * Nothing in here writes a row. A card is purely a function of (person,
- * template), both of which outlive it; see the create_id_card_templates_table
- * migration for what that costs and why it is the right trade.
+ * This service DOES write rows now, and the create_id_card_templates_table
+ * migration anticipated it: a card used to be a pure function of (person,
+ * template), which is why there was no table and no QR field. A scannable card
+ * needs a number to encode and a page that answers it, so `id_cards` supplies
+ * both — see create_id_cards_table.
  */
 class IdCardService
 {
@@ -42,6 +50,19 @@ class IdCardService
      */
     public const BATCH_PREFIX = 'id-card-batches';
 
+    /**
+     * Where the per-card PNGs live, one object per issued row.
+     *
+     * A third prefix rather than a second use of either existing one, and the
+     * distinction is load-bearing in both directions. `id-cards/` holds template
+     * backgrounds, which are permanent org assets. BATCH_PREFIX holds zips,
+     * which `id-cards:prune` deletes wholesale on the download TTL. These are
+     * permanent like the first and generated like the second — an `id_cards` row
+     * names each one and its QR has already been handed out, so the prune sweep
+     * must never reach them.
+     */
+    public const PRINT_PREFIX = 'id-card-prints';
+
     public function __construct(protected R2StorageService $r2) {}
 
     /**
@@ -52,13 +73,22 @@ class IdCardService
      * subset; `photo_url` may be null in all three pools, which is what the
      * initial tile exists for.
      *
-     * @return array<int, array{type: string, id: string, name: string, role_label: string, team_name: string, photo_url: ?string}>
+     * `email` is where a card can be sent, and the three pools answer it very
+     * differently: `players` and `team_officials` have no email column at all,
+     * so for both it is the team manager's account address — the same single
+     * address CertificateService::issueBatch() has to settle for, and the reason
+     * one email carries a whole team's cards. Event personnel carry their own.
+     * Null is ordinary, not an error: a team registered without a manager
+     * account has nobody to send to.
+     *
+     * @return array<int, array{type: string, id: string, name: string, role_label: string, team_name: string, photo_url: ?string, email: ?string}>
      */
     public function recipients(Event $event): array
     {
         $teams = $event->teams()
             ->where('status', 'approved')
             ->with([
+                'manager:id,email',
                 'players' => fn ($q) => $q->where('is_active', true)->orderBy('full_name'),
                 'officials' => fn ($q) => $q->orderBy('sort_order')->orderBy('full_name'),
             ])
@@ -76,6 +106,7 @@ class IdCardService
                     'role_label' => 'Pemain',
                     'team_name' => $team->name,
                     'photo_url' => $player->photo_url,
+                    'email' => $team->manager?->email,
                 ];
             }
 
@@ -90,6 +121,7 @@ class IdCardService
                     'name' => $official->full_name,
                     'team_name' => $team->name,
                     'photo_url' => $official->photo_url,
+                    'email' => $team->manager?->email,
                 ];
             }
         }
@@ -104,10 +136,106 @@ class IdCardService
                 'role_label' => $person->roleLabel(),
                 'team_name' => '',
                 'photo_url' => $person->photo_url,
+                // Their own, not a manager's: personnel belong to no team. This
+                // is why `email` is resolved in recipients() rather than by the
+                // mail job — one pool answers it from a column, two from a
+                // relation, and a second reader would have to re-derive which.
+                'email' => $person->email,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * The row for one person's card in one event, minted on first print and
+     * reused on every later one.
+     *
+     * `firstOrCreate` on (event, type, recipient) rather than `create`, and that
+     * is the whole idempotency story: reprinting after adding a player is an
+     * ordinary thing for an organizer to do, and a second number would kill the
+     * QR on every card already handed out. It also means a 400-card reprint
+     * mints zero numbers instead of burning 400.
+     *
+     * The descriptive columns are refreshed on a reprint while the number is
+     * not, which is the one place this row is deliberately not frozen: a card
+     * being printed *now* should carry the name as it is now. What the snapshot
+     * protects is the card already in someone's hand, and nothing reprints that.
+     *
+     * @param  array{type: string, id: string, name?: string, role_label?: string, team_name?: string, email?: ?string}  $person
+     */
+    public function issue(Event $event, IdCardTemplate $template, array $person): IdCard
+    {
+        // Spelled once and used for both the insert and the refresh. Listing
+        // them only in the update would insert a row missing `recipient_name`,
+        // which is NOT NULL — firstOrCreate writes before anything else runs.
+        $descriptive = [
+            'id_card_template_id' => $template->id,
+            'recipient_name' => (string) ($person['name'] ?? ''),
+            'role_label' => $person['role_label'] ?? null,
+            'team_name' => $person['team_name'] ?? null,
+            'recipient_email' => $person['email'] ?? null,
+        ];
+
+        $key = [
+            'event_id' => $event->id,
+            'recipient_type' => $person['type'],
+            'recipient_id' => $person['id'],
+        ];
+
+        // Looked up first rather than through firstOrCreate(), because PHP
+        // evaluates that method's second argument whether or not it is used:
+        // nextNumber() opens a transaction and takes a row lock, so a 400-card
+        // reprint would run 400 locked transactions to discard every number it
+        // minted. The unique index is still the backstop if two batches race.
+        $card = IdCard::where($key)->first();
+
+        if ($card) {
+            $card->update($descriptive);
+
+            return $card;
+        }
+
+        return IdCard::create([
+            ...$key,
+            ...$descriptive,
+            'organization_id' => $event->organization_id,
+            'card_number' => $this->nextNumber(),
+            'issued_at' => Carbon::now(),
+        ]);
+    }
+
+    /**
+     * Next card number for the current month, e.g. IDC-2026-11-0001.
+     *
+     * Lifted from CertificateService::nextNumber() deliberately rather than
+     * shared with it: the two sequences must not interleave, and a shared
+     * helper parameterised by prefix would be one function away from a card and
+     * a certificate racing for the same row lock. Concurrent batches are
+     * serialized by locking the month's highest row; the unique index on the
+     * column is the backstop.
+     *
+     * Dashes, not the slashes used for invoices: this number is a URL segment
+     * (the QR points at /verify-card/{number}) and a filename inside the zip.
+     */
+    public function nextNumber(): string
+    {
+        $prefix = (string) config('id_card.number_prefix', 'IDC');
+        $period = Carbon::now()->format('Y-m');
+
+        return DB::transaction(function () use ($prefix, $period) {
+            // Postgres rejects FOR UPDATE alongside an aggregate, so take the
+            // highest row and lock *that* rather than locking a max().
+            // Sequences are zero-padded, so lexical order is numeric order.
+            $last = IdCard::where('card_number', 'like', "{$prefix}-{$period}-%")
+                ->orderByDesc('card_number')
+                ->lockForUpdate()
+                ->value('card_number');
+
+            $seq = $last ? ((int) Str::afterLast($last, '-')) + 1 : 1;
+
+            return sprintf('%s-%s-%04d', $prefix, $period, $seq);
+        });
     }
 
     /**
@@ -139,10 +267,21 @@ class IdCardService
     /**
      * One card, as PNG bytes.
      *
+     * `$issued` is optional, and that is not laziness: it carries nothing but
+     * the number a `qr` field encodes, so a template without one renders
+     * identically with or without it. Making it required would force every
+     * caller — and every render test — to issue a row before it could draw a
+     * card that has nothing to verify. A `qr` field with no row simply draws
+     * nothing, the same way a text field with no value draws nothing.
+     *
      * @param  array{name?: string, role_label?: string, team_name?: string, photo_url?: ?string}  $person
      */
-    public function render(IdCardTemplate $template, array $person, ?ImageInterface $background = null): string
-    {
+    public function render(
+        IdCardTemplate $template,
+        array $person,
+        ?ImageInterface $background = null,
+        ?IdCard $issued = null,
+    ): string {
         $w = $this->px($template->width_mm);
         $h = $this->px($template->height_mm);
 
@@ -165,6 +304,14 @@ class IdCardService
                 continue;
             }
 
+            if (($field['key'] ?? '') === 'qr') {
+                if ($issued !== null) {
+                    $this->drawQr($card, $field, $issued->verifyUrl(), $w, $h);
+                }
+
+                continue;
+            }
+
             $this->drawText($card, $field, $values[$field['key']] ?? '', $w, $h);
         }
 
@@ -177,6 +324,13 @@ class IdCardService
      * Written to the bucket rather than local disk because docker-compose gives
      * `worker` no volume shared with `api` — a zip on the worker's disk is
      * invisible to the container that serves the download.
+     *
+     * Each card is issued as a row first, then rendered once and used twice: it
+     * goes into the zip *and* is parked under PRINT_PREFIX as its own object.
+     * Rendering is the expensive half (GD, minutes for a full batch), so the
+     * alternative — rendering again when someone emails the batch — would double
+     * it, and slicing a single card back out of a 400-card zip to attach it
+     * would mean downloading 400 cards to send one.
      *
      * @param  array<int, array<string, mixed>>  $recipients
      * @param  ?callable(int): void  $onProgress  called with the running count
@@ -192,12 +346,24 @@ class IdCardService
         foreach (array_values($recipients) as $i => $person) {
             $person['event_name'] = $event->name;
 
+            $issued = $this->issue($event, $template, $person);
+            $png = $this->render($template, $person, $background, $issued);
+
+            $this->storePrint($issued, $png);
+
             // NNN- prefix, not the slug alone: two people really are called
             // "Ahmad Fauzi", and numbering makes a collision impossible without
-            // a lookup while matching the order shown on screen.
-            $name = sprintf('%03d-%s.png', $i + 1, Str::slug((string) ($person['name'] ?? '')) ?: 'kartu');
+            // a lookup while matching the order shown on screen. The card number
+            // is in there too, so a printed card can be traced back to the file
+            // it came out of.
+            $name = sprintf(
+                '%03d-%s-%s.png',
+                $i + 1,
+                Str::slug((string) ($person['name'] ?? '')) ?: 'kartu',
+                $issued->card_number,
+            );
 
-            $zip->addFromString($name, $this->render($template, $person, $background));
+            $zip->addFromString($name, $png);
 
             // addFromString holds its payload in memory until the archive is
             // closed, so a 500-card batch would carry every PNG at once.
@@ -214,21 +380,79 @@ class IdCardService
         $zip->close();
 
         $key = self::BATCH_PREFIX.'/'.Str::uuid()->toString().'.zip';
-        $contents = (string) file_get_contents($path);
 
-        // The same branch UploadController takes, and it is not optional here:
-        // the `r2` disk is configured `throw => false, report => false`, so
-        // without credentials this write would no-op *silently* and the download
-        // would 404 on an object nothing ever complained about.
-        if (config('r2.key')) {
-            $this->r2->put($key, $contents, 'application/zip');
-        } else {
-            Storage::disk('public')->put($key, $contents);
-        }
+        $this->put($key, (string) file_get_contents($path), 'application/zip');
 
         @unlink($path);
 
         return $key;
+    }
+
+    /**
+     * Park one card's PNG under PRINT_PREFIX and record the key on its row.
+     *
+     * Keyed on the card id, not the number: a reprint overwrites the same object
+     * rather than leaving the old render behind under a key nothing names. The
+     * row already guarantees one id per (event, person).
+     */
+    public function storePrint(IdCard $card, string $png): IdCard
+    {
+        $key = self::PRINT_PREFIX.'/'.$card->id.'.png';
+
+        $this->put($key, $png, 'image/png');
+
+        $card->update(['png_key' => $key]);
+
+        return $card;
+    }
+
+    /**
+     * Write an object to whichever disk this service reads from.
+     *
+     * The same branch UploadController takes, and it is not optional: the `r2`
+     * disk is configured `throw => false, report => false`, so without
+     * credentials a write through it would no-op *silently* and the download
+     * would 404 on an object nothing ever complained about. Spelled once because
+     * two writers (the zip and the per-card prints) must not disagree with
+     * storage() about where they put things.
+     */
+    protected function put(string $key, string $contents, string $contentType): void
+    {
+        if (self::diskName() === 'r2') {
+            $this->r2->put($key, $contents, $contentType);
+        } else {
+            Storage::disk('public')->put($key, $contents);
+        }
+    }
+
+    /**
+     * Issued cards bucketed into the mails that will carry them.
+     *
+     * Grouped by address, which is what makes one manager of a twenty-player
+     * squad receive one email instead of twenty. Personnel each hold their own
+     * address and so fall out as groups of one without a branch — the pools are
+     * already flattened by recipients(), and this reads the column it wrote.
+     *
+     * Cards with no address are returned separately rather than dropped, and
+     * that distinction is the point: a team registered without a manager
+     * account is an ordinary state, and "40 kartu dikirim" printed over 55
+     * people reads as a bug. The caller reports the gap before anything is
+     * queued.
+     *
+     * @param  Collection<int, IdCard>  $cards
+     * @return array{groups: array<string, array<int, string>>, unsendable: int}
+     */
+    public function groupForSending(Collection $cards): array
+    {
+        $sendable = $cards->filter(fn (IdCard $card) => (bool) $card->recipient_email && (bool) $card->png_key);
+
+        return [
+            'groups' => $sendable
+                ->groupBy('recipient_email')
+                ->map(fn (Collection $group) => $group->pluck('id')->all())
+                ->all(),
+            'unsendable' => $cards->count() - $sendable->count(),
+        ];
     }
 
     /**
@@ -246,9 +470,24 @@ class IdCardService
     public function storage(): FilesystemAdapter
     {
         /** @var FilesystemAdapter $disk */
-        $disk = Storage::disk(config('r2.key') ? 'r2' : 'public');
+        $disk = Storage::disk(self::diskName());
 
         return $disk;
+    }
+
+    /**
+     * The disk name, for the one caller that needs the name rather than the
+     * adapter: `Attachment::fromStorageDisk()` in IdCardsIssuedMail takes a
+     * string. Static because a Mailable is serialized onto the queue and must
+     * not carry a service with it.
+     *
+     * Spelled here, not there — three readers of "R2 or local?" (this, put(),
+     * and the mail attachment) that disagree produce a mail with no attachment,
+     * which sends successfully and stamps `sent_at`.
+     */
+    public static function diskName(): string
+    {
+        return config('r2.key') ? 'r2' : 'public';
     }
 
     /** The filename the browser saves a batch under. */
@@ -316,6 +555,91 @@ class IdCardService
         // insert(), not place(): Intervention v4 has no place(). Its default
         // alignment is TOP_LEFT, which is exactly this field's anchor.
         $card->insert($photo, $x, $y);
+    }
+
+    /**
+     * The verification QR, drawn module by module straight onto the card.
+     *
+     * NOT QrImage::svgDataUri(): that exists for dompdf, which draws SVG through
+     * php-svg-lib, and GD cannot draw SVG at all. NOT BaconQrCode's
+     * ImagickImageBackEnd either — imagick is installed in api/Dockerfile for
+     * the one thing GD cannot do (encode .ico), but this whole renderer is GD
+     * and a local PHP without imagick would fail every card test rather than
+     * one. Walking the matrix needs neither backend.
+     *
+     * Two details decide whether the printed code actually scans:
+     *
+     *   Integer module size. `floor(side / modules)`, never the float: a module
+     *     7.4px wide gets drawn alternately 7 and 8 px, which walks the finder
+     *     patterns out of square. The leftover pixels become margin instead.
+     *   An explicit quiet zone. QrImage passes margin 0 and says why — every
+     *     sheet using it draws its own padding. A card background does not, and
+     *     a QR butted against artwork does not scan, so four modules of white
+     *     are drawn here. This is the one place that reasoning inverts.
+     *
+     * The box is squared off its shorter side rather than stretched: `w != h`
+     * leaves slack, because a non-square QR is an unreadable one.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    protected function drawQr(ImageInterface $card, array $field, string $url, int $w, int $h): void
+    {
+        $boxW = max(1, (int) round(((float) ($field['w'] ?? 0) / 100) * $w));
+        $boxH = max(1, (int) round(((float) ($field['h'] ?? 0) / 100) * $h));
+        $x = (int) round(((float) ($field['x'] ?? 0) / 100) * $w);
+        $y = (int) round(((float) ($field['y'] ?? 0) / 100) * $h);
+
+        try {
+            // ISO-8859-1 rather than UTF-8: a verification URL is ASCII, and the
+            // UTF-8 path prefixes an ECI segment that some scanners refuse (the
+            // warning is in Encoder::encode() itself).
+            $matrix = Encoder::encode($url, ErrorCorrectionLevel::M(), 'ISO-8859-1')->getMatrix();
+        } catch (Throwable $e) {
+            report($e);
+
+            return;
+        }
+
+        $modules = $matrix->getWidth();
+
+        // Quiet zone counted in modules, so it scales with the code rather than
+        // being a pixel figure that vanishes on a small box.
+        $quiet = 4;
+        $side = min($boxW, $boxH);
+        $scale = intdiv($side, $modules + $quiet * 2);
+
+        if ($scale < 1) {
+            // Smaller than one pixel per module. Drawing it would produce a grey
+            // smudge that looks like a working QR in a thumbnail and scans as
+            // nothing at all; the editor is what warns about the size.
+            return;
+        }
+
+        $drawn = ($modules + $quiet * 2) * $scale;
+
+        // Centred in whatever the organizer drew, so the rounding above never
+        // shifts the code towards one corner of its box.
+        $originX = $x + intdiv($boxW - $drawn, 2);
+        $originY = $y + intdiv($boxH - $drawn, 2);
+
+        $plate = $this->manager()->createImage($drawn, $drawn)->fill('ffffff');
+        $gd = $plate->core()->native();
+        $black = (int) imagecolorallocate($gd, 0, 0, 0);
+
+        for ($mx = 0; $mx < $modules; $mx++) {
+            for ($my = 0; $my < $modules; $my++) {
+                if ($matrix->get($mx, $my) !== 1) {
+                    continue;
+                }
+
+                $px = ($quiet + $mx) * $scale;
+                $py = ($quiet + $my) * $scale;
+
+                imagefilledrectangle($gd, $px, $py, $px + $scale - 1, $py + $scale - 1, $black);
+            }
+        }
+
+        $card->insert($plate, $originX, $originY);
     }
 
     /**

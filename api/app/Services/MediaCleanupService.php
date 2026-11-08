@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Certificate;
 use App\Models\Event;
+use App\Models\IdCard;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -120,6 +121,10 @@ class MediaCleanupService
             // here, not off a team, so teamUrls() below never sees them.
             ...$event->personnel()->pluck('photo_url'),
             ...Certificate::where('event_id', $event->id)->pluck('pdf_key'),
+            // Printed cards. Permanent objects under IdCardService::PRINT_PREFIX
+            // — `id-cards:prune` deliberately never reaches them, so this sweep
+            // is the only thing that ever deletes one.
+            ...IdCard::where('event_id', $event->id)->pluck('png_key'),
             ...$this->teamUrls($event->teams()->pluck('id')->all()),
             // Fun run entries. Their documents live in their own table, which
             // is exactly why they need their own call here: the sweep below is

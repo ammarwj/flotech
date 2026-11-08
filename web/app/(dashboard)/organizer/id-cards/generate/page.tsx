@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, IdCard, Loader2, Printer, Users } from "lucide-react";
+import { Download, IdCard, Loader2, Mail, Printer, Users } from "lucide-react";
 
 import {
+  downloadIdCard,
   downloadIdCardBatch,
   generateIdCards,
   getIdCardBatch,
   getIdCardRecipients,
   getIdCardTemplates,
+  getIssuedIdCards,
+  sendIdCards,
 } from "@/lib/api/id-cards";
 import { getEvents } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
@@ -19,10 +22,12 @@ import { isIdCardEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConfirm } from "@/components/shared/confirm-provider";
 import { cn } from "@/lib/utils";
 import type { IdCardRecipient } from "@/types/api";
 
@@ -43,6 +48,8 @@ const GROUPS: Array<{ type: IdCardRecipient["type"]; label: string }> = [
 const keyOf = (r: IdCardRecipient) => `${r.type}:${r.id}`;
 
 export default function GenerateIdCardsPage() {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { orgId, isLoading: orgLoading } = useActiveOrg();
 
   const [eventId, setEventId] = useState("");
@@ -89,6 +96,15 @@ export default function GenerateIdCardsPage() {
 
   const batch = batchQuery.data;
 
+  // Rendering is what issues the rows, so the send panel has to re-ask once the
+  // batch settles. Without this it keeps reading the count from before the
+  // print and offers to email nothing over a zip that just finished.
+  useEffect(() => {
+    if (batch?.status === "done") {
+      queryClient.invalidateQueries({ queryKey: ["id-cards-issued", orgId, eventId] });
+    }
+  }, [batch?.status, queryClient, orgId, eventId]);
+
   const generate = useMutation({
     mutationFn: () => {
       const wanted = new Set(picked);
@@ -109,6 +125,44 @@ export default function GenerateIdCardsPage() {
 
   const download = useMutation({
     mutationFn: () => downloadIdCardBatch(orgId!, batchId!),
+    onError: (err) => toast.error(parseApiError(err).message),
+  });
+
+  /**
+   * Cards already issued for this event, which is what "Kirim via email" sends.
+   *
+   * Read from the server rather than derived from `picked`: the send goes out to
+   * every card this event has ever issued, and an organizer who printed in two
+   * sittings would otherwise be told the wrong number. `meta.total` is the count
+   * over the whole event, not the page, which is exactly the figure wanted here.
+   */
+  const issuedQuery = useQuery({
+    queryKey: ["id-cards-issued", orgId, eventId],
+    queryFn: () => getIssuedIdCards(orgId!, { event_id: eventId, per_page: 100 }),
+    enabled: !!orgId && !!eventId,
+  });
+
+  const issued = issuedQuery.data;
+  // Counted from the rows, not asked of the server separately: the address is a
+  // column on each card, so "how many can be sent" is already in hand and a
+  // second endpoint answering it could disagree with the one that refuses.
+  const sendable = issued?.items.filter((c) => c.recipient_email && c.has_png) ?? [];
+  const addresses = new Set(sendable.map((c) => c.recipient_email)).size;
+
+  const downloadCard = useMutation({
+    mutationFn: (cardId: string) => downloadIdCard(orgId!, cardId),
+    onError: (err) => toast.error(parseApiError(err).message),
+  });
+
+  const send = useMutation({
+    mutationFn: () => sendIdCards(orgId!, eventId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["id-cards-issued", orgId, eventId] });
+      toast.success(
+        `${result.cards} kartu dikirim ke ${result.emails} alamat email.` +
+          (result.skipped > 0 ? ` ${result.skipped} dilewati (tanpa alamat email).` : "")
+      );
+    },
     onError: (err) => toast.error(parseApiError(err).message),
   });
 
@@ -336,6 +390,110 @@ export default function GenerateIdCardsPage() {
             </Button>
           </div>
         </Card>
+
+        {/* Only once this event has cards. A panel offering to email nothing is
+            an announcement about a door that isn't there — the same call made
+            for `online_registration_enabled`. */}
+        {eventId && (issued?.meta.total ?? 0) > 0 && (
+          <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">Kirim kartu via email</p>
+              <p className="text-muted-foreground">
+                {/* The counts are stated before the click, not discovered from
+                    the result. The gap between them is ordinary — a team
+                    registered without a manager account has nowhere to send —
+                    and an organizer who only learns it afterwards reads it as a
+                    bug. */}
+                {issued!.meta.total} kartu terbit, {sendable.length} punya alamat email (
+                {addresses} email terkirim).
+                {issued!.meta.total > sendable.length &&
+                  ` ${issued!.meta.total - sendable.length} harus dicetak — tim tanpa akun manajer dan petugas tanpa email tidak punya tujuan.`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya sekaligus,
+                wasit dan staf menerima kartunya sendiri.
+              </p>
+            </div>
+
+            <Button
+              variant="outline"
+              disabled={sendable.length === 0 || send.isPending}
+              onClick={async () => {
+                const resend = sendable.some((c) => c.sent_at);
+                const ok = await confirm({
+                  title: `Kirim ${sendable.length} kartu ke ${addresses} alamat email?`,
+                  description: resend
+                    ? "Sebagian kartu sudah pernah dikirim dan akan dikirim ulang ke alamat yang sama."
+                    : "Setiap penerima mendapat kartunya sebagai lampiran PNG, berikut QR verifikasinya.",
+                  confirmLabel: "Kirim sekarang",
+                });
+                if (ok) send.mutate();
+              }}
+            >
+              {send.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mail className="h-4 w-4" />
+              )}
+              Kirim via email
+            </Button>
+          </Card>
+        )}
+
+        {eventId && (issued?.meta.total ?? 0) > 0 && (
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold">Kartu terbit</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nomor kartu tercetak di QR-nya, jadi kartu fisik bisa dilacak kembali ke baris ini.
+              Mencetak ulang orang yang sama memakai nomor yang sama.
+            </p>
+
+            <div className="mt-4 flex flex-col divide-y divide-border">
+              {issued!.items.map((card) => (
+                <div key={card.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{card.recipient_name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[card.role_label, card.team_name].filter(Boolean).join(" · ")}
+                      {" · "}
+                      <code className="text-[11px]">{card.card_number}</code>
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/* Three states, not two: never sent, sent, and no address
+                        at all. The third is the one an organizer acts on — it
+                        means this card has to be printed. */}
+                    {card.sent_at ? (
+                      <Badge variant="success">Terkirim</Badge>
+                    ) : card.recipient_email ? (
+                      <Badge variant="outline">Belum dikirim</Badge>
+                    ) : (
+                      <Badge variant="outline">Tanpa email</Badge>
+                    )}
+
+                    {card.has_png && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => downloadCard.mutate(card.id)}
+                        disabled={downloadCard.isPending}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {issued!.meta.total > issued!.items.length && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Menampilkan {issued!.items.length} dari {issued!.meta.total} kartu terbit.
+              </p>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );

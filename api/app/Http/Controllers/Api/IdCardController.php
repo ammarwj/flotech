@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\IdCard\GenerateIdCardsRequest;
+use App\Http\Resources\IdCardResource;
 use App\Jobs\GenerateIdCardsJob;
+use App\Jobs\SendIdCardsJob;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Services\IdCardService;
@@ -29,6 +31,40 @@ class IdCardController extends Controller
         $model = $this->findEvent($request, $event);
 
         return ApiResponse::success($this->cards->recipients($model));
+    }
+
+    /**
+     * Cards already issued, newest first; optionally narrowed to one event.
+     *
+     * Paginated for the same reason CertificateController::index() is: an
+     * organizer who printed a card for every player across a season has
+     * thousands of rows, and `total` counts the whole filter rather than the
+     * page because the send button reads it to know whether there is anything
+     * to send.
+     */
+    public function index(Request $request, string $organization): JsonResponse
+    {
+        $filters = $request->validate([
+            'event_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $page = $this->org($request)
+            ->idCards()
+            ->with('event:id,name')
+            ->when($filters['event_id'] ?? null, fn ($q, $id) => $q->where('event_id', $id))
+            ->latest('issued_at')
+            ->paginate(min((int) ($filters['per_page'] ?? 20), 100));
+
+        return ApiResponse::success([
+            'items' => IdCardResource::collection($page->items()),
+            'meta' => [
+                'page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
+        ]);
     }
 
     /**
@@ -95,6 +131,103 @@ class IdCardController extends Controller
             count($recipients).' kartu sedang dibuat.',
             202,
         );
+    }
+
+    /**
+     * Email the cards of one event to the people they belong to.
+     *
+     * Gated event-keyed, not through orgAllows(): what is being sent is a
+     * particular event's cards, so the entitlement that matters is that event's.
+     * Templates are the org-level question, and that one lives in
+     * IdCardTemplateController.
+     *
+     * No separate `id_card_email` feature key, unlike certificates. Only
+     * Professional carries `id_card_generator` today, so a second key would
+     * separate no two plans in the catalogue — it would just be another row to
+     * keep aligned across PlanSeeder and FeatureDefinitionSeeder.
+     *
+     * The grouping is the service's, not this method's: three recipient pools
+     * answer "whose address?" two different ways, and re-deriving it here would
+     * be a second answer that could drift from the column the renderer wrote.
+     */
+    public function send(Request $request, string $organization, string $event): JsonResponse
+    {
+        $org = $this->org($request);
+        $model = $this->findEvent($request, $event);
+
+        if (! $this->gate->allows($model, 'id_card_generator')) {
+            return ApiResponse::error(
+                'Generator ID card tidak tersedia di paket event ini.',
+                ['feature' => 'id_card_generator'],
+                403,
+            );
+        }
+
+        $filters = $request->validate([
+            // Absent means every card issued for this event. An explicit list is
+            // what a "kirim ulang ke orang ini" button sends.
+            'card_ids' => ['sometimes', 'array', 'min:1', 'max:'.(int) config('id_card.max_recipients')],
+            'card_ids.*' => ['uuid'],
+        ]);
+
+        $cards = $org->idCards()
+            ->with('event:id,name,start_date')
+            ->where('event_id', $model->id)
+            ->when(
+                $filters['card_ids'] ?? null,
+                fn ($q, array $ids) => $q->whereIn('id', $ids),
+            )
+            ->get();
+
+        if ($cards->isEmpty()) {
+            return ApiResponse::error('Belum ada kartu terbit untuk event ini.', null, 422);
+        }
+
+        ['groups' => $groups, 'unsendable' => $unsendable] = $this->cards->groupForSending($cards);
+
+        if ($groups === []) {
+            return ApiResponse::error(
+                'Tidak ada kartu yang punya alamat email tujuan. Tim tanpa akun manajer dan petugas tanpa email harus dicetak.',
+                null,
+                422,
+            );
+        }
+
+        foreach ($groups as $cardIds) {
+            SendIdCardsJob::dispatch($cardIds);
+        }
+
+        $sent = array_sum(array_map('count', $groups));
+
+        return ApiResponse::success(
+            ['emails' => count($groups), 'cards' => $sent, 'skipped' => $unsendable],
+            // The skipped count is stated, never swallowed: a team with no
+            // manager account is ordinary, and "40 kartu dikirim" printed over
+            // 55 people reads as a bug rather than a fact.
+            $sent.' kartu dikirim ke '.count($groups).' alamat email.'
+                .($unsendable > 0 ? " {$unsendable} dilewati (tanpa alamat email)." : ''),
+        );
+    }
+
+    /**
+     * Stream one card's PNG. The bucket key never leaves the server.
+     *
+     * Deliberately ungated on the plan, exactly like
+     * CertificateController::download(): a card rendered under an entitlement
+     * that was paid for must stay reachable, and refusing to hand over a file
+     * that already exists helps nobody.
+     */
+    public function downloadCard(Request $request, string $organization, string $card): StreamedResponse|JsonResponse
+    {
+        $model = $this->org($request)->idCards()->where('id', $card)->firstOrFail();
+
+        if (! $model->png_key) {
+            return ApiResponse::error('Berkas kartu belum tersedia.', null, 404);
+        }
+
+        return $this->cards->storage()->download($model->png_key, $model->filename(), [
+            'Content-Type' => 'image/png',
+        ]);
     }
 
     /** Poll target. Deliberately ungated — see ensureOwned(). */

@@ -2732,6 +2732,53 @@ export interface CertificateVerification {
   organization: { name: string | null; slug: string | null; logo_url: string | null };
 }
 
+/**
+ * One issued ID card — the row that gives a card's QR something to point at.
+ *
+ * `has_png` rather than a key or a URL: the object is served through the API
+ * (auth + tenant) so the bucket key stays server-side, same as
+ * `Certificate.has_pdf`. `sent_at` null means never emailed, which is also what
+ * makes a card re-sendable after a failed send.
+ */
+export interface IdCardIssued {
+  id: string;
+  event_id: string;
+  event_name?: string;
+  id_card_template_id: string | null;
+  card_number: string;
+  recipient_type: IdCardRecipient["type"];
+  recipient_id: string | null;
+  recipient_name: string;
+  role_label: string | null;
+  team_name: string | null;
+  recipient_email: string | null;
+  has_png: boolean;
+  verify_url: string;
+  issued_at: string;
+  sent_at: string | null;
+}
+
+/** One page of issued cards. `meta.total` counts the filter, not the page. */
+export type IdCardIssuedPage = Paginated<IdCardIssued>;
+
+/**
+ * What the card's printed QR lands on: proof the card was issued.
+ *
+ * Deliberately narrower than the row above — no `photo_url` and no
+ * `recipient_email`. The plastic already carries the photo, and this endpoint
+ * takes no authentication, so publishing it would make a card number a way to
+ * pull participants' headshots.
+ */
+export interface IdCardVerification {
+  card_number: string;
+  recipient_name: string;
+  role_label: string | null;
+  team_name: string | null;
+  issued_at: string;
+  event: { name: string | null; start_date: string | null };
+  organization: { name: string | null; slug: string | null; logo_url: string | null };
+}
+
 /** One logged-in user with their active device sessions (admin "Sesi Aktif"). */
 export interface ActiveSessionDevice {
   id: string;

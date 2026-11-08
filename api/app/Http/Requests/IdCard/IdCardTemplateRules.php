@@ -55,9 +55,11 @@ class IdCardTemplateRules
             'fields.*.uppercase' => ['nullable', 'boolean'],
             'fields.*.wrap' => ['nullable', 'numeric', 'between:10,100'],
 
-            // Photo only.
+            // Boxes (`photo`, `qr`).
             'fields.*.w' => ['nullable', 'numeric', 'between:1,100'],
             'fields.*.h' => ['nullable', 'numeric', 'between:1,100'],
+
+            // Photo only — a QR takes neither; see check().
             'fields.*.fit' => ['nullable', Rule::in(['cover', 'contain'])],
             'fields.*.radius' => ['nullable', 'numeric', 'between:0,50'],
         ];
@@ -72,6 +74,14 @@ class IdCardTemplateRules
      * field carrying a stray `w` reaches the renderer, which then has to guess
      * what the organizer meant — and guessing wrong is invisible until someone
      * looks at 500 printed cards.
+     *
+     * `qr` is a box like `photo` rather than a text field, and the pairing is
+     * load-bearing in both directions: fall it through to the text branch and
+     * every QR is refused for having no `size` and for carrying `w`/`h`. It
+     * takes neither `fit` nor `radius` though, and those are refused rather
+     * than ignored — `contain` means nothing on something already square, and
+     * rounding the corners eats the finder patterns a scanner locates the code
+     * by, which looks fine on screen and fails in a marshal's hand.
      *
      * What is deliberately NOT checked: `x + w <= 100`. A photo that bleeds off
      * the card edge is legitimate print practice; the renderer clips to the
@@ -104,15 +114,31 @@ class IdCardTemplateRules
                 $seen[$key] = true;
             }
 
-            if ($key === 'photo') {
+            if ($key === 'photo' || $key === 'qr') {
+                $noun = $key === 'qr' ? 'QR' : 'foto';
+
                 foreach (['w', 'h'] as $dimension) {
                     if (! isset($field[$dimension])) {
-                        $validator->errors()->add("fields.$i.$dimension", 'Ukuran kotak foto wajib diisi.');
+                        $validator->errors()->add("fields.$i.$dimension", "Ukuran kotak {$noun} wajib diisi.");
                     }
                 }
 
                 if (isset($field['size'])) {
-                    $validator->errors()->add("fields.$i.size", 'Foto memakai lebar dan tinggi, bukan ukuran huruf.');
+                    $validator->errors()->add(
+                        "fields.$i.size",
+                        ucfirst($noun).' memakai lebar dan tinggi, bukan ukuran huruf.',
+                    );
+                }
+
+                if ($key === 'qr') {
+                    foreach (['fit', 'radius'] as $photoOnly) {
+                        if (isset($field[$photoOnly])) {
+                            $validator->errors()->add(
+                                "fields.$i.$photoOnly",
+                                'QR selalu digambar penuh dan bersudut tajam — sudut membulat memakan pola pencari yang dibaca pemindai.',
+                            );
+                        }
+                    }
                 }
 
                 continue;

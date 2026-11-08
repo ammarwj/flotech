@@ -5,8 +5,10 @@ import type {
   IdCardBatch,
   IdCardField,
   IdCardFieldDef,
+  IdCardIssuedPage,
   IdCardRecipient,
   IdCardTemplate,
+  IdCardVerification,
 } from "@/types/api";
 
 // ---- Templates ----
@@ -122,4 +124,64 @@ export async function downloadIdCardBatch(orgId: string, batchId: string): Promi
   );
 
   downloadBlob(response.data, fileName);
+}
+
+// ---- Issued cards ----
+
+/** The print history. `meta.total` is what the send button reads. */
+export async function getIssuedIdCards(
+  orgId: string,
+  params: { event_id?: string; page?: number; per_page?: number } = {}
+): Promise<IdCardIssuedPage> {
+  const { data } = await apiClient.get<ApiEnvelope<IdCardIssuedPage>>(
+    `/organizations/${orgId}/id-cards/issued`,
+    { params }
+  );
+  return data.data;
+}
+
+/**
+ * Email an event's cards to the people they belong to.
+ *
+ * `cardIds` omitted means every card issued for the event. The server groups by
+ * destination — one mail carries a whole team, because players and team
+ * officials have no email of their own and borrow their manager's — so the
+ * reply counts `emails` and `cards` separately, plus however many had no
+ * address at all.
+ */
+export async function sendIdCards(
+  orgId: string,
+  eventId: string,
+  cardIds?: string[]
+): Promise<{ emails: number; cards: number; skipped: number }> {
+  const { data } = await apiClient.post<
+    ApiEnvelope<{ emails: number; cards: number; skipped: number }>
+  >(
+    `/organizations/${orgId}/events/${eventId}/id-cards/send`,
+    cardIds ? { card_ids: cardIds } : {}
+  );
+  return data.data;
+}
+
+/** Save one card's PNG. Blob, never a plain `<a href>` — see the batch above. */
+export async function downloadIdCard(orgId: string, cardId: string): Promise<void> {
+  const response = await apiClient.get<Blob>(
+    `/organizations/${orgId}/id-cards/${cardId}/download`,
+    { responseType: "blob" }
+  );
+
+  const fileName = fileNameFromDisposition(
+    response.headers["content-disposition"],
+    "id-card.png"
+  );
+
+  downloadBlob(response.data, fileName);
+}
+
+/** What the QR printed on a card opens. Public — no token, nothing to install. */
+export async function verifyIdCard(number: string): Promise<IdCardVerification> {
+  const { data } = await apiClient.get<ApiEnvelope<IdCardVerification>>(
+    `/public/id-cards/${encodeURIComponent(number)}`
+  );
+  return data.data;
 }
