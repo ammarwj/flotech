@@ -676,9 +676,31 @@ class IdCardService
                 $f->filename($font);
                 $f->size($size);
                 $f->color((string) ($field['color'] ?? '#111827'));
-                // Vertical align must be stated: Font defaults to BOTTOM, and
-                // every line of the layout would ride up by its own height.
-                $f->align($align, 'top');
+                /*
+                 * Vertical align must be stated: Font defaults to BOTTOM, and
+                 * every line of the layout would ride up by its own height.
+                 *
+                 * `y` anchors the whole wrapped BLOCK, not the first line, so
+                 * which edge it anchors is what decides where a long name
+                 * goes. Under the old hardcoded 'top', "ADIB" sat high in its
+                 * plate while "AHMAD FAUZI RAHMATULLAH" wrapped to two lines
+                 * and grew downwards out of it — measured: the text's midpoint
+                 * moved 25px for a four-line name while 'center' held it still.
+                 *
+                 * 'top' remains the default so every template written before
+                 * this field existed renders exactly as it did; the editor
+                 * starts new text fields at 'middle', which is what a name
+                 * plate wants.
+                 *
+                 * Translated, not passed through: Alignment::from() only knows
+                 * the enum's own values and there is no 'middle' in it — the
+                 * same trap already documented on placeholder()'s 'center'.
+                 */
+                $f->align($align, match ($field['valign'] ?? 'top') {
+                    'middle' => 'center',
+                    'bottom' => 'bottom',
+                    default => 'top',
+                });
                 $f->lineHeight(1.2);
                 $f->wrap($wrap);
             },

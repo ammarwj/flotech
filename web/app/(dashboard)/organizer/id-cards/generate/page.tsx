@@ -5,7 +5,17 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, IdCard, Loader2, Mail, Printer, Users } from "lucide-react";
+import {
+  Download,
+  IdCard,
+  Loader2,
+  Mail,
+  Printer,
+  QrCode,
+  ScanLine,
+  Send,
+  Users,
+} from "lucide-react";
 
 import {
   downloadIdCard,
@@ -22,13 +32,16 @@ import { parseApiError } from "@/lib/api/errors";
 import { isIdCardEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/shared/confirm-provider";
+import { PillTabs } from "@/components/event/pill-tabs";
+import { StepSection } from "@/components/id-card/step-section";
+import { IssuedCardRow } from "@/components/id-card/issued-card-row";
 import { cn } from "@/lib/utils";
 import type { IdCardRecipient } from "@/types/api";
 
@@ -46,6 +59,11 @@ const GROUPS: Array<{ type: IdCardRecipient["type"]; label: string }> = [
   { type: "personnel", label: "Wasit & staf" },
 ];
 
+const TABS = [
+  { key: "print", label: "Cetak", icon: Printer },
+  { key: "deliver", label: "Kirim & Riwayat", icon: Send },
+];
+
 const keyOf = (r: IdCardRecipient) => `${r.type}:${r.id}`;
 
 function GenerateIdCardsPage() {
@@ -56,9 +74,9 @@ function GenerateIdCardsPage() {
   const { orgId, isLoading: orgLoading } = useActiveOrg();
 
   /**
-   * Event and template live in the URL, not in component state.
+   * Event, template and tab all live in the URL, not in component state.
    *
-   * Sending takes minutes to show up (the mails are queued and the provider is
+   * Sending takes minutes to finish (the mails are queued and the provider is
    * rate-limited), so the one thing an organizer will certainly do is reload
    * this page — and with the selection held locally that reload dropped them
    * back to "pilih event dulu" over the batch they were watching. Same
@@ -66,6 +84,7 @@ function GenerateIdCardsPage() {
    */
   const eventId = params.get("event_id") ?? "";
   const templateId = params.get("template_id") ?? "";
+  const tab = params.get("tab") === "deliver" ? "deliver" : "print";
 
   const setParams = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params.toString());
@@ -80,6 +99,7 @@ function GenerateIdCardsPage() {
 
   const [picked, setPicked] = useState<string[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -120,14 +140,58 @@ function GenerateIdCardsPage() {
 
   const batch = batchQuery.data;
 
-  // Rendering is what issues the rows, so the send panel has to re-ask once the
-  // batch settles. Without this it keeps reading the count from before the
+  /**
+   * Cards already issued for this event, which is what the deliver tab sends.
+   *
+   * Read from the server rather than derived from `picked`: the send goes out
+   * to every card this event has ever issued, and an organizer who printed in
+   * two sittings would otherwise be told the wrong number. `meta.total` counts
+   * the whole event, not the page, which is exactly the figure wanted here.
+   */
+  const issuedQuery = useQuery({
+    queryKey: ["id-cards-issued", orgId, eventId],
+    queryFn: () => getIssuedIdCards(orgId!, { event_id: eventId, per_page: 100 }),
+    enabled: !!orgId && !!eventId,
+    /**
+     * Polled while a send is in flight, because the send is genuinely not done
+     * when the request returns: the mails are queued and deliberately spaced
+     * past the provider's per-second limit, so a 26-card event takes most of a
+     * minute. Without this the page looked frozen and the only way to see
+     * progress was a reload — which is also what made losing the filter hurt.
+     *
+     * `sent_at` on the rows is the only thing that knows a mail actually left,
+     * so it is what drives the counter rather than the POST's own reply.
+     */
+    refetchInterval: sending ? 3000 : false,
+  });
+
+  const issued = issuedQuery.data;
+  const issuedTotal = issued?.meta.total ?? 0;
+
+  // Counted from the rows, not asked of the server separately: the address is a
+  // column on each card, so "how many can be sent" is already in hand and a
+  // second endpoint answering it could disagree with the one that refuses.
+  const sendable = issued?.items.filter((c) => c.recipient_email && c.has_png) ?? [];
+  const addresses = new Set(sendable.map((c) => c.recipient_email)).size;
+  const alreadySent = sendable.filter((c) => c.sent_at).length;
+
+  // Rendering is what issues the rows, so the deliver tab has to re-ask once
+  // the batch settles. Without this it keeps reading the count from before the
   // print and offers to email nothing over a zip that just finished.
   useEffect(() => {
     if (batch?.status === "done") {
       queryClient.invalidateQueries({ queryKey: ["id-cards-issued", orgId, eventId] });
     }
   }, [batch?.status, queryClient, orgId, eventId]);
+
+  // Stop polling once every sendable card has left, so a tab left open does not
+  // keep asking forever.
+  useEffect(() => {
+    if (sending && sendable.length > 0 && alreadySent === sendable.length) {
+      setSending(false);
+      toast.success(`${alreadySent} kartu terkirim.`);
+    }
+  }, [sending, alreadySent, sendable.length]);
 
   const generate = useMutation({
     mutationFn: () => {
@@ -151,50 +215,6 @@ function GenerateIdCardsPage() {
     mutationFn: () => downloadIdCardBatch(orgId!, batchId!),
     onError: (err) => toast.error(parseApiError(err).message),
   });
-
-  /**
-   * Cards already issued for this event, which is what "Kirim via email" sends.
-   *
-   * Read from the server rather than derived from `picked`: the send goes out to
-   * every card this event has ever issued, and an organizer who printed in two
-   * sittings would otherwise be told the wrong number. `meta.total` is the count
-   * over the whole event, not the page, which is exactly the figure wanted here.
-   */
-  const [sending, setSending] = useState(false);
-
-  const issuedQuery = useQuery({
-    queryKey: ["id-cards-issued", orgId, eventId],
-    queryFn: () => getIssuedIdCards(orgId!, { event_id: eventId, per_page: 100 }),
-    enabled: !!orgId && !!eventId,
-    /**
-     * Polled while a send is in flight, because the send is genuinely not done
-     * when the request returns: the mails are queued and deliberately spaced
-     * out past the provider's per-second limit, so a 26-card event takes most
-     * of a minute. Without this the page looked frozen and the only way to see
-     * progress was a reload — which is also what made losing the filter hurt.
-     *
-     * `sent_at` on the rows is the only thing that knows a mail actually left,
-     * so it is what drives the counter rather than the POST's own reply.
-     */
-    refetchInterval: sending ? 3000 : false,
-  });
-
-  const issued = issuedQuery.data;
-  // Counted from the rows, not asked of the server separately: the address is a
-  // column on each card, so "how many can be sent" is already in hand and a
-  // second endpoint answering it could disagree with the one that refuses.
-  const sendable = issued?.items.filter((c) => c.recipient_email && c.has_png) ?? [];
-  const addresses = new Set(sendable.map((c) => c.recipient_email)).size;
-  const alreadySent = sendable.filter((c) => c.sent_at).length;
-
-  // Stop polling once every sendable card has left, so a tab left open does not
-  // keep asking forever.
-  useEffect(() => {
-    if (sending && sendable.length > 0 && alreadySent === sendable.length) {
-      setSending(false);
-      toast.success(`${alreadySent} kartu terkirim.`);
-    }
-  }, [sending, alreadySent, sendable.length]);
 
   const downloadCard = useMutation({
     mutationFn: (cardId: string) => downloadIdCard(orgId!, cardId),
@@ -250,56 +270,36 @@ function GenerateIdCardsPage() {
   }
 
   const running = !!batch && batch.status !== "done" && batch.status !== "failed";
-  const ready = eventId && templateId && picked.length > 0 && allowed;
+  const ready = !!eventId && !!templateId && picked.length > 0 && allowed;
 
   return (
     <div>
       <PageHeader
         title="Cetak ID card"
-        description="Pilih event, template, lalu siapa saja yang dicetak kartunya."
+        description="Cetak sendiri, atau kirim kartunya lewat email — tidak semua penyelenggara mencetak."
       />
 
       <div className="flex flex-col gap-5">
-        <Card className="grid gap-4 p-5 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="event">Event</Label>
-            <Select
-              id="event"
-              value={eventId}
-              onChange={(e) => {
-                setParams({ event_id: e.target.value || null });
-                reset();
-              }}
-              className="mt-1.5"
-            >
-              <option value="">— pilih event —</option>
-              {eventsQuery.data?.map((ev) => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="template">Template</Label>
-            <Select
-              id="template"
-              value={templateId}
-              onChange={(e) => {
-                setParams({ template_id: e.target.value || null });
-                setBatchId(null);
-              }}
-              className="mt-1.5"
-            >
-              <option value="">— pilih template —</option>
-              {templatesQuery.data?.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.name} · {tpl.width_mm} × {tpl.height_mm} mm
-                </option>
-              ))}
-            </Select>
-          </div>
+        {/* Event stays above the tabs: both tabs are about one event, and a
+            selector that lived inside a tab would have to be answered twice. */}
+        <Card className="p-5">
+          <Label htmlFor="event">Event</Label>
+          <Select
+            id="event"
+            value={eventId}
+            onChange={(e) => {
+              setParams({ event_id: e.target.value || null });
+              reset();
+            }}
+            className="mt-1.5"
+          >
+            <option value="">— pilih event —</option>
+            {eventsQuery.data?.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.name}
+              </option>
+            ))}
+          </Select>
         </Card>
 
         {!allowed && (
@@ -307,7 +307,8 @@ function GenerateIdCardsPage() {
             <div>
               <p className="font-semibold">Paket event ini belum mencakup generator ID card</p>
               <p className="text-sm text-muted-foreground">
-                Naikkan paket event tersebut, atau pilih event lain yang paketnya sudah mencakupnya.
+                Naikkan paket event tersebut, atau pilih event lain yang paketnya sudah
+                mencakupnya.
               </p>
             </div>
             <Button asChild variant="outline">
@@ -316,247 +317,369 @@ function GenerateIdCardsPage() {
           </Card>
         )}
 
-        <Card className="p-5">
-          {!eventId ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-              Pilih event dulu untuk melihat calon penerima kartu.
-            </p>
-          ) : recipientsQuery.isLoading ? (
-            <Skeleton className="h-40 w-full rounded-lg" />
-          ) : recipients.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              <Users className="mx-auto mb-2 h-6 w-6" />
-              Belum ada pemain, ofisial, atau petugas di event ini.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-6">
-              {GROUPS.map(({ type, label }) => {
-                const pool = recipients.filter((r) => r.type === type);
-                if (pool.length === 0) return null;
+        {!eventId ? (
+          <EmptyState
+            icon={IdCard}
+            title="Pilih event dulu"
+            description="Kartu dicetak per event — pemain, ofisial tim, dan petugasnya diambil dari event yang kamu pilih di atas."
+          />
+        ) : (
+          <>
+            {/* The count rides in the tab's own label: an organizer who just
+                printed needs to see there is something to send without opening
+                the other tab to find out. */}
+            <PillTabs
+              items={[
+                TABS[0],
+                {
+                  ...TABS[1],
+                  label: issuedTotal > 0 ? `${TABS[1].label} (${issuedTotal})` : TABS[1].label,
+                },
+              ]}
+              activeKey={tab}
+              onSelect={(key) => setParams({ tab: key === "print" ? null : key })}
+            />
 
-                const chosen = pool.filter((r) => picked.includes(keyOf(r))).length;
-
-                return (
-                  <div key={type}>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold">
-                        {label}{" "}
-                        <span className="font-normal text-muted-foreground">
-                          ({chosen}/{pool.length})
-                        </span>
-                      </h3>
-                      <Button size="sm" variant="outline" onClick={() => toggleGroup(type)}>
-                        {chosen === pool.length ? "Kosongkan" : "Pilih semua"}
-                      </Button>
+            {tab === "print" ? (
+              <Card className="flex flex-col gap-7 p-5">
+                <StepSection
+                  step={1}
+                  title="Pilih template"
+                  hint="Desain kartumu, berikut posisi foto, nama, dan QR-nya."
+                  done={!!templateId}
+                  aside={
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href="/organizer/id-cards">Kelola template</Link>
+                    </Button>
+                  }
+                >
+                  {templatesQuery.data?.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">
+                      Belum ada template.{" "}
+                      <Link
+                        href="/organizer/id-cards/templates/new"
+                        className="font-medium text-[var(--brand-600)] hover:underline"
+                      >
+                        Buat satu dulu →
+                      </Link>
                     </div>
+                  ) : (
+                    <Select
+                      id="template"
+                      value={templateId}
+                      onChange={(e) => {
+                        setParams({ template_id: e.target.value || null });
+                        setBatchId(null);
+                      }}
+                    >
+                      <option value="">— pilih template —</option>
+                      {templatesQuery.data?.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} · {tpl.width_mm} × {tpl.height_mm} mm
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </StepSection>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {pool.map((person) => {
-                        const key = keyOf(person);
+                <StepSection
+                  step={2}
+                  title="Pilih siapa yang dicetak"
+                  hint="Boleh sebagian — mencetak ulang orang yang sama tidak membuat nomor kartu baru."
+                  done={picked.length > 0}
+                  muted={!templateId}
+                  aside={
+                    picked.length > 0 ? (
+                      <Button size="sm" variant="ghost" onClick={() => setPicked([])}>
+                        Kosongkan ({picked.length})
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  {recipientsQuery.isLoading ? (
+                    <Skeleton className="h-40 w-full rounded-lg" />
+                  ) : recipients.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                      <Users className="mx-auto mb-2 h-6 w-6" />
+                      Belum ada pemain, ofisial, atau petugas di event ini.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-5">
+                      {GROUPS.map(({ type, label }) => {
+                        const pool = recipients.filter((r) => r.type === type);
+                        if (pool.length === 0) return null;
+
+                        const chosen = pool.filter((r) => picked.includes(keyOf(r))).length;
 
                         return (
-                          <label
-                            key={key}
-                            className={cn(
-                              "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
-                              picked.includes(key)
-                                ? "border-[var(--brand-600)] bg-[var(--tint)]"
-                                : "border-border hover:border-[var(--border-strong)]"
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={picked.includes(key)}
-                              onChange={() => toggle(key)}
-                            />
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{person.name}</span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {[person.role_label, person.team_name].filter(Boolean).join(" · ")}
-                                {!person.photo_url && " · tanpa foto"}
-                              </span>
-                            </span>
-                          </label>
+                          <div key={type}>
+                            <div className="mb-2.5 flex items-center justify-between gap-3">
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {label} ({chosen}/{pool.length})
+                              </h3>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => toggleGroup(type)}
+                              >
+                                {chosen === pool.length ? "Kosongkan" : "Pilih semua"}
+                              </Button>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {pool.map((person) => {
+                                const key = keyOf(person);
+
+                                return (
+                                  <label
+                                    key={key}
+                                    className={cn(
+                                      "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
+                                      picked.includes(key)
+                                        ? "border-[var(--brand-600)] bg-[var(--tint)]"
+                                        : "border-border hover:border-[var(--border-strong)]"
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={picked.includes(key)}
+                                      onChange={() => toggle(key)}
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block truncate font-medium">
+                                        {person.name}
+                                      </span>
+                                      <span className="block truncate text-xs text-muted-foreground">
+                                        {[person.role_label, person.team_name]
+                                          .filter(Boolean)
+                                          .join(" · ")}
+                                        {!person.photo_url && " · tanpa foto"}
+                                      </span>
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
+                  )}
+                </StepSection>
+
+                <StepSection
+                  step={3}
+                  title="Buat kartunya"
+                  hint="Dirender di latar belakang, lalu diunduh sebagai satu .zip berisi 1 PNG per orang."
+                  done={batch?.status === "done"}
+                  muted={!ready && batch?.status !== "done"}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-[var(--bg-soft)] px-4 py-3">
+                    <div className="min-w-0 text-sm">
+                      {batch?.status === "failed" ? (
+                        <p className="text-[var(--danger)]">
+                          Gagal membuat kartu{batch.error ? `: ${batch.error}` : "."}
+                        </p>
+                      ) : running ? (
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Membuat kartu… {batch.done}/{batch.total}
+                        </p>
+                      ) : batch?.status === "done" ? (
+                        <p className="text-muted-foreground">
+                          {batch.total} kartu siap diunduh.{" "}
+                          <button
+                            type="button"
+                            onClick={() => setParams({ tab: "deliver" })}
+                            className="font-medium text-[var(--brand-600)] hover:underline"
+                          >
+                            Kirim lewat email →
+                          </button>
+                        </p>
+                      ) : !templateId ? (
+                        <p className="text-muted-foreground">Pilih template dulu di langkah 1.</p>
+                      ) : picked.length === 0 ? (
+                        <p className="text-muted-foreground">
+                          Pilih minimal satu orang di langkah 2.
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground">
+                          {picked.length} orang siap dicetak.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      {batch?.status === "done" && (
+                        <Button
+                          variant="outline"
+                          onClick={() => download.mutate()}
+                          disabled={download.isPending}
+                        >
+                          {download.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          Unduh .zip
+                        </Button>
+                      )}
+
+                      <Button
+                        onClick={() => generate.mutate()}
+                        disabled={!ready || generate.isPending || running}
+                      >
+                        {generate.isPending || running ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : batch?.status === "done" ? (
+                          <Printer className="h-4 w-4" />
+                        ) : (
+                          <IdCard className="h-4 w-4" />
+                        )}
+                        {batch?.status === "done" ? "Cetak ulang" : "Buat kartu"}
+                        {picked.length > 0 && batch?.status !== "done" ? ` (${picked.length})` : ""}
+                      </Button>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-
-        <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
-          <div className="min-w-0 text-sm">
-            {batch?.status === "failed" ? (
-              <p className="text-[var(--danger)]">
-                Gagal membuat kartu{batch.error ? `: ${batch.error}` : "."}
-              </p>
-            ) : running ? (
-              <p className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Membuat kartu… {batch.done}/{batch.total}
-              </p>
-            ) : batch?.status === "done" ? (
-              <p className="text-muted-foreground">
-                {batch.total} kartu siap diunduh sebagai satu .zip.
-              </p>
+                </StepSection>
+              </Card>
+            ) : issuedTotal === 0 ? (
+              <EmptyState
+                icon={Printer}
+                title="Belum ada kartu terbit"
+                description="Buat kartunya dulu di tab Cetak. Setiap kartu yang terbit dapat nomor dan QR verifikasinya sendiri, dan baru setelah itu bisa dikirim lewat email."
+                action={
+                  <Button onClick={() => setParams({ tab: null })}>
+                    <Printer className="h-4 w-4" />
+                    Ke tab Cetak
+                  </Button>
+                }
+              />
             ) : (
-              <p className="text-muted-foreground">
-                {picked.length > 0 ? `${picked.length} orang dipilih.` : "Belum ada yang dipilih."}
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            {batch?.status === "done" && (
-              <Button
-                variant="outline"
-                onClick={() => download.mutate()}
-                disabled={download.isPending}
-              >
-                {download.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                Unduh .zip
-              </Button>
-            )}
-
-            <Button
-              onClick={() => generate.mutate()}
-              disabled={!ready || generate.isPending || running}
-            >
-              {generate.isPending || running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : batch?.status === "done" ? (
-                <Printer className="h-4 w-4" />
-              ) : (
-                <IdCard className="h-4 w-4" />
-              )}
-              {batch?.status === "done" ? "Cetak ulang" : "Buat kartu"}
-              {picked.length > 0 && batch?.status !== "done" ? ` (${picked.length})` : ""}
-            </Button>
-          </div>
-        </Card>
-
-        {/* Only once this event has cards. A panel offering to email nothing is
-            an announcement about a door that isn't there — the same call made
-            for `online_registration_enabled`. */}
-        {eventId && (issued?.meta.total ?? 0) > 0 && (
-          <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">Kirim kartu via email</p>
-              <p className="text-muted-foreground">
-                {/* The counts are stated before the click, not discovered from
-                    the result. The gap between them is ordinary — a team
-                    registered without a manager account has nowhere to send —
-                    and an organizer who only learns it afterwards reads it as a
-                    bug. */}
-                {issued!.meta.total} kartu terbit, {sendable.length} punya alamat email (
-                {addresses} email).
-                {issued!.meta.total > sendable.length &&
-                  ` ${issued!.meta.total - sendable.length} harus dicetak — tim tanpa akun manajer dan petugas tanpa email tidak punya tujuan.`}
-              </p>
-
-              {sending ? (
-                <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Mengirim… {alreadySent}/{sendable.length} kartu terkirim
-                </p>
-              ) : alreadySent > 0 ? (
-                <p className="mt-1.5 text-sm text-muted-foreground">
-                  {alreadySent} dari {sendable.length} kartu sudah pernah terkirim.
-                </p>
-              ) : null}
-
-              <p className="mt-1 text-xs text-muted-foreground">
-                Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya sekaligus,
-                wasit dan staf menerima kartunya sendiri. Pengiriman dijarakkan agar tidak ditolak
-                penyedia email, jadi butuh beberapa menit untuk event besar.
-              </p>
-            </div>
-
-            <Button
-              variant="outline"
-              disabled={sendable.length === 0 || send.isPending || sending}
-              onClick={async () => {
-                const resend = sendable.some((c) => c.sent_at);
-                const ok = await confirm({
-                  title: `Kirim ${sendable.length} kartu ke ${addresses} alamat email?`,
-                  description: resend
-                    ? "Sebagian kartu sudah pernah dikirim dan akan dikirim ulang ke alamat yang sama."
-                    : "Setiap penerima mendapat kartunya sebagai lampiran PNG, berikut QR verifikasinya.",
-                  confirmLabel: "Kirim sekarang",
-                });
-                if (ok) send.mutate();
-              }}
-            >
-              {send.isPending || sending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Mail className="h-4 w-4" />
-              )}
-              {sending ? "Mengirim…" : alreadySent > 0 ? "Kirim ulang" : "Kirim via email"}
-            </Button>
-          </Card>
-        )}
-
-        {eventId && (issued?.meta.total ?? 0) > 0 && (
-          <Card className="p-5">
-            <h3 className="text-sm font-semibold">Kartu terbit</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Nomor kartu tercetak di QR-nya, jadi kartu fisik bisa dilacak kembali ke baris ini.
-              Mencetak ulang orang yang sama memakai nomor yang sama.
-            </p>
-
-            <div className="mt-4 flex flex-col divide-y divide-border">
-              {issued!.items.map((card) => (
-                <div key={card.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{card.recipient_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {[card.role_label, card.team_name].filter(Boolean).join(" · ")}
-                      {" · "}
-                      <code className="text-[11px]">{card.card_number}</code>
+              <>
+                {/* What the QR is for, answered where the cards are. This was
+                    the single most confusing thing about the feature: the code
+                    is printed, nothing in the app scans it, and nothing said
+                    so. There is deliberately no in-app scanner — a card has no
+                    check-in, so any phone camera is the reader and the gate
+                    staff need no account at all. */}
+                <Card className="flex gap-4 p-5">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-[var(--brand-600)]">
+                    <QrCode className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 text-sm">
+                    <p className="font-semibold">Cara memindai QR di kartu</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Pakai <strong>kamera ponsel biasa</strong> — tidak perlu aplikasi dan
+                      petugas gerbang tidak perlu akun. QR-nya membuka halaman verifikasi publik
+                      berisi nama, peran, tim, dan nomor kartunya.
+                    </p>
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <ScanLine className="h-3.5 w-3.5" />
+                      Halaman itu membuktikan kartunya diterbitkan penyelenggara, bukan identitas
+                      pemegangnya — cocokkan fotonya dengan orang di depanmu. Ikon{" "}
+                      <strong>↗</strong> di daftar bawah membuka halaman yang sama dari sini.
                     </p>
                   </div>
+                </Card>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    {/* Three states, not two: never sent, sent, and no address
-                        at all. The third is the one an organizer acts on — it
-                        means this card has to be printed. */}
-                    {card.sent_at ? (
-                      <Badge variant="success">Terkirim</Badge>
-                    ) : card.recipient_email ? (
-                      <Badge variant="outline">Belum dikirim</Badge>
-                    ) : (
-                      <Badge variant="outline">Tanpa email</Badge>
-                    )}
+                <Card className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 text-sm">
+                      <p className="font-semibold">Kirim kartu via email</p>
 
-                    {card.has_png && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => downloadCard.mutate(card.id)}
-                        disabled={downloadCard.isPending}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    )}
+                      {/* The counts are stated before the click, not discovered
+                          from the result. The gap between them is ordinary — a
+                          team registered without a manager account has nowhere
+                          to send — and an organizer who only learns it
+                          afterwards reads it as a bug. */}
+                      <p className="mt-1 text-muted-foreground">
+                        {issuedTotal} kartu terbit · {sendable.length} punya alamat email ·{" "}
+                        {addresses} email
+                      </p>
+
+                      {issuedTotal > sendable.length && (
+                        <p className="mt-1 text-xs text-[var(--warning)]">
+                          {issuedTotal - sendable.length} kartu harus dicetak dan diserahkan
+                          langsung — tim tanpa akun manajer dan petugas tanpa email tidak punya
+                          tujuan.
+                        </p>
+                      )}
+
+                      {sending ? (
+                        <p className="mt-2 flex items-center gap-2 text-sm font-medium text-[var(--brand-600)]">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Mengirim… {alreadySent}/{sendable.length} kartu terkirim
+                        </p>
+                      ) : alreadySent > 0 ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {alreadySent} dari {sendable.length} kartu sudah terkirim.
+                        </p>
+                      ) : null}
+
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya
+                        sekaligus (pemain tidak punya email sendiri), wasit dan staf menerima
+                        kartunya masing-masing. Pengiriman dijarakkan agar tidak ditolak penyedia
+                        email, jadi butuh beberapa menit untuk event besar.
+                      </p>
+                    </div>
+
+                    <Button
+                      disabled={sendable.length === 0 || send.isPending || sending}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Kirim ${sendable.length} kartu ke ${addresses} alamat email?`,
+                          description:
+                            alreadySent > 0
+                              ? `${alreadySent} kartu sudah pernah dikirim dan akan dikirim ulang ke alamat yang sama.`
+                              : "Setiap penerima mendapat kartunya sebagai lampiran PNG, berikut QR verifikasinya.",
+                          confirmLabel: "Kirim sekarang",
+                        });
+                        if (ok) send.mutate();
+                      }}
+                    >
+                      {send.isPending || sending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Mail className="h-4 w-4" />
+                      )}
+                      {sending
+                        ? "Mengirim…"
+                        : alreadySent === sendable.length && alreadySent > 0
+                          ? "Kirim ulang semua"
+                          : "Kirim via email"}
+                    </Button>
                   </div>
-                </div>
-              ))}
-            </div>
+                </Card>
 
-            {issued!.meta.total > issued!.items.length && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Menampilkan {issued!.items.length} dari {issued!.meta.total} kartu terbit.
-              </p>
+                <Card className="p-5">
+                  <h3 className="text-sm font-semibold">Kartu terbit</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Nomor kartu ikut tercetak di QR-nya, jadi kartu fisik bisa dilacak kembali ke
+                    baris ini. Mencetak ulang orang yang sama memakai nomor yang sama.
+                  </p>
+
+                  <div className="mt-4 flex flex-col divide-y divide-border">
+                    {issued!.items.map((card) => (
+                      <IssuedCardRow
+                        key={card.id}
+                        card={card}
+                        onDownload={(id) => downloadCard.mutate(id)}
+                        downloading={downloadCard.isPending && downloadCard.variables === card.id}
+                      />
+                    ))}
+                  </div>
+
+                  {issuedTotal > issued!.items.length && (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Menampilkan {issued!.items.length} dari {issuedTotal} kartu terbit.
+                    </p>
+                  )}
+                </Card>
+              </>
             )}
-          </Card>
+          </>
         )}
       </div>
     </div>

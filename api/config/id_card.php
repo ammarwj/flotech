@@ -77,10 +77,19 @@ return [
      *
      * Text field shape:
      *   {"key":"name","x":50,"y":62,"size":4.5,"color":"#111827",
-     *    "align":"center","bold":true,"uppercase":false,"wrap":90}
+     *    "align":"center","valign":"middle","bold":true,"uppercase":false,
+     *    "wrap":90}
      *   `size` is MILLIMETRES, not points and not a percentage: the card itself
      *   is in mm, so "the name is 5mm tall" survives swapping CR80 for A6 and
      *   can be checked with a ruler. `wrap` is a percentage of card width.
+     *
+     *   `valign` (`top`|`middle`|`bottom`, absent = `top`) picks which edge of
+     *   the *wrapped block* `y` anchors — not which edge of the first line.
+     *   That distinction is the whole reason it exists: anchored at the top, a
+     *   one-word name sits high in its plate while a name long enough to wrap
+     *   grows downwards out of it. `top` is the default so templates written
+     *   before this field renders unchanged; the editor starts new fields at
+     *   `middle`.
      *
      * Photo field shape (at most one per template):
      *   {"key":"photo","x":30,"y":8,"w":40,"h":46,"fit":"cover","radius":12}

@@ -24,7 +24,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useConfirm } from "@/components/shared/confirm-provider";
 
-const DESCRIPTION = "Cetak kartu identitas pemain, wasit, dan staf dari desainmu sendiri.";
+const DESCRIPTION =
+  "Cetak kartu identitas pemain, wasit, dan staf dari desainmu sendiri — atau kirim lewat email. Tambahkan field QR agar kartunya bisa diverifikasi dengan kamera ponsel.";
 
 export default function IdCardsPage() {
   const queryClient = useQueryClient();

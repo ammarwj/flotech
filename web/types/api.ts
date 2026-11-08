@@ -2647,6 +2647,16 @@ export interface IdCardField {
   size?: number;
   color?: string;
   align?: "left" | "center" | "right";
+  /**
+   * Text only — which edge of the *wrapped block* `y` anchors, not which edge
+   * of the first line. Absent means `top`, the renderer's old hardcoded value,
+   * so templates written before this field render unchanged.
+   *
+   * It is what decides where a long name goes: anchored at the top, a one-word
+   * name sits high in its plate while a name long enough to wrap grows
+   * downwards out of it. New fields start at `middle`.
+   */
+  valign?: "top" | "middle" | "bottom";
   bold?: boolean;
   uppercase?: boolean;
   /** Text only — wrap width as a percent of card width. */

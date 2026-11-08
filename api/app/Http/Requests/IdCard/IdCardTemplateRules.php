@@ -51,6 +51,18 @@ class IdCardTemplateRules
             'fields.*.size' => ['nullable', 'numeric', 'between:1,40'],
             'fields.*.color' => ['nullable', 'string', 'max:9'],
             'fields.*.align' => ['nullable', Rule::in(['left', 'center', 'right'])],
+
+            /*
+             * Vertical anchor, text only. Absent means `top`, which is what
+             * every template written before this field existed meant — the
+             * renderer's old hardcoded value — so nothing already placed moves.
+             *
+             * It matters because `y` anchors a *block*, not a line: with `top`
+             * a name that wraps to two lines grows downwards out of its box
+             * while a one-word name sits high in it. `middle` is what a name
+             * plate actually wants, and the editor defaults new fields to it.
+             */
+            'fields.*.valign' => ['nullable', Rule::in(['top', 'middle', 'bottom'])],
             'fields.*.bold' => ['nullable', 'boolean'],
             'fields.*.uppercase' => ['nullable', 'boolean'],
             'fields.*.wrap' => ['nullable', 'numeric', 'between:10,100'],
@@ -127,6 +139,15 @@ class IdCardTemplateRules
                     $validator->errors()->add(
                         "fields.$i.size",
                         ucfirst($noun).' memakai lebar dan tinggi, bukan ukuran huruf.',
+                    );
+                }
+
+                // A box is anchored at its top-left corner by definition, so
+                // there is no block to centre and nothing for this to mean.
+                if (isset($field['valign'])) {
+                    $validator->errors()->add(
+                        "fields.$i.valign",
+                        'Hanya field teks yang punya perataan vertikal.',
                     );
                 }
 

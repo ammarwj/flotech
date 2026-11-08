@@ -244,6 +244,104 @@ class IdCardRenderTest extends TestCase
         $this->assertNotSame('#ff0000', $contained->colorAt(201, 201)->toHex(true));
     }
 
+    /**
+     * The rows of a card that hold any ink, as [topmost, bottommost].
+     *
+     * Read off the rendered PNG rather than trusted from the field values:
+     * where a block of text actually lands is the thing under test, and it is
+     * decided inside Intervention.
+     *
+     * @return array{int, int}
+     */
+    private function inkRows(ImageInterface $img, int $fromX, int $toX): array
+    {
+        $top = null;
+        $bottom = null;
+
+        for ($y = 0; $y < $img->height(); $y++) {
+            for ($x = $fromX; $x < $toX; $x += 2) {
+                if ($img->colorAt($x, $y)->toHex(true) !== '#dddddd') {
+                    $top ??= $y;
+                    $bottom = $y;
+                    break;
+                }
+            }
+        }
+
+        return [$top ?? 0, $bottom ?? 0];
+    }
+
+    public function test_valign_middle_keeps_a_one_line_and_a_wrapped_name_on_the_same_centre(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        $template = fn (string $valign) => $this->template($org, 85.6, 54, [
+            [
+                'key' => 'name', 'x' => 50, 'y' => 50, 'size' => 4,
+                'align' => 'center', 'valign' => $valign, 'wrap' => 60,
+            ],
+        ]);
+
+        // A name that fits one line, and one long enough to wrap. `y` anchors
+        // the whole wrapped block, so this pair is what separates the two
+        // anchors — a single name renders the same under either.
+        $short = 'ADIB';
+        $long = 'AHMAD FAUZI RAHMATULLAH ABDURRAHMAN';
+
+        $centreOf = fn (string $valign, string $name) => array_sum($this->inkRows(
+            $this->decode($this->service()->render($template($valign), $this->person(['name' => $name]))),
+            0,
+            1011,
+        )) / 2;
+
+        $topShort = $centreOf('top', $short);
+        $topLong = $centreOf('top', $long);
+        $midShort = $centreOf('middle', $short);
+        $midLong = $centreOf('middle', $long);
+
+        // Both anchors in one test, because either assertion alone passes a
+        // build that ignores `valign` entirely: under `top` the wrapped name
+        // must sink (that is the reported bug), and under `middle` the two must
+        // land on the same centre (that is the fix).
+        $this->assertGreaterThan(
+            $topShort + 10,
+            $topLong,
+            'anchored at the top, a wrapped name should sink below a one-line one',
+        );
+
+        $this->assertEqualsWithDelta(
+            $midShort,
+            $midLong,
+            4,
+            'anchored in the middle, both names should share one centre',
+        );
+    }
+
+    public function test_a_text_field_without_valign_still_renders_anchored_at_the_top(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        $fields = fn (?string $valign) => [
+            array_filter([
+                'key' => 'name', 'x' => 50, 'y' => 50, 'size' => 4,
+                'align' => 'center', 'valign' => $valign, 'wrap' => 60,
+            ], fn ($v) => $v !== null),
+        ];
+
+        $name = 'AHMAD FAUZI RAHMATULLAH ABDURRAHMAN';
+
+        $absent = $this->service()->render($this->template($org, 85.6, 54, $fields(null)), $this->person(['name' => $name]));
+        $explicitTop = $this->service()->render($this->template($org, 85.6, 54, $fields('top')), $this->person(['name' => $name]));
+        $middle = $this->service()->render($this->template($org, 85.6, 54, $fields('middle')), $this->person(['name' => $name]));
+
+        // Every template written before `valign` existed omits the key, and
+        // those cards must come out exactly as they did. The third render is
+        // what makes the first assertion mean something: without it, a renderer
+        // that ignored `valign` altogether would pass.
+        $this->assertSame($explicitTop, $absent);
+        $this->assertNotSame($middle, $absent);
+    }
+
     /** A template whose only field is a QR box, so nothing else can differ. */
     private function qrTemplate(Organization $org, float $w = 22, float $h = 22): IdCardTemplate
     {

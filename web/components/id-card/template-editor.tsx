@@ -34,7 +34,11 @@ const DEFAULTS = {
   // and rounding the corners eats the finder patterns a scanner locates the
   // code by. Both are refused by the API rather than ignored.
   qr: { x: 70, y: 56, w: 20, h: 20 },
-  text: { x: 42, y: 30, size: 4, color: "#111827", align: "left", wrap: 55 },
+  // `valign: "middle"` for new fields, while an omitted key still means `top`
+  // on the server so older templates render unchanged. Middle is what a name
+  // plate wants: anchored at the top, "ADIB" sits high in its box while a name
+  // long enough to wrap grows downwards out of it.
+  text: { x: 42, y: 30, size: 4, color: "#111827", align: "left", valign: "middle", wrap: 55 },
 } as const;
 
 /**
@@ -251,15 +255,22 @@ export function TemplateEditor({
             }
 
             const align = field.align ?? "left";
+            // Absent means `top`, matching IdCardService::drawText(). The two
+            // readings have to agree or the canvas shows a layout the printer
+            // will not produce.
+            const valign = field.valign ?? "top";
 
             // x is the point the text aligns *to*, the same as the renderer and
-            // the same as the certificate editor, so both read alike.
-            const transform =
-              align === "left"
-                ? "none"
-                : align === "right"
-                  ? "translateX(-100%)"
-                  : "translateX(-50%)";
+            // the same as the certificate editor, so both read alike. y anchors
+            // the wrapped BLOCK the same way, which is why the vertical shift
+            // is a translate rather than a different `top` — the block's height
+            // is whatever the text wrapped to, and only the browser knows it.
+            const transform = [
+              align === "left" ? "" : align === "right" ? "translateX(-100%)" : "translateX(-50%)",
+              valign === "top" ? "" : valign === "bottom" ? "translateY(-100%)" : "translateY(-50%)",
+            ]
+              .filter(Boolean)
+              .join(" ") || "none";
 
             return (
               <div
@@ -301,9 +312,21 @@ export function TemplateEditor({
         </div>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Geser field ke posisinya; kotak foto bisa ditarik sudutnya untuk diubah ukuran. Teks
-          contoh hanya pratinjau — saat dicetak, isinya diambil dari data event.
+          Geser field ke posisinya; kotak foto dan QR bisa ditarik sudutnya untuk diubah ukuran.
+          Teks contoh hanya pratinjau — saat dicetak, isinya diambil dari data event.
         </p>
+
+        {/* Said here, where it can still be acted on. A card without this field
+            still prints and still gets a number, but nothing on the plastic
+            points at its verification page — and that is only discoverable
+            after a batch has gone to the printer. */}
+        {!fields.some((f) => f.key === "qr") && fieldDefs.some((d) => d.key === "qr") && (
+          <p className="mt-2 text-xs text-[var(--warning)]">
+            Template ini belum punya field <strong>QR verifikasi</strong>. Kartunya tetap
+            tercetak dan tetap dapat nomor, tapi tidak ada yang bisa dipindai untuk memastikan
+            kartunya asli.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-4">
@@ -501,21 +524,46 @@ export function TemplateEditor({
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="f-align">Perataan</Label>
-                  <Select
-                    id="f-align"
-                    value={active.align ?? "left"}
-                    onChange={(e) =>
-                      update(selected, { align: e.target.value as IdCardField["align"] })
-                    }
-                    className="mt-1"
-                  >
-                    <option value="left">Kiri</option>
-                    <option value="center">Tengah</option>
-                    <option value="right">Kanan</option>
-                  </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="f-align">Perataan</Label>
+                    <Select
+                      id="f-align"
+                      value={active.align ?? "left"}
+                      onChange={(e) =>
+                        update(selected, { align: e.target.value as IdCardField["align"] })
+                      }
+                      className="mt-1"
+                    >
+                      <option value="left">Kiri</option>
+                      <option value="center">Tengah</option>
+                      <option value="right">Kanan</option>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="f-valign">Vertikal</Label>
+                    <Select
+                      id="f-valign"
+                      value={active.valign ?? "top"}
+                      onChange={(e) =>
+                        update(selected, { valign: e.target.value as IdCardField["valign"] })
+                      }
+                      className="mt-1"
+                    >
+                      <option value="top">Atas</option>
+                      <option value="middle">Tengah</option>
+                      <option value="bottom">Bawah</option>
+                    </Select>
+                  </div>
                 </div>
+
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  Titik Y memegang seluruh blok teks, bukan baris pertamanya. Pilih
+                  &ldquo;Tengah&rdquo; untuk kotak nama: dengan &ldquo;Atas&rdquo;, nama satu kata
+                  duduk tinggi sementara nama panjang yang terbelah dua baris turun keluar
+                  kotaknya.
+                </p>
 
                 <div>
                   <Label htmlFor="f-color">Warna</Label>
