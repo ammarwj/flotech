@@ -137,9 +137,19 @@ class RaceEntryResource extends JsonResource
             // setelah lunas" placeholder. Absent reads as "not yet"; null would
             // read as "broken".
             'qr_code' => $this->when($this->qr_code !== null, fn () => $this->qr_code),
-            // Null until somebody fills it in. Published regardless so the page
-            // can show it the moment it exists, without a second request.
+            // Null until BibService::assignNumbers() gives it one. Published
+            // regardless so the page can show it the moment it exists, without
+            // a second request.
             'bib_number' => $this->bib_number,
+            // Whether there is an e-BIB to download, as a boolean the server
+            // answers. The key itself never leaves the server (same rule as
+            // `has_png` on IdCardResource), and the client never reassembles
+            // this from `status`/`bib_number`: a runner can be paid and
+            // numbered while the organizer has not printed yet, and a button
+            // derived from those two would 404 — the `effective_payment_method`
+            // bug in another shape.
+            'bib_available' => $this->bib_png_key !== null,
+            'bib_sent_at' => $this->bib_sent_at,
             // Set the instant the desk scans them in. The runner's own page
             // shows it too — a second scan refuses, and somebody holding a
             // phone that says "sudah check-in 06:12" can stop wondering.

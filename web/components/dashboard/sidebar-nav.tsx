@@ -13,6 +13,7 @@ import {
   Award,
   ClipboardList,
   IdCard,
+  Tag,
   ChevronDown,
   Settings,
   Settings2,
@@ -98,6 +99,11 @@ export const ORGANIZER_NAV: NavSection[] = [
       // No `mobile: true`: the bottom bar already has its five slots taken, and
       // a sixth would be dropped silently rather than shown.
       { href: "/organizer/id-cards", label: "ID Card", icon: IdCard },
+      // Listed unconditionally, like the three document entries above it: the
+      // page itself says which plan and which kind of event it needs, and a
+      // menu that appeared only for organizers who already run races would
+      // never tell anyone else the feature exists.
+      { href: "/organizer/bibs", label: "e-BIB", icon: Tag },
       { href: "/organizer/billing", label: "Pembelian Paket", icon: CreditCard },
       // Beside the wallet rather than inside it: these transfers deliberately
       // never touch the ledger, so a row here would promise a balance movement

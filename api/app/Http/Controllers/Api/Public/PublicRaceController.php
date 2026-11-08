@@ -11,6 +11,7 @@ use App\Http\Resources\RacePeriodResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceEntry;
+use App\Services\BibService;
 use App\Services\Catalog;
 use App\Services\EventDiscountCodeService;
 use App\Services\MidtransService;
@@ -25,6 +26,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The runner's side of a fun run: what is on sale, entering, and the receipt.
@@ -45,6 +47,7 @@ class PublicRaceController extends Controller
         protected PaymentFeeCalculator $fees,
         protected ParticipantDocumentService $documents,
         protected EventDiscountCodeService $discounts,
+        protected BibService $bibs,
     ) {}
 
     /**
@@ -381,6 +384,32 @@ class PublicRaceController extends Controller
         }
 
         return $this->documents->receipt($entry);
+    }
+
+    /**
+     * The runner's own e-BIB.
+     *
+     * Public alongside `invoice` and `receipt`, with the reason already written
+     * there: a runner may arrive from an email and may never have signed up, so
+     * the entry's unguessable id is the credential. Locking this one behind a
+     * login would be worse than locking those two, because this sheet is what
+     * gets them through the race-pack desk.
+     *
+     * 404 while nothing has been rendered. An organizer who has not printed yet
+     * has no file to hand over, and a placeholder would be a bib that admits
+     * nobody — the proof page is what tells the runner to wait.
+     */
+    public function bib(string $raceEntry): StreamedResponse|JsonResponse
+    {
+        $entry = RaceEntry::findOrFail($raceEntry);
+
+        abort_if($entry->bib_png_key === null, 404);
+
+        return $this->bibs->storage()->download(
+            (string) $entry->bib_png_key,
+            $this->bibs->filename($entry),
+            ['Content-Type' => 'image/png'],
+        );
     }
 
     /**

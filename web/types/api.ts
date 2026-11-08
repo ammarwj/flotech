@@ -1786,8 +1786,18 @@ export interface RaceEntry extends ManualPaymentFields {
    * anywhere near this turns "not yet" into "broken".
    */
   qr_code?: string;
-  /** Null until somebody fills it in; no writer yet. */
+  /** Null until BibService::assignNumbers() gives it one, which generating does. */
   bib_number: string | null;
+  /**
+   * Whether there is an e-BIB to download, answered by the server.
+   *
+   * Never reassembled from `status`/`bib_number`: a runner can be paid and
+   * numbered while the organizer has not printed yet, and a button derived
+   * from those two would 404.
+   */
+  bib_available: boolean;
+  /** Null means the sheet was never emailed — printing alone does not send. */
+  bib_sent_at: string | null;
   /** Set the instant the desk scans them in. */
   checked_in_at: string | null;
   /**
@@ -2777,6 +2787,101 @@ export interface IdCardVerification {
   issued_at: string;
   event: { name: string | null; start_date: string | null };
   organization: { name: string | null; slug: string | null; logo_url: string | null };
+}
+
+// ---- e-BIB ----
+
+/** A placeable field key, e.g. "bib_number" or "qr". Catalogued by the API. */
+export type BibFieldKey = string;
+
+export interface BibFieldDef {
+  key: BibFieldKey;
+  label: string;
+}
+
+/**
+ * One field placed on an e-BIB. Two shapes share this type, the way they share
+ * one array in the JSON column, and the API refuses any mixture of the two:
+ *
+ * - text (every key but `qr`) — needs `size`, must not carry `w`/`h`. `x`/`y`
+ *   are the point the text aligns *to*, and `size` is **millimetres**: the
+ *   sheet is in mm, so "a 60mm number" survives swapping A5 for A6 and can be
+ *   checked with a ruler.
+ * - qr (`key: "qr"`) — needs `w`/`h`, must not carry `size`. Here `x`/`y` are
+ *   the box's **top-left corner**, not an anchor: a box you resize from a
+ *   corner has to stay pinned to one.
+ *
+ * Unlike IdCardField there is no `fit` or `radius`, and the API refuses both for
+ * every key: there is no photo on a bib, `contain` means nothing on something
+ * already square, and rounded corners eat the finder patterns a scanner locates
+ * the code by.
+ */
+export interface BibField {
+  key: BibFieldKey;
+  /** Percent of sheet width. Text: the align point. QR: the box's left edge. */
+  x: number;
+  /** Percent of sheet height. Text: the block's top. QR: the box's top edge. */
+  y: number;
+  /** Text only — millimetres of cap height. */
+  size?: number;
+  color?: string;
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+  uppercase?: boolean;
+  /** Text only — wrap width as a percent of sheet width. */
+  wrap?: number;
+  /** QR only — box width as a percent of sheet width. */
+  w?: number;
+  /** QR only — box height as a percent of sheet height. */
+  h?: number;
+}
+
+export interface BibTemplate {
+  id: string;
+  organization_id: string;
+  name: string;
+  background_url: string;
+  /** Millimetres. Free-form; the presets in the picker are a UI affordance only. */
+  width_mm: number;
+  height_mm: number;
+  fields: BibField[];
+  created_at: string;
+}
+
+/**
+ * One runner who can be handed a bib.
+ *
+ * One table feeds this, which is why there is no `type` discriminator beside
+ * the id — the whole difference from IdCardRecipient. PAID ONLY: an unpaid
+ * entry has no `qr_code`, so its sheet would be a race-pack ticket that admits
+ * nobody while looking exactly like one that works.
+ *
+ * `bib_number` may be null on the way in — generating assigns it — and
+ * `qr_code` is what the printed QR encodes.
+ */
+export interface BibRecipient {
+  id: string;
+  name: string;
+  bib_number: string | null;
+  category_name: string;
+  qr_code: string | null;
+  email: string | null;
+}
+
+/**
+ * A rendering batch, polled until it settles.
+ *
+ * Not a row: the batch lives in the shared cache for a day and then is gone,
+ * the same lifetime as the zip it points at. Its own type rather than an alias
+ * of IdCardBatch, the same call CertificateBatch makes.
+ */
+export interface BibBatch {
+  batch_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  total: number;
+  done: number;
+  filename: string | null;
+  error: string | null;
 }
 
 /** One logged-in user with their active device sessions (admin "Sesi Aktif"). */

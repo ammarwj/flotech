@@ -63,6 +63,16 @@ export const isCertificateEmailEnabled = (e?: SportEvent | null) =>
   planAllows(e, "certificate_email");
 export const isIdCardEnabled = (e?: SportEvent | null) =>
   planAllows(e, "id_card_generator");
+/**
+ * The plan half of the e-BIB gate, and only that half.
+ *
+ * Printing is gated twice on the server — this, plus the event holding no
+ * matches (`isRaceEvent()`). The two ask different questions and are kept
+ * apart here for the same reason they are apart there: an organizer told
+ * "paketmu belum mencakup" on a football event would go and buy a plan that
+ * changes nothing.
+ */
+export const isBibEnabled = (e?: SportEvent | null) => planAllows(e, "bib_generator");
 export const isExportEnabled = (e?: SportEvent | null) => planAllows(e, "export_data");
 export const isGalleryEnabled = (e?: SportEvent | null) => planAllows(e, "event_gallery");
 export const isSponsorLogosEnabled = (e?: SportEvent | null) => planAllows(e, "sponsor_logos");

@@ -40,6 +40,12 @@ Schedule::command('id-cards:prune')->dailyAt('02:20')->withoutOverlapping();
 // key expires out of the cache after a day, and no row ever pointed at it.
 Schedule::command('certificates:prune-zips')->dailyAt('02:25')->withoutOverlapping();
 
+// e-BIB zips, third of the same shape. Staggered five minutes apart from the
+// two above rather than sharing a slot: each walks a whole prefix and asks S3
+// for a timestamp per candidate, and three doing it at once on one worker makes
+// the slowest of them look hung.
+Schedule::command('bibs:prune')->dailyAt('02:30')->withoutOverlapping();
+
 // Custom domains: retry activations whose DNS was not ready yet, and repair the
 // generated nginx config. Every minute because an admin who just pointed an A
 // record is waiting on it; a single query when there is nothing to do.

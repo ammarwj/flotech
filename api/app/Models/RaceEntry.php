@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasManualPayment;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One runner's entry in a fun run.
@@ -81,6 +83,13 @@ class RaceEntry extends Model
         // RaceEntryService::checkIn(). `bib_number` has no writer yet — the
         // column is here, and what fills it is still the organizer's decision.
         'bib_number',
+        // The printed e-BIB. `bib_png_key` is written only by
+        // BibService::storePrint() and `bib_sent_at` only by SendBibsJob, after
+        // the mail reaches the transport. `bib_number` finally has a writer too
+        // — BibService::assignNumbers(), which numbers per category and never
+        // renumbers a row that already has one.
+        'bib_png_key',
+        'bib_sent_at',
         'qr_code',
         'checked_in_at',
         'checked_in_by',
@@ -112,6 +121,7 @@ class RaceEntry extends Model
             'payment_deadline_at' => 'datetime',
             'verified_at' => 'datetime',
             'checked_in_at' => 'datetime',
+            'bib_sent_at' => 'datetime',
             'refund_requested_at' => 'datetime',
             'refund_decided_at' => 'datetime',
         ];
@@ -166,8 +176,8 @@ class RaceEntry extends Model
      * `scopeAwaitingVerification()`: the queue screen and the count above it
      * must not be able to disagree about which rows are waiting.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<RaceEntry>  $query
-     * @return \Illuminate\Database\Eloquent\Builder<RaceEntry>
+     * @param  Builder<RaceEntry>  $query
+     * @return Builder<RaceEntry>
      */
     public function scopeAwaitingRefundDecision($query)
     {
@@ -212,7 +222,7 @@ class RaceEntry extends Model
      * money through the platform (free, manual rail, or a credit still pending
      * when it was reversed).
      */
-    public function refundPayout(): \Illuminate\Database\Eloquent\Relations\HasOne
+    public function refundPayout(): HasOne
     {
         return $this->hasOne(RefundPayout::class, 'source_id')
             ->where('source_type', 'race_entry');

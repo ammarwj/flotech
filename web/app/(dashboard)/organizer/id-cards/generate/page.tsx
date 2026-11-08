@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, IdCard, Loader2, Mail, Printer, Users } from "lucide-react";
@@ -47,13 +48,36 @@ const GROUPS: Array<{ type: IdCardRecipient["type"]; label: string }> = [
 
 const keyOf = (r: IdCardRecipient) => `${r.type}:${r.id}`;
 
-export default function GenerateIdCardsPage() {
+function GenerateIdCardsPage() {
+  const router = useRouter();
+  const params = useSearchParams();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { orgId, isLoading: orgLoading } = useActiveOrg();
 
-  const [eventId, setEventId] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  /**
+   * Event and template live in the URL, not in component state.
+   *
+   * Sending takes minutes to show up (the mails are queued and the provider is
+   * rate-limited), so the one thing an organizer will certainly do is reload
+   * this page — and with the selection held locally that reload dropped them
+   * back to "pilih event dulu" over the batch they were watching. Same
+   * reasoning as the certificates page keeping its filter in the URL.
+   */
+  const eventId = params.get("event_id") ?? "";
+  const templateId = params.get("template_id") ?? "";
+
+  const setParams = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params.toString());
+
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+
+    router.replace(`?${next.toString()}`, { scroll: false });
+  };
+
   const [picked, setPicked] = useState<string[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
 
@@ -136,10 +160,23 @@ export default function GenerateIdCardsPage() {
    * sittings would otherwise be told the wrong number. `meta.total` is the count
    * over the whole event, not the page, which is exactly the figure wanted here.
    */
+  const [sending, setSending] = useState(false);
+
   const issuedQuery = useQuery({
     queryKey: ["id-cards-issued", orgId, eventId],
     queryFn: () => getIssuedIdCards(orgId!, { event_id: eventId, per_page: 100 }),
     enabled: !!orgId && !!eventId,
+    /**
+     * Polled while a send is in flight, because the send is genuinely not done
+     * when the request returns: the mails are queued and deliberately spaced
+     * out past the provider's per-second limit, so a 26-card event takes most
+     * of a minute. Without this the page looked frozen and the only way to see
+     * progress was a reload — which is also what made losing the filter hurt.
+     *
+     * `sent_at` on the rows is the only thing that knows a mail actually left,
+     * so it is what drives the counter rather than the POST's own reply.
+     */
+    refetchInterval: sending ? 3000 : false,
   });
 
   const issued = issuedQuery.data;
@@ -148,6 +185,16 @@ export default function GenerateIdCardsPage() {
   // second endpoint answering it could disagree with the one that refuses.
   const sendable = issued?.items.filter((c) => c.recipient_email && c.has_png) ?? [];
   const addresses = new Set(sendable.map((c) => c.recipient_email)).size;
+  const alreadySent = sendable.filter((c) => c.sent_at).length;
+
+  // Stop polling once every sendable card has left, so a tab left open does not
+  // keep asking forever.
+  useEffect(() => {
+    if (sending && sendable.length > 0 && alreadySent === sendable.length) {
+      setSending(false);
+      toast.success(`${alreadySent} kartu terkirim.`);
+    }
+  }, [sending, alreadySent, sendable.length]);
 
   const downloadCard = useMutation({
     mutationFn: (cardId: string) => downloadIdCard(orgId!, cardId),
@@ -157,9 +204,13 @@ export default function GenerateIdCardsPage() {
   const send = useMutation({
     mutationFn: () => sendIdCards(orgId!, eventId),
     onSuccess: (result) => {
+      // Watch the rows rather than declaring victory. The POST only queued the
+      // jobs, and the provider can still refuse one — a green "terkirim" over
+      // mail that a 550 rejected is exactly what went wrong before this.
+      setSending(true);
       queryClient.invalidateQueries({ queryKey: ["id-cards-issued", orgId, eventId] });
-      toast.success(
-        `${result.cards} kartu dikirim ke ${result.emails} alamat email.` +
+      toast.info(
+        `${result.cards} kartu masuk antrean ke ${result.emails} alamat email.` +
           (result.skipped > 0 ? ` ${result.skipped} dilewati (tanpa alamat email).` : "")
       );
     },
@@ -216,7 +267,7 @@ export default function GenerateIdCardsPage() {
               id="event"
               value={eventId}
               onChange={(e) => {
-                setEventId(e.target.value);
+                setParams({ event_id: e.target.value || null });
                 reset();
               }}
               className="mt-1.5"
@@ -236,7 +287,7 @@ export default function GenerateIdCardsPage() {
               id="template"
               value={templateId}
               onChange={(e) => {
-                setTemplateId(e.target.value);
+                setParams({ template_id: e.target.value || null });
                 setBatchId(null);
               }}
               className="mt-1.5"
@@ -405,19 +456,32 @@ export default function GenerateIdCardsPage() {
                     and an organizer who only learns it afterwards reads it as a
                     bug. */}
                 {issued!.meta.total} kartu terbit, {sendable.length} punya alamat email (
-                {addresses} email terkirim).
+                {addresses} email).
                 {issued!.meta.total > sendable.length &&
                   ` ${issued!.meta.total - sendable.length} harus dicetak — tim tanpa akun manajer dan petugas tanpa email tidak punya tujuan.`}
               </p>
+
+              {sending ? (
+                <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Mengirim… {alreadySent}/{sendable.length} kartu terkirim
+                </p>
+              ) : alreadySent > 0 ? (
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {alreadySent} dari {sendable.length} kartu sudah pernah terkirim.
+                </p>
+              ) : null}
+
               <p className="mt-1 text-xs text-muted-foreground">
                 Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya sekaligus,
-                wasit dan staf menerima kartunya sendiri.
+                wasit dan staf menerima kartunya sendiri. Pengiriman dijarakkan agar tidak ditolak
+                penyedia email, jadi butuh beberapa menit untuk event besar.
               </p>
             </div>
 
             <Button
               variant="outline"
-              disabled={sendable.length === 0 || send.isPending}
+              disabled={sendable.length === 0 || send.isPending || sending}
               onClick={async () => {
                 const resend = sendable.some((c) => c.sent_at);
                 const ok = await confirm({
@@ -430,12 +494,12 @@ export default function GenerateIdCardsPage() {
                 if (ok) send.mutate();
               }}
             >
-              {send.isPending ? (
+              {send.isPending || sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Mail className="h-4 w-4" />
               )}
-              Kirim via email
+              {sending ? "Mengirim…" : alreadySent > 0 ? "Kirim ulang" : "Kirim via email"}
             </Button>
           </Card>
         )}
@@ -496,5 +560,14 @@ export default function GenerateIdCardsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  // useSearchParams() needs a Suspense boundary or the build fails.
+  return (
+    <Suspense fallback={null}>
+      <GenerateIdCardsPage />
+    </Suspense>
   );
 }

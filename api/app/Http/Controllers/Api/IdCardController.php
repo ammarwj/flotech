@@ -193,18 +193,25 @@ class IdCardController extends Controller
             );
         }
 
-        foreach ($groups as $cardIds) {
-            SendIdCardsJob::dispatch($cardIds);
+        // Spaced out rather than dispatched in one burst. Every SMTP provider
+        // rate-limits per second, and a 138-card print fans out to dozens of
+        // mails: released together they all hit the transport at once and the
+        // provider refuses most of them. The job retries with backoff as well —
+        // this is the cheap half that keeps the retries from being needed.
+        foreach (array_values($groups) as $i => $cardIds) {
+            SendIdCardsJob::dispatch($cardIds)
+                ->delay(now()->addSeconds($i * (int) config('id_card.send_spacing_seconds')));
         }
 
-        $sent = array_sum(array_map('count', $groups));
+        $queued = array_sum(array_map('count', $groups));
 
         return ApiResponse::success(
-            ['emails' => count($groups), 'cards' => $sent, 'skipped' => $unsendable],
-            // The skipped count is stated, never swallowed: a team with no
-            // manager account is ordinary, and "40 kartu dikirim" printed over
-            // 55 people reads as a bug rather than a fact.
-            $sent.' kartu dikirim ke '.count($groups).' alamat email.'
+            ['emails' => count($groups), 'cards' => $queued, 'skipped' => $unsendable],
+            // "Sedang dikirim", not "dikirim": nothing has reached a transport
+            // yet. Claiming delivery here is what put a green toast over mail
+            // that a 550 then refused — `sent_at` on each card is the only
+            // thing that knows, and the client watches that.
+            $queued.' kartu sedang dikirim ke '.count($groups).' alamat email.'
                 .($unsendable > 0 ? " {$unsendable} dilewati (tanpa alamat email)." : ''),
         );
     }

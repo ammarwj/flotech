@@ -134,6 +134,17 @@ class FeatureDefinitionSeeder extends Seeder
                 'description' => 'Cetak kartu identitas pemain, wasit, dan staf dari template.',
                 'sort_order' => 140,
             ],
+            [
+                'feature_key' => 'bib_generator',
+                'feature_label' => 'Generator e-BIB',
+                // The same group as the two above, for the reason written on
+                // `id_card_generator`: to a buyer all three are one thing —
+                // print something from a template you laid out yourself.
+                'feature_group' => 'certificate',
+                'feature_type' => 'boolean',
+                'description' => 'Cetak nomor dada digital peserta lomba dari template, lengkap dengan QR check-in.',
+                'sort_order' => 150,
+            ],
         ];
 
         foreach ($definitions as $definition) {

@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\BankAccountController;
+use App\Http\Controllers\Api\BibController;
+use App\Http\Controllers\Api\BibTemplateController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\CertificateController;
 use App\Http\Controllers\Api\CertificateTemplateController;
@@ -257,6 +259,10 @@ Route::prefix('v1')->group(function () {
     Route::post('race-entries/{raceEntry}/refund-request', [PublicRaceController::class, 'requestRefund']);
     Route::get('race-entries/{raceEntry}/invoice', [PublicRaceController::class, 'invoice']);
     Route::get('race-entries/{raceEntry}/receipt', [PublicRaceController::class, 'receipt']);
+    // The e-BIB, public for the same reason the two documents above are: the
+    // entry's unguessable id is the credential, and this sheet is what gets the
+    // runner through the race-pack desk.
+    Route::get('race-entries/{raceEntry}/bib', [PublicRaceController::class, 'bib']);
 
     // Public e-ticket lookup (by order id).
     Route::get('ticket-orders/{order}', [PublicTicketController::class, 'order']);
@@ -666,6 +672,27 @@ Route::prefix('v1')->group(function () {
             Route::get('id-cards/issued', [IdCardController::class, 'index']);
             Route::post('events/{event}/id-cards/send', [IdCardController::class, 'send']);
             Route::get('id-cards/{card}/download', [IdCardController::class, 'downloadCard']);
+
+            // e-BIB. Same split as the ID card routes above: templates are
+            // org-scoped rows so their CRUD asks orgAllows('bib_generator'),
+            // while printing a particular race's bibs is event-keyed. The
+            // printing half is additionally gated on the event holding no
+            // matches at all — see BibController::ensureRaceEvent().
+            Route::get('bib-fields', [BibTemplateController::class, 'fields']);
+            Route::get('bib-templates', [BibTemplateController::class, 'index']);
+            Route::post('bib-templates', [BibTemplateController::class, 'store']);
+            Route::patch('bib-templates/{template}', [BibTemplateController::class, 'update']);
+            Route::delete('bib-templates/{template}', [BibTemplateController::class, 'destroy']);
+
+            // Printing. Gated on the *event's* plan and on the event holding no
+            // matches, unlike the template rows above. Status and download are
+            // ungated but ownership-checked — see BibController::ensureOwned().
+            Route::get('events/{event}/bib-recipients', [BibController::class, 'recipients']);
+            Route::post('events/{event}/bibs', [BibController::class, 'generate']);
+            Route::get('bib-batches/{batch}', [BibController::class, 'status']);
+            Route::get('bib-batches/{batch}/download', [BibController::class, 'download']);
+            Route::post('events/{event}/bibs/send', [BibController::class, 'send']);
+            Route::get('events/{event}/bibs/{entry}/download', [BibController::class, 'downloadEntry']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.

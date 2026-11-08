@@ -30,6 +30,26 @@ class SendIdCardsJob implements ShouldQueue
     use Queueable;
 
     /**
+     * SMTP providers rate-limit per second, and a 138-card print fans out to
+     * dozens of mails dispatched in one loop — every one of them hitting the
+     * transport at once. Mailtrap answers `550 Too many emails per second` and,
+     * with the default `tries = 1`, each refusal was final: the organizer saw a
+     * green toast over mail that never left.
+     *
+     * Retried rather than throttled at dispatch, because the limit belongs to
+     * the provider and differs per plan — a fixed delay we pick would be either
+     * too slow for a real SMTP relay or still too fast for a free tier. The
+     * backoff is per attempt, so a burst spreads itself out.
+     *
+     * Idempotent to retry: `sent_at` is written only after the transport
+     * accepts, so an attempt that throws leaves all N cards re-sendable.
+     */
+    public int $tries = 5;
+
+    /** @var array<int, int> */
+    public array $backoff = [10, 30, 60, 120];
+
+    /**
      * @param  array<int, string>  $cardIds  all for one address, one event
      */
     public function __construct(public array $cardIds) {}

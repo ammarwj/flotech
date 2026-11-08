@@ -17,6 +17,18 @@ return [
     // bounded; see GenerateIdCardsJob for why every batch is queued regardless.
     'max_recipients' => 500,
 
+    /*
+     * Seconds between queued send jobs. Every SMTP provider rate-limits per
+     * second, and one print of a 138-player event fans out to dozens of mails:
+     * dispatched together they hit the transport at once and most are refused
+     * (Mailtrap's free tier answers `550 Too many emails per second`).
+     *
+     * Config rather than a literal because the right value is the provider's,
+     * not ours — a real relay wants 0 and a free tier wants more. The job's own
+     * retry/backoff is the safety net underneath it.
+     */
+    'send_spacing_seconds' => (int) env('ID_CARD_SEND_SPACING', 3),
+
     // Card numbers: IDC-2026-11-0001, restarting each month. Dashes, not the
     // slashes used for invoices — this number goes in a URL and a filename.
     // Same scheme as config('certificate.number_prefix').

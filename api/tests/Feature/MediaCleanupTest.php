@@ -13,8 +13,8 @@ use App\Models\TicketOrder;
 use App\Models\User;
 use App\Services\MediaCleanupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Concerns\CreatesPlannedEvents;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
 
 /**
@@ -174,6 +174,34 @@ class MediaCleanupTest extends TestCase
             'issued_at' => now(),
         ]);
 
+        /*
+         * A fun run entry's two files. Both hang off `race_entries` rather than
+         * off a team, so teamUrls() never sees either and raceEntryUrls() has to
+         * collect them itself — the same arrangement the referee photo above
+         * documents.
+         *
+         * `bib_png_key` is a bare object key like `pdf_key`, not a URL, and it
+         * is the one file on this list that nothing else will ever delete:
+         * `bibs:prune` deliberately never reaches PRINT_PREFIX, because the
+         * runner downloads it from their own proof page.
+         */
+        $entryProof = $this->file('payment-proofs/runner.webp');
+        $bibKey = 'bib-prints/runner.png';
+        Storage::disk('public')->put($bibKey, 'x');
+
+        $raceCategory = $event->raceCategories()->create(['name' => '5K', 'slug' => '5k']);
+        $event->raceEntries()->create([
+            'race_category_id' => $raceCategory->id,
+            'full_name' => 'Pelari',
+            'email' => 'pelari@test.com',
+            'period_name' => 'Early Bird',
+            'price' => 75000,
+            'status' => 'paid',
+            'payment_method' => 'manual',
+            'payment_proof_url' => $entryProof,
+            'bib_png_key' => $bibKey,
+        ]);
+
         // Files that outlive the event, each reachable from it.
         $orgLogo = $this->file('organizations/logo.webp');
         $org->update(['logo_url' => $orgLogo]);
@@ -194,10 +222,11 @@ class MediaCleanupTest extends TestCase
 
         $this->commitDeferredJobs();
 
-        foreach ([$banner, $photo, $sponsorLogo, $teamLogo, $teamProof, $playerPhoto, $officialPhoto, $personnelPhoto, $document, $orderProof] as $url) {
+        foreach ([$banner, $photo, $sponsorLogo, $teamLogo, $teamProof, $playerPhoto, $officialPhoto, $personnelPhoto, $document, $orderProof, $entryProof] as $url) {
             Storage::disk('public')->assertMissing($this->keyOf($url));
         }
         Storage::disk('public')->assertMissing($pdfKey);
+        Storage::disk('public')->assertMissing($bibKey);
 
         // The comparison that matters: none of these belong to the event, and a
         // collector scoped by organization_id instead of event_id takes them.

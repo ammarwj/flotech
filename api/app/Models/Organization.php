@@ -125,6 +125,16 @@ class Organization extends Model
         return $this->hasMany(IdCardTemplate::class);
     }
 
+    /**
+     * e-BIB designs. No `bibs()` twin of idCards() below, deliberately: a
+     * printed bib's row is the `race_entries` row it was printed from — see the
+     * create_bib_templates_table migration.
+     */
+    public function bibTemplates(): HasMany
+    {
+        return $this->hasMany(BibTemplate::class);
+    }
+
     /** Daily public page traffic across every event of this organization. */
     public function viewDaily(): HasMany
     {

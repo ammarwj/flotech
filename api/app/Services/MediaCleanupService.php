@@ -136,7 +136,8 @@ class MediaCleanupService
 
     /**
      * Every file stored under the given fun run entries — the transfer receipt
-     * the runner uploaded plus whatever documents their entry required.
+     * the runner uploaded, whatever documents their entry required, and the
+     * printed e-BIB.
      *
      * Its own method beside teamUrls() rather than a branch inside it: the two
      * sweep different tables on different keys, and there is nothing to share
@@ -155,6 +156,11 @@ class MediaCleanupService
             $urls = [
                 ...$urls,
                 ...DB::table('race_entries')->whereIn('id', $chunk)->pluck('payment_proof_url'),
+                // The rendered e-BIB. A permanent object under
+                // BibService::PRINT_PREFIX — `bibs:prune` deliberately never
+                // reaches it, so this sweep is the only thing that ever deletes
+                // one. Same arrangement as `id_cards.png_key` in eventUrls().
+                ...DB::table('race_entries')->whereIn('id', $chunk)->pluck('bib_png_key'),
                 ...DB::table('race_entry_documents')->whereIn('race_entry_id', $chunk)->pluck('file_url'),
             ];
         }

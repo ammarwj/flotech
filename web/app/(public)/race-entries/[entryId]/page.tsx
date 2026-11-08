@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, Flag } from "lucide-react";
+import { CheckCircle2, Clock, Download, Flag, Loader2 } from "lucide-react";
 
 import { getRaceEntry, requestRaceEntryRefund, submitRaceEntryProof } from "@/lib/api/race";
+import { downloadMyBib } from "@/lib/api/bibs";
 import { parseApiError } from "@/lib/api/errors";
+import { Button } from "@/components/ui/button";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { Card } from "@/components/ui/card";
 import { QrCode } from "@/components/event/qr-code";
@@ -104,6 +106,19 @@ export default function RaceEntryPage() {
     },
     onError: (err) =>
       toast.error(parseApiError(err, "Gagal mengirim pengajuan refund.").message),
+  });
+
+  /**
+   * The runner's own e-BIB.
+   *
+   * Through the API client with a blob response, never a plain `<a href>`: the
+   * access token lives in memory, and a direct link would 401 for a signed-in
+   * runner while working for a guest — the worse of the two failures, because
+   * it looks like a bug in their account.
+   */
+  const downloadBibMutation = useMutation({
+    mutationFn: () => downloadMyBib(params.entryId),
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengunduh e-BIB.").message),
   });
 
   if (query.isLoading) {
@@ -313,6 +328,33 @@ export default function RaceEntryPage() {
             <p className="mt-3 text-sm">
               Nomor BIB: <strong>{entry.bib_number}</strong>
             </p>
+          )}
+
+          {/* Gated on `bib_available`, the server's own answer, never
+              reassembled from `status`/`bib_number`: a runner can be paid and
+              numbered while the organizer has not printed yet, and a button
+              derived from those two would 404. Absent reads as "not yet",
+              which the proof page above already explains. */}
+          {entry.bib_available && (
+            <div className="mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadBibMutation.mutate()}
+                disabled={downloadBibMutation.isPending}
+              >
+                {downloadBibMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Unduh e-BIB
+              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Cetak di kertas A5 dan pasang di depan. QR di dalamnya sama dengan QR di atas —
+                satu di antaranya cukup untuk check-in.
+              </p>
+            </div>
           )}
 
           {entry.checked_in_at && (

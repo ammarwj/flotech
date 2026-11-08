@@ -77,6 +77,12 @@ class PlanSeeder extends Seeder
                     // planCovers() refuses the plainest upgrade in the
                     // catalogue — the same way a missing key would.
                     'id_card_generator' => 'true',
+                    // Professional only, and unlike the ID card email decision
+                    // this key does separate the two tiers: it is a fun run's
+                    // race-pack ticket, sold as part of the top plan. Pro not
+                    // carrying it keeps Pro a subset of Professional, so
+                    // planCovers() stays monotone in this direction.
+                    'bib_generator' => 'true',
                     // The boolean is what denies and the number is what caps.
                     // A numeric key on its own would grant the other two plans an
                     // uncapped gallery, because PlanGate reads an absent limit as
