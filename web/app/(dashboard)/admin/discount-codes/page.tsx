@@ -181,7 +181,12 @@ export default function AdminDiscountCodesPage() {
           e.preventDefault();
           save.mutate();
         }}
-        className="mt-6 grid items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
+        /* `grid-cols-1` is load-bearing, not a no-op: without an explicit
+           column the phone layout falls to a single *implicit* column, which
+           is `auto` and therefore sized to the widest item's max-content — the
+           date+time row — dragging every field past the viewport. The named
+           column is `minmax(0, 1fr)`, which cannot. */
+        className="mt-6 grid grid-cols-1 items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
       >
         <div className="grid gap-1.5">
           <Label htmlFor="code">Kode</Label>
@@ -288,7 +293,7 @@ export default function AdminDiscountCodesPage() {
             id="starts_at"
             value={toLocalInput(form.starts_at)}
             onChange={(val) => setForm({ ...form, starts_at: val || null })}
-            datePlaceholder="Kosong = langsung berlaku"
+            datePlaceholder="Langsung berlaku"
             clearable
             aria-invalid={!!fieldErrors.starts_at}
           />
@@ -301,7 +306,7 @@ export default function AdminDiscountCodesPage() {
             value={toLocalInput(form.ends_at)}
             min={toLocalInput(form.starts_at).slice(0, 10) || undefined}
             onChange={(val) => setForm({ ...form, ends_at: val || null })}
-            datePlaceholder="Kosong = tanpa batas"
+            datePlaceholder="Tanpa batas"
             clearable
             aria-invalid={!!fieldErrors.ends_at}
           />
@@ -386,9 +391,13 @@ export default function AdminDiscountCodesPage() {
         {query.data?.map((c) => (
           <div
             key={c.id}
-            className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card p-4"
+            className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-card p-4"
           >
-            <div className="min-w-0 flex-1">
+            {/* A floor, not just `min-w-0`: with the two action buttons on the
+                same line a 320px screen leaves this column ~90px and every
+                line wraps per-word. Below the floor the buttons wrap to their
+                own row instead. */}
+            <div className="min-w-[13rem] flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono font-semibold">{c.code}</span>
                 <span className="text-sm text-muted-foreground">

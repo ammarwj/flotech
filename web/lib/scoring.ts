@@ -230,7 +230,12 @@ const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 /** "12-8" — the pair badminton reads as one number. */
 const pair = (forCount: number, against: number) => `${forCount}-${against}`;
 
-const PLAYED: StandingColumn = { key: "played", short: "M", legend: "main", cell: (s) => String(s.played) };
+/**
+ * "T" (tanding), not "M" (main) — WON is also "M" (menang), and two columns
+ * sharing one letter in the same header row makes the legend the only way to
+ * tell which number is which.
+ */
+const PLAYED: StandingColumn = { key: "played", short: "T", legend: "tanding", cell: (s) => String(s.played) };
 const WON: StandingColumn = { key: "won", short: "M", legend: "menang", cell: (s) => String(s.won) };
 const DRAWN: StandingColumn = { key: "drawn", short: "S", legend: "seri", cell: (s) => String(s.drawn) };
 const LOST: StandingColumn = { key: "lost", short: "K", legend: "kalah", cell: (s) => String(s.lost) };

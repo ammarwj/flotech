@@ -65,19 +65,33 @@ export function DateTimePicker({
   };
 
   return (
-    <div className={cn("flex gap-2", className)}>
-      <DatePicker
-        id={id}
-        value={date}
-        onChange={setDate}
-        min={min}
-        max={max}
-        placeholder={datePlaceholder}
-        clearable={clearable}
-        disabled={disabled}
-        aria-invalid={ariaInvalid}
-        className="flex-1"
-      />
+    /* `min-w-0` on the row itself matters as much as on the date half: this
+       field is usually a grid item, and a grid column that was never given an
+       explicit track is `auto` — it sizes to this row's max-content and hands
+       the overflow to every sibling in the form. Callers still owe their own
+       column a `minmax(0, 1fr)` track (`grid-cols-1`); this only stops the row
+       from being the thing that demands the width. */
+    <div className={cn("flex w-full min-w-0 flex-wrap gap-2", className)}>
+      {/* The wrapper exists because `DatePicker`'s `className` lands on its
+          trigger button, which cannot carry this: the floor is what makes the
+          wrap above fire instead of squeezing. A date half free to shrink ends
+          up narrower than the text it shows and truncates its placeholder to
+          an ellipsis; below the floor the clock drops to its own line instead,
+          which costs a row and keeps both halves readable. */}
+      <div className="min-w-[11rem] flex-1">
+        <DatePicker
+          id={id}
+          value={date}
+          onChange={setDate}
+          min={min}
+          max={max}
+          placeholder={datePlaceholder}
+          clearable={clearable}
+          disabled={disabled}
+          aria-invalid={ariaInvalid}
+          className="w-full"
+        />
+      </div>
       <Input
         type="time"
         aria-label="Waktu"

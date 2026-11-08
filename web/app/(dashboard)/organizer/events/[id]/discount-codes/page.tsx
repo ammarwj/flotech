@@ -198,7 +198,10 @@ export default function EventDiscountCodesPage() {
           e.preventDefault();
           save.mutate();
         }}
-        className="grid items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
+        /* `grid-cols-1` is load-bearing — see the note on the admin twin: a
+           grid with no explicit column falls to an implicit `auto` one, which
+           sizes to the widest item's max-content instead of the container. */
+        className="grid grid-cols-1 items-end gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
       >
         <div className="grid gap-1.5">
           <Label htmlFor="code">Kode</Label>
@@ -305,7 +308,7 @@ export default function EventDiscountCodesPage() {
             id="starts_at"
             value={toLocalInput(form.starts_at)}
             onChange={(val) => setForm({ ...form, starts_at: val || null })}
-            datePlaceholder="Kosong = langsung berlaku"
+            datePlaceholder="Langsung berlaku"
             clearable
             aria-invalid={!!fieldErrors.starts_at}
           />
@@ -318,7 +321,7 @@ export default function EventDiscountCodesPage() {
             value={toLocalInput(form.ends_at)}
             min={toLocalInput(form.starts_at).slice(0, 10) || undefined}
             onChange={(val) => setForm({ ...form, ends_at: val || null })}
-            datePlaceholder="Kosong = tanpa batas"
+            datePlaceholder="Tanpa batas"
             clearable
             aria-invalid={!!fieldErrors.ends_at}
           />
@@ -381,7 +384,10 @@ export default function EventDiscountCodesPage() {
             key={c.id}
             className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-card p-4"
           >
-            <div className="min-w-0 flex-1">
+            {/* A floor, not just `min-w-0`: with the actions on the same line
+                a 320px screen leaves this column ~90px and every line wraps
+                per-word. Below the floor the buttons take their own row. */}
+            <div className="min-w-[13rem] flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono font-semibold">{c.code}</span>
                 <span className="text-sm text-muted-foreground">

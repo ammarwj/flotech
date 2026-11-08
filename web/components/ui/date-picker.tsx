@@ -141,11 +141,15 @@ export function DatePicker({
   const rootRef = React.useRef<HTMLDivElement>(null);
 
   /**
-   * Which edge the panel hangs from. Left by default; right when the panel
-   * would otherwise run past the viewport — which is what a trigger near the
-   * right edge does, and the far half of a date range is exactly that.
+   * How far the panel sits from the trigger's own left edge, in px.
+   *
+   * An edge class (`left-0` / `right-0`) cannot express every case: once the
+   * panel is wider than the space on *both* sides of the trigger — a 320px
+   * phone with a field that is neither flush left nor flush right — flipping
+   * only chooses which edge overhangs. A measured offset clamps instead, so
+   * the panel slides along the viewport rather than off it.
    */
-  const [alignRight, setAlignRight] = React.useState(false);
+  const [offsetLeft, setOffsetLeft] = React.useState(0);
 
   const toggle = () => {
     // Jump the calendar to the selected month right before opening.
@@ -153,14 +157,19 @@ export function DatePicker({
     setOpen((o) => !o);
   };
 
-  // Measured before paint, so the panel never renders on the wrong edge first.
+  // Measured before paint, so the panel never renders in the wrong place first.
   React.useLayoutEffect(() => {
     if (!open || !rootRef.current) return;
 
     const place = () => {
       const rect = rootRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setAlignRight(rect.left + PANEL_WIDTH > window.innerWidth - VIEWPORT_MARGIN);
+      // Preferred position is flush with the trigger; the clamp pulls it back
+      // inside whichever margin it would have crossed. `max` is applied last
+      // so that a panel too wide for the viewport overhangs on the right,
+      // where the calendar has already been read, not on the left.
+      const maxLeft = window.innerWidth - VIEWPORT_MARGIN - PANEL_WIDTH;
+      setOffsetLeft(Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)) - rect.left);
     };
 
     place();
@@ -258,10 +267,8 @@ export function DatePicker({
       {open && (
         <div
           role="dialog"
-          className={cn(
-            "absolute top-[calc(100%+0.375rem)] z-50 w-76 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]",
-            alignRight ? "right-0" : "left-0"
-          )}
+          style={{ left: offsetLeft }}
+          className="absolute top-[calc(100%+0.375rem)] z-50 w-76 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
         >
           <div className="mb-2 flex items-center justify-between">
             <button

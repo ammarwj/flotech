@@ -44,7 +44,8 @@ class StandingsExport extends EventExport
     /** @return list<string> */
     public function headings(): array
     {
-        return ['#', 'Grup', 'Tim', 'Main', 'M', 'S', 'K', 'GM', 'GK', 'SG', 'Poin', 'Adj', 'Fair Play'];
+        // 'T' = tanding, mirroring the web table: 'M' belongs to menang alone.
+        return ['#', 'Grup', 'Tim', 'T', 'M', 'S', 'K', 'GM', 'GK', 'SG', 'Poin', 'Adj', 'Fair Play'];
     }
 
     /** @return list<list<string|int|float|null>> */
