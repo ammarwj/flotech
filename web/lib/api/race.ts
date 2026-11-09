@@ -172,6 +172,12 @@ export interface RaceEntryPage {
   };
   /** Every category the event runs, including ones nobody has entered. */
   categories: { id: string; name: string }[];
+  /**
+   * Every sale window the event runs, in sale order (not alphabetical — "Early
+   * Bird" before "Pre Sale" is the order the Kelola page shows them in).
+   * Like the categories, including ones nobody entered under.
+   */
+  periods: { id: string; name: string }[];
 }
 
 export async function getRaceEntries(
@@ -183,6 +189,11 @@ export async function getRaceEntries(
     search?: string;
     status?: Exclude<RaceEntryFilter, "all">;
     category_id?: string;
+    /**
+     * The FK, not the `period_name` snapshot: a renamed window would otherwise
+     * split its own runners into two groups.
+     */
+    period_id?: string;
   } = {}
 ): Promise<RaceEntryPage> {
   const { data } = await apiClient.get<ApiEnvelope<RaceEntryPage>>(

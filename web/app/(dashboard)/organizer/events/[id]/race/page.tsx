@@ -117,6 +117,7 @@ export default function EventRacePage() {
   const page = Math.max(1, Number(sp.get("page")) || 1);
   const q = sp.get("q") ?? "";
   const category = sp.get("category") ?? "";
+  const period = sp.get("period") ?? "";
   // An unknown value falls back rather than being sent on — the API rejects it,
   // and a 422 under a pill nobody can see reads as a broken page.
   const rawFilter = sp.get("status");
@@ -128,7 +129,7 @@ export default function EventRacePage() {
 
   // Whether anything is narrowing the list, which is what tells an empty
   // response "nobody matches" apart from "nobody has entered".
-  const filtered = filter !== "all" || !!category || !!q;
+  const filtered = filter !== "all" || !!category || !!period || !!q;
 
   const [search, setSearch] = useState(q);
   // Which rows are expanded. A set rather than a single id: comparing two
@@ -273,11 +274,12 @@ export default function EventRacePage() {
     // `q` and `page` from the URL, not the input's own state: the debounced
     // effect above writes them there, and keying on the raw box would fire a
     // request per keystroke.
-    queryKey: ["race-entries", orgId, eventId, { filter, category, q, page }],
+    queryKey: ["race-entries", orgId, eventId, { filter, category, period, q, page }],
     queryFn: () =>
       getRaceEntries(orgId!, eventId, {
         status: filter === "all" ? undefined : filter,
         category_id: category || undefined,
+        period_id: period || undefined,
         search: q || undefined,
         page,
         // 25, not 50: every row can expand into a detail panel, and a hundred
@@ -315,6 +317,17 @@ export default function EventRacePage() {
   // server, not from the rows on screen, because filtering to an empty one is
   // how an organizer finds out it has sold nothing.
   const categories = entriesQuery.data?.categories ?? [];
+  // The sale windows, in sale order from the server — the same reasoning as the
+  // categories: a window nobody entered under still belongs in the list, and
+  // filtering to it is how an organizer finds out early bird sold nothing.
+  const periods = entriesQuery.data?.periods ?? [];
+  /**
+   * Whether the period select is worth a column. Two windows is where it starts
+   * being able to narrow anything — but a period already in the URL keeps it on
+   * regardless, or a linked view would silently render the list filtered with
+   * nothing on screen saying so and no control to clear it.
+   */
+  const hasPeriodFilter = periods.length > 1 || !!period;
 
   return (
     <div className="space-y-6">
@@ -379,7 +392,10 @@ export default function EventRacePage() {
               own row below. The pills and the search box are both elastic, so
               sharing a line made them eat each other's width. */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12">
-            <Field label="Cari pendaftar" className="lg:col-span-5">
+            <Field
+              label="Cari pendaftar"
+              className={hasPeriodFilter ? "lg:col-span-4" : "lg:col-span-5"}
+            >
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -391,7 +407,10 @@ export default function EventRacePage() {
               </div>
             </Field>
 
-            <Field label="Kategori" className="lg:col-span-4">
+            <Field
+              label="Kategori"
+              className={hasPeriodFilter ? "lg:col-span-3" : "lg:col-span-4"}
+            >
               <Select
                 value={category}
                 onChange={(e) => pick({ category: e.target.value || undefined })}
@@ -404,6 +423,27 @@ export default function EventRacePage() {
                 ))}
               </Select>
             </Field>
+
+            {/* Only once there is something to tell apart. An event selling one
+                flat price has a single window, and a dropdown whose every row
+                matches is a control that cannot narrow anything — it would just
+                take width from the search box, which is the one control on this
+                row used all day. */}
+            {hasPeriodFilter && (
+              <Field label="Periode" className="lg:col-span-2">
+                <Select
+                  value={period}
+                  onChange={(e) => pick({ period: e.target.value || undefined })}
+                >
+                  <option value="">Semua periode</option>
+                  {periods.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
 
             {/* Bottom-aligned, so it sits on the inputs' baseline rather than
                 on their labels' — the export is an action on the filtered set,
@@ -444,7 +484,12 @@ export default function EventRacePage() {
                 className="ml-auto"
                 onClick={() => {
                   setSearch("");
-                  pick({ status: undefined, category: undefined, q: undefined });
+                  pick({
+                    status: undefined,
+                    category: undefined,
+                    period: undefined,
+                    q: undefined,
+                  });
                 }}
               >
                 Reset filter
@@ -464,7 +509,7 @@ export default function EventRacePage() {
               title={filtered ? "Tidak ada yang cocok" : "Belum ada pendaftar"}
               description={
                 filtered
-                  ? "Coba ubah kata kunci, kategori, atau filter status."
+                  ? "Coba ubah kata kunci, kategori, periode, atau filter status."
                   : "Pendaftar akan muncul di sini begitu mereka mengisi form publik."
               }
             />

@@ -1248,6 +1248,107 @@ class RaceEntryTest extends TestCase
     }
 
     /**
+     * Filter periode menyaring baris DAN kartunya, dan opsinya datang dari
+     * jendela event — bukan dari baris yang ada di layar.
+     *
+     * Dibandingkan **dua jendela pada satu event**: assert "`?period_id=`
+     * mengembalikan 1 baris" sendirian lolos walau filternya tidak pernah
+     * sampai ke query, karena satu-satunya baris lain kebetulan tidak cocok
+     * dengan apa pun yang di-assert. Yang memisahkannya adalah jendela kedua
+     * di request yang sama mengembalikan baris yang **lain**, dan `revenue`
+     * yang ikut menyempit — build yang menyaring daftar saja tetap berbunyi
+     * 195.000 di samping satu baris.
+     *
+     * Opsinya dibandingkan terhadap jendela yang **belum punya pendaftar**:
+     * menurunkannya dari baris akan menyembunyikannya, padahal memfilter ke
+     * sana persis cara organizer tahu early bird-nya tidak laku.
+     */
+    public function test_the_period_filter_narrows_rows_and_cards(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', [
+            'Early Bird' => 75_000,
+            'Pre Sale' => 120_000,
+        ]);
+
+        $early = $event->racePeriods()->where('name', 'Early Bird')->firstOrFail();
+        $pre = $event->racePeriods()->where('name', 'Pre Sale')->firstOrFail();
+
+        // A third window nobody buys in, to prove the options come from the
+        // event. Added last on purpose: the list is sale-ordered, so a build
+        // sorting by name or by insertion would put it somewhere else.
+        $event->racePeriods()->create([
+            'name' => 'Last Call',
+            'starts_at' => '2026-01-21T00:00:00+07:00',
+            'ends_at' => '2026-01-31T23:59:59+07:00',
+            'sort_order' => 2,
+        ]);
+
+        $inEarly = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+
+        // Forward into the next window, which is the only way a second period
+        // ends up on a row — the server picks it from its own clock.
+        Carbon::setTestNow('2026-01-15 03:00:00'); // 10:00 WIB
+        $inPre = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+
+        $all = $this->actingAs($owner, 'api')->getJson($url)->json('data');
+        $one = $this->actingAs($owner, 'api')->getJson($url."?period_id={$early->id}")->json('data');
+        $two = $this->actingAs($owner, 'api')->getJson($url."?period_id={$pre->id}")->json('data');
+
+        $this->assertSame(2, $all['summary']['total']);
+        $this->assertEquals(195_000, $all['summary']['revenue']);
+
+        $this->assertSame([$inEarly], array_column($one['items'], 'id'));
+        $this->assertSame([$inPre], array_column($two['items'], 'id'));
+
+        $this->assertSame(1, $one['meta']['count']);
+        $this->assertEquals(75_000, $one['summary']['revenue']);
+        $this->assertEquals(120_000, $two['summary']['revenue']);
+
+        // Every window, in sale order, including the one nobody entered under.
+        $this->assertSame(
+            ['Early Bird', 'Pre Sale', 'Last Call'],
+            array_column($all['periods'], 'name'),
+        );
+    }
+
+    /**
+     * Dan ia menyaring pada FK, bukan pada snapshot `period_name`.
+     *
+     * Snapshot itu memang harus bertahan apa adanya di kwitansi, tapi sebagai
+     * kunci filter ia memecah pendaftar satu jendela jadi dua kelompok begitu
+     * organizer mengganti namanya — dua ejaan untuk satu periode, persis yang
+     * dihindari snapshot itu sendiri. Ujinya: ganti nama jendela **sesudah**
+     * ada yang mendaftar, lalu assert barisnya tetap terjaring (dan `period`
+     * di payload-nya masih berbunyi nama lama).
+     */
+    public function test_the_period_filter_survives_a_renamed_window(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+        $category = $this->category($event, 'Umum', ['Early Bird' => 75_000]);
+
+        $early = $event->racePeriods()->where('name', 'Early Bird')->firstOrFail();
+        $id = $this->register(User::factory()->create(), $org, $event, $category)['entry']['id'];
+
+        $early->update(['name' => 'Early Bird (Diperpanjang)']);
+
+        $url = "/api/v1/organizations/{$org->id}/events/{$event->id}/race-entries";
+        $one = $this->actingAs($owner, 'api')->getJson($url."?period_id={$early->id}")->json('data');
+
+        $this->assertSame([$id], array_column($one['items'], 'id'));
+        // The row still says what was actually charged, under the old name.
+        $this->assertSame('Early Bird', $one['items'][0]['period_name']);
+        // While the dropdown offers the new one.
+        $this->assertSame('Early Bird (Diperpanjang)', $one['periods'][0]['name']);
+    }
+
+    /**
      * Nilai pill yang tidak dikenal DITOLAK, bukan diabaikan.
      *
      * Dibandingkan dengan nilai yang sah dalam satu test: tanpa pembanding,

@@ -68,6 +68,14 @@ class RaceEntryController extends Controller
             // return the unfiltered list under a selected tab.
             'status' => ['nullable', Rule::in(self::STATUSES)],
             'category_id' => ['nullable', 'uuid'],
+            // The sale window an entry was bought in. Filtered on the FK, not
+            // on `period_name`: the snapshot is what a receipt must keep
+            // saying, but a renamed window would split its own runners into two
+            // groups here, and two spellings of one period is exactly what the
+            // snapshot exists to avoid colliding with. The FK survives a rename
+            // and cannot dangle — RacePeriodController refuses to drop a window
+            // somebody has entered under.
+            'period_id' => ['nullable', 'uuid'],
             'search' => ['nullable', 'string', 'max:120'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -97,6 +105,17 @@ class RaceEntryController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name'])
                 ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+                ->all(),
+            // The period dropdown's options, in sale order — the relation
+            // already sorts by `starts_at`, which is the order an organizer
+            // reads them in on the Kelola page, and alphabetising "Early Bird"
+            // above "Pre Sale" would be a second answer to "which came first".
+            // Like the categories, from the event rather than from the rows:
+            // a window that sold nothing is one an organizer finds out about by
+            // filtering to it and seeing it empty.
+            'periods' => $event->racePeriods()
+                ->get(['id', 'name'])
+                ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name])
                 ->all(),
         ]);
     }
@@ -267,6 +286,10 @@ class RaceEntryController extends Controller
             ->when(
                 $filters['category_id'] ?? null,
                 fn ($q, $id) => $q->where('race_category_id', $id),
+            )
+            ->when(
+                $filters['period_id'] ?? null,
+                fn ($q, $id) => $q->where('race_period_id', $id),
             )
             ->when(
                 ($filters['status'] ?? null) === self::AWAITING,
