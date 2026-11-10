@@ -531,4 +531,80 @@ class ManualPaymentTest extends TestCase
         // Only the abandoned two came back.
         $this->assertSame(3, $category->fresh()->sold);
     }
+
+    /**
+     * Approving moves a receipt out of the queue and into the log; rejecting
+     * moves it out of neither.
+     *
+     * The pair is the test, and it is one test for that reason: `verified_at` is
+     * the single column both lists key off, so asserting only that an approved
+     * receipt shows up in the history would pass just as well on a build where
+     * every ruled-on row lands there — including the rejected one, which is
+     * still waiting on its payer and must stay in the queue it can be
+     * re-uploaded into. Three counts per step, because a row dropping out of
+     * both lists is exactly what the shared column exists to prevent.
+     *
+     * Twin of ManualPlanOrderTest's approval-log test, against the organizer's
+     * own event queue instead of the super admin's plan queue.
+     */
+    public function test_approving_moves_a_receipt_into_the_history_and_rejecting_does_not(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgWithPlan($owner);
+        $this->bankAccount($org);
+        $event = $this->event($org);
+        $category = $event->ticketCategories()->create(['name' => 'Reguler', 'price' => 50000, 'is_active' => true]);
+        $this->gateway(false);
+
+        $approved = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
+        $rejected = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
+
+        foreach ([$approved, $rejected] as $order) {
+            $this->postJson("/api/v1/ticket-orders/{$order->id}/proof", [
+                'payment_proof_url' => 'https://example.test/bukti.png',
+            ])->assertOk();
+        }
+
+        $queue = "/api/v1/organizations/{$org->id}/events/{$event->id}/payments";
+
+        $this->actingAs($owner, 'api')->getJson($queue)
+            ->assertOk()->assertJsonCount(2, 'data.tickets');
+        $this->actingAs($owner, 'api')->getJson("{$queue}/history")
+            ->assertOk()->assertJsonCount(0, 'data.tickets');
+
+        $this->actingAs($owner, 'api')
+            ->postJson("{$queue}/tickets/{$approved->id}/approve")
+            ->assertOk();
+
+        $this->actingAs($owner, 'api')
+            ->postJson("{$queue}/tickets/{$rejected->id}/reject", ['reason' => 'Nominal tidak cocok.'])
+            ->assertOk();
+
+        // The rejected one is back in the queue, not in the log: its receipt was
+        // cleared so the buyer can replace it, and `verified_at` stayed null.
+        $this->actingAs($owner, 'api')->getJson($queue)
+            ->assertOk()->assertJsonCount(0, 'data.tickets');
+
+        $this->actingAs($owner, 'api')->getJson("{$queue}/history")
+            ->assertOk()
+            ->assertJsonCount(1, 'data.tickets')
+            ->assertJsonPath('data.tickets.0.id', $approved->id)
+            // The name, and reading it is the point: `verified_by` is published
+            // behind `whenLoaded`, so only this endpoint eager-loads the
+            // relation — and the column is `full_name`, not `name`. Asserting
+            // against $owner->full_name would have gone null on both sides.
+            ->assertJsonPath('data.tickets.0.verified_by', $owner->full_name);
+
+        // The queue has nobody to name yet, so it must not carry the key at all
+        // — a present-but-null one would be an N+1 waiting to be noticed.
+        $fresh = TicketOrder::find($this->buy($org, $event, $category->id, 1)['order']['id']);
+        $this->postJson("/api/v1/ticket-orders/{$fresh->id}/proof", [
+            'payment_proof_url' => 'https://example.test/bukti-3.png',
+        ])->assertOk();
+
+        $this->actingAs($owner, 'api')->getJson($queue)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.tickets')
+            ->assertJsonMissingPath('data.tickets.0.verified_by');
+    }
 }

@@ -742,6 +742,11 @@ Route::prefix('v1')->group(function () {
             // operator must not be able to.
             Route::middleware('org.admin')->group(function () {
                 Route::get('events/{event}/payments', [PaymentVerificationController::class, 'index']);
+                // Before the `{order}`-style routes below, or `history` is
+                // caught as an id — the same ordering `plan-orders/history`
+                // needs. Same gate as the queue: it names which of the org's
+                // admins accepted each receipt.
+                Route::get('events/{event}/payments/history', [PaymentVerificationController::class, 'history']);
                 Route::post('events/{event}/payments/tickets/{order}/approve', [PaymentVerificationController::class, 'approveTicket']);
                 Route::post('events/{event}/payments/tickets/{order}/reject', [PaymentVerificationController::class, 'rejectTicket']);
                 Route::post('events/{event}/payments/teams/{team}/approve', [PaymentVerificationController::class, 'approveTeam']);

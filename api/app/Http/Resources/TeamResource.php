@@ -66,6 +66,10 @@ class TeamResource extends JsonResource
             'payment_deadline_at' => $this->payment_deadline_at,
             'rejected_reason' => $this->rejected_reason,
             'verified_at' => $this->verified_at,
+            // Which org admin accepted the receipt. Only the approval log loads
+            // the relation — a queue has nobody to name yet, and `whenLoaded`
+            // is what keeps this list's N+1 off every other reader.
+            'verified_by' => $this->whenLoaded('verifier', fn () => $this->verifier?->full_name),
             // Where the manager must transfer. Only while a manual registration
             // is still unpaid — there is nothing to pay once it is settled.
             'bank_account' => $this->when($this->isManual() && ! $this->isSettled(), fn () => $this->payTo()),

@@ -1650,6 +1650,12 @@ export interface ManualPaymentFields {
   payment_deadline_at: string | null;
   rejected_reason: string | null;
   verified_at: string | null;
+  /**
+   * Who accepted the receipt. Absent — not null — outside the approval log: the
+   * server publishes it only where the relation is eager-loaded, so a queue row
+   * genuinely does not carry it, and `?` is what says so.
+   */
+  verified_by?: string | null;
 }
 
 /**

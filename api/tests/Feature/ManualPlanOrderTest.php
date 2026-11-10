@@ -85,9 +85,16 @@ class ManualPlanOrderTest extends TestCase
             ->json('data');
     }
 
+    /**
+     * `full_name` is spelled rather than left to the factory because the
+     * approval log asserts on it below — and `users` has no `name` column, so
+     * reaching for the wrong one gives null on both sides of the comparison and
+     * the assertion passes over a log that names nobody. That is exactly what
+     * happened.
+     */
     private function superAdmin(): User
     {
-        return User::factory()->create(['role' => 'super_admin']);
+        return User::factory()->create(['role' => 'super_admin', 'full_name' => 'Super Admin']);
     }
 
     /**
@@ -434,7 +441,11 @@ class ManualPlanOrderTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $approved['id'])
-            ->assertJsonPath('data.0.verified_by', $admin->name);
+            // `full_name`, and the column matters: `users` has no `name`, so
+            // this read `null` on both sides and passed while the log printed
+            // nobody. Assert against a literal — $admin->full_name would go
+            // null again the moment the resource reaches for a missing property.
+            ->assertJsonPath('data.0.verified_by', 'Super Admin');
     }
 
     /** A cancelled invoice was still issued and emailed; its number is spent. */

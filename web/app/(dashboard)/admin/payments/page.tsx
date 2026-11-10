@@ -120,7 +120,10 @@ export default function AdminPaymentsPage() {
               key={`${row.kind}-${row.id}`}
               className="flex flex-wrap items-center justify-between gap-4 p-4"
             >
-              <div className="min-w-0">
+              {/* w-full below sm, flex-1 above: as a bare flex item its basis
+                  resolves to max-content — every badge on one line — so the
+                  card scrolled sideways instead of wrapping. */}
+              <div className="w-full min-w-0 sm:w-auto sm:flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold tabular-nums">{rupiah(row.amount)}</span>
                   <Badge variant={row.status === "paid" ? "success" : "neutral"}>
@@ -141,7 +144,7 @@ export default function AdminPaymentsPage() {
                   </Badge>
                   {row.payment_type && <Badge variant="outline">{row.payment_type}</Badge>}
                 </div>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
+                <p className="mt-1 break-words text-sm text-muted-foreground">
                   {row.payer ?? "—"} &middot; {row.event_name ?? "—"} &middot;{" "}
                   {row.organization_name ?? "—"}
                 </p>
@@ -172,6 +175,7 @@ export default function AdminPaymentsPage() {
                   size="sm"
                   disabled={refundMutation.isPending}
                   onClick={() => void refund(row)}
+                  className="w-full sm:w-auto"
                 >
                   Refund
                 </Button>

@@ -4,6 +4,7 @@ namespace App\Models\Concerns;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
@@ -157,5 +158,38 @@ trait HasManualPayment
     public function markVerified(User $admin): void
     {
         $this->update(['verified_by' => $admin->id, 'verified_at' => Carbon::now()]);
+    }
+
+    /**
+     * Who accepted the transfer receipt, if anyone has.
+     *
+     * Here rather than on each model, for the same reason markVerified() above
+     * is: all four carry `verified_by`, this trait is already the one place that
+     * knows what the verification columns mean, and the relation is the only way
+     * to read back what markVerified() wrote. It started on EventPlanOrder
+     * alone, which is why the organizer's own approval log had no name to print.
+     *
+     * Eager-load it only where a name is owed — see the resources, which publish
+     * `verified_by` behind `whenLoaded`: a queue has nobody to name yet, and the
+     * approval log is the one reader that does.
+     */
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
+     * Receipts already accepted, newest first.
+     *
+     * `verified_at` is the whole filter, and it is the same column
+     * scopeAwaitingVerification() requires to be null — so a row sits in exactly
+     * one of the two lists and cannot be dropped by both. A rejection
+     * deliberately leaves it null (see rejectProof above), which is why this is
+     * a log of approvals and not of decisions: a rejected receipt is still
+     * waiting on its payer, not settled.
+     */
+    public function scopeVerified(Builder $query): Builder
+    {
+        return $query->whereNotNull('verified_at')->latest('verified_at');
     }
 }

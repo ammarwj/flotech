@@ -88,7 +88,7 @@ class EventPlanOrderResource extends JsonResource
             // Who accepted the receipt. Only the approval log loads it — the
             // queue has nobody to name yet, and every other reader is the
             // organizer, to whom "which of our admins" means nothing.
-            'verified_by' => $this->whenLoaded('verifier', fn () => $this->verifier?->name),
+            'verified_by' => $this->whenLoaded('verifier', fn () => $this->verifier?->full_name),
             // Where to transfer, only while the bill is manual and unpaid.
             'bank_account' => $this->when(
                 $this->isManual() && ! $this->isSettled(),

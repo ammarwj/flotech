@@ -47,12 +47,10 @@ class PlanOrderController extends Controller
     /**
      * Receipts already ruled on, newest first.
      *
-     * `verified_at` is the whole filter, and it is the same column
-     * scopeAwaitingVerification() requires to be null — so a row is in exactly
-     * one of the two lists and cannot be silently dropped by both. A rejection
-     * deliberately leaves it null (see HasManualPayment), which is why this is a
-     * log of approvals rather than of decisions: a rejected receipt is still
-     * waiting on the organizer, not settled.
+     * The filter and the ordering are `scopeVerified()` on HasManualPayment —
+     * shared with the organizer's own approval log, because "already accepted"
+     * must not mean two different things on two screens. That scope also
+     * explains why this is a log of approvals and not of decisions.
      *
      * Capped rather than paginated: this answers "did we already accept that
      * transfer?", asked minutes to days after the fact. The permanent record is
@@ -62,9 +60,8 @@ class PlanOrderController extends Controller
     public function history(): JsonResponse
     {
         $verified = EventPlanOrder::query()
-            ->whereNotNull('verified_at')
+            ->verified()
             ->with(['plan', 'organization', 'event', 'verifier'])
-            ->latest('verified_at')
             ->limit(50)
             ->get();
 

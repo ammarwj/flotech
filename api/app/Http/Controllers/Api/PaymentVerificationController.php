@@ -64,6 +64,38 @@ class PaymentVerificationController extends Controller
         ]);
     }
 
+    /**
+     * Receipts this event has already accepted, every rail, newest first.
+     *
+     * The same three keys as index() so one page can render either list without
+     * a second shape to learn, and the same `scopeVerified()` the super admin's
+     * plan log reads — "already accepted" must not mean two different things on
+     * two screens. A row is in exactly one of the two lists: the scopes disagree
+     * on one column, `verified_at`, so nothing can fall out of both.
+     *
+     * `verifier` is eager-loaded here and nowhere else: an org admin ruled on
+     * these, and which of their admins it was is the one fact a queue cannot
+     * answer yet. Capped at 50 per rail rather than paginated, for the reason
+     * the plan log gives — this answers "did we already accept that transfer?",
+     * asked minutes to days later, and the permanent record is the receipt PDF.
+     */
+    public function history(Request $request, string $organization, string $event): JsonResponse
+    {
+        $eventModel = $this->event($request, $event);
+
+        return ApiResponse::success([
+            'tickets' => TicketOrderResource::collection(
+                $eventModel->ticketOrders()->verified()->with(['category', 'verifier'])->limit(50)->get(),
+            ),
+            'teams' => TeamResource::collection(
+                $eventModel->teams()->verified()->with(['category', 'verifier'])->limit(50)->get(),
+            ),
+            'race_entries' => RaceEntryResource::collection(
+                $eventModel->raceEntries()->verified()->with(['category', 'verifier'])->limit(50)->get(),
+            ),
+        ]);
+    }
+
     public function approveTicket(Request $request, string $organization, string $event, string $order): JsonResponse
     {
         $model = $this->ticketOrder($request, $event, $order);

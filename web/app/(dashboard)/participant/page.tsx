@@ -156,7 +156,14 @@ export default function ParticipantPage() {
           </h2>
           <div className="grid gap-3">
             {teams!.map((team) => (
-              <Card key={team.id} className="flex items-center gap-4 p-4">
+              // Stacks on a phone: side by side, the shrink-0 button squeezed
+              // the text column to a few characters and the event name came
+              // down in four lines.
+              <Card
+                key={team.id}
+                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
                 <span
                   className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-sm font-bold text-[var(--brand-600)]"
                   style={{ fontFamily: "var(--font-display)" }}
@@ -177,9 +184,12 @@ export default function ParticipantPage() {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Trophy className="h-3.5 w-3.5" />
-                      {team.event?.name ?? "Event"}
+                    {/* items-start + mt: a long event name wraps to two lines,
+                        and a centred icon beside it floats in the gutter
+                        looking like it belongs to neither. */}
+                    <span className="flex min-w-0 items-start gap-1.5">
+                      <Trophy className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0">{team.event?.name ?? "Event"}</span>
                     </span>
                     {team.event?.sport_type && <span>{sportLabel(team.event.sport_type)}</span>}
                     <span className="inline-flex items-center gap-1.5">
@@ -188,7 +198,13 @@ export default function ParticipantPage() {
                     </span>
                   </div>
                 </div>
-                <Button asChild size="sm" variant="outline" className="shrink-0">
+                </div>
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="w-full shrink-0 sm:w-auto"
+                >
                   <Link href={`/participant/teams/${team.id}`}>
                     <Settings2 className="h-4 w-4" />
                     Kelola
@@ -214,7 +230,11 @@ export default function ParticipantPage() {
               const date = fmtDate(entry.event?.start_date);
 
               return (
-                <Card key={entry.id} className="flex items-center gap-4 p-4">
+                <Card
+                  key={entry.id}
+                  className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-[var(--brand-600)]">
                     <Flag className="h-5 w-5" />
                   </span>
@@ -257,11 +277,12 @@ export default function ParticipantPage() {
                       {entry.bib_number && <span>BIB {entry.bib_number}</span>}
                     </div>
                   </div>
+                  </div>
                   {/* The public proof page, not a dashboard twin of it: the
                       upload, the documents and the QR already live there, and a
                       runner who arrived from their email is looking at the same
                       screen this links to. */}
-                  <Button asChild size="sm" variant="outline" className="shrink-0">
+                  <Button asChild size="sm" variant="outline" className="w-full shrink-0 sm:w-auto">
                     <Link href={`/race-entries/${entry.id}`}>
                       <ClipboardList className="h-4 w-4" />
                       Buka bukti

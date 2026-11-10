@@ -269,7 +269,7 @@ export default function RegistrationsPage() {
               </p>
             </div>
           </div>
-          <Button asChild size="sm">
+          <Button asChild size="sm" className="w-full sm:w-auto">
             <Link href={`/organizer/events/${eventId}/payments`}>Buka antrean verifikasi</Link>
           </Button>
         </Card>
@@ -527,7 +527,10 @@ function RegistrationCard({
             </div>
           </div>
         </button>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        {/* Grid of two on a phone, so the four actions land in two even rows
+            instead of wrapping into a ragged 3+1 whose last button sits alone
+            under a full-width one. */}
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button
             size="sm"
             variant="outline"

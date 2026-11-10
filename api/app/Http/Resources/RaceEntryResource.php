@@ -79,6 +79,10 @@ class RaceEntryResource extends JsonResource
             'payment_deadline_at' => $this->payment_deadline_at,
             'rejected_reason' => $this->rejected_reason,
             'verified_at' => $this->verified_at,
+            // Which org admin accepted the receipt. Only the approval log loads
+            // the relation — a queue has nobody to name yet, and `whenLoaded`
+            // is what keeps this list's N+1 off every other reader.
+            'verified_by' => $this->whenLoaded('verifier', fn () => $this->verifier?->full_name),
 
             // The refund conversation. Note what is NOT here: a sixth `status`
             // value. The state is derived from these columns the same way

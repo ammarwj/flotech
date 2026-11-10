@@ -340,6 +340,25 @@ export async function getPendingPayments(
   return data.data;
 }
 
+/**
+ * Receipts this event has already accepted, newest first.
+ *
+ * Same `PendingPayments` shape as the queue, which is the point — one page
+ * renders either list without a second shape to learn. The rows differ only in
+ * carrying `verified_at` and `verified_by`, which the queue has nobody to name
+ * yet. Approvals only: a rejection leaves `verified_at` null and the bill back
+ * in its payer's hands, so it is still waiting, not settled.
+ */
+export async function getVerifiedPayments(
+  orgId: string,
+  eventId: string
+): Promise<PendingPayments> {
+  const { data } = await apiClient.get<ApiEnvelope<PendingPayments>>(
+    `/organizations/${orgId}/events/${eventId}/payments/history`
+  );
+  return data.data;
+}
+
 export async function approveTicketPayment(
   orgId: string,
   eventId: string,

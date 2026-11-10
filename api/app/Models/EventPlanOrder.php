@@ -221,10 +221,4 @@ class EventPlanOrder extends Model
     {
         return $this->hasMany(self::class, 'upgrade_of_id');
     }
-
-    /** The super admin who accepted the manual transfer, if any. */
-    public function verifier(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'verified_by');
-    }
 }
