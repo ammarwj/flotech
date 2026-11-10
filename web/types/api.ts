@@ -1579,6 +1579,13 @@ export interface Team extends ManualPaymentFields {
   receipt_number: string | null;
   paid_at: string | null;
   midtrans_token: string | null;
+  /**
+   * Where the manager must transfer, while a manual registration fee is still
+   * unpaid. Absent — not null — unless the endpoint eager-loaded the
+   * organizer's accounts: "Pendaftaran Saya" deliberately does not, so the
+   * number travels only to the page that owes it.
+   */
+  bank_account?: PublicBankAccount | null;
   /** Answers to the event's team_fields, keyed by field key. {} when none. */
   custom_fields?: CustomFieldAnswers;
   players?: Player[];

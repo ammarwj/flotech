@@ -66,6 +66,9 @@ class TeamResource extends JsonResource
             'payment_deadline_at' => $this->payment_deadline_at,
             'rejected_reason' => $this->rejected_reason,
             'verified_at' => $this->verified_at,
+            // Where the manager must transfer. Only while a manual registration
+            // is still unpaid — there is nothing to pay once it is settled.
+            'bank_account' => $this->when($this->isManual() && ! $this->isSettled(), fn () => $this->payTo()),
             'event' => new EventResource($this->whenLoaded('event')),
             'category' => new EventCategoryResource($this->whenLoaded('category')),
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [
@@ -109,5 +112,27 @@ class TeamResource extends JsonResource
                 'file_url' => $d->file_url,
             ])),
         ];
+    }
+
+    /**
+     * The organizer's primary account, but only when the caller eager-loaded
+     * the whole chain.
+     *
+     * Copied from TicketOrderResource::payTo() for the reason that one gives:
+     * the organizer's participant list renders this resource for every team, so
+     * lazy-loading here would be a silent N+1. The endpoints that owe the
+     * manager bank details load `event.organization.bankAccounts`.
+     */
+    private function payTo(): ?PublicBankAccountResource
+    {
+        if (! $this->relationLoaded('event')
+            || ! $this->event?->relationLoaded('organization')
+            || ! $this->event->organization?->relationLoaded('bankAccounts')) {
+            return null;
+        }
+
+        $account = $this->event->organization->bankAccounts->firstWhere('is_primary', true);
+
+        return $account ? new PublicBankAccountResource($account) : null;
     }
 }

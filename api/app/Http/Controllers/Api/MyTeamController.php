@@ -19,6 +19,24 @@ use Symfony\Component\HttpFoundation\Response;
 
 class MyTeamController extends Controller
 {
+    /**
+     * What a single-team payload needs, spelled once.
+     *
+     * `event.organization.bankAccounts` is NOT in here: it belongs only to the
+     * doors that owe the manager a transfer destination, and leaving it out of
+     * the shared list is what keeps the account number from leaking into a
+     * payload that never needed it — see index().
+     *
+     * @var list<string>
+     */
+    private const DETAIL_RELATIONS = [
+        'event.organization',
+        'category',
+        'players.documents',
+        'officials.documents',
+        'documents',
+    ];
+
     public function __construct(
         protected RegistrationService $registration,
         protected TeamRosterService $roster,
@@ -28,6 +46,12 @@ class MyTeamController extends Controller
 
     /**
      * Teams the authenticated participant manages (registered).
+     *
+     * The organizer's account number is deliberately NOT loaded here — same
+     * rule as MyRaceEntryController::index(): TeamResource::payTo() only answers
+     * when the whole `event.organization.bankAccounts` chain is eager-loaded, so
+     * "don't load bankAccounts" *is* the enforcement. The manual-transfer panel
+     * lives on the single-team page, which loads it.
      */
     public function index(): JsonResponse
     {
@@ -41,10 +65,14 @@ class MyTeamController extends Controller
 
     /**
      * A single managed team with its roster and documents.
+     *
+     * `organization.bankAccounts` is part of the chain because this page owes
+     * the manager a transfer destination while the registration fee is still
+     * unpaid on the manual rail.
      */
     public function show(string $team): JsonResponse
     {
-        $model = $this->scope()->with(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])->findOrFail($team);
+        $model = $this->scope()->with([...self::DETAIL_RELATIONS, 'event.organization.bankAccounts'])->findOrFail($team);
 
         return ApiResponse::success(new TeamResource($model));
     }
@@ -109,7 +137,7 @@ class MyTeamController extends Controller
         });
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            new TeamResource($model->fresh()->load(self::DETAIL_RELATIONS)),
             'Data tim diperbarui',
         );
     }
@@ -156,7 +184,10 @@ class MyTeamController extends Controller
         );
 
         return ApiResponse::success([
-            'team' => new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            // Loaded with the destination for the same reason `bank_account`
+            // travels beside it: on the manual rail this response is what the
+            // page renders the transfer panel from.
+            'team' => new TeamResource($model->fresh()->load([...self::DETAIL_RELATIONS, 'event.organization.bankAccounts'])),
             'snap_token' => $payment['snap_token'],
             'redirect_url' => $payment['redirect_url'],
             'mock' => $payment['mock'],
@@ -181,7 +212,7 @@ class MyTeamController extends Controller
         $this->registration->submitProof($model, $data['payment_proof_url']);
 
         return ApiResponse::success(
-            new TeamResource($model->fresh()->load(['event.organization', 'category', 'players.documents', 'officials.documents', 'documents'])),
+            new TeamResource($model->fresh()->load([...self::DETAIL_RELATIONS, 'event.organization.bankAccounts'])),
             'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
         );
     }

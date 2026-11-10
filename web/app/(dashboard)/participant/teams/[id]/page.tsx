@@ -23,6 +23,7 @@ import {
   updateMyTeam,
   withdrawMyTeam,
   payRegistration,
+  submitTeamProof,
   type UpdateMyTeamPayload,
 } from "@/lib/api/events";
 import { downloadMyTeamAlbum } from "@/lib/api/team-album";
@@ -43,6 +44,7 @@ import { useConfirm } from "@/components/shared/confirm-provider";
 import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { ChannelPicker } from "@/components/payment/channel-picker";
 import { DiscountCodeField } from "@/components/payment/discount-code-field";
+import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,6 +102,19 @@ export default function ManageTeamPage() {
   // from the preview.
   const payable = applied ? applied.amount : (team?.payment_amount ?? 0);
   const requiresChannel = Boolean(team?.event?.requires_payment_channel) && payable > 0;
+  /**
+   * This bill is already on the manual rail and has somewhere to transfer to.
+   *
+   * Read off the row rather than off `effective_payment_method`, because the two
+   * answer different questions: the event's rail says where the NEXT bill goes,
+   * while `payment_method` is the snapshot this one was born with and keeps for
+   * life. A team that registered while the gateway was up still owes Midtrans.
+   *
+   * `bank_account` is part of it and not a separate check: the server publishes
+   * it only while a manual payment is unsettled, so its presence is the same
+   * sentence as "there is a transfer to make".
+   */
+  const manualBill = team?.payment_method === "manual" && !!team.bank_account;
   /**
    * The code field is offered only while this bill carries no discount yet.
    *
@@ -230,10 +245,29 @@ export default function ManageTeamPage() {
         window.location.href = res.redirect_url;
         return;
       }
+      // A manual rail has nowhere to redirect and nothing has been paid: the
+      // refreshed row carries the destination account, and the panel below it
+      // asks for the receipt. Announcing success here was a lie about money
+      // that never moved — the same reading the public form already does with
+      // `payment_method === "manual"`.
+      if (res.payment_method === "manual") {
+        toast.success("Tagihan dibuat. Transfer lalu unggah buktinya.");
+        refresh();
+        return;
+      }
       toast.success("Pembayaran berhasil.");
       refresh();
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memproses pembayaran.").message),
+  });
+
+  const proof = useMutation({
+    mutationFn: (url: string) => submitTeamProof(params.id, url),
+    onSuccess: () => {
+      toast.success("Bukti terkirim. Menunggu verifikasi penyelenggara.");
+      refresh();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti.").message),
   });
 
   const [printingAlbum, setPrintingAlbum] = useState(false);
@@ -324,10 +358,16 @@ export default function ManageTeamPage() {
                 )}
               </div>
             </div>
-            <Button onClick={() => pay.mutate()} disabled={pay.isPending || (requiresChannel && !channel)}>
-              {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-              Bayar sekarang
-            </Button>
+            {/* On the manual rail the action is the panel below, not this
+                button: pressing it would reopen the same bill and hand back the
+                same account. It stays only to re-price that bill once a code has
+                been applied, which is the one thing the panel cannot do. */}
+            {(!manualBill || applied) && (
+              <Button onClick={() => pay.mutate()} disabled={pay.isPending || (requiresChannel && !channel)}>
+                {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                {manualBill ? "Terapkan diskon" : "Bayar sekarang"}
+              </Button>
+            )}
           </CardContent>
           {(canApplyCode || requiresChannel) && (
             <CardContent className="grid gap-4 pt-0">
@@ -362,6 +402,22 @@ export default function ManageTeamPage() {
             </CardContent>
           )}
         </Card>
+      )}
+
+      {/* Where to transfer, and the box for the receipt. Without it the manager
+          was left with a toast and no destination — the money is paid into the
+          organizer's own account, so there is nothing for a gateway to redirect
+          to and the proof is the only thing that settles this bill. */}
+      {team.payment_status === "unpaid" && manualBill && (
+        <ManualTransferPanel
+          bankAccount={team.bank_account ?? null}
+          amount={team.payment_amount}
+          deadlineAt={team.payment_deadline_at}
+          awaitingVerification={team.awaiting_verification}
+          rejectedReason={team.rejected_reason}
+          pending={proof.isPending}
+          onSubmit={(url) => proof.mutate(url)}
+        />
       )}
 
       {(team.invoice_number || team.receipt_number) && (

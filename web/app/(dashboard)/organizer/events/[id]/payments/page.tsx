@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ExternalLink, Inbox, X } from "lucide-react";
+import { Inbox, ReceiptText } from "lucide-react";
 
 import {
   approveRaceEntryPayment,
@@ -20,9 +20,12 @@ import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { rupiah } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
+import {
+  PaymentProofDialog,
+  type ProofDetail,
+} from "@/components/payment/payment-proof-dialog";
 
 /** What the three queues have in common, so one row component renders them all. */
 type Row = {
@@ -40,14 +43,27 @@ type Row = {
   amount: number;
   proofUrl: string | null;
   uploadedAt: string | null;
+  /**
+   * What the dialog lists beside the receipt. Built where the row is built, not
+   * inside the dialog: the three streams describe themselves with different
+   * fields — a ticket order has a quantity, a runner has a price period — and a
+   * dialog branching on `kind` would be the one place that has to know all
+   * three.
+   */
+  details: ProofDetail[];
 };
 
 export default function EventPaymentsPage() {
   const params = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { org, orgId } = useActiveOrg();
-  const [rejecting, setRejecting] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
+  /**
+   * The receipt on screen. The verdict used to be typed out here while the
+   * proof was off in another browser tab — see PaymentProofDialog, whose whole
+   * reason for existing is that the two halves of one decision belong on one
+   * screen.
+   */
+  const [reviewing, setReviewing] = useState<Row | null>(null);
 
   const query = useQuery({
     queryKey: ["event-payments", orgId, params.id],
@@ -57,8 +73,7 @@ export default function EventPaymentsPage() {
 
   const done = (message: string) => {
     qc.invalidateQueries({ queryKey: ["event-payments", orgId, params.id] });
-    setRejecting(null);
-    setReason("");
+    setReviewing(null);
     toast.success(message);
   };
 
@@ -93,6 +108,17 @@ export default function EventPaymentsPage() {
       amount: o.total_price,
       proofUrl: o.payment_proof_url,
       uploadedAt: o.payment_proof_uploaded_at,
+      details: [
+        { label: "Pembeli", value: o.buyer_name },
+        // The contact, because a receipt that does not match the bank statement
+        // is a question for the buyer, and that question is asked from here.
+        { label: "Email", value: o.buyer_email || "—" },
+        { label: "Tiket", value: `${o.quantity} × ${o.category?.name ?? "-"}` },
+        {
+          label: "Jumlah",
+          value: <span className="font-bold">{rupiah(o.total_price)}</span>,
+        },
+      ],
     })),
     ...(query.data?.teams ?? []).map<Row>((t) => ({
       id: t.id,
@@ -102,6 +128,15 @@ export default function EventPaymentsPage() {
       amount: t.payment_amount,
       proofUrl: t.payment_proof_url,
       uploadedAt: t.payment_proof_uploaded_at,
+      details: [
+        { label: "Tim", value: t.name },
+        { label: "Kategori", value: t.category?.name ?? "-" },
+        { label: "Kontak", value: t.contact_name || "—" },
+        {
+          label: "Jumlah",
+          value: <span className="font-bold">{rupiah(t.payment_amount)}</span>,
+        },
+      ],
     })),
     // Empty on every competition event, and read unconditionally anyway: a key
     // whose presence depends on the sport is one this page would have to defend
@@ -116,6 +151,18 @@ export default function EventPaymentsPage() {
       amount: e.price,
       proofUrl: e.payment_proof_url,
       uploadedAt: e.payment_proof_uploaded_at,
+      details: [
+        { label: "Pelari", value: e.full_name },
+        { label: "Email", value: e.email || "—" },
+        { label: "Kategori", value: e.category?.name ?? "-" },
+        // The window, for the same reason it is on the receipt: it is what
+        // makes the amount checkable against the price list.
+        { label: "Periode", value: e.period_name },
+        {
+          label: "Jumlah",
+          value: <span className="font-bold">{rupiah(e.price)}</span>,
+        },
+      ],
     })),
   ];
 
@@ -170,57 +217,34 @@ export default function EventPaymentsPage() {
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {row.proofUrl && (
-                  <Button asChild size="sm" variant="outline">
-                    <a href={row.proofUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                      Lihat bukti
-                    </a>
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => approve.mutate(row)}
-                >
-                  <Check className="h-4 w-4" />
-                  Terima
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setRejecting(rejecting === row.id ? null : row.id)}
-                >
-                  <X className="h-4 w-4" />
-                  Tolak
-                </Button>
-              </div>
+              {/* One button, because there is one decision — and it can only be
+                  made after looking at the receipt, which is inside. Same shape
+                  as the super admin's plan queue. */}
+              <Button size="sm" disabled={busy} onClick={() => setReviewing(row)}>
+                <ReceiptText className="h-4 w-4" />
+                Lihat bukti &amp; verifikasi
+              </Button>
             </div>
-
-            {rejecting === row.id && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                <Input
-                  autoFocus
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Alasan penolakan (dilihat pembeli)"
-                  className="min-w-[240px] flex-1"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy || reason.trim().length === 0}
-                  onClick={() => reject.mutate({ row, text: reason.trim() })}
-                >
-                  Kirim penolakan
-                </Button>
-              </div>
-            )}
           </Card>
         ))}
       </div>
+
+      {reviewing && (
+        <PaymentProofDialog
+          open
+          onOpenChange={(next) => !next && setReviewing(null)}
+          title="Bukti transfer"
+          description={`${reviewing.title} · ${reviewing.subtitle}`}
+          proofUrl={reviewing.proofUrl}
+          uploadedAt={reviewing.uploadedAt}
+          details={reviewing.details}
+          consequence="Menerima berarti pembayaran ini dianggap lunas seketika — tiket terbit, pendaftaran aktif. Cocokkan dulu jumlah dan waktu transfer dengan mutasi rekeningmu; tidak ada uang yang masuk otomatis."
+          rejectPlaceholder="Alasan penolakan (dilihat pembayar)"
+          busy={busy}
+          onApprove={() => approve.mutate(reviewing)}
+          onReject={(text) => reject.mutate({ row: reviewing, text })}
+        />
+      )}
     </div>
   );
 }
