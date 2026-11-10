@@ -248,6 +248,33 @@ export default function RegistrationsPage() {
 
       <RaceRouteGuard event={eventQuery.data} eventId={eventId} requires="competition">
 
+      {/* Receipts waiting on a verdict, with the link that casts it.
+          Deliberately not a filter chip beside Menunggu/Disetujui/Ditolak:
+          those four partition `status` — whether the organizer admitted the
+          team — while this is about the fee, an independent column. A fifth chip
+          in that rail would overlap all four and show rows already in them.
+          The badge on each row is the per-team half; this is how it gets seen
+          without opening twenty of them. */}
+      {awaitingCount > 0 && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)] p-4">
+          <div className="flex items-start gap-3">
+            <ReceiptText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]" />
+            <div>
+              <p className="font-semibold">
+                {awaitingCount} bukti transfer menunggu diperiksa
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Tim sudah mengunggah bukti pembayaran. Cocokkan dengan mutasi rekeningmu,
+                lalu terima atau tolak.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm">
+            <Link href={`/organizer/events/${eventId}/payments`}>Buka antrean verifikasi</Link>
+          </Button>
+        </Card>
+      )}
+
       {query.isLoading && (
         <div className="grid gap-3">
           {[0, 1, 2].map((i) => (
