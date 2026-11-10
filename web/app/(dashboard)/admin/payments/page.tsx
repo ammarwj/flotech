@@ -118,7 +118,10 @@ export default function AdminPaymentsPage() {
           {items.map((row) => (
             <Card
               key={`${row.kind}-${row.id}`}
-              className="flex flex-wrap items-center justify-between gap-4 p-4"
+              /* min-w-0: a grid item's implicit floor is its min-content
+                 width, so one unbreakable row widens the track — and with it
+                 every other card in the list. */
+              className="flex min-w-0 flex-wrap items-center justify-between gap-4 p-4"
             >
               {/* w-full below sm, flex-1 above: as a bare flex item its basis
                   resolves to max-content — every badge on one line — so the
@@ -144,7 +147,12 @@ export default function AdminPaymentsPage() {
                   </Badge>
                   {row.payment_type && <Badge variant="outline">{row.payment_type}</Badge>}
                 </div>
-                <p className="mt-1 break-words text-sm text-muted-foreground">
+                {/* break-all, not break-words: a buyer list arrives as
+                    "Kansa,Novi,ades,…" with no spaces, and a comma is not a
+                    break opportunity. overflow-wrap does not lower min-content,
+                    so that one row set the grid track for all 112 cards and
+                    every card hung past the page padding. */}
+                <p className="mt-1 break-all text-sm text-muted-foreground">
                   {row.payer ?? "—"} &middot; {row.event_name ?? "—"} &middot;{" "}
                   {row.organization_name ?? "—"}
                 </p>
@@ -162,7 +170,7 @@ export default function AdminPaymentsPage() {
                     </>
                   ) : (
                     <>
-                      Dibayar pembeli {rupiah(row.gross_amount)} &middot; tanpa fee
+                      Dibayar pembeli {rupiah(row.gross_amount)} &middot; tanpa fee{" "}
                       {row.platform_fee > 0 && <> &middot; potongan lama {rupiah(row.platform_fee)}</>}
                     </>
                   )}
