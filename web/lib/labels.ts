@@ -56,13 +56,16 @@ export const PLAN_ORDER_STATUS_LABELS: Record<PlanOrderStatus, string> = {
 };
 
 /**
- * The rail a ticket order was taken on, as a human reads it.
+ * The rail a payment was taken on, as a human reads it.
  *
- * Mirrors `TicketOrder::METHOD_LABELS` in the API, which the buyer export reads
- * for the same reason: `onsite` in a column is a word nobody outside the code
- * uses.
+ * Mirrors `HasManualPayment::METHOD_LABELS`, and keyed by the widest union for
+ * the reason that constant sits on the trait rather than on TicketOrder: a
+ * ticket order, a team registration and a plan order all answer this question,
+ * and three maps would be three chances to drift. `onsite` is only ever a ticket
+ * order's, which costs the other two callers nothing — indexing a narrower
+ * `PaymentMethod` into this map is exactly as safe.
  */
-export const TICKET_PAYMENT_METHOD_LABELS: Record<TicketPaymentMethod, string> = {
+export const PAYMENT_METHOD_LABELS: Record<TicketPaymentMethod, string> = {
   gateway: "Pembayaran online",
   manual: "Transfer manual",
   onsite: "Tunai di loket",

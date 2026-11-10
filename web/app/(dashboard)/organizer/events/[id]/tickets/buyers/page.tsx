@@ -21,7 +21,7 @@ import {
 
 import { checkInTicketOrder, getTicketOrders } from "@/lib/api/tickets";
 import { parseApiError } from "@/lib/api/errors";
-import { rupiah, TICKET_PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { PAYMENT_METHOD_LABELS, rupiah } from "@/lib/labels";
 import { getEvent } from "@/lib/api/events";
 import { isExportEnabled, isTicketingEnabled } from "@/lib/plan";
 import { isRaceEvent } from "@/lib/race";
@@ -501,7 +501,7 @@ function BuyerCard({
                   organizer reconciles the two. */}
               {order.payment_method !== "gateway" && (
                 <Badge variant="outline">
-                  {TICKET_PAYMENT_METHOD_LABELS[order.payment_method]}
+                  {PAYMENT_METHOD_LABELS[order.payment_method]}
                 </Badge>
               )}
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +21,7 @@ import {
   FileSpreadsheet,
   Loader2,
   Printer,
+  ReceiptText,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
@@ -35,7 +37,7 @@ import {
 } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { downloadEventAlbum, downloadTeamAlbum } from "@/lib/api/team-album";
-import { rupiah } from "@/lib/labels";
+import { PAYMENT_METHOD_LABELS, rupiah } from "@/lib/labels";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -49,7 +51,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { EmptyState } from "@/components/shared/empty-state";
-import { TeamStatusBadge } from "@/components/shared/status-badge";
+import { RegistrationPaymentBadge, TeamStatusBadge } from "@/components/shared/status-badge";
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
 import { PillTabs } from "@/components/event/pill-tabs";
 import { ImportTeamsDialog } from "@/components/event/import-teams-dialog";
@@ -150,6 +152,12 @@ export default function RegistrationsPage() {
   // Header stats describe the whole event, so they ignore both search and filter.
   const pendingCount = teams?.filter((t) => t.status === "pending").length ?? 0;
   const approvedCount = teams?.filter((t) => t.status === "approved").length ?? 0;
+  // Receipts in, nobody has ruled on them. Counted across the whole event for
+  // the same reason as the two above, and surfaced at the top because the thing
+  // it asks for lives on another page: a manager who transferred and uploaded
+  // their proof is invisible here otherwise, and waits on an organizer who has
+  // no reason to go looking.
+  const awaitingCount = teams?.filter((t) => t.awaiting_verification).length ?? 0;
 
   async function printAll() {
     if (!orgId) return;
@@ -462,9 +470,10 @@ function RegistrationCard({
               {team.category && <Badge variant="neutral">{team.category.name}</Badge>}
               <TeamStatusBadge status={team.status} />
               {paid && (
-                <Badge variant={team.payment_status === "paid" ? "success" : "warning"}>
-                  {team.payment_status === "paid" ? "Lunas" : "Belum bayar"}
-                </Badge>
+                <RegistrationPaymentBadge
+                  status={team.payment_status}
+                  awaitingVerification={team.awaiting_verification}
+                />
               )}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -543,12 +552,35 @@ function RegistrationCard({
             </Info>
             <Info label="Pembayaran">
               {paid ? (
-                <span className="text-sm font-medium">
-                  {rupiah(team.payment_amount)} ·{" "}
-                  <span className={team.payment_status === "paid" ? "text-[var(--success)]" : "text-[var(--warning)]"}>
-                    {team.payment_status === "paid" ? "Lunas" : "Belum bayar"}
+                <div className="grid gap-1.5">
+                  <span className="text-sm font-medium">
+                    {rupiah(team.payment_amount)} · {PAYMENT_METHOD_LABELS[team.payment_method]}
                   </span>
-                </span>
+                  <RegistrationPaymentBadge
+                    status={team.payment_status}
+                    awaitingVerification={team.awaiting_verification}
+                  />
+                  {/* The receipt is in and somebody has to look at it, so this
+                      is where the organizer is sent — the badge alone names the
+                      state without naming the screen that clears it. */}
+                  {team.awaiting_verification && (
+                    <Link
+                      href={`/organizer/events/${eventId}/payments`}
+                      className="inline-flex items-center gap-1 text-sm font-medium text-[var(--brand-600)] hover:underline"
+                    >
+                      <ReceiptText className="h-3.5 w-3.5" />
+                      Periksa bukti transfer
+                    </Link>
+                  )}
+                  {/* A turned-down receipt is back in the manager's hands, and
+                      the organizer wrote the reason — printed here so "why is
+                      this still unpaid?" is answered where it is asked. */}
+                  {team.rejected_reason && !team.awaiting_verification && (
+                    <span className="text-sm text-[var(--danger)]">
+                      Bukti ditolak: {team.rejected_reason}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <span className="text-sm font-medium">Gratis</span>
               )}

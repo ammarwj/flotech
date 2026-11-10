@@ -13,6 +13,7 @@ import type {
   Match,
   MatchLineup,
   MatchLineupStatus,
+  PaymentStatus,
   PlanOrderStatus,
   RaceEntryStatus,
   TeamStatus,
@@ -182,6 +183,40 @@ export function RaceEntryStatusBadge({
   }
 
   return <Badge variant={RACE_ENTRY_VARIANT[status]}>{RACE_ENTRY_STATUS_LABELS[status]}</Badge>;
+}
+
+/**
+ * A team registration fee: paid, waiting on a receipt, or not paid at all.
+ *
+ * Three readings and not two, and the third is the one the organizer acts on:
+ * a manager who transferred and uploaded their proof sits at `unpaid` until an
+ * org admin rules on it, so a plain "Belum bayar" over them says the opposite of
+ * what happened and sends nobody to the verification queue. Same shape as
+ * RaceEntryStatusBadge and PlanOrderStatusBadge — `awaitingVerification` is
+ * derived from the proof columns (see HasManualPayment), never a third
+ * `payment_status` value, because that column has by-value guards all over the
+ * API that a new member would walk straight past.
+ *
+ * `rejectedReason` is the fourth reading it deliberately does NOT have: a turned
+ * -down receipt puts the bill back in the manager's hands, which is their
+ * sentence to read, not a state of the fee. The row's detail panel prints it.
+ */
+export function RegistrationPaymentBadge({
+  status,
+  awaitingVerification = false,
+}: {
+  status: PaymentStatus;
+  awaitingVerification?: boolean;
+}) {
+  if (awaitingVerification) {
+    return <Badge variant="warning">Menunggu verifikasi</Badge>;
+  }
+
+  return (
+    <Badge variant={status === "paid" ? "success" : "warning"}>
+      {status === "paid" ? "Lunas" : "Belum bayar"}
+    </Badge>
+  );
 }
 
 const PLAN_ORDER_VARIANT: Record<PlanOrderStatus, Variant> = {
