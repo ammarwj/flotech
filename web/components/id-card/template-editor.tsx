@@ -18,6 +18,7 @@ const SAMPLE: Record<string, string> = {
   role_label: "Wasit Utama",
   team_name: "Garuda FC",
   event_name: "Jakarta Cup 2026",
+  category_name: "Putra U-17",
   jersey_number: "10",
   position: "Penyerang",
   date_of_birth: "17 Agustus 2004",

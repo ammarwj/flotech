@@ -103,6 +103,11 @@ class IdCardService
             ->where('status', 'approved')
             ->with([
                 'manager:id,email',
+                // Eager, not lazy: a card may place `category_name`, and read
+                // per team that is one query per squad on an event with
+                // eighty of them. `preventLazyLoading` is not on, so it would
+                // run quietly.
+                'category:id,name',
                 'players' => fn ($q) => $q->where('is_active', true)->orderBy('full_name'),
                 'officials' => fn ($q) => $q->orderBy('sort_order')->orderBy('full_name'),
             ])
@@ -122,6 +127,7 @@ class IdCardService
                     'photo_url' => $player->photo_url,
                     'email' => $team->manager?->email,
                     'values' => [
+                        'category_name' => (string) ($team->category?->name ?? ''),
                         'jersey_number' => (string) ($player->jersey_number ?? ''),
                         'position' => TemplateFields::positionLabel($event->sport_type, $player->position),
                         'date_of_birth' => $player->date_of_birth
@@ -147,10 +153,13 @@ class IdCardService
                     'team_name' => $team->name,
                     'photo_url' => $official->photo_url,
                     'email' => $team->manager?->email,
-                    'values' => TemplateFields::values($event, [
-                        'team' => $team->custom_fields,
-                        'official' => $official->custom_fields,
-                    ]),
+                    'values' => [
+                        'category_name' => (string) ($team->category?->name ?? ''),
+                        ...TemplateFields::values($event, [
+                            'team' => $team->custom_fields,
+                            'official' => $official->custom_fields,
+                        ]),
+                    ],
                 ];
             }
         }
@@ -172,8 +181,9 @@ class IdCardService
                 'email' => $person->email,
                 // Empty, not absent: referees and staff are rows an organizer
                 // typed on the personnel screen, never entrants who filled in a
-                // form, so there is nothing to read. Spelled out so the key is
-                // present for every pool and no reader has to branch on it.
+                // form, and they belong to no team — so neither the answers nor
+                // `category_name` have anything to read. Spelled out so the key
+                // is present for every pool and no reader has to branch on it.
                 'values' => [],
             ];
         }

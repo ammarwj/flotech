@@ -27,6 +27,7 @@ const SAMPLE: Record<string, string> = {
   event_date: "14 Juni 2026",
   organization_name: "Jakarta Sports EO",
   certificate_number: "CERT-2026-07-0001",
+  category_name: "Putra U-17",
   jersey_number: "10",
   position: "Penyerang",
   date_of_birth: "17 Agustus 2004",

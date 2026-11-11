@@ -131,6 +131,7 @@ return [
          * slug: the key is a word nobody typed, and TemplateFields::positionLabel()
          * is the single reader that resolves it.
          */
+        'category_name' => 'Kategori',
         'jersey_number' => 'Nomor punggung',
         'position' => 'Posisi',
         'date_of_birth' => 'Tanggal lahir',

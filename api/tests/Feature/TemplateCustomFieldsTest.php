@@ -11,6 +11,7 @@ use App\Services\IdCardService;
 use App\Services\R2StorageService;
 use App\Support\TemplateFields;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\CreatesPlannedEvents;
 use Tests\TestCase;
@@ -66,10 +67,14 @@ class TemplateCustomFieldsTest extends TestCase
     }
 
     /** An approved team with one player, both carrying answers. */
-    private function squad(Event $event, array $teamAnswers, array $playerAnswers): Team
-    {
+    private function squad(
+        Event $event,
+        array $teamAnswers,
+        array $playerAnswers,
+        string $categoryName = 'Umum',
+    ): Team {
         $category = $event->categories()->create([
-            'name' => 'Umum', 'slug' => 'umum-'.uniqid(), 'tournament_format' => 'league', 'sort_order' => 0,
+            'name' => $categoryName, 'slug' => 'kat-'.uniqid(), 'tournament_format' => 'league', 'sort_order' => 0,
         ]);
 
         $team = $event->teams()->create([
@@ -298,6 +303,132 @@ class TemplateCustomFieldsTest extends TestCase
             ->firstWhere('id', $player->id);
 
         $this->assertSame('XXL', $person['values']['custom:player:ukuran_jersey']);
+    }
+
+    /**
+     * The category reaches a player's card and their coach's, carries the
+     * squad's own name on each, and is empty for personnel.
+     *
+     * All three pools in one assertion set, because each passes alone under a
+     * build that is wrong for the others: a resolver reading the player's team
+     * only leaves the bench blank, and one defaulting to the first category
+     * would satisfy any single-category event.
+     */
+    public function test_category_reaches_every_pool_that_has_one(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+        $event = $this->eventOn($org);
+
+        // Two squads in two categories — one category could not tell a correct
+        // lookup from a hardcoded first row.
+        $putra = $this->squad($event, [], [], 'Putra U-17');
+        $putri = $this->squad($event, [], [], 'Putri Umum');
+
+        $putra->officials()->create(['full_name' => 'Coach', 'sort_order' => 0]);
+        $putri->officials()->create(['full_name' => 'Coach', 'sort_order' => 0]);
+
+        $event->personnel()->create(['full_name' => 'Wasit Satu', 'kind' => 'referee', 'sort_order' => 0]);
+
+        // Keyed by id, not name: both squads carry a player called the same
+        // thing, which is the ordinary case this feature prints cards for.
+        $people = collect(app(IdCardService::class)->recipients($event))->keyBy('id');
+
+        $this->assertSame(
+            'Putra U-17',
+            $people[$putra->players()->first()->id]['values']['category_name'],
+        );
+        $this->assertSame(
+            'Putri Umum',
+            $people[$putri->players()->first()->id]['values']['category_name'],
+        );
+        $this->assertSame(
+            'Putra U-17',
+            $people[$putra->officials()->first()->id]['values']['category_name'],
+        );
+        $this->assertSame(
+            'Putri Umum',
+            $people[$putri->officials()->first()->id]['values']['category_name'],
+        );
+
+        // Personnel belong to no team, so there is no category to print —
+        // absent, not an empty string, the same as an unanswered question.
+        $referee = $people[$event->personnel()->first()->id];
+        $this->assertSame('personnel', $referee['type']);
+        $this->assertArrayNotHasKey('category_name', $referee['values']);
+    }
+
+    /**
+     * A certificate carries the category for a player AND for a whole squad.
+     *
+     * The pair is the point: the category belongs to the team, so unlike the
+     * jersey/position/birth columns beside it, a team certificate is not the
+     * blank case. A resolver written in the player branch only passes the first
+     * assertion whole.
+     */
+    public function test_certificate_carries_the_category_for_player_and_team(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+        $event = $this->eventOn($org);
+
+        $team = $this->squad($event, [], [], 'Putra U-17');
+        $player = $team->players()->first();
+
+        $template = $org->certificateTemplates()->create([
+            'name' => 'Juara',
+            'background_url' => 'https://cdn.test/bg.png',
+            'orientation' => 'landscape',
+            'fields' => [['key' => 'category_name', 'x' => 50, 'y' => 50, 'size' => 18]],
+        ]);
+
+        $issued = app(CertificateService::class)->issueBatch($event, $template, [
+            ['type' => 'player', 'id' => $player->id],
+            ['type' => 'team', 'id' => $team->id],
+        ], 'Juara 1')->keyBy('recipient_type');
+
+        $this->assertSame('Putra U-17', $issued['player']->field_values['category_name']);
+        $this->assertSame('Putra U-17', $issued['team']->field_values['category_name']);
+
+        // And the player-only columns stay player-only — without this, a
+        // resolver that stopped branching at all would pass the pair above.
+        $this->assertSame('10', $issued['player']->field_values['jersey_number']);
+        $this->assertArrayNotHasKey('jersey_number', $issued['team']->field_values);
+    }
+
+    /**
+     * The category costs no query per squad.
+     *
+     * `preventLazyLoading` is not enabled, so a missing eager load runs
+     * silently — on an event with eighty teams that is eighty round trips for
+     * one string. Compared across two squad counts rather than asserted at one:
+     * any fixed number passes a single-size check.
+     */
+    public function test_resolving_the_category_does_not_scale_with_squads(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->orgFor($user);
+
+        $small = $this->eventOn($org);
+        $this->squad($small, [], [], 'A');
+
+        $big = $this->eventOn($org);
+        foreach (['A', 'B', 'C', 'D', 'E'] as $name) {
+            $this->squad($big, [], [], $name);
+        }
+
+        $count = function (Event $event): int {
+            $queries = 0;
+            DB::listen(function () use (&$queries) {
+                $queries++;
+            });
+
+            app(IdCardService::class)->recipients($event);
+
+            return $queries;
+        };
+
+        $this->assertSame($count($small), $count($big));
     }
 
     /**

@@ -57,7 +57,14 @@ class CertificateService
     {
         $teams = $event->teams()
             ->where('status', 'approved')
-            ->with(['manager:id,email', 'players' => fn ($q) => $q->where('is_active', true)->orderBy('full_name')])
+            // `category` eager for the same reason as IdCardService: a template
+            // may place `category_name`, and read lazily that is one query per
+            // squad on an event with eighty of them.
+            ->with([
+                'manager:id,email',
+                'category:id,name',
+                'players' => fn ($q) => $q->where('is_active', true)->orderBy('full_name'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -221,12 +228,21 @@ class CertificateService
      */
     protected function fieldValues(Event $event, string $type, Player|Team $subject, ?Team $team): array
     {
+        // Resolved once for both branches: the category belongs to the TEAM, so
+        // it is as true of a player's certificate as of their squad's — unlike
+        // the three player columns below, which a team has no answer for.
+        $category = ['category_name' => (string) ($team?->category?->name ?? '')];
+
         if ($type !== 'player') {
-            return TemplateFields::values($event, ['team' => $subject->custom_fields]);
+            return [
+                ...$category,
+                ...TemplateFields::values($event, ['team' => $subject->custom_fields]),
+            ];
         }
 
         /** @var Player $subject */
         return [
+            ...$category,
             'jersey_number' => (string) ($subject->jersey_number ?? ''),
             'position' => TemplateFields::positionLabel($event->sport_type, $subject->position),
             'date_of_birth' => $subject->date_of_birth

@@ -36,6 +36,8 @@ return [
      * The three player columns at the bottom are blank on a team certificate,
      * and a blank field draws nothing — the same as an unanswered custom one.
      * `position` prints the sport's own label ("Kiper"), never the stored slug.
+     * `category_name` is NOT one of those three: the category belongs to the
+     * team, so it prints on a player's certificate and on their squad's alike.
      */
     'fields' => [
         'recipient_name' => 'Nama penerima',
@@ -47,6 +49,7 @@ return [
         'certificate_number' => 'Nomor sertifikat',
         'qr' => 'QR verifikasi',
 
+        'category_name' => 'Kategori',
         'jersey_number' => 'Nomor punggung',
         'position' => 'Posisi',
         'date_of_birth' => 'Tanggal lahir',
