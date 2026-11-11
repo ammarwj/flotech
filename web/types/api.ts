@@ -2560,12 +2560,23 @@ export interface EventPersonnelInput {
 
 // ---- Certificates ----
 
-/** A placeable field key, e.g. "recipient_name" or "qr". Catalogued by the API. */
+/**
+ * A placeable field key, e.g. "recipient_name", "qr", or
+ * "custom:player:asal_sekolah" for a question the event's registration form
+ * asks. Catalogued by the API — never spelled out in a component.
+ */
 export type CertificateFieldKey = string;
 
 export interface CertificateFieldDef {
   key: CertificateFieldKey;
   label: string;
+  /**
+   * The picker's heading: "Data standar", or the registration list the question
+   * came from. Sent by the server rather than derived from the key's prefix,
+   * because deriving it would be a second reader of a rule only
+   * App\Support\TemplateFields states.
+   */
+  group: string;
 }
 
 /** One field placed on a template. x/y are percentages of the background. */
@@ -2630,12 +2641,17 @@ export interface CertificateRecipients {
 
 // ---- ID cards ----
 
-/** A placeable field key, e.g. "photo" or "name". Catalogued by the API. */
+/**
+ * A placeable field key, e.g. "photo", "name", or "custom:player:asal_sekolah"
+ * for a question the event's registration form asks. Catalogued by the API.
+ */
 export type IdCardFieldKey = string;
 
 export interface IdCardFieldDef {
   key: IdCardFieldKey;
   label: string;
+  /** The picker's heading — see CertificateFieldDef.group. */
+  group: string;
 }
 
 /**

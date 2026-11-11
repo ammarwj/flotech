@@ -22,9 +22,21 @@ return [
     // otherwise ask for every certificate it ever issued in one request.
     'max_batch' => 500,
 
-    // Fields a template may place on the background, and where their values come
-    // from. The editor reads this list through GET /certificate-fields, so adding
-    // one here is all it takes for organizers to be able to place it.
+    /*
+     * Fields a template may place on the background, and where their values come
+     * from. The editor reads this list through GET /certificate-fields, so adding
+     * one here is all it takes for organizers to be able to place it.
+     *
+     * This is the FIXED half of that list. The other half is whatever the
+     * organizer asked on the event's registration form, joined on at request
+     * time by App\Support\TemplateFields — a key here and a `custom:` key from
+     * there are placed, validated and rendered through exactly the same code,
+     * which is what stops the two halves drifting apart.
+     *
+     * The three player columns at the bottom are blank on a team certificate,
+     * and a blank field draws nothing — the same as an unanswered custom one.
+     * `position` prints the sport's own label ("Kiper"), never the stored slug.
+     */
     'fields' => [
         'recipient_name' => 'Nama penerima',
         'team_name' => 'Nama tim',
@@ -34,5 +46,9 @@ return [
         'organization_name' => 'Penyelenggara',
         'certificate_number' => 'Nomor sertifikat',
         'qr' => 'QR verifikasi',
+
+        'jersey_number' => 'Nomor punggung',
+        'position' => 'Posisi',
+        'date_of_birth' => 'Tanggal lahir',
     ],
 ];

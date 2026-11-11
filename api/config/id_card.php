@@ -58,6 +58,13 @@ return [
      * through GET /id-card-fields, so adding one here is all it takes for
      * organizers to be able to place it.
      *
+     * This is the FIXED half of that list. The other half is whatever the
+     * organizer asked on the event's registration form, joined on at request
+     * time by App\Support\TemplateFields — a key here and a `custom:` key from
+     * there are placed, validated and rendered through exactly the same code,
+     * which is what stops the two halves drifting apart. Everything below is
+     * columns that exist on the row regardless of what any form asked.
+     *
      * `qr` was deliberately absent until id_cards existed, and the reason is
      * worth keeping because it is also the condition that had to be met: a QR
      * needs a number to encode and a page that answers it, and a card used to
@@ -113,5 +120,22 @@ return [
         'team_name' => 'Nama tim',
         'event_name' => 'Nama event',
         'qr' => 'QR verifikasi',
+
+        /*
+         * Columns the three pools already carry, which a card could not print
+         * until now. Each is blank for the pools that have no such column —
+         * personnel have no jersey, a team official no date of birth — and a
+         * blank field draws nothing, the same as an unanswered custom one.
+         *
+         * `position` prints the sport's own label ("Kiper"), not the stored
+         * slug: the key is a word nobody typed, and TemplateFields::positionLabel()
+         * is the single reader that resolves it.
+         */
+        'jersey_number' => 'Nomor punggung',
+        'position' => 'Posisi',
+        'date_of_birth' => 'Tanggal lahir',
+        'card_number' => 'Nomor kartu',
+        'organization_name' => 'Penyelenggara',
+        'event_date' => 'Tanggal event',
     ],
 ];

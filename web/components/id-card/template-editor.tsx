@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { clampPercent, useCanvasDrag, useCanvasWidth } from "@/lib/canvas-drag";
+import { fieldLabel, groupFields, isCustomFieldKey } from "@/lib/template-fields";
 import { cn } from "@/lib/utils";
 import type { IdCardField, IdCardFieldDef } from "@/types/api";
 
@@ -17,6 +18,12 @@ const SAMPLE: Record<string, string> = {
   role_label: "Wasit Utama",
   team_name: "Garuda FC",
   event_name: "Jakarta Cup 2026",
+  jersey_number: "10",
+  position: "Penyerang",
+  date_of_birth: "17 Agustus 2004",
+  card_number: "IDC-2026-11-0042",
+  organization_name: "Pemuda Sport Center",
+  event_date: "12 Desember 2026",
 };
 
 /**
@@ -154,9 +161,13 @@ export function TemplateEditor({
     setSelected(fields.length);
   };
 
-  const unused = fieldDefs.filter((def) => !fields.some((f) => f.key === def.key));
+  const unused = groupFields(fieldDefs.filter((def) => !fields.some((f) => f.key === def.key)));
+  const unusedCount = unused.reduce((n, g) => n + g.defs.length, 0);
   const active = selected !== null ? fields[selected] : undefined;
-  const labelOf = (key: string) => fieldDefs.find((d) => d.key === key)?.label ?? key;
+  // Through the helper, not a lookup with the key as fallback: a template is
+  // org-scoped and routinely holds a question only another event asked, and
+  // printing `custom:player:asal_sekolah` raw in the field list reads as a bug.
+  const labelOf = (key: string) => fieldLabel(fieldDefs, key);
 
   // The printed side of the selected QR, squared off the shorter side exactly
   // as the renderer does. Zero when the selection is not a QR; the branch that
@@ -336,16 +347,25 @@ export function TemplateEditor({
             id="add-field"
             value=""
             onChange={(e) => add(e.target.value)}
-            disabled={unused.length === 0}
+            disabled={unusedCount === 0}
             className="mt-1.5"
           >
             <option value="">
-              {unused.length ? "— pilih field —" : "Semua field sudah dipakai"}
+              {unusedCount ? "— pilih field —" : "Semua field sudah dipakai"}
             </option>
-            {unused.map((def) => (
-              <option key={def.key} value={def.key}>
-                {def.label}
-              </option>
+            {/* Grouped, because the two halves answer different questions: the
+                fixed catalogue is what every card can print, while the rest is
+                what THIS event asked its entrants. Flat, a jersey-size question
+                sits between "Nama" and "QR verifikasi" with nothing saying
+                where it came from. */}
+            {unused.map((group) => (
+              <optgroup key={group.group} label={group.group}>
+                {group.defs.map((def) => (
+                  <option key={def.key} value={def.key}>
+                    {def.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </Select>
         </div>
@@ -364,7 +384,16 @@ export function TemplateEditor({
                     : "hover:bg-[var(--bg-soft)]"
                 )}
               >
-                <span className="truncate">{labelOf(field.key)}</span>
+                <span className="truncate">
+                  {labelOf(field.key)}
+                  {/* Said on the row, not only in the picker: a template
+                      outlives the event it was built against, and a question
+                      only one event asks prints blank on every other one. The
+                      organizer can act on that — the fixed fields never can. */}
+                  {isCustomFieldKey(field.key) && (
+                    <span className="ml-1 text-xs text-muted-foreground">· formulir</span>
+                  )}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {field.x}% · {field.y}%
                 </span>

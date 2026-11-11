@@ -10,6 +10,7 @@ use App\Models\CertificateTemplate;
 use App\Models\Organization;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
+use App\Support\TemplateFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,14 +29,21 @@ class CertificateTemplateController extends Controller
         return ApiResponse::success(CertificateTemplateResource::collection($templates));
     }
 
-    /** The placeable fields, so the editor never hardcodes the list. */
-    public function fields(): JsonResponse
+    /**
+     * The placeable fields, so the editor never hardcodes the list.
+     *
+     * `?event_id` widens the answer with that event's registration questions —
+     * see the ID card twin for why it is optional rather than required.
+     */
+    public function fields(Request $request, string $organization): JsonResponse
     {
-        $fields = collect((array) config('certificate.fields'))
-            ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])
-            ->values();
+        $data = $request->validate(['event_id' => ['nullable', 'uuid']]);
 
-        return ApiResponse::success($fields);
+        $event = ($data['event_id'] ?? null)
+            ? $this->org($request)->events()->where('id', $data['event_id'])->firstOrFail()
+            : null;
+
+        return ApiResponse::success(TemplateFields::certificate($event));
     }
 
     public function store(StoreCertificateTemplateRequest $request, string $organization): JsonResponse

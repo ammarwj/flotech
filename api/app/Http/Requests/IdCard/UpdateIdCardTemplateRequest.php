@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\IdCard;
 
+use App\Http\Requests\Concerns\ChecksTemplateFieldKeys;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 class UpdateIdCardTemplateRequest extends FormRequest
 {
+    use ChecksTemplateFieldKeys;
+
     public function authorize(): bool
     {
         return true;
@@ -28,6 +31,7 @@ class UpdateIdCardTemplateRequest extends FormRequest
             // malformed.
             if ($this->has('fields')) {
                 IdCardTemplateRules::check($v, $this->input('fields'));
+                $this->checkFieldKeys($v, $this, 'id_card');
             }
         });
     }

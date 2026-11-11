@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\Player;
 use App\Models\Team;
 use App\Support\QrImage;
+use App\Support\TemplateFields;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Carbon;
@@ -120,6 +121,11 @@ class CertificateService
                 'recipient_id' => $id,
                 'recipient_name' => $recipient['type'] === 'player' ? $subject->full_name : $subject->name,
                 'team_name' => $recipient['type'] === 'player' ? $team?->name : null,
+                // Frozen here, with the name beside it and for the same reason:
+                // this document is rendered once and quoted by number forever,
+                // so what it printed must not change when next season's form is
+                // edited. See the migration that added the column.
+                'field_values' => $this->fieldValues($event, $recipient['type'], $subject, $team),
                 // Neither teams nor players carry an email — the team's manager
                 // account is the only address we have, so that's who receives it.
                 'recipient_email' => $team?->manager?->email,
@@ -169,7 +175,18 @@ class CertificateService
     }
 
     /**
-     * What each placeholder prints. Keys mirror config('certificate.fields').
+     * What each placeholder prints, keyed exactly as a template places it.
+     *
+     * The fixed catalogue is resolved from the certificate's own frozen columns
+     * and its event; everything else — the row's jersey/position/birth date and
+     * the answers the entrant gave the registration form — comes out of
+     * `field_values`, snapshotted at issue time.
+     *
+     * The snapshot is merged UNDER the fixed keys, never over them: a
+     * registration question an organizer happened to key `award_title` must not
+     * be able to displace the award this document was issued for. Null on rows
+     * predating the column reads as an empty map, and the template draws nothing
+     * for a key it has no value for — the same as an unanswered optional field.
      *
      * @return array<string, string>
      */
@@ -178,6 +195,7 @@ class CertificateService
         $event = $certificate->event;
 
         return [
+            ...(is_array($certificate->field_values) ? $certificate->field_values : []),
             'recipient_name' => $certificate->recipient_name,
             'team_name' => $certificate->team_name ?? '',
             'award_title' => $certificate->award_title,
@@ -187,6 +205,37 @@ class CertificateService
                 : '',
             'organization_name' => $event?->organization?->name ?? '',
             'certificate_number' => $certificate->certificate_number,
+        ];
+    }
+
+    /**
+     * Everything a template may print for one recipient beyond the fixed
+     * catalogue, resolved once and frozen onto the row.
+     *
+     * A team certificate carries the team's own answers and nothing else: the
+     * three player columns and the player list have no meaning for a squad, and
+     * printing one squad member's school on the squad's award would be picking
+     * a person the document is not about.
+     *
+     * @return array<string, string>
+     */
+    protected function fieldValues(Event $event, string $type, Player|Team $subject, ?Team $team): array
+    {
+        if ($type !== 'player') {
+            return TemplateFields::values($event, ['team' => $subject->custom_fields]);
+        }
+
+        /** @var Player $subject */
+        return [
+            'jersey_number' => (string) ($subject->jersey_number ?? ''),
+            'position' => TemplateFields::positionLabel($event->sport_type, $subject->position),
+            'date_of_birth' => $subject->date_of_birth
+                ? Carbon::parse($subject->date_of_birth)->translatedFormat('d F Y')
+                : '',
+            ...TemplateFields::values($event, [
+                'team' => $team?->custom_fields,
+                'player' => $subject->custom_fields,
+            ]),
         ];
     }
 

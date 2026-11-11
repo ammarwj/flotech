@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Event;
 use App\Models\IdCard;
 use App\Models\IdCardTemplate;
+use App\Support\TemplateFields;
 use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Encoder\Encoder;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -81,7 +82,20 @@ class IdCardService
      * Null is ordinary, not an error: a team registered without a manager
      * account has nobody to send to.
      *
-     * @return array<int, array{type: string, id: string, name: string, role_label: string, team_name: string, photo_url: ?string, email: ?string}>
+     * `values` is everything else a template may print for this person, already
+     * resolved to the strings that go on the card: the columns the row carries
+     * (jersey, position, date of birth) and the answers they gave to the
+     * event's registration form, keyed exactly as a template places them.
+     *
+     * Resolved HERE rather than in render(), and that is the whole reason the
+     * key exists. render() is handed one flat person array and no query budget;
+     * re-deriving the answers there would mean a lookup per card, which on a
+     * 400-card reprint is 400 round trips for rows this method already has in
+     * hand. It also means the pool a generate request is filtered against and
+     * the values that get printed come out of one pass, so a person the
+     * controller accepted can never be a person the renderer has nothing for.
+     *
+     * @return array<int, array{type: string, id: string, name: string, role_label: string, team_name: string, photo_url: ?string, email: ?string, values: array<string, string>}>
      */
     public function recipients(Event $event): array
     {
@@ -107,6 +121,17 @@ class IdCardService
                     'team_name' => $team->name,
                     'photo_url' => $player->photo_url,
                     'email' => $team->manager?->email,
+                    'values' => [
+                        'jersey_number' => (string) ($player->jersey_number ?? ''),
+                        'position' => TemplateFields::positionLabel($event->sport_type, $player->position),
+                        'date_of_birth' => $player->date_of_birth
+                            ? Carbon::parse($player->date_of_birth)->translatedFormat('d F Y')
+                            : '',
+                        ...TemplateFields::values($event, [
+                            'team' => $team->custom_fields,
+                            'player' => $player->custom_fields,
+                        ]),
+                    ],
                 ];
             }
 
@@ -122,6 +147,10 @@ class IdCardService
                     'team_name' => $team->name,
                     'photo_url' => $official->photo_url,
                     'email' => $team->manager?->email,
+                    'values' => TemplateFields::values($event, [
+                        'team' => $team->custom_fields,
+                        'official' => $official->custom_fields,
+                    ]),
                 ];
             }
         }
@@ -141,6 +170,11 @@ class IdCardService
                 // mail job — one pool answers it from a column, two from a
                 // relation, and a second reader would have to re-derive which.
                 'email' => $person->email,
+                // Empty, not absent: referees and staff are rows an organizer
+                // typed on the personnel screen, never entrants who filled in a
+                // form, so there is nothing to read. Spelled out so the key is
+                // present for every pool and no reader has to branch on it.
+                'values' => [],
             ];
         }
 
@@ -267,14 +301,21 @@ class IdCardService
     /**
      * One card, as PNG bytes.
      *
-     * `$issued` is optional, and that is not laziness: it carries nothing but
-     * the number a `qr` field encodes, so a template without one renders
-     * identically with or without it. Making it required would force every
-     * caller — and every render test — to issue a row before it could draw a
-     * card that has nothing to verify. A `qr` field with no row simply draws
-     * nothing, the same way a text field with no value draws nothing.
+     * `$issued` is optional, and that is not laziness: it carries the number a
+     * `qr` field encodes and the one a `card_number` field prints, so a template
+     * placing neither renders identically with or without it. Making it required
+     * would force every caller — and every render test — to issue a row before
+     * it could draw a card that has nothing to verify. A `qr` field with no row
+     * simply draws nothing, the same way a text field with no value draws
+     * nothing.
      *
-     * @param  array{name?: string, role_label?: string, team_name?: string, photo_url?: ?string}  $person
+     * `$person['values']` is where every key outside the handful spelled below
+     * comes from — the row's own columns and the entrant's form answers, both
+     * resolved by recipients(). It is merged UNDER the fixed keys rather than
+     * over them, so a registration question an organizer happened to key `name`
+     * can never displace the name the card is issued to.
+     *
+     * @param  array{name?: string, role_label?: string, team_name?: string, photo_url?: ?string, values?: array<string, string>}  $person
      */
     public function render(
         IdCardTemplate $template,
@@ -289,10 +330,17 @@ class IdCardService
         $card = $bg ? clone $bg : $this->manager()->createImage($w, $h)->fill('ffffff');
 
         $values = [
+            ...(is_array($person['values'] ?? null) ? $person['values'] : []),
             'name' => (string) ($person['name'] ?? ''),
             'role_label' => (string) ($person['role_label'] ?? ''),
             'team_name' => (string) ($person['team_name'] ?? ''),
             'event_name' => (string) ($person['event_name'] ?? ''),
+            'organization_name' => (string) ($person['organization_name'] ?? ''),
+            'event_date' => (string) ($person['event_date'] ?? ''),
+            // From the row, not the person array: the number is minted by
+            // issue(), and reading it off anything else would be a second
+            // spelling of the string the QR beside it already encodes.
+            'card_number' => (string) ($issued?->card_number ?? ''),
         ];
 
         // Array order is z-order: the organizer arranged these, and redrawing
@@ -343,8 +391,21 @@ class IdCardService
         $zip = new ZipArchive;
         $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
 
+        // The three values that are the same on every card in a batch, resolved
+        // once above the loop. The organization is a relation, and reading it
+        // per person would be one lazy load per card.
+        $event->loadMissing('organization:id,name');
+
+        $eventValues = [
+            'event_name' => $event->name,
+            'organization_name' => (string) ($event->organization?->name ?? ''),
+            'event_date' => $event->start_date
+                ? Carbon::parse($event->start_date)->translatedFormat('d F Y')
+                : '',
+        ];
+
         foreach (array_values($recipients) as $i => $person) {
-            $person['event_name'] = $event->name;
+            $person = [...$person, ...$eventValues];
 
             $issued = $this->issue($event, $template, $person);
             $png = $this->render($template, $person, $background, $issued);

@@ -15,12 +15,17 @@ import {
 import { uploadImage } from "@/lib/api/events";
 import { parseApiError } from "@/lib/api/errors";
 import { TemplateEditor } from "@/components/certificate/template-editor";
+import { TemplateEventPicker } from "@/components/shared/template-event-picker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { FieldError } from "@/components/ui/field-error";
 import type { CertificateField, CertificateTemplate } from "@/types/api";
+
+/** Keys that already print their own message beside the control they belong to. */
+const BOUND_FIELDS = ["name", "background_url", "orientation"];
 
 export function TemplateForm({
   orgId,
@@ -42,9 +47,19 @@ export function TemplateForm({
   const [uploading, setUploading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  /**
+   * Which event's registration questions the picker offers. A lens on the
+   * catalogue, never part of the payload — the template is org-scoped and this
+   * is not one of its columns. See TemplateEventPicker.
+   */
+  const [sourceEventId, setSourceEventId] = useState("");
+
   const fieldDefsQuery = useQuery({
-    queryKey: ["certificate-fields", orgId],
-    queryFn: () => getCertificateFields(orgId),
+    // The event is in the key: a different event is a different catalogue, and
+    // keying on orgId alone would serve the first event's questions for every
+    // later one from cache.
+    queryKey: ["certificate-fields", orgId, sourceEventId],
+    queryFn: () => getCertificateFields(orgId, sourceEventId || undefined),
     staleTime: Infinity,
   });
 
@@ -142,6 +157,12 @@ export function TemplateForm({
             <p className="mt-1 text-sm text-destructive">{fieldErrors.background_url}</p>
           )}
         </div>
+
+        <TemplateEventPicker
+          orgId={orgId}
+          value={sourceEventId}
+          onChange={setSourceEventId}
+        />
       </Card>
 
       {backgroundUrl ? (
@@ -159,6 +180,19 @@ export function TemplateForm({
           Unggah background dulu — field baru bisa ditempatkan di atas desainmu.
         </Card>
       )}
+
+      <div className="grid gap-2">
+        {/* Anything the server refused that no control above renders — above
+            all `fields.N.key`, which is the whole enforcement of "a template
+            may not place a field nothing asked". Those live on the canvas, not
+            in an input, so without this the save is a submit that looks
+            ignored. */}
+        {Object.entries(fieldErrors)
+          .filter(([field]) => !BOUND_FIELDS.some((f) => field === f || field.startsWith(`${f}.`)))
+          .map(([field, message]) => (
+            <FieldError key={field} message={message} />
+          ))}
+      </div>
 
       <div className="flex gap-2">
         <Button onClick={onSubmit} disabled={save.isPending || !name}>

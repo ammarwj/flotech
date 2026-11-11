@@ -10,6 +10,7 @@ use App\Models\IdCardTemplate;
 use App\Models\Organization;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
+use App\Support\TemplateFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,14 +31,30 @@ class IdCardTemplateController extends Controller
         return ApiResponse::success(IdCardTemplateResource::collection($templates));
     }
 
-    /** The placeable fields, so the editor never hardcodes the list. */
-    public function fields(): JsonResponse
+    /**
+     * The placeable fields, so the editor never hardcodes the list.
+     *
+     * `?event_id` widens the answer with that event's registration questions.
+     * Optional rather than required, and that is the asymmetry this whole
+     * feature sits on: templates are org-scoped rows reused season after
+     * season, while a custom field belongs to one event's form. So the editor
+     * picks an event to see questions to place, and a template that prints one
+     * stays usable on an event that never asked it — the field simply renders
+     * blank, exactly as an unanswered optional field already does.
+     *
+     * A foreign event id is a 404 through the org's own relation, not a silent
+     * empty list: the editor would otherwise show "no custom fields" for an
+     * event that has plenty.
+     */
+    public function fields(Request $request, string $organization): JsonResponse
     {
-        $fields = collect((array) config('id_card.fields'))
-            ->map(fn (string $label, string $key) => ['key' => $key, 'label' => $label])
-            ->values();
+        $data = $request->validate(['event_id' => ['nullable', 'uuid']]);
 
-        return ApiResponse::success($fields);
+        $event = ($data['event_id'] ?? null)
+            ? $this->org($request)->events()->where('id', $data['event_id'])->firstOrFail()
+            : null;
+
+        return ApiResponse::success(TemplateFields::idCard($event));
     }
 
     public function store(StoreIdCardTemplateRequest $request, string $organization): JsonResponse

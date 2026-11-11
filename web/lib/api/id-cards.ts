@@ -13,10 +13,22 @@ import type {
 
 // ---- Templates ----
 
-/** The fields a card may place. Catalogued by config/id_card.php. */
-export async function getIdCardFields(orgId: string): Promise<IdCardFieldDef[]> {
+/**
+ * The fields a card may place: the fixed catalogue from config/id_card.php,
+ * plus — when `eventId` is given — the questions that event's registration form
+ * asks, which is what makes an answer the entrant typed placeable at all.
+ *
+ * The event is a lens, not the template's owner: templates are org-scoped and
+ * reused, so one placing a question from another event stays valid and simply
+ * renders blank where that event never asked it.
+ */
+export async function getIdCardFields(
+  orgId: string,
+  eventId?: string
+): Promise<IdCardFieldDef[]> {
   const { data } = await apiClient.get<ApiEnvelope<IdCardFieldDef[]>>(
-    `/organizations/${orgId}/id-card-fields`
+    `/organizations/${orgId}/id-card-fields`,
+    { params: eventId ? { event_id: eventId } : undefined }
   );
   return data.data;
 }

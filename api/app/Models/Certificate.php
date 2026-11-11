@@ -19,6 +19,7 @@ class Certificate extends Model
         'recipient_id',
         'recipient_name',
         'team_name',
+        'field_values',
         'recipient_email',
         'award_title',
         'pdf_key',
@@ -29,6 +30,7 @@ class Certificate extends Model
     protected function casts(): array
     {
         return [
+            'field_values' => 'array',
             'issued_at' => 'datetime',
             'sent_at' => 'datetime',
         ];

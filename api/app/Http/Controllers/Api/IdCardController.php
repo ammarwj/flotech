@@ -14,6 +14,7 @@ use App\Services\PlanGate;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -25,12 +26,27 @@ class IdCardController extends Controller
         protected IdCardService $cards,
     ) {}
 
-    /** Everyone in this event who can be handed a card. */
+    /**
+     * Everyone in this event who can be handed a card.
+     *
+     * `values` is stripped: it is what the renderer prints — every answer each
+     * entrant gave the registration form — and this list is a picker showing a
+     * name, a role and a photo. Sending it would put every answer of every
+     * entrant into a payload that displays none of them, and a later component
+     * reaching for one would be reading a copy of data the card already renders
+     * from. The generate request names people by `type`/`id` and the controller
+     * re-resolves them against this same pool, so nothing downstream loses it.
+     */
     public function recipients(Request $request, string $organization, string $event): JsonResponse
     {
         $model = $this->findEvent($request, $event);
 
-        return ApiResponse::success($this->cards->recipients($model));
+        $people = array_map(
+            fn (array $person) => Arr::except($person, ['values']),
+            $this->cards->recipients($model),
+        );
+
+        return ApiResponse::success($people);
     }
 
     /**

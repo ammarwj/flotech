@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\IdCard;
 
+use App\Http\Requests\Concerns\ChecksTemplateFieldKeys;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 class StoreIdCardTemplateRequest extends FormRequest
 {
+    use ChecksTemplateFieldKeys;
+
     public function authorize(): bool
     {
         return true; // tenant middleware already proved membership
@@ -22,6 +25,9 @@ class StoreIdCardTemplateRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
-        $validator->after(fn (Validator $v) => IdCardTemplateRules::check($v, $this->input('fields')));
+        $validator->after(function (Validator $v) {
+            IdCardTemplateRules::check($v, $this->input('fields'));
+            $this->checkFieldKeys($v, $this, 'id_card');
+        });
     }
 }

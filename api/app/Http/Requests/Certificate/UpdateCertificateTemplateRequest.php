@@ -2,14 +2,30 @@
 
 namespace App\Http\Requests\Certificate;
 
+use App\Http\Requests\Concerns\ChecksTemplateFieldKeys;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateCertificateTemplateRequest extends FormRequest
 {
+    use ChecksTemplateFieldKeys;
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v) {
+            // Only when the client actually sent the list. A PATCH that changes
+            // nothing but the name must not be told its (absent) fields are
+            // malformed.
+            if ($this->has('fields')) {
+                $this->checkFieldKeys($v, $this, 'certificate');
+            }
+        });
     }
 
     /**
@@ -23,7 +39,8 @@ class UpdateCertificateTemplateRequest extends FormRequest
             'orientation' => ['sometimes', 'nullable', Rule::in(['landscape', 'portrait'])],
 
             'fields' => ['sometimes', 'required', 'array', 'min:1'],
-            'fields.*.key' => ['required', 'string', Rule::in(array_keys((array) config('certificate.fields')))],
+            // Shape only — see the Store twin for why membership moved out.
+            'fields.*.key' => ['required', 'string', 'max:160'],
             'fields.*.x' => ['required', 'numeric', 'between:0,100'],
             'fields.*.y' => ['required', 'numeric', 'between:0,100'],
             'fields.*.size' => ['required', 'numeric', 'between:6,120'],

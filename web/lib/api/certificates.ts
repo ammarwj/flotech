@@ -14,10 +14,19 @@ import type {
 
 // ---- Templates ----
 
-/** The fields a template may place. Catalogued by config/certificate.php. */
-export async function getCertificateFields(orgId: string): Promise<CertificateFieldDef[]> {
+/**
+ * The fields a template may place: the fixed catalogue from
+ * config/certificate.php, plus — when `eventId` is given — the questions that
+ * event's registration form asks. See the ID card twin for why the event is a
+ * lens rather than the template's owner.
+ */
+export async function getCertificateFields(
+  orgId: string,
+  eventId?: string
+): Promise<CertificateFieldDef[]> {
   const { data } = await apiClient.get<ApiEnvelope<CertificateFieldDef[]>>(
-    `/organizations/${orgId}/certificate-fields`
+    `/organizations/${orgId}/certificate-fields`,
+    { params: eventId ? { event_id: eventId } : undefined }
   );
   return data.data;
 }
