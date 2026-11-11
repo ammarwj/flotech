@@ -144,6 +144,29 @@ class EventViewService
         return $this->totalsFrom(DB::table('event_view_daily'));
     }
 
+    /**
+     * Platform traffic for today alone.
+     *
+     * "Today" is today(), the same one record() stamps rows with and the same
+     * one the per-event column is filtered on — the app runs in UTC while
+     * everyone using it lives in WIB, so a second reader using a naive date
+     * would roll over at 07:00 local and disagree with the table underneath it
+     * for the first seven hours of every day.
+     *
+     * Its own one-row query rather than a slice of platformTrend(): the trend
+     * already scans the 30-day window and returning the last point would make
+     * this number depend on a window it has nothing to do with, so a later
+     * change to WINDOW would quietly change what "hari ini" means.
+     *
+     * @return array{views: int, unique_visitors: int}
+     */
+    public function platformTotalsToday(): array
+    {
+        return $this->totalsFrom(
+            DB::table('event_view_daily')->where('viewed_on', $this->today()->toDateString()),
+        );
+    }
+
     /** @return list<array{date: string, views: int, unique_visitors: int}> */
     public function platformTrend(int $days = self::WINDOW): array
     {
@@ -228,10 +251,27 @@ class EventViewService
      * `$search` matches the event name *or* its organizer's, because the admin
      * looking for one tournament knows it by either.
      *
+     * Today's two counters ride along in the SAME aggregate as the all-time
+     * ones, as a filtered sum over the rows already being scanned rather than a
+     * second query joined back on. Two reasons, and the second is the one that
+     * bites: `event_view_daily` is summed without a WHERE and has no index that
+     * helps, so a companion query would double the cost of every keystroke in
+     * the search box; and a separate read would be a second answer to "which
+     * day is today", which is a question this service already answers exactly
+     * once — see today(), and the reason it exists at all (the app runs in UTC
+     * while everyone using it lives in WIB, so a naive date rolls over at
+     * 07:00 local and "hari ini" would sit empty all morning).
+     *
+     * An event with traffic but none today reports 0, not an absent key: the
+     * filtered sum covers every grouped row, so there is no state where the
+     * column simply fails to appear.
+     *
      * @return array{items: list<array<string, mixed>>, has_more: bool}
      */
     public function breakdownByEvent(?string $organizationId = null, int $limit = 20, ?string $search = null): array
     {
+        $today = $this->today()->toDateString();
+
         $query = DB::table('event_view_daily')
             ->join('events', 'events.id', '=', 'event_view_daily.event_id')
             ->join('organizations', 'organizations.id', '=', 'event_view_daily.organization_id')
@@ -242,6 +282,9 @@ class EventViewService
                 (string) $search,
             ))
             ->groupBy('events.id', 'events.name', 'events.slug', 'organizations.id', 'organizations.name')
+            // Still all-time: the table is ranked by the number the heading
+            // promises, and sorting it by today would make the order of a
+            // "sepanjang waktu" list change every midnight.
             ->orderByDesc('views')
             ->orderBy('events.name');
 
@@ -253,6 +296,11 @@ class EventViewService
             'organizations.name as organization_name',
             DB::raw('sum(event_view_daily.views) as views'),
             DB::raw('sum(event_view_daily.unique_visitors) as unique_visitors'),
+            // CASE rather than FILTER (...): Postgres has the latter, the test
+            // suite's SQLite does not, and a clause that only runs in
+            // production is one nothing here can check.
+            DB::raw('coalesce(sum(case when event_view_daily.viewed_on = ? then event_view_daily.views else 0 end), 0) as views_today'),
+            DB::raw('coalesce(sum(case when event_view_daily.viewed_on = ? then event_view_daily.unique_visitors else 0 end), 0) as visitors_today'),
         ], fn ($row) => [
             'event_id' => $row->event_id,
             'name' => $row->name,
@@ -261,7 +309,9 @@ class EventViewService
             'organization_name' => $row->organization_name,
             'views' => (int) $row->views,
             'unique_visitors' => (int) $row->unique_visitors,
-        ]);
+            'views_today' => (int) $row->views_today,
+            'unique_visitors_today' => (int) $row->visitors_today,
+        ], [$today, $today]);
     }
 
     // ---- Internals ---------------------------------------------------------
@@ -278,13 +328,24 @@ class EventViewService
      * an event with 18 views sat at rank 23 of a 20-row table and looked like
      * traffic that was never recorded.
      *
+     * `$bindings` are for raw SELECT expressions that take parameters. They
+     * have to be added as `select` bindings, in the position the expressions
+     * sit in `$columns`: a raw string handed to get() carries no values of its
+     * own, and interpolating the date into the SQL instead would be the one
+     * place in this service that builds a query by concatenation.
+     *
      * @param  Builder  $query
      * @param  array<int, mixed>  $columns
      * @param  callable(object): array<string, mixed>  $shape
+     * @param  array<int, mixed>  $bindings
      * @return array{items: list<array<string, mixed>>, has_more: bool}
      */
-    private function page($query, int $limit, array $columns, callable $shape): array
+    private function page($query, int $limit, array $columns, callable $shape, array $bindings = []): array
     {
+        foreach ($bindings as $binding) {
+            $query->addBinding($binding, 'select');
+        }
+
         $rows = $query->limit($limit + 1)->get($columns);
         $hasMore = $rows->count() > $limit;
 

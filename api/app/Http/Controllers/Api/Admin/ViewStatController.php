@@ -17,6 +17,12 @@ class ViewStatController extends Controller
     {
         return ApiResponse::success([
             'totals' => $this->views->platformTotals(),
+            // Published alongside the all-time pair rather than derived by the
+            // client from the trend's last point: that would be a second reader
+            // of "which day is today" in a codebase where UTC and WIB disagree
+            // for seven hours every morning, and it would silently change
+            // meaning if the trend window ever moved.
+            'today' => $this->views->platformTotalsToday(),
             'trend' => $this->views->platformTrend(),
         ]);
     }

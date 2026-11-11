@@ -37,12 +37,16 @@ class AdminViewStatsTest extends TestCase
         ]);
     }
 
-    private function seedViews(Event $event, int $views, int $uniques): void
+    private function seedViews(Event $event, int $views, int $uniques, int $daysAgo = 0): void
     {
         EventViewDaily::create([
             'event_id' => $event->id,
             'organization_id' => $event->organization_id,
-            'viewed_on' => app(EventViewService::class)->today()->toDateString(),
+            // Through the service, not Carbon::today(): the app runs in UTC
+            // while the counters are stamped in the venue's zone, so a naive
+            // date would seed rows into yesterday for seven hours each morning
+            // and the "today" assertions would pass or fail by the clock.
+            'viewed_on' => app(EventViewService::class)->today()->subDays($daysAgo)->toDateString(),
             'views' => $views,
             'unique_visitors' => $uniques,
         ]);
@@ -189,6 +193,83 @@ class AdminViewStatsTest extends TestCase
         $this->assertCount(1, $items);
         $this->assertSame('DIRAY', $items[0]['name']);
         $this->assertSame(18, $items[0]['views']);
+    }
+
+    /**
+     * Today's counters sit beside the all-time ones, and the two disagree.
+     *
+     * Compared within one event rather than asserted on their own: a column
+     * that forgot its date filter would equal the all-time figure, and
+     * `views_today === 70` passes that whole. The second event is the other
+     * half — a row with traffic but none today must report 0, not drop out of
+     * the list and not inherit its neighbour's number.
+     */
+    public function test_event_breakdown_separates_today_from_all_time(): void
+    {
+        $org = $this->org('Alpha');
+
+        $busy = $this->event($org, 'Busy');
+        $this->seedViews($busy, 70, 40);      // today
+        $this->seedViews($busy, 30, 20, 3);   // three days ago
+
+        $quiet = $this->event($org, 'Quiet');
+        $this->seedViews($quiet, 25, 15, 5);  // nothing today
+
+        $items = collect(
+            $this->actingAs($this->superAdmin(), 'api')
+                ->getJson('/api/v1/admin/view-stats/events')
+                ->assertOk()
+                ->json('data.items')
+        )->keyBy('name');
+
+        // All time is the sum of both days; today is only the first.
+        $this->assertSame(100, $items['Busy']['views']);
+        $this->assertSame(70, $items['Busy']['views_today']);
+        $this->assertSame(60, $items['Busy']['unique_visitors']);
+        $this->assertSame(40, $items['Busy']['unique_visitors_today']);
+
+        // Still listed, still carrying its history, and explicitly zero today.
+        $this->assertSame(25, $items['Quiet']['views']);
+        $this->assertSame(0, $items['Quiet']['views_today']);
+        $this->assertSame(0, $items['Quiet']['unique_visitors_today']);
+    }
+
+    /**
+     * The headline pair and the per-event column answer the same question, so
+     * they must answer it the same way. Asserted together because each passes
+     * alone under a build where one of them lost its date filter.
+     */
+    public function test_platform_today_matches_the_sum_of_the_event_column(): void
+    {
+        $org = $this->org('Alpha');
+
+        $a = $this->event($org, 'A');
+        $this->seedViews($a, 70, 40);
+        $this->seedViews($a, 500, 300, 2); // history, must not reach "today"
+
+        $this->seedViews($this->event($org, 'B'), 30, 10);
+
+        $stats = $this->actingAs($this->superAdmin(), 'api')
+            ->getJson('/api/v1/admin/view-stats')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(100, $stats['today']['views']);
+        $this->assertSame(50, $stats['today']['unique_visitors']);
+
+        // And the all-time pair beside it still counts everything — without
+        // this, a `today` that leaked into `totals` would go unseen.
+        $this->assertSame(600, $stats['totals']['views']);
+
+        $items = $this->actingAs($this->superAdmin(), 'api')
+            ->getJson('/api/v1/admin/view-stats/events')
+            ->assertOk()
+            ->json('data.items');
+
+        $this->assertSame(
+            $stats['today']['views'],
+            array_sum(array_column($items, 'views_today')),
+        );
     }
 
     /**

@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type {
+  AdminViewStats,
   ApiEnvelope,
   EventViewBreakdown,
   EventViewStats,
@@ -55,8 +56,8 @@ export async function getOrgViewStats(orgId: string): Promise<OrgViewStats> {
 
 // ---- Super admin ----
 
-export async function getAdminViewStats(): Promise<EventViewStats> {
-  const { data } = await apiClient.get<ApiEnvelope<EventViewStats>>("/admin/view-stats");
+export async function getAdminViewStats(): Promise<AdminViewStats> {
+  const { data } = await apiClient.get<ApiEnvelope<AdminViewStats>>("/admin/view-stats");
   return data.data;
 }
 

@@ -137,7 +137,28 @@ export default function AdminVisitorsPage() {
         description="Trafik halaman publik event di seluruh platform. Kunjungan menghitung setiap kali halaman dibuka; pengunjung unik menghitung tiap orang sekali per hari."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Today's pair sits beside the all-time pair, same row, because the two
+          answer the same two questions over different spans — splitting them
+          into two sections would make the reader carry "kunjungan" across a
+          heading to compare it with itself. Both halves are labelled with
+          their span rather than leaving "today" as the one that has to say so:
+          an unlabelled number beside a labelled one reads as the default. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Kunjungan hari ini"
+          value={angka(totals?.today.views ?? 0)}
+          icon={Eye}
+          loading={totalsQuery.isLoading}
+          hint="Sejak 00:00 WIB"
+        />
+        <StatCard
+          label="Pengunjung hari ini"
+          value={angka(totals?.today.unique_visitors ?? 0)}
+          icon={Users}
+          color="var(--accent-purple)"
+          loading={totalsQuery.isLoading}
+          hint="Dihitung sekali per orang per hari"
+        />
         <StatCard
           label="Total kunjungan"
           value={angka(totals?.totals.views ?? 0)}
@@ -256,9 +277,17 @@ export default function AdminVisitorsPage() {
       <Card className="mt-4 p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-              Per event
-            </h3>
+            <div>
+              <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
+                Per event
+              </h3>
+              {/* Said because the table now shows two spans but is ranked by
+                  one: an event busy today can sit below a quiet one, and
+                  without this that reads as a sort that is broken. */}
+              <p className="mt-1 text-sm text-muted-foreground">
+                Diurutkan dari trafik sepanjang waktu, bukan hari ini.
+              </p>
+            </div>
             {orgFilter && (
               <Button variant="outline" size="sm" onClick={() => setOrgFilter(null)}>
                 <X className="h-4 w-4" />
@@ -280,11 +309,26 @@ export default function AdminVisitorsPage() {
           ) : eventRows.length ? (
             <table className="w-full text-sm">
               <thead>
+                {/* Two spans, grouped and labelled, because four bare number
+                    columns in a row cannot say which two belong together — and
+                    an event quiet today but busy all-time is exactly the
+                    comparison this table is read for. */}
+                <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-1" colSpan={2} />
+                  <th className="pb-1 text-right font-medium" colSpan={2}>
+                    Hari ini
+                  </th>
+                  <th className="pb-1 text-right font-medium" colSpan={2}>
+                    Sepanjang waktu
+                  </th>
+                </tr>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th className="pb-2 font-medium">Event</th>
                   <th className="pb-2 font-medium">Organizer</th>
-                  <th className="pb-2 text-right font-medium">Kunjungan</th>
-                  <th className="pb-2 text-right font-medium">Pengunjung</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Kunjungan</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Pengunjung</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Kunjungan</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Pengunjung</th>
                 </tr>
               </thead>
               <tbody>
@@ -292,8 +336,29 @@ export default function AdminVisitorsPage() {
                   <tr key={row.event_id} className="border-b border-border last:border-0">
                     <td className="py-2.5 pr-3 font-medium">{row.name}</td>
                     <td className="py-2.5 pr-3 text-muted-foreground">{row.organization_name}</td>
-                    <td className="py-2.5 text-right tabular-nums">{angka(row.views)}</td>
-                    <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                    {/* A real zero is printed as "0", never blanked: an empty
+                        cell reads as a number that failed to load, and "no
+                        visits today" is the answer this column exists to give.
+                        Dimmed instead, so a page with traffic stands out of a
+                        quiet list without the quiet rows looking broken. */}
+                    <td
+                      className={cn(
+                        "py-2.5 pl-3 text-right tabular-nums",
+                        row.views_today === 0 && "text-muted-foreground"
+                      )}
+                    >
+                      {angka(row.views_today)}
+                    </td>
+                    <td
+                      className={cn(
+                        "py-2.5 pl-3 text-right tabular-nums",
+                        row.unique_visitors_today === 0 && "text-muted-foreground"
+                      )}
+                    >
+                      {angka(row.unique_visitors_today)}
+                    </td>
+                    <td className="py-2.5 pl-3 text-right tabular-nums">{angka(row.views)}</td>
+                    <td className="py-2.5 pl-3 text-right tabular-nums text-muted-foreground">
                       {angka(row.unique_visitors)}
                     </td>
                   </tr>

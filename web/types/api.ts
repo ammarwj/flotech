@@ -3088,6 +3088,19 @@ export interface EventViewStats {
   trend: ViewTrendPoint[];
 }
 
+/**
+ * The platform-wide shape, which carries one thing the per-event and per-org
+ * endpoints do not: today's counters.
+ *
+ * Its own interface rather than `today?:` on EventViewStats, because the field
+ * is not optional here — it is simply absent from the other two surfaces, and
+ * an optional key would let a page read `stats.today` off one of them and
+ * silently render nothing.
+ */
+export interface AdminViewStats extends EventViewStats {
+  today: ViewTotals;
+}
+
 export interface OrgEventViews {
   event_id: string;
   name: string;
@@ -3119,6 +3132,14 @@ export interface EventViewBreakdown {
   organization_name: string;
   views: number;
   unique_visitors: number;
+  /**
+   * Today alone, in the venue's zone — resolved server-side by the same
+   * EventViewService::today() that stamps the rows. Never derived here: the app
+   * runs in UTC while everyone using it lives in WIB, so a date computed in the
+   * browser disagrees with the stored one for seven hours every morning.
+   */
+  views_today: number;
+  unique_visitors_today: number;
 }
 
 /**
