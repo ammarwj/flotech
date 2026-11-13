@@ -1252,6 +1252,17 @@ img { max-width: 100%; display: block; }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-md);
 }
+/* The tie's own number, printed on the card's top edge rather than inside a
+   side: it names the fixture, not either half of it. Absolutely positioned so
+   it costs the card no height — the connector geometry below measures cards
+   against each other, and a row added to one would shift the lines. */
+.bkt-no {
+  position: absolute; top: -9px; left: 10px; z-index: 2;
+  padding: 0 5px; border-radius: 4px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 10px; line-height: 16px;
+  color: var(--text-muted);
+}
 .bkt-side { display: flex; align-items: center; gap: 10px; padding: 11px 13px; font-size: 13.5px; }
 .bkt-side + .bkt-side { border-top: 1px solid var(--border); }
 .bkt-crest { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }

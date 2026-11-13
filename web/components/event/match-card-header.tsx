@@ -8,6 +8,7 @@ import { MatchDisciplineNotice } from "./match-discipline-notice";
 import { MatchLineupSheetButton } from "./match-lineup-sheet-button";
 import { MatchReportButton } from "./match-report-button";
 import { MatchStatusActions } from "./match-status-actions";
+import { matchNumberLabel } from "@/lib/bracket";
 import { organizerClockGateway } from "@/lib/match-doors";
 import type { DisciplineBan, DisciplineRules, Match, SportDef } from "@/types/api";
 
@@ -60,6 +61,18 @@ export function MatchCardHeader({
     <div className="grid gap-2 border-b border-border pb-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            The fixture's own number, first on the row because it is the handle
+            every other line of the card hangs off — the one thing an organizer
+            can write in a programme for a tie whose teams are still two
+            results away. Rides here for exactly the reason the suspension
+            notice below does: six render branches, one place to put it.
+          */}
+          {matchNumberLabel(match) && (
+            <Badge variant="outline" className="font-mono text-[11px] font-semibold">
+              {matchNumberLabel(match)}
+            </Badge>
+          )}
           <MatchStatusBadge match={match} />
           {phase && (
             <Badge variant="outline" className="font-medium">

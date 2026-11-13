@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\GameMatch;
 use App\Services\MatchClockService;
+use App\Services\MatchNumberService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,6 +27,14 @@ class MatchResource extends JsonResource
             'bracket' => $this->bracket,
             'order' => $this->order,
             'leg' => $this->leg,
+            // Nomor partai dan asal tiap slot — "P12", "Pemenang P5". Diturunkan
+            // di server (lihat MatchNumberService) dan ditempel ke baris oleh
+            // pembaca jadwal; null berarti pintu ini tidak menempelkannya, dan
+            // klien mencetak "TBD" seperti sebelumnya. Jadi pintu yang lupa
+            // kehilangan keterangan, tidak pernah salah keterangan.
+            'match_no' => $this->numberInfo()['number'] ?? null,
+            'home_source' => $this->numberInfo()['home_source'] ?? null,
+            'away_source' => $this->numberInfo()['away_source'] ?? null,
             'home_team' => $this->teamSummary($this->whenLoaded('homeTeam')),
             'away_team' => $this->teamSummary($this->whenLoaded('awayTeam')),
             'home_team_id' => $this->home_team_id,
@@ -57,6 +66,19 @@ class MatchResource extends JsonResource
             // JsonResource tidak bisa menerima constructor injection.
             'clock' => app(MatchClockService::class)->snapshot($this->resource),
         ];
+    }
+
+    /**
+     * What MatchNumberService stamped on this row, or an empty array when
+     * nothing did.
+     *
+     * @return array<string, mixed>
+     */
+    protected function numberInfo(): array
+    {
+        $info = $this->resource->getAttribute(MatchNumberService::ATTRIBUTE);
+
+        return is_array($info) ? $info : [];
     }
 
     /**

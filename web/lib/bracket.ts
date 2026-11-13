@@ -30,6 +30,20 @@ export function bracketSizeFor(teams: number): number {
   return size;
 }
 
+/** Where a draw that is not a power of two takes its byes. */
+export type ByeRound = "first" | "late";
+
+/**
+ * How many ties the opening round holds. Mirrors
+ * BracketSeeding::firstRoundSlotCount(), and has to: the seed editor draws one
+ * row per slot and the API validates `pairs.*.order` against the same number,
+ * so a draw of 36 offering 32 rows would reject half of them at submit.
+ */
+export function firstRoundSlots(teams: number, byeRound: ByeRound = "first"): number {
+  const entrants = byeRound === "late" ? Math.max(2, teams) : bracketSizeFor(Math.max(2, teams));
+  return Math.ceil(entrants / 2);
+}
+
 /**
  * Teams the organizer has placed in no slot at all. Mirrors
  * BracketSeeding::unplacedTeams(), which rejects such a payload with a 422:
@@ -108,15 +122,31 @@ export function phaseLabel(m: Match, all: Match[], knockout = false): string {
 
   if (!knockout && m.stage !== "knockout") return `Pekan ${m.round}`;
 
-  const inRound = all.filter(
-    (x) => x.round === m.round && x.stage === m.stage && !isThirdPlace(x)
-  ).length;
+  const slots = (round: number) =>
+    all.filter((x) => x.round === round && x.stage === m.stage && !isThirdPlace(x)).length;
 
-  return knockoutRoundLabel(inRound || 1);
+  // Teams still in = winners of the round below, i.e. its tie count. Round 1
+  // has no round below, so it falls back to slots × 2 — which is wrong by the
+  // number of byes, and is why generation puts the padded draw's byes there
+  // and labels them so plainly.
+  return knockoutRoundLabel(slots(m.round) || 1, slots(m.round - 1) || undefined);
 }
 
-/** Human label for a knockout round based on how many matches it holds. */
-export function knockoutRoundLabel(matchesInRound: number): string {
+/**
+ * Human label for a knockout round based on how many matches it holds.
+ *
+ * The named rounds are counted off the *end* of the draw — one tie is the
+ * final wherever it sits — and that is the only part that transfers to a
+ * bracket which is not a power of two. "N Besar" does not: it means "N teams
+ * are still in", which `matchesInRound * 2` only computes when every tie has
+ * two sides. A ragged round of five ties holds nine teams, not ten, and a
+ * heading that says ten is wrong about the one thing it claims to count.
+ *
+ * So the deeper rounds are named by the teams that will actually walk out of
+ * them — the next round's tie count, doubled, which is exact in both shapes
+ * because every round halves (rounded up) into the one above it.
+ */
+export function knockoutRoundLabel(matchesInRound: number, teamsInRound?: number): string {
   switch (matchesInRound) {
     case 1:
       return "Final";
@@ -124,12 +154,8 @@ export function knockoutRoundLabel(matchesInRound: number): string {
       return "Semifinal";
     case 4:
       return "Perempat Final";
-    case 8:
-      return "16 Besar";
-    case 16:
-      return "32 Besar";
     default:
-      return `${matchesInRound * 2} Besar`;
+      return `${teamsInRound ?? matchesInRound * 2} Besar`;
   }
 }
 
@@ -161,6 +187,39 @@ export function matchWinnerId(m: Match): string | null {
 export function isBye(m: Match): boolean {
   const seated = (m.home_team_id === null) !== (m.away_team_id === null);
   return seated && m.status === "finished";
+}
+
+/**
+ * What a fixture is called when it needs referring to: "P12", or null before
+ * the server has numbered it.
+ *
+ * The number is the server's (see MatchNumberService) — this only spells it.
+ * Five surfaces print it and a second way of spelling it is five chances to
+ * drift.
+ */
+export const matchNumberLabel = (m: Match): string | null =>
+  m.match_no === null || m.match_no === undefined ? null : `P${m.match_no}`;
+
+/**
+ * What to print on one side of a fixture that holds no team yet.
+ *
+ * Three answers, in the order a reader can use them: the feeder the server
+ * named ("Pemenang P5"), "Bye" for the empty side of a walkover, and "TBD"
+ * where genuinely nothing is known. Written once because every caller used to
+ * reach straight for "TBD" and so said the least useful of the three
+ * everywhere.
+ */
+export function sideLabel(m: Match, side: "home" | "away"): string {
+  const team = side === "home" ? m.home_team : m.away_team;
+  if (team) return team.name;
+
+  const source = side === "home" ? m.home_source : m.away_source;
+  if (source) return source;
+
+  // A settled fixture with one side seated was a walkover, not a tie-to-be.
+  if (isBye(m)) return "Bye";
+
+  return "TBD";
 }
 
 /** Fixtures worth listing on a public schedule — a bye was never played. */
@@ -238,8 +297,10 @@ export function buildMatchSections(
     // The third-place tie shares the final's round; counting it would turn a
     // one-match final into a two-match "Semifinal".
     const ko = matches.filter((m) => m.stage === "knockout");
-    for (const [, list] of groupByRound(ko.filter((m) => !isThirdPlace(m)))) {
-      out.push([`Knockout · ${knockoutRoundLabel(list.length)}`, list]);
+    const koRounds = groupByRound(ko.filter((m) => !isThirdPlace(m)));
+    for (const [i, [, list]] of koRounds.entries()) {
+      // Teams still in = winners of the round below, i.e. its tie count.
+      out.push([`Knockout · ${knockoutRoundLabel(list.length, koRounds[i - 1]?.[1].length)}`, list]);
     }
     const thirdKo = ko.filter(isThirdPlace);
     if (thirdKo.length) out.push([`Knockout · ${THIRD_PLACE_LABEL}`, thirdKo]);
@@ -289,10 +350,13 @@ export function buildMatchSections(
   // A league decider sits on round 1 and would otherwise be filed under
   // "Putaran 1" beside the matchday it is meant to be settling.
   const deciders = matches.filter(isDecider);
-  const sections = groupByRound(
-    matches.filter((m) => !isThirdPlace(m) && !isDecider(m))
-  ).map(([round, list]) => {
-    if (knockout) return [knockoutRoundLabel(list.length), list] as [string, Match[]];
+  const rounds = groupByRound(matches.filter((m) => !isThirdPlace(m) && !isDecider(m)));
+  const sections = rounds.map(([round, list], i) => {
+    // Teams still in = winners of the round below, i.e. its tie count — see
+    // knockoutRoundLabel(), which a ragged draw is the whole reason for.
+    if (knockout) {
+      return [knockoutRoundLabel(list.length, rounds[i - 1]?.[1].length), list] as [string, Match[]];
+    }
     // Same marker the group stage prints, and for the same reason: legRounds()
     // appends the return fixtures as further rounds, so "Putaran 5" alone gives
     // a four-team league two headings that each look like a first meeting.

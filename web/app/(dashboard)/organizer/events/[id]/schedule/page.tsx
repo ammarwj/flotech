@@ -57,7 +57,9 @@ import {
   isSwiss as isSwissFormat,
   isDecider,
   isThirdPlace,
+  matchNumberLabel,
   phaseLabel,
+  sideLabel,
 } from "@/lib/bracket";
 import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
 import { swissReadiness } from "@/lib/swiss";
@@ -1113,6 +1115,10 @@ function ScheduleView() {
             hasMatches={matches.length > 0}
             pending={generate.isPending}
             seedTeams={engine === "knockout_single" ? approvedTeams : undefined}
+            // The category's own bye placement: a 36-team `late` draw seeds 18
+            // opening ties where a padded one seeds 32, and the API validates
+            // the slot numbers against the same count.
+            byeRound={config.bye_round ?? "first"}
             onClose={() => setScheduleDialog(false)}
             onSubmit={(options) => generate.mutate(options)}
           />
@@ -1258,7 +1264,7 @@ function MatchCard({
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="min-w-0 flex-1 text-right font-medium">
-            <span className="block truncate">{match.home_team?.name ?? "TBD"}</span>
+            <span className="block truncate">{sideLabel(match, "home")}</span>
             <TeamTags tags={match.home_team?.tags} />
           </span>
           <span className="text-xs">
@@ -1267,7 +1273,7 @@ function MatchCard({
               : "vs"}
           </span>
           <span className="min-w-0 flex-1 font-medium">
-            <span className="block truncate">{match.away_team?.name ?? "TBD"}</span>
+            <span className="block truncate">{sideLabel(match, "away")}</span>
             <TeamTags tags={match.away_team?.tags} />
           </span>
           {removeBtn}
@@ -1318,12 +1324,18 @@ function MatchCard({
         />
         <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
           <span className="min-w-0 flex-1 text-right font-medium">
-            <span className="block truncate">{match.home_team?.name ?? "TBD"}</span>
+            {/*
+              "Pemenang P5" where the server can say which tie feeds this side,
+              "TBD" only where genuinely nothing is known. Both come from
+              sideLabel() rather than being spelled here: five surfaces print
+              this and a second spelling is five chances to drift.
+            */}
+            <span className="block truncate">{sideLabel(match, "home")}</span>
             <TeamTags tags={match.home_team?.tags} />
           </span>
           <span className="text-xs">menunggu hasil sebelumnya</span>
           <span className="min-w-0 flex-1 font-medium">
-            <span className="block truncate">{match.away_team?.name ?? "TBD"}</span>
+            <span className="block truncate">{sideLabel(match, "away")}</span>
             <TeamTags tags={match.away_team?.tags} />
           </span>
         </div>

@@ -19,6 +19,7 @@ use App\Notifications\TeamRegistrationSubmitted;
 use App\Services\Catalog;
 use App\Services\DisciplineService;
 use App\Services\EventDiscountCodeService;
+use App\Services\MatchNumberService;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
 use App\Services\RegistrationService;
@@ -152,8 +153,12 @@ class PublicEventController extends Controller
     /**
      * Public schedule (fixtures) for one competition category.
      */
-    public function matches(string $orgSlug, string $eventSlug, string $categorySlug): JsonResponse
-    {
+    public function matches(
+        MatchNumberService $numbers,
+        string $orgSlug,
+        string $eventSlug,
+        string $categorySlug,
+    ): JsonResponse {
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         $matches = $category->matches()
@@ -165,7 +170,12 @@ class PublicEventController extends Controller
             ->orderBy('order')
             ->get();
 
-        return ApiResponse::success(MatchResource::collection($matches));
+        // Nomor partai ikut terbit ke publik dengan alasan yang sama seperti
+        // peringatan disiplin: slot yang timnya belum ada tetap harus bisa
+        // dirujuk, dan penonton membaca bagan yang sama dengan panitia.
+        return ApiResponse::success(MatchResource::collection(
+            $numbers->attach($category, $matches),
+        ));
     }
 
     /**

@@ -5,7 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Monitor, StickyNote, UserCog, X } from "lucide-react";
 
 import { getPublicMatchStats } from "@/lib/api/matches";
-import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
+import {
+  crestGradient,
+  matchNumberLabel,
+  matchWinnerId,
+  sideLabel,
+  wentToPenalties,
+} from "@/lib/bracket";
 import { fullDateLabel, timeOf, tzLabel } from "@/lib/match-dates";
 import { statIcon } from "@/lib/stat-icons";
 import { useCatalog } from "@/lib/hooks/use-catalog";
@@ -95,7 +101,7 @@ export function MatchDetailDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Detail ${match.home_team?.name ?? "TBD"} vs ${match.away_team?.name ?? "TBD"}`}
+      aria-label={`Detail ${sideLabel(match, "home")} vs ${sideLabel(match, "away")}`}
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
     >
@@ -107,11 +113,16 @@ export function MatchDetailDialog({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               {categoryLabel && <span className="pill">{categoryLabel}</span>}
+              {/* The handle the rest of the card hangs off: a tie whose teams
+                  are two results away is still "P12" on the programme. */}
+              {matchNumberLabel(match) && (
+                <span className="font-mono">{matchNumberLabel(match)}</span>
+              )}
               <span>{phase}</span>
               <PublicStatusBadge status={match.status} />
             </div>
             <h3 className="mt-1 text-base font-bold">
-              {match.home_team?.name ?? "TBD"} vs {match.away_team?.name ?? "TBD"}
+              {sideLabel(match, "home")} vs {sideLabel(match, "away")}
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-3 text-xs" style={{ color: "var(--text-muted)" }}>
               <span>
@@ -150,7 +161,7 @@ export function MatchDetailDialog({
         {/* Scoreline */}
         <div className="flex items-center gap-3 border-b border-border p-4">
           <TeamLine
-            name={match.home_team?.name ?? "TBD"}
+            name={sideLabel(match, "home")}
             logoUrl={match.home_team?.logo_url}
             tags={match.home_team?.tags}
             dimmed={!!winner && winner !== match.home_team_id}
@@ -169,7 +180,7 @@ export function MatchDetailDialog({
             )}
           </div>
           <TeamLine
-            name={match.away_team?.name ?? "TBD"}
+            name={sideLabel(match, "away")}
             logoUrl={match.away_team?.logo_url}
             tags={match.away_team?.tags}
             dimmed={!!winner && winner !== match.away_team_id}

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\MatchNumberService;
 use App\Services\RubberService;
 use App\Support\RegistrationForm;
 use Carbon\Carbon;
@@ -190,9 +191,15 @@ class GameMatch extends Model
     {
         $this->loadMissing('category.event');
 
-        return $this->category
+        $this->category
             ? $this->load(self::fixtureRelations($this->category))
             : $this->load(['homeTeam', 'awayTeam']);
+
+        // Nomor partai & asal slot ikut di sini dengan alasan yang sama seperti
+        // relasi di atas: kartu yang kehilangan keterangannya begitu skor
+        // disimpan, lalu mendapatkannya lagi di fetch berikutnya, adalah
+        // setengah penerapan yang method ini justru ada untuk mencegah.
+        return app(MatchNumberService::class)->attachOne($this);
     }
 
     public function event(): BelongsTo

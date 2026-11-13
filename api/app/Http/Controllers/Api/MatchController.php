@@ -16,6 +16,7 @@ use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
 use App\Services\KnockoutPlanService;
 use App\Services\MatchResultService;
+use App\Services\MatchNumberService;
 use App\Services\MatchStatService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
@@ -49,6 +50,7 @@ class MatchController extends Controller
         protected DisciplineService $discipline,
         protected MatchStatService $statSheet,
         protected SwissService $swiss,
+        protected MatchNumberService $numbers,
     ) {}
 
     /**
@@ -92,7 +94,13 @@ class MatchController extends Controller
             $count = $this->schedule->generateRoundRobin($categoryModel);
         } elseif ($engine === 'knockout_single') {
             $approved = $categoryModel->teams()->where('status', 'approved')->pluck('id');
-            $half = intdiv(BracketSeeding::sizeFor($approved->count()), 2);
+            // How many opening ties the organizer is being offered, which is the
+            // category's own bye placement: a 36-team `late` draw seeds 18 of
+            // them where a padded one seeds 32.
+            $half = BracketSeeding::firstRoundSlotCount(
+                $approved->count(),
+                HybridConfig::fromCategory($categoryModel)->byeRound,
+            );
 
             $seeding = $request->validate(BracketSeeding::validationRules($half, $approved));
 
@@ -1453,7 +1461,7 @@ class MatchController extends Controller
      */
     protected function orderedMatches(EventCategory $category)
     {
-        return $category->matches()
+        $matches = $category->matches()
             // Satu daftar, dipakai keempat pembaca jadwal — lihat
             // GameMatch::fixtureRelations() untuk alasan tiap relasinya.
             ->with(GameMatch::fixtureRelations($category))
@@ -1461,6 +1469,12 @@ class MatchController extends Controller
             ->orderBy('round')
             ->orderBy('order')
             ->get();
+
+        // Nomor partai ditempel ke daftar, bukan ditanyakan per baris: nomor
+        // adalah properti daftarnya, dan bertanya per baris berarti satu sapuan
+        // kategori untuk tiap laga — N+1 diam yang sama dengan yang dihindari
+        // `fixtureRelations()`.
+        return $this->numbers->attach($category, $matches);
     }
 
     protected function org(Request $request): Organization

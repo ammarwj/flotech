@@ -637,6 +637,19 @@ export interface BracketConfig {
    * shows the derived number as a *placeholder* rather than writing it in.
    */
   swiss_rounds?: number | null;
+  /**
+   * Where a knockout draw that is not a power of two takes its byes.
+   *
+   * `first` (the default, and what every bracket drawn before this played)
+   * pads up to 8/16/32/64 and seats every bye in the opening round — 36 teams
+   * become a bracket of 64 where only eight play on day one. `late` pairs as
+   * many as it can each round and byes the odd team out where the numbers
+   * first stop halving: 36 → 18 → 9 → 5 → 3 → 2 → 1.
+   *
+   * Both are real tournament shapes, which is why it is asked rather than
+   * derived from the field size.
+   */
+  bye_round?: "first" | "late";
 }
 export type EventStatus =
   | "draft"
@@ -695,6 +708,31 @@ export interface Match {
   order: number;
   /** Leg of a home & away tie (1 or 2). */
   leg: number;
+  /**
+   * Nomor partai di dalam kategorinya — "P12" di bagan dan kartu jadwal. Satu
+   * slot bracket yang timnya belum ada tidak punya apa pun untuk dirujuk tanpa
+   * ini, dan itulah cara organizer menulis jadwal pertandingan.
+   *
+   * Diturunkan di server dari urutan (stage, round, order), **tidak pernah
+   * disimpan**: kolom tersimpan jadi penulis kedua yang menyimpang begitu
+   * bracket di-generate ulang. Null berarti pintu yang menjawab tidak
+   * menempelkannya — kartu mencetak "TBD" seperti sebelumnya.
+   */
+  match_no: number | null;
+  /**
+   * Apa yang dicetak di sisi yang masih kosong — "Pemenang P5", "Kalah P2".
+   * Dirangkai di server, bukan dengan mengirim nomor mentah lalu membiarkan
+   * kartu menjodohkan slot dengan pengumpannya: panah bracket milik
+   * `ScheduleService`, dan salinan kedua akan berselisih tepat di bracket
+   * ganjil yang jadi alasan fitur ini ada.
+   *
+   * Null berarti tidak ada yang bisa dikatakan — sisinya sudah berisi tim
+   * (namanya jawaban yang lebih baik), laga liga, atau sisi kosong sebuah bye.
+   * Null itulah yang membuat tiap permukaan tetap memakai katanya sendiri
+   * ("TBD", "Bye").
+   */
+  home_source: string | null;
+  away_source: string | null;
   home_team: MatchTeamRef | null;
   away_team: MatchTeamRef | null;
   home_team_id: string | null;

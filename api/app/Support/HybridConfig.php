@@ -46,7 +46,25 @@ class HybridConfig
          * is created.
          */
         public readonly ?int $swissRounds = null,
+        /**
+         * Where a field that isn't a power of two takes its byes.
+         *
+         * `first` pads the draw up to the next power of two and seats the byes
+         * in the opening round — 36 teams become a bracket of 64 where only 8
+         * of them actually play on day one. `late` pairs as many as it can in
+         * every round and byes whoever is left over, so all 36 play round one
+         * and the odd team out gets its bye where the numbers first stop
+         * halving: 36 → 18 → 9 → 5 → 3 → 2 → 1.
+         *
+         * Both are real tournament shapes and neither is a default anyone can
+         * guess from the field size, which is why this is a setting rather than
+         * derived. `first` is the one every existing bracket already plays.
+         */
+        public readonly string $byeRound = 'first',
     ) {}
+
+    /** The bye placements a knockout draw may use. */
+    public const BYE_ROUNDS = ['first', 'late'];
 
     public static function fromCategory(EventCategory $category): self
     {
@@ -123,6 +141,9 @@ class HybridConfig
             swissRounds: (int) ($raw['swiss_rounds'] ?? 0) > 0
                 ? max(1, min(32, (int) $raw['swiss_rounds']))
                 : null,
+            byeRound: in_array($raw['bye_round'] ?? null, self::BYE_ROUNDS, true)
+                ? $raw['bye_round']
+                : 'first',
         );
     }
 
@@ -211,6 +232,7 @@ class HybridConfig
             'bracket_config.draw_method' => ['nullable', 'in:'.implode(',', Catalog::keys('draw_method'))],
             'bracket_config.third_place' => ['nullable', 'boolean'],
             'bracket_config.swiss_rounds' => ['nullable', 'integer', 'min:1', 'max:32'],
+            'bracket_config.bye_round' => ['nullable', 'in:'.implode(',', self::BYE_ROUNDS)],
             'bracket_config.tiebreakers' => ['nullable', 'array'],
             'bracket_config.tiebreakers.*' => ['in:'.implode(',', Catalog::keys('tiebreaker'))],
         ];

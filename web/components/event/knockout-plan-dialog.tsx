@@ -152,7 +152,7 @@ function Dialog({
 
         <div className="grid gap-4 overflow-y-auto p-5">
           <BracketSeedEditor
-            size={plan.bracket_size}
+            slots={Math.floor(plan.bracket_size / 2)}
             pool={pool}
             mode={mode}
             value={pairs}

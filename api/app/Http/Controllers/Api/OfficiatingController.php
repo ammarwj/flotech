@@ -10,6 +10,7 @@ use App\Models\Event;
 use App\Models\EventPersonnel;
 use App\Models\GameMatch;
 use App\Services\DisciplineService;
+use App\Services\MatchNumberService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -93,8 +94,12 @@ class OfficiatingController extends Controller
      * orders them — the crew and the committee have to be looking at the same
      * list in the same order, or "laga ketiga" means two different matches.
      */
-    public function matches(Request $request, string $event, string $category): JsonResponse
-    {
+    public function matches(
+        Request $request,
+        MatchNumberService $numbers,
+        string $event,
+        string $category,
+    ): JsonResponse {
         $eventModel = $this->event($request);
 
         // Scoped through the event, not looked up by id: a category id from
@@ -110,7 +115,9 @@ class OfficiatingController extends Controller
             ->orderBy('order')
             ->get();
 
-        return ApiResponse::success(MatchResource::collection($matches));
+        return ApiResponse::success(MatchResource::collection(
+            $numbers->attach($categoryModel, $matches),
+        ));
     }
 
     /**

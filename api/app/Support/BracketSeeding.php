@@ -204,4 +204,79 @@ class BracketSeeding
 
         return $size;
     }
+
+    /**
+     * How many ties each round of the draw holds, first round first.
+     *
+     * Two shapes, and the difference is only where a field that isn't a power
+     * of two takes its byes:
+     *
+     * - `first` pads up to the next power of two and seats every bye in the
+     *   opening round. 36 teams become a bracket of 64: eight of them play on
+     *   day one and twenty-eight walk straight into round two. Slot counts
+     *   halve all the way down — 32, 16, 8, 4, 2, 1.
+     * - `late` pairs as many as it can every round and byes whoever is left
+     *   over. All 36 play round one and the byes appear where the numbers first
+     *   stop halving — 18, 9, 5, 3, 2, 1.
+     *
+     * The second shape is the one printed on most Indonesian school-cup draws,
+     * and it was unreachable before: the old code padded unconditionally.
+     *
+     * > A round of E entrants holds ceil(E / 2) ties, so it is short of a pair
+     * > by `2 * ceil(E / 2) - E`, which is **0 or 1 and never more**. That is
+     * > what keeps the whole tree on the positional edges advanceWinner() walks:
+     * > one bye, always the last slot of its round, so the ties below it still
+     * > pair up as (2k, 2k+1) into slot k. A bye anywhere else — or two of them
+     * > — would break that mapping and send a winner into a slot nobody fed.
+     *
+     * @return array<int, int> slot count per round, index 0 = round 1
+     */
+    public static function roundSlots(int $teams, string $byeRound = 'first'): array
+    {
+        $entrants = max(2, $teams);
+
+        if ($byeRound !== 'late') {
+            $entrants = self::sizeFor($entrants);
+        }
+
+        $slots = [];
+
+        while ($entrants > 1) {
+            $entrants = intdiv($entrants + 1, 2); // ceil(entrants / 2)
+            $slots[] = $entrants;
+        }
+
+        return $slots;
+    }
+
+    /** Ties in the opening round of a draw for $teams. */
+    public static function firstRoundSlotCount(int $teams, string $byeRound = 'first'): int
+    {
+        return self::roundSlots($teams, $byeRound)[0] ?? 1;
+    }
+
+    /**
+     * Slot counts for the rounds above a first round of $slots ties.
+     *
+     * The mirror of roundSlots() for a bracket that already exists: generation
+     * stored how wide its opening round is, and every round above it follows
+     * from that one number. Needed because the tree itself cannot say — a round
+     * of N ties was fed by either 2N or 2N-1, and nothing on the rows tells you
+     * which.
+     *
+     * @return array<int, int> slot count per round, index 0 = round 1
+     */
+    public static function roundSlotsFromFirst(int $slots): array
+    {
+        $out = [];
+        $count = max(1, $slots);
+
+        while (true) {
+            $out[] = $count;
+            if ($count === 1) {
+                return $out;
+            }
+            $count = intdiv($count + 1, 2);
+        }
+    }
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { crestGradient, matchWinnerId, wentToPenalties } from "@/lib/bracket";
+import {
+  crestGradient,
+  matchNumberLabel,
+  matchWinnerId,
+  sideLabel,
+  wentToPenalties,
+} from "@/lib/bracket";
 import { timeOf, tzLabel } from "@/lib/match-dates";
 import { useEventTimezone } from "./event-timezone";
 import { cn } from "@/lib/utils";
@@ -143,7 +149,7 @@ export function PublicMatchCard({
       type="button"
       onClick={onClick}
       className={cn("match-card match-card--fixture", cancelled && "match-card--cancelled")}
-      aria-label={`Detail ${m.home_team?.name ?? "TBD"} vs ${m.away_team?.name ?? "TBD"}`}
+      aria-label={`Detail ${sideLabel(m, "home")} vs ${sideLabel(m, "away")}`}
     >
       {/* The kickoff time always stays — the status chip lives in the meta
           column so a live or cancelled fixture doesn't lose when it was due. */}
@@ -153,20 +159,20 @@ export function PublicMatchCard({
       </div>
       <div className="match-teams">
         <div className={cn("match-team", winner && winner !== m.home_team_id && "lose")}>
-          <Crest name={m.home_team?.name ?? "TBD"} logoUrl={m.home_team?.logo_url} />
+          <Crest name={sideLabel(m, "home")} logoUrl={m.home_team?.logo_url} />
           {/* The name and its tags share one column so the crest stays beside
               both and the score column is unaffected by a second line. */}
           <span className="min-w-0 flex-1">
-            <span className="block truncate">{m.home_team?.name ?? "TBD"}</span>
+            <span className="block truncate">{sideLabel(m, "home")}</span>
             <TeamTags tags={m.home_team?.tags} />
           </span>
           {sets && <SetColumns sets={sets} side="home" />}
           {showScore && <span className={cn("sc", live && "sc--live")}>{m.home_score}</span>}
         </div>
         <div className={cn("match-team", winner && winner !== m.away_team_id && "lose")}>
-          <Crest name={m.away_team?.name ?? "TBD"} logoUrl={m.away_team?.logo_url} />
+          <Crest name={sideLabel(m, "away")} logoUrl={m.away_team?.logo_url} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate">{m.away_team?.name ?? "TBD"}</span>
+            <span className="block truncate">{sideLabel(m, "away")}</span>
             <TeamTags tags={m.away_team?.tags} />
           </span>
           {sets && <SetColumns sets={sets} side="away" />}
@@ -189,6 +195,11 @@ export function PublicMatchCard({
       <div className="match-meta">
         <PublicStatusBadge status={m.status} />
         {categoryLabel && <small className="pill">{categoryLabel}</small>}
+        {/* The fixture's own number, beside the phase that names its round.
+            Spectators read the same wall chart the committee prints, and a tie
+            still captioned "Pemenang P5" on both sides needs a handle of its
+            own to be found by. */}
+        {matchNumberLabel(m) && <small className="font-mono">{matchNumberLabel(m)}</small>}
         <small>{phase}</small>
         {wentToPenalties(m) ? (
           <small>

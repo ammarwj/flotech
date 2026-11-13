@@ -6,9 +6,10 @@ import { CalendarClock, Sparkles, X } from "lucide-react";
 import type { ScheduleOptions, SeedPair, SeedingPayload } from "@/lib/api/matches";
 import type { SportEvent } from "@/types/api";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { bracketSizeFor, unplacedTeams } from "@/lib/bracket";
+import { firstRoundSlots, unplacedTeams, type ByeRound } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
@@ -32,6 +33,7 @@ export function ScheduleSettingsDialog({
   hasMatches,
   pending,
   seedTeams,
+  byeRound = "first",
   onClose,
   onSubmit,
 }: {
@@ -45,6 +47,13 @@ export function ScheduleSettingsDialog({
    * engine — league fixtures and hybrid group stages have no seeding.
    */
   seedTeams?: SeedTeam[];
+  /**
+   * Where this category's draw takes its byes. Decides how many opening ties
+   * the editor offers — a 36-team `late` draw has 18, a padded one 32 — and the
+   * API validates `pairs.*.order` against the same number, so a mismatch is a
+   * form that rejects half its own rows at submit.
+   */
+  byeRound?: ByeRound;
   onClose: () => void;
   onSubmit: (options: ScheduleOptions & SeedingPayload) => void;
 }) {
@@ -128,7 +137,17 @@ export function ScheduleSettingsDialog({
 
         <div className="grid gap-4 overflow-y-auto p-5">
           <Field label="Mulai tanggal" hint="Hari pertandingan pertama.">
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            {/* The same calendar as the event form — a native picker here looks
+                different in every browser and has none at all in desktop
+                Firefox. `min`/`max` are the event's own range: the allocator
+                clamps to it anyway, so offering days outside it is a form that
+                accepts what the scheduler then ignores. */}
+            <DatePicker
+              value={startDate}
+              onChange={setStartDate}
+              min={event.start_date ?? undefined}
+              max={event.end_date ?? undefined}
+            />
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
@@ -206,7 +225,7 @@ export function ScheduleSettingsDialog({
           {seedTeams && seedTeams.length >= 2 && (
             <div className="border-t border-border pt-4">
               <BracketSeedEditor
-                size={bracketSizeFor(seedTeams.length)}
+                slots={firstRoundSlots(seedTeams.length, byeRound)}
                 pool={seedTeams}
                 mode={seeding}
                 value={pairs}
@@ -214,7 +233,11 @@ export function ScheduleSettingsDialog({
                 courts={courts}
                 onModeChange={setSeeding}
                 onChange={setPairs}
-                autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
+                autoHint={
+                  byeRound === "late"
+                    ? "Tim diurutkan berdasarkan nama; yang tidak kebagian lawan mendapat bye di babak berikutnya."
+                    : "Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
+                }
               />
             </div>
           )}

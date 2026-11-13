@@ -39,6 +39,11 @@ class EventCategory extends Model
         'bracket_config',
         'rubber_format',
         'knockout_plan',
+        // Lebar babak pertama bracket. Ditulis hanya oleh generation, dan wajib
+        // ada di sini: `$model->update()` menelan kolom di luar $fillable tanpa
+        // error — kegagalan diam yang sudah pernah terjadi di
+        // `events:backfill-plan`.
+        'bracket_slots',
         'registration_fee',
         'max_teams',
         'sort_order',
@@ -50,6 +55,7 @@ class EventCategory extends Model
             'bracket_config' => 'array',
             'rubber_format' => 'array',
             'knockout_plan' => 'array',
+            'bracket_slots' => 'integer',
             'registration_fee' => 'decimal:2',
             'max_teams' => 'integer',
             'sort_order' => 'integer',

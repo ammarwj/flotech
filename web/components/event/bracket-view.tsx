@@ -3,10 +3,12 @@ import { Pencil } from "lucide-react";
 import {
   THIRD_PLACE_LABEL,
   knockoutRoundLabel,
+  matchNumberLabel,
   matchWinnerId,
   crestGradient,
   groupByRound,
   isThirdPlace,
+  sideLabel,
   wentToPenalties,
 } from "@/lib/bracket";
 import { cn } from "@/lib/utils";
@@ -15,6 +17,7 @@ import type { Match } from "@/types/api";
 
 function Side({
   name,
+  pending,
   logoUrl,
   score,
   penalty,
@@ -22,6 +25,12 @@ function Side({
   decided,
 }: {
   name: string | null;
+  /**
+   * The side holds no team yet, so `name` is a caption rather than a name —
+   * "Pemenang P5", "Bye", "TBD". Passed in rather than re-derived from `name`,
+   * because a caption and a club called "Bye" are not the same thing.
+   */
+  pending?: boolean;
   logoUrl?: string | null;
   score: number | null;
   /** Shootout score, shown next to the scoreline when the tie went to penalties. */
@@ -30,12 +39,15 @@ function Side({
   decided: boolean;
 }) {
   return (
-    <div className={cn("bkt-side", !name && "bkt-tbd", decided && (isWinner ? "win" : "lose"))}>
+    <div className={cn("bkt-side", pending && "bkt-tbd", decided && (isWinner ? "win" : "lose"))}>
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="bkt-crest" src={logoUrl} alt={name ?? ""} style={{ objectFit: "cover" }} />
       ) : (
-        <span className="bkt-crest" style={{ background: name ? crestGradient(name) : "var(--border)" }} />
+        <span
+          className="bkt-crest"
+          style={{ background: name && !pending ? crestGradient(name) : "var(--border)" }}
+        />
       )}
       <span className="bkt-name">{name ?? "TBD"}</span>
       {penalty !== null && penalty !== undefined && (
@@ -63,9 +75,12 @@ function MatchCell({
 }) {
   const winner = matchWinnerId(m);
   const decided = winner !== null;
-  // A lone team is a real "Bye" only once the match is settled.
-  const awayBye = !!m.home_team_id && !m.away_team_id && m.status === "finished";
   const pens = wentToPenalties(m);
+  // What a tie is called before it has teams. Printed above the card rather
+  // than inside a side, because it names the fixture, not either half of it —
+  // and it is the whole point: an organizer writing the programme has to be
+  // able to refer to a slot that still says "Pemenang P5" twice.
+  const number = matchNumberLabel(m);
   // Set/partai detail under the two sides — "21-15, 21-18" for badminton, the
   // played rubbers for a squad tie, undefined (nothing) for goal sports.
   const detail = matchScoreText(m).detail;
@@ -83,8 +98,10 @@ function MatchCell({
           <Pencil className="h-3 w-3" />
         </button>
       )}
+      {number && <div className="bkt-no">{number}</div>}
       <Side
-        name={m.home_team?.name ?? null}
+        name={sideLabel(m, "home")}
+        pending={!m.home_team}
         logoUrl={m.home_team?.logo_url}
         score={m.home_score}
         penalty={pens ? m.home_penalty : null}
@@ -92,7 +109,8 @@ function MatchCell({
         decided={decided}
       />
       <Side
-        name={m.away_team?.name ?? (awayBye ? "Bye" : null)}
+        name={sideLabel(m, "away")}
+        pending={!m.away_team}
         logoUrl={m.away_team?.logo_url}
         score={m.away_score}
         penalty={pens ? m.away_penalty : null}
@@ -141,7 +159,15 @@ export function BracketView({
     <div className="bkt">
       {rounds.map(([round, list], col) => (
         <div key={round} className="bkt-col">
-          <div className="bkt-head">{(roundLabel ?? knockoutRoundLabel)(list.length, round)}</div>
+          <div className="bkt-head">
+            {roundLabel
+              ? roundLabel(list.length, round)
+              : // Teams still in = winners of the round below, i.e. its tie
+                // count. "N Besar" from list.length × 2 assumes every tie has
+                // two sides, which a ragged draw breaks: five ties hold nine
+                // teams, not ten.
+                knockoutRoundLabel(list.length, rounds[col - 1]?.[1].length)}
+          </div>
           <div className="bkt-body">
             {list.map((m, i) => {
               // The backend refuses a slot whose result is already in, so the

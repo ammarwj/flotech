@@ -1,12 +1,13 @@
 "use client";
 
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { dialogConsequences } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { unplacedTeams } from "@/lib/bracket";
 import { fromEventInput, toEventInput, tzLabel } from "@/lib/match-dates";
 import { CourtSelect } from "./court-select";
+import { SeedEntitySelect } from "./seed-entity-select";
 import type { SeedPair } from "@/lib/api/matches";
 
 export type SeedingMode = "auto" | "manual";
@@ -26,7 +27,7 @@ export interface SeedTeam {
  * both a new dependency and the worse interaction there.
  */
 export function BracketSeedEditor({
-  size,
+  slots: slotCount,
   pool,
   mode,
   value,
@@ -38,8 +39,17 @@ export function BracketSeedEditor({
   entityLabel = "Tim",
   emptyLabel = "Bye",
 }: {
-  /** Bracket size; the editor draws size / 2 ties. */
-  size: number;
+  /**
+   * Opening ties to draw, one row each.
+   *
+   * The count rather than the bracket size, because a draw is no longer
+   * necessarily a power of two: a 36-team bracket that byes late opens with 18
+   * ties, which `size / 2` cannot express. Its callers each know the number
+   * already — the plan dialog from `bracket_size`, the schedule dialog from
+   * firstRoundSlots() — and halving a size here would be a second place for
+   * that arithmetic to disagree with the API's `pairs.*.order` rule.
+   */
+  slots: number;
   pool: SeedTeam[];
   mode: SeedingMode;
   value: SeedPair[];
@@ -60,7 +70,7 @@ export function BracketSeedEditor({
   /** What an empty second side means; "Bye" for a real draw. */
   emptyLabel?: string;
 }) {
-  const slots = Math.max(1, Math.floor(size / 2));
+  const slots = Math.max(1, slotCount);
   const unplaced = unplacedTeams(pool, value);
 
   const pairAt = (order: number): SeedPair =>
@@ -78,7 +88,7 @@ export function BracketSeedEditor({
     onChange(next.sort((a, b) => a.order - b.order));
   };
 
-  const setSide = (order: number, side: "home_team_id" | "away_team_id", id: string) =>
+  const setSide = (order: number, side: "home_team_id" | "away_team_id", id: string | null) =>
     setField(order, side, id || null);
 
   // A team already placed in another tie can't be picked twice — the backend
@@ -110,12 +120,10 @@ export function BracketSeedEditor({
             {Array.from({ length: slots }, (_, order) => {
               const pair = pairAt(order);
               const taken = takenElsewhere(order);
-              const options = (opposite: string | null) =>
-                pool.map((t) => (
-                  <option key={t.id} value={t.id} disabled={taken.has(t.id) || t.id === opposite}>
-                    {t.name}
-                  </option>
-                ));
+              /* The other side of this same tie joins the placed set: nobody
+                 plays themselves, and the backend refuses it either way. */
+              const blocked = (opposite: string | null) =>
+                opposite ? new Set([...taken, opposite]) : taken;
 
               return (
                 <div key={order} className="grid gap-1.5 border-b border-border pb-2 last:border-0 last:pb-0">
@@ -123,44 +131,44 @@ export function BracketSeedEditor({
                     <span className="w-6 shrink-0 text-xs font-semibold text-muted-foreground">
                       {order + 1}.
                     </span>
-                    <Select
-                      value={pair.home_team_id ?? ""}
-                      onChange={(e) => setSide(order, "home_team_id", e.target.value)}
-                      className="h-9 min-w-0 flex-1"
-                      aria-label={`${entityLabel} pertama pertandingan ${order + 1}`}
-                    >
-                      <option value="">—</option>
-                      {options(pair.away_team_id)}
-                    </Select>
+                    <SeedEntitySelect
+                      value={pair.home_team_id ?? null}
+                      onChange={(v) => setSide(order, "home_team_id", v)}
+                      pool={pool}
+                      disabledIds={blocked(pair.away_team_id)}
+                      emptyLabel="—"
+                      placeholder={`Cari ${entityLabel.toLowerCase()}…`}
+                      ariaLabel={`${entityLabel} pertama pertandingan ${order + 1}`}
+                      className="flex-1"
+                    />
                     <span className="shrink-0 text-xs text-muted-foreground">vs</span>
-                    <Select
-                      value={pair.away_team_id ?? ""}
-                      onChange={(e) => setSide(order, "away_team_id", e.target.value)}
-                      className="h-9 min-w-0 flex-1"
-                      aria-label={`${entityLabel} kedua pertandingan ${order + 1}`}
-                    >
-                      <option value="">{emptyLabel}</option>
-                      {options(pair.home_team_id)}
-                    </Select>
+                    <SeedEntitySelect
+                      value={pair.away_team_id ?? null}
+                      onChange={(v) => setSide(order, "away_team_id", v)}
+                      pool={pool}
+                      disabledIds={blocked(pair.home_team_id)}
+                      emptyLabel={emptyLabel}
+                      placeholder={`Cari ${entityLabel.toLowerCase()}…`}
+                      ariaLabel={`${entityLabel} kedua pertandingan ${order + 1}`}
+                      className="flex-1"
+                    />
                   </div>
                   {/* Optional overrides. Left blank, the slot allocator times
                       this tie like any other. */}
-                  <div className="flex items-center gap-2 pl-8">
-                    <Input
-                      type="datetime-local"
+                  <div className="flex flex-wrap items-center gap-2 pl-8">
+                    <DateTimePicker
                       value={toEventInput(pair.scheduled_at ?? null, tz)}
-                      onChange={(e) =>
-                        setField(order, "scheduled_at", fromEventInput(e.target.value, tz))
-                      }
-                      className="h-8 min-w-0 flex-1 text-xs"
-                      aria-label={`Jadwal pertandingan ${order + 1}`}
+                      onChange={(v) => setField(order, "scheduled_at", fromEventInput(v, tz))}
+                      datePlaceholder="Jadwal"
+                      clearable
+                      className="min-w-[13rem] flex-1"
                     />
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-[8rem] flex-1">
                       <CourtSelect
                         value={pair.venue ?? null}
                         onChange={(v) => setField(order, "venue", v)}
                         courts={courts}
-                        className="h-8 text-xs"
+                        className="h-10 text-sm"
                         placeholder="Lapangan"
                         ariaLabel={`Lapangan pertandingan ${order + 1}`}
                       />
