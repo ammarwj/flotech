@@ -508,6 +508,58 @@ class IdCardRenderTest extends TestCase
     }
 
     /**
+     * A background whose aspect ratio differs from the card's is STRETCHED to
+     * fit, never cropped — so a mark the designer put at a third of the artwork
+     * prints at a third of the card.
+     *
+     * This is a bug that happened. The renderer used `cover()` while the editor
+     * shows the same artwork with CSS `object-fit: fill`, so on a 1044x1506
+     * background over a 104x145mm card the image was scaled up 1.1762x and 29px
+     * came off each edge — every plate drifted DOWN relative to the card, and
+     * further the lower it sat, while the text went exactly where the organizer
+     * had put it. On screen it read as text that would not centre; it was the
+     * background that had moved underneath it.
+     *
+     * The test image's ratio is deliberately nothing like the card's: a square
+     * one passes under either rule and proves nothing.
+     */
+    public function test_a_background_of_a_different_ratio_is_stretched_rather_than_cropped(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        // 0.693 artwork on a 1.585 card. bandedImage() paints the top third red
+        // and the rest blue.
+        $tall = $this->bandedImage('id-cards/tall-bg-'.uniqid().'.png', 1044, 1506);
+
+        $template = $org->idCardTemplates()->create([
+            'name' => 'Kartu',
+            'background_url' => $tall,
+            'width_mm' => 85.6,
+            'height_mm' => 54,
+            // No text: the background alone is under test.
+            'fields' => [['key' => 'photo', 'x' => 90, 'y' => 90, 'w' => 5, 'h' => 5]],
+        ]);
+
+        $card = $this->decode($this->service()->render($template, $this->person()));
+
+        // Stretched, the boundary stays at one third of the card's height
+        // whatever the two ratios were. Cropped, it moves.
+        $third = (int) round($card->height() / 3);
+
+        $this->assertSame(
+            '#ff0000',
+            $card->colorAt(500, $third - 14)->toHex(true),
+            'the artwork’s top third must still be the card’s top third',
+        );
+
+        $this->assertSame(
+            '#0000ff',
+            $card->colorAt(500, $third + 14)->toHex(true),
+            'and the boundary must not have been pushed by a crop',
+        );
+    }
+
+    /**
      * A name too long for its box comes out smaller, and one that fits does
      * not.
      *

@@ -300,9 +300,33 @@ class IdCardService
         }
 
         try {
+            /*
+             * `resize()`, NOT `cover()`, and the difference is the whole reason
+             * fields printed in the wrong place.
+             *
+             * The editor shows this artwork with CSS `object-fit: fill` — it
+             * stretches, nothing is lost. `cover()` does the opposite: it scales
+             * to the larger of the two factors and CROPS the overflow. On any
+             * artwork whose aspect ratio differs from the card's, the two
+             * disagree, and they disagree by a drift that GROWS down the card.
+             *
+             * Measured on a real template: a 1044x1506 background (0.6932) on a
+             * 104x145mm card (0.7172) was scaled 1.1762x, overflowing 58px of
+             * height, so 29px came off each edge — and a plate the organizer put
+             * at y=80.4% printed at 81.4%. The text went exactly where it was
+             * told; the background moved underneath it, further at the bottom
+             * than at the top, which is what made the bottom rows look worst.
+             *
+             * Two readers of one rule, and the one to change is this one: the
+             * editor is where the organizer aims, so it is the definition. A
+             * slightly squashed background (2.4% here, invisible) is the price,
+             * and it is cheaper than silently cropping artwork someone designed
+             * to the edge — see the certificate's own `background-size` and the
+             * canvas's `objectFit: "fill"`, which both already mean stretch.
+             */
             return $this->manager()
                 ->decodeBinary($bytes)
-                ->cover($this->px($template->width_mm), $this->px($template->height_mm));
+                ->resize($this->px($template->width_mm), $this->px($template->height_mm));
         } catch (Throwable $e) {
             report($e);
 
