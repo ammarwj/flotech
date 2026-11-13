@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Scale, Swords, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Label } from "@/components/ui/label";
 import { CourtSelect } from "./court-select";
 import { TeamCombobox } from "./team-combobox";
@@ -204,16 +204,17 @@ function Dialog({
                   Tanggal & jam{" "}
                   <span className="font-normal text-muted-foreground">(opsional, {tzLabel(tz)})</span>
                 </Label>
-                <div className="relative">
-                  {/* datetime-local draws its own picker button — a lucide
-                      calendar beside it reads as two calendars. */}
-                  <Input
-                    id="manual-when"
-                    type="datetime-local"
-                    value={when}
-                    onChange={(e) => setWhen(e.target.value)}
-                  />
-                </div>
+                {/* The same calendar as the event form and the seed editor.
+                    Clearable because the field is optional: an undated fixture
+                    is one the slot allocator will place, and typing a date by
+                    mistake must be undoable without guessing. */}
+                <DateTimePicker
+                  id="manual-when"
+                  value={when}
+                  onChange={setWhen}
+                  datePlaceholder="Pilih tanggal"
+                  clearable
+                />
               </div>
 
               <div className="grid gap-1.5">

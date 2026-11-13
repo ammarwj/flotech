@@ -5,8 +5,8 @@ import { Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { downstreamImpact } from "@/lib/bracket";
+import { SeedEntitySelect } from "./seed-entity-select";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SeedTeam } from "./bracket-seed-editor";
 import type { MatchTeamsPayload } from "@/lib/api/matches";
@@ -71,12 +71,12 @@ function Dialog({
   );
   const swaps = placedElsewhere.has(home) || placedElsewhere.has(away);
 
-  const option = (t: SeedTeam, opposite: string) => (
-    <option key={t.id} value={t.id} disabled={t.id === opposite}>
-      {t.name}
-      {placedElsewhere.has(t.id) ? " — sudah di slot lain" : ""}
-    </option>
-  );
+  /**
+   * The only team genuinely out of bounds is the one on the other side — a slot
+   * cannot hold the same team twice. Teams placed elsewhere stay pickable and
+   * get a note instead, because picking one is the swap the dialog exists for.
+   */
+  const blocked = (opposite: string) => (opposite ? new Set([opposite]) : new Set<string>());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -114,10 +114,18 @@ function Dialog({
               <Label htmlFor="slot-home" className="font-semibold">
                 Tim tuan rumah<span className="text-[var(--danger)]"> *</span>
               </Label>
-              <Select id="slot-home" value={home} onChange={(e) => setHome(e.target.value)}>
-                <option value="">Pilih tim…</option>
-                {teams.map((t) => option(t, away))}
-              </Select>
+              <SeedEntitySelect
+                id="slot-home"
+                value={home || null}
+                onChange={(v) => setHome(v ?? "")}
+                pool={teams}
+                disabledIds={blocked(away)}
+                noteIds={placedElsewhere}
+                noteLabel="di slot lain"
+                emptyLabel="Pilih tim…"
+                placeholder="Cari tim…"
+                ariaLabel="Tim tuan rumah"
+              />
               {fieldErrors?.home_team_id && (
                 <p className="text-xs text-[var(--danger)]">{fieldErrors.home_team_id}</p>
               )}
@@ -126,11 +134,19 @@ function Dialog({
               <Label htmlFor="slot-away" className="font-semibold">
                 Tim tamu
               </Label>
-              <Select id="slot-away" value={away} onChange={(e) => setAway(e.target.value)}>
-                {/* An empty away side is a walkover, not an unfinished form. */}
-                <option value="">Bye (menang tanpa bertanding)</option>
-                {teams.map((t) => option(t, home))}
-              </Select>
+              {/* An empty away side is a walkover, not an unfinished form. */}
+              <SeedEntitySelect
+                id="slot-away"
+                value={away || null}
+                onChange={(v) => setAway(v ?? "")}
+                pool={teams}
+                disabledIds={blocked(home)}
+                noteIds={placedElsewhere}
+                noteLabel="di slot lain"
+                emptyLabel="Bye (menang tanpa bertanding)"
+                placeholder="Cari tim…"
+                ariaLabel="Tim tamu"
+              />
               {fieldErrors?.away_team_id && (
                 <p className="text-xs text-[var(--danger)]">{fieldErrors.away_team_id}</p>
               )}

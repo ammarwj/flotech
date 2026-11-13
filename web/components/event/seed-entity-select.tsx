@@ -45,21 +45,35 @@ type Coords = { left: number; width: number; top: number; bottom: number; flip: 
  * name that vanishes from the list reads as a team that vanished from the draw.
  */
 export function SeedEntitySelect({
+  id,
   value,
   onChange,
   pool,
   disabledIds,
+  noteIds,
+  noteLabel,
   emptyLabel,
   ariaLabel,
   placeholder = "Cari…",
   className,
 }: {
+  /** For a caller whose <Label htmlFor> points at this field. */
+  id?: string;
   /** Chosen id, or null for the empty side. */
   value: string | null;
   onChange: (id: string | null) => void;
   pool: SeedOption[];
   /** Ids placed in another tie (or on the other side of this one). */
   disabledIds: Set<string>;
+  /**
+   * Ids that stay pickable but carry a note — the slot editor, where choosing a
+   * team that already has a slot *exchanges* the two rather than being refused.
+   * Separate from `disabledIds` because the two answer different questions and
+   * folding them into one set would make a legal move look forbidden.
+   */
+  noteIds?: Set<string>;
+  /** What that note says, e.g. "di slot lain". Required alongside `noteIds`. */
+  noteLabel?: string;
   /** What picking nothing means here — "—" for the home side, "Bye" for away. */
   emptyLabel: string;
   ariaLabel: string;
@@ -129,16 +143,19 @@ export function SeedEntitySelect({
    * it is part of the same array the arrow keys walk — a second code path for
    * "the one option that isn't in the pool" is how one of them stops working.
    */
-  const rows = useMemo<{ id: string | null; name: string; disabled: boolean }[]>(
+  const rows = useMemo<
+    { id: string | null; name: string; disabled: boolean; note?: string }[]
+  >(
     () => [
       { id: null, name: emptyLabel, disabled: false },
       ...matches.slice(0, RENDER_CAP).map((o) => ({
         id: o.id,
         name: o.name,
         disabled: disabledIds.has(o.id),
+        note: noteIds?.has(o.id) ? noteLabel : undefined,
       })),
     ],
-    [matches, disabledIds, emptyLabel]
+    [matches, disabledIds, noteIds, noteLabel, emptyLabel]
   );
 
   const truncated = matches.length > RENDER_CAP;
@@ -188,6 +205,7 @@ export function SeedEntitySelect({
     <div ref={anchorRef} className={cn("relative min-w-0", className)}>
       <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       <input
+        id={id}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -257,6 +275,10 @@ export function SeedEntitySelect({
                   {row.disabled ? (
                     <span className="shrink-0 text-[0.65rem] uppercase tracking-wide">
                       Terpakai
+                    </span>
+                  ) : row.note ? (
+                    <span className="shrink-0 text-[0.65rem] text-muted-foreground">
+                      {row.note}
                     </span>
                   ) : (
                     row.id === value && (

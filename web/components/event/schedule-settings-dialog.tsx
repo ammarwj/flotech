@@ -112,7 +112,11 @@ export function ScheduleSettingsDialog({
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
+        /* Wider than the usual dialog because of the seed editor: a tie is two
+           pickers plus a kickoff plus a court, and at `max-w-lg` each of those
+           four lands on a line of its own. Without a draw to seed the form is
+           just paired fields, which this width suits as well. */
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-start gap-3 border-b border-border p-5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">

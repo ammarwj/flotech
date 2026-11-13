@@ -1236,7 +1236,20 @@ img { max-width: 100%; display: block; }
    again taller than that and overflowed onto the card below it. An fr row is
    floored at its own content, so the tallest card in the tree sets the slot and
    nothing can spill out of one. */
-.bkt-body { flex: 1; display: grid; grid-auto-rows: 1fr; }
+/* Every column is divided into the *same* number of rows — the opening round's
+   slot count, set inline as --bkt-rows — and a later card spans the rows its
+   feeders occupy. That is what puts it on their midpoint.
+
+   Dividing each column into its own cell count instead (plain `grid-auto-rows:
+   1fr`) is exact only while every round halves cleanly. A ragged draw does not:
+   9 ties do not divide into 5, so each card drifts off the pair feeding it and
+   the error compounds rightward — 278px by the fourth round, with the line
+   entering a card well above the card itself. On a power-of-two bracket the two
+   are identical, because spanning 2^col of 2^n rows *is* an equal division. */
+.bkt-body {
+  flex: 1; display: grid;
+  grid-template-rows: repeat(var(--bkt-rows, 1), minmax(64px, 1fr));
+}
 .bkt-cell {
   /* min-width:0 is load-bearing. A grid item's automatic minimum size applies on
      both axes (a column-flex item's only on the block axis), so without this the
@@ -1244,6 +1257,21 @@ img { max-width: 100%; display: block; }
      a team name — and the card paints outside its column. */
   min-height: 64px; min-width: 0; position: relative;
   display: flex; flex-direction: column; justify-content: center; padding: 6px 0;
+  /* Where the card sits in its band. Zero — dead centre, from the
+     justify-content above — for every cell whose two feeders are the same
+     height, which is all of them in a power-of-two draw. A ragged draw has one
+     cell per bracket whose feeders are not: in a 36-team field the final's two
+     semifinals span sixteen rows and two, so their lines meet five-eighths of
+     the way down rather than halfway, and centring the card there leaves the
+     connector arriving well above it.
+
+     The shift is a percentage of the cell's own height, which is what makes
+     this work where two earlier attempts did not: a percentage margin or
+     padding resolves against the containing block's *width*, and a percentage
+     translate against the element's own height — the card's, not the band's.
+     `top` on a relatively-positioned box resolves against the containing
+     block's height, which is the band being divided. */
+  top: var(--bkt-shift, 0%);
 }
 
 /* Flat card, matching the simpler .ematch look. */
@@ -1349,6 +1377,7 @@ img { max-width: 100%; display: block; }
   grid-template-rows: 1fr auto 1fr;
 }
 .bkt-cell-third > .bkt-match { grid-row: 2; }
+.bkt-cell-third > .bkt-third { grid-row: 3; align-self: start; margin-top: 18px; }
 .bkt-cell-third > .bkt-third { grid-row: 3; align-self: start; margin-top: 18px; }
 /* Type comes from .bkt-head, worn alongside this class; the margin is smaller
    than a column heading's because this one labels one card, not a column. */

@@ -127,7 +127,13 @@ export function BracketSeedEditor({
 
               return (
                 <div key={order} className="grid gap-1.5 border-b border-border pb-2 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-2">
+                  {/* Wraps rather than squeezing: below ~22rem of row the two
+                      pickers would each be narrower than the names they hold,
+                      and a truncated team name is the one thing this row exists
+                      to show. The ordinal keeps its own line's indent via the
+                      wrapper's padding, so a wrapped second picker still reads
+                      as part of tie n. */}
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="w-6 shrink-0 text-xs font-semibold text-muted-foreground">
                       {order + 1}.
                     </span>
@@ -139,7 +145,7 @@ export function BracketSeedEditor({
                       emptyLabel="—"
                       placeholder={`Cari ${entityLabel.toLowerCase()}…`}
                       ariaLabel={`${entityLabel} pertama pertandingan ${order + 1}`}
-                      className="flex-1"
+                      className="min-w-[9rem] flex-1"
                     />
                     <span className="shrink-0 text-xs text-muted-foreground">vs</span>
                     <SeedEntitySelect
@@ -150,7 +156,7 @@ export function BracketSeedEditor({
                       emptyLabel={emptyLabel}
                       placeholder={`Cari ${entityLabel.toLowerCase()}…`}
                       ariaLabel={`${entityLabel} kedua pertandingan ${order + 1}`}
-                      className="flex-1"
+                      className="min-w-[9rem] flex-1"
                     />
                   </div>
                   {/* Optional overrides. Left blank, the slot allocator times
@@ -161,7 +167,13 @@ export function BracketSeedEditor({
                       onChange={(v) => setField(order, "scheduled_at", fromEventInput(v, tz))}
                       datePlaceholder="Jadwal"
                       clearable
-                      className="min-w-[13rem] flex-1"
+                      /* 19rem is what the picker's own two halves need side by
+                         side (11rem date floor + 7.5rem clock + gap). Below it
+                         the picker wraps *internally* and the clock drops under
+                         the date while the court still sits beside them — the
+                         stagger in the screenshot. Floored here, the whole row
+                         wraps first and the field stays one line. */
+                      className="min-w-[19rem] flex-[2]"
                     />
                     <div className="min-w-[8rem] flex-1">
                       <CourtSelect

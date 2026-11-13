@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   addMonths,
   eachDayOfInterval,
@@ -42,6 +43,14 @@ const YEARS_AHEAD = 10;
  */
 const PANEL_WIDTH = 304;
 const VIEWPORT_MARGIN = 8;
+/**
+ * Roughly how tall the panel gets (header + weekday row + six day rows), in px.
+ * Spelled here for the same reason as the width: the flip decision is made
+ * before the panel exists to be measured. An over-estimate is the safe
+ * direction — it flips up a little eagerly rather than opening a calendar whose
+ * last week is below the fold.
+ */
+const PANEL_HEIGHT = 330;
 
 /**
  * Month/year jump in the calendar header. A bare styled <select> reads as a
@@ -139,17 +148,28 @@ export function DatePicker({
 
   const [viewMonth, setViewMonth] = React.useState<Date>(openingMonth);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   /**
-   * How far the panel sits from the trigger's own left edge, in px.
+   * Where the panel sits, in viewport coordinates.
    *
-   * An edge class (`left-0` / `right-0`) cannot express every case: once the
-   * panel is wider than the space on *both* sides of the trigger — a 320px
-   * phone with a field that is neither flush left nor flush right — flipping
-   * only chooses which edge overhangs. A measured offset clamps instead, so
-   * the panel slides along the viewport rather than off it.
+   * It is portalled to `<body>` rather than left beside the trigger, because
+   * `position: absolute` is clipped by any scrolling ancestor — and this field
+   * lives inside dialogs whose body is `overflow-y-auto`, where the calendar
+   * was cut off mid-month. Portalling means it must be placed by hand (the same
+   * trade `TeamCombobox` makes).
+   *
+   * `left` is clamped rather than flipped to an edge: once the panel is wider
+   * than the space on *both* sides of the trigger — a 320px phone with a field
+   * that is neither flush left nor flush right — flipping only chooses which
+   * edge overhangs. Clamping slides it along the viewport instead.
    */
-  const [offsetLeft, setOffsetLeft] = React.useState(0);
+  const [coords, setCoords] = React.useState<{
+    left: number;
+    top: number;
+    bottom: number;
+    flip: boolean;
+  } | null>(null);
 
   const toggle = () => {
     // Jump the calendar to the selected month right before opening.
@@ -169,19 +189,38 @@ export function DatePicker({
       // so that a panel too wide for the viewport overhangs on the right,
       // where the calendar has already been read, not on the left.
       const maxLeft = window.innerWidth - VIEWPORT_MARGIN - PANEL_WIDTH;
-      setOffsetLeft(Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)) - rect.left);
+      const below = window.innerHeight - rect.bottom;
+      setCoords({
+        left: Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)),
+        top: rect.top,
+        bottom: rect.bottom,
+        // Only flip when there is genuinely more room above: a short viewport
+        // fits the panel nowhere, and flipping there just moves the clipping
+        // from the bottom edge to the top one.
+        flip: below < PANEL_HEIGHT && rect.top > below,
+      });
     };
 
     place();
     window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
+    // Capture phase, so scrolling any ancestor (a dialog body) moves the panel
+    // with its trigger instead of leaving it stranded mid-screen.
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
   }, [open]);
 
-  // Close on outside click / Escape.
+  // Close on outside click / Escape. The panel lives outside the trigger in the
+  // DOM now (portal), so both refs have to count as "inside" — without the
+  // second one, picking a month from the header would close the calendar.
   React.useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -264,86 +303,96 @@ export function DatePicker({
         </button>
       )}
 
-      {open && (
-        <div
-          role="dialog"
-          style={{ left: offsetLeft }}
-          className="absolute top-[calc(100%+0.375rem)] z-50 w-76 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setViewMonth((m) => subMonths(m, 1))}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              aria-label="Bulan sebelumnya"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-1" style={{ fontFamily: "var(--font-display)" }}>
-              <HeaderSelect
-                label="Bulan"
-                value={viewMonth.getMonth()}
-                onChange={(v) => setViewMonth((m) => setMonth(m, v))}
-                options={MONTHS.map((label, i) => ({ value: i, label }))}
-              />
-              <HeaderSelect
-                label="Tahun"
-                value={viewMonth.getFullYear()}
-                onChange={(v) => setViewMonth((m) => setYear(m, v))}
-                options={years.map((y) => ({ value: y, label: String(y) }))}
-              />
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            style={{
+              position: "fixed",
+              left: coords.left,
+              ...(coords.flip
+                ? { bottom: window.innerHeight - coords.top + 6 }
+                : { top: coords.bottom + 6 }),
+            }}
+            className="z-[60] w-76 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[var(--shadow-md)]"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setViewMonth((m) => subMonths(m, 1))}
+                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                aria-label="Bulan sebelumnya"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-1" style={{ fontFamily: "var(--font-display)" }}>
+                <HeaderSelect
+                  label="Bulan"
+                  value={viewMonth.getMonth()}
+                  onChange={(v) => setViewMonth((m) => setMonth(m, v))}
+                  options={MONTHS.map((label, i) => ({ value: i, label }))}
+                />
+                <HeaderSelect
+                  label="Tahun"
+                  value={viewMonth.getFullYear()}
+                  onChange={(v) => setViewMonth((m) => setYear(m, v))}
+                  options={years.map((y) => ({ value: y, label: String(y) }))}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewMonth((m) => addMonths(m, 1))}
+                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                aria-label="Bulan berikutnya"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              aria-label="Bulan berikutnya"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
 
-          <div className="mb-1 grid grid-cols-7 text-center text-[0.7rem] font-medium text-muted-foreground">
-            {WEEKDAYS.map((w) => (
-              <span key={w} className="py-1">
-                {w}
-              </span>
-            ))}
-          </div>
+            <div className="mb-1 grid grid-cols-7 text-center text-[0.7rem] font-medium text-muted-foreground">
+              {WEEKDAYS.map((w) => (
+                <span key={w} className="py-1">
+                  {w}
+                </span>
+              ))}
+            </div>
 
-          <div className="grid grid-cols-7 gap-0.5">
-            {days.map((d) => {
-              const outside = !isSameMonth(d, viewMonth);
-              const isSelected = selected && isSameDay(d, selected);
-              const disabledDay = isDisabledDay(d);
-              return (
-                <button
-                  key={d.toISOString()}
-                  type="button"
-                  disabled={disabledDay}
-                  // The visible label is just the day number, which is ambiguous
-                  // on its own (and repeats for the trailing days of the
-                  // neighbouring months).
-                  aria-label={format(d, "d MMMM yyyy", { locale: idLocale })}
-                  aria-current={isToday(d) ? "date" : undefined}
-                  onClick={() => pick(d)}
-                  className={cn(
-                    "grid h-8 w-8 place-items-center justify-self-center rounded-md text-sm transition-colors",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    outside && "text-muted-foreground/50",
-                    isToday(d) && !isSelected && "font-semibold text-[var(--brand-600)]",
-                    isSelected &&
-                      "bg-[var(--brand-600)] font-semibold text-white hover:bg-[var(--brand-700)] hover:text-white",
-                    disabledDay && "cursor-not-allowed text-muted-foreground/30 line-through hover:bg-transparent"
-                  )}
-                >
-                  {format(d, "d")}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+            <div className="grid grid-cols-7 gap-0.5">
+              {days.map((d) => {
+                const outside = !isSameMonth(d, viewMonth);
+                const isSelected = selected && isSameDay(d, selected);
+                const disabledDay = isDisabledDay(d);
+                return (
+                  <button
+                    key={d.toISOString()}
+                    type="button"
+                    disabled={disabledDay}
+                    // The visible label is just the day number, which is ambiguous
+                    // on its own (and repeats for the trailing days of the
+                    // neighbouring months).
+                    aria-label={format(d, "d MMMM yyyy", { locale: idLocale })}
+                    aria-current={isToday(d) ? "date" : undefined}
+                    onClick={() => pick(d)}
+                    className={cn(
+                      "grid h-8 w-8 place-items-center justify-self-center rounded-md text-sm transition-colors",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      outside && "text-muted-foreground/50",
+                      isToday(d) && !isSelected && "font-semibold text-[var(--brand-600)]",
+                      isSelected &&
+                        "bg-[var(--brand-600)] font-semibold text-white hover:bg-[var(--brand-700)] hover:text-white",
+                      disabledDay && "cursor-not-allowed text-muted-foreground/30 line-through hover:bg-transparent"
+                    )}
+                  >
+                    {format(d, "d")}
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

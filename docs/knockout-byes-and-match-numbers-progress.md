@@ -97,3 +97,26 @@ Keputusan: **nomor diturunkan di server, per kategori**, bukan kolom tersimpan.
   gunanya — masing-masing terlihat wajar kalau dilihat sendirian.
 - Verifikasi di layar: bagan ragged 36 → 18 → 9 → 5, nomor P1–P39, babak 2 penuh
   "Pemenang P1 vs Pemenang P2", dan slot ber-pengumpan tunggal berbunyi "Bye".
+- **Bagan ganjil membongkar tata letak kolom bagan, dan itu bug tersendiri.**
+  `.bkt-body` dulu `grid-auto-rows: 1fr` — tiap kolom membagi tingginya **rata**,
+  yang eksak hanya selama tiap babak membelah bersih. Di 18 → 9 → 5 → 3 → 2 → 1
+  tidak: 9 tidak terbagi rata jadi 5, jadi kartu melenceng dari pasangan
+  pengumpannya dan errornya **menumpuk ke kanan** (terukur 278px di babak
+  keempat, garis masuk jauh di atas kartunya). Sekarang **semua kolom memakai
+  grid baris yang sama** (`--bkt-rows` = jumlah slot babak 1) dan tiap kartu
+  me-`span` baris milik pengumpannya. Di bagan pangkat dua keduanya identik —
+  merentang 2^col dari 2^n baris **adalah** pembagian rata.
+- **Final butuh satu hal lagi: geseran dalam banding.** Kedua pengumpannya bisa
+  beda tinggi (semifinal 16 baris vs 2), jadi titik temu garisnya bukan di tengah
+  bandingnya sendiri. `cardShift()` menghitungnya, dan CSS-nya memakai **`top`
+  persen** — bukan margin/padding persen (resolve ke **lebar** containing block)
+  dan bukan `translateY` persen (resolve ke tinggi **elemen**-nya sendiri). Dua
+  percobaan pertama gagal persis karena itu, keduanya diam-diam.
+- **`.bkt-cell-third` menimpa `.bkt-cell`**, jadi perbaikan apa pun di `.bkt-cell`
+  tidak berlaku di sel final sampai keduanya dibuat sejalan. Gejalanya: angka
+  selisih **tidak berubah sama sekali** sesudah perbaikan — tanda aturannya tidak
+  pernah menyala, bukan tanda perhitungannya salah.
+- Verifikasi bukan dari screenshot: `getBoundingClientRect()` tiap kartu vs titik
+  tengah pengumpannya. **Bagan ganjil 0px, bagan pangkat dua 0px.** Mata tidak
+  bisa membedakan meleset 30px dari lurus; angka bisa.
+

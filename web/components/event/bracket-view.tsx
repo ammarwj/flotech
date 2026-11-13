@@ -155,8 +155,68 @@ export function BracketView({
   const maxRound = rounds[rounds.length - 1][0];
   const slotCount = 2 ** Math.max(1, maxRound) / 2;
 
+  // Every column is laid out on the *same* row grid — the opening round's slot
+  // count — and each card spans the rows its feeders occupy. That is what puts
+  // a card on the midpoint of the pair below it.
+  //
+  // Giving each column its own equal division instead is exact only while every
+  // round halves cleanly. A ragged draw never does: nine ties do not divide
+  // into five, so each card drifts off the pair feeding it and the error
+  // compounds rightward — measured at 278px by the fourth round, with the
+  // connector entering a card well above the card itself. On a power-of-two
+  // bracket the two are the same thing, since spanning 2^col of 2^n rows *is*
+  // an equal division.
+  const baseRows = rounds[0][1].length;
+
+  /** The row band a cell of `col` at index `i` covers, 1-based and inclusive-exclusive. */
+  const rowSpan = (col: number, i: number): [number, number] => {
+    let start = i;
+    let end = i + 1;
+    // Walk back down the tree: a cell is fed by 2k and 2k+1 of the round below,
+    // clamped at that round's width — the odd cell of a ragged round has only
+    // one feeder, and must sit on that one rather than on a phantom pair.
+    for (let c = col; c > 0; c--) {
+      const below = rounds[c - 1][1].length;
+      start = Math.min(start * 2, below - 1);
+      end = Math.min(end * 2, below);
+    }
+    return [start + 1, end + 1];
+  };
+
+  /**
+   * How far off the centre of its band a card has to sit, in rows.
+   *
+   * Zero whenever a cell's two feeders are the same height, and in a
+   * power-of-two draw they always are. A ragged draw breaks it at one cell per
+   * bracket: in a 36-team field the final's two semifinals span sixteen rows
+   * and two, so the point their lines meet is five-eighths of the way down the
+   * final's band rather than halfway. Centring the card there anyway leaves the
+   * connector arriving well above it — the one place the tree still looked
+   * wrong after the shared row grid went in.
+   *
+   * Returned as a percentage of the band's own height, which is what `top` on
+   * the cell resolves against — so the arithmetic here never needs to know how
+   * tall a row came out.
+   */
+  const cardShift = (col: number, i: number): string => {
+    if (col === 0) return "0%";
+
+    const [from, to] = rowSpan(col, i);
+    const belowCount = rounds[col - 1][1].length;
+    const feeders = [2 * i, 2 * i + 1]
+      .filter((k) => k < belowCount)
+      .map((k) => {
+        const [a, b] = rowSpan(col - 1, k);
+        return (a + b) / 2;
+      });
+
+    const mid = feeders.reduce((sum, m) => sum + m, 0) / feeders.length;
+
+    return `${((mid - (from + to) / 2) / (to - from)) * 100}%`;
+  };
+
   return (
-    <div className="bkt">
+    <div className="bkt" style={{ "--bkt-rows": baseRows } as React.CSSProperties}>
       {rounds.map(([round, list], col) => (
         <div key={round} className="bkt-col">
           <div className="bkt-head">
@@ -181,8 +241,18 @@ export function BracketView({
               // Under the last cell of the last column — the final.
               const withThird =
                 third.length > 0 && col === rounds.length - 1 && i === list.length - 1;
+              const [from, to] = rowSpan(col, i);
               return (
-                <div key={m.id} className={cn("bkt-cell group/slot", withThird && "bkt-cell-third")}>
+                <div
+                  key={m.id}
+                  className={cn("bkt-cell group/slot", withThird && "bkt-cell-third")}
+                  style={
+                    {
+                      gridRow: `${from} / ${to}`,
+                      "--bkt-shift": cardShift(col, i),
+                    } as React.CSSProperties
+                  }
+                >
                   <MatchCell match={m} onEditSlot={editable ? onEditSlot : undefined} />
                   {withThird && (
                     // No onEditSlot: both slots are filled by advanceLoser(), so

@@ -122,7 +122,10 @@ function Dialog({
         aria-modal="true"
         aria-label="Atur bracket knockout"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
+        /* Same width as the schedule dialog, for the same reason: both wrap the
+           seed editor, and a tie needs room for two pickers, a kickoff and a
+           court before it starts stacking. */
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-start gap-3 border-b border-border p-5">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--tint)] text-[var(--brand-600)]">
