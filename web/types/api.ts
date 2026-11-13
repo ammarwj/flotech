@@ -2589,6 +2589,26 @@ export interface CertificateField {
   align?: "left" | "center" | "right";
   bold?: boolean;
   uppercase?: boolean;
+  /**
+   * Box width as a percent of page width. Absent means the old behaviour: the
+   * text never wraps and may run off the page.
+   */
+  w?: number;
+  /**
+   * Box height as a percent of page height — how far down the text may grow.
+   *
+   * Together with `w` it is what the renderer shrinks a long value into: a name
+   * too long for its plate prints at a smaller size instead of wrapping out of
+   * it. BOTH are needed, because with no width there is nothing to wrap against
+   * and with no height no limit to fit into.
+   *
+   * Deliberately not a CSS height in the PDF — certificate text has no vertical
+   * anchor and always grows downwards from `y`, so a rendered height would add
+   * a clipping edge the editor never showed anyone.
+   */
+  h?: number;
+  /** The ID card's older spelling of `w`, accepted so one editor shape serves both. */
+  wrap?: number;
 }
 
 export interface CertificateTemplate {
@@ -2688,11 +2708,28 @@ export interface IdCardField {
   valign?: "top" | "middle" | "bottom";
   bold?: boolean;
   uppercase?: boolean;
-  /** Text only — wrap width as a percent of card width. */
+  /**
+   * Text only — wrap width as a percent of card width.
+   *
+   * Superseded by `w` where both are present, and kept because it is the older
+   * of the two: every template already placed means card width by it. A text
+   * field that carries `w` is wrapped to its box instead.
+   */
   wrap?: number;
-  /** Photo only — box width as a percent of card width. */
+  /**
+   * Box width as a percent of card width. Required on `photo`/`qr`, optional on
+   * text — where it narrows the wrap.
+   */
   w?: number;
-  /** Photo only — box height as a percent of card height. */
+  /**
+   * Box height as a percent of card height. Required on `photo`/`qr`, optional
+   * on text.
+   *
+   * On text it is what the renderer shrinks a long value INTO: with a box, a
+   * name too long for its plate comes out at a smaller size rather than wrapping
+   * and growing out of it. Absent means no shrinking, which is how every
+   * template written before this field keeps rendering exactly as it did.
+   */
   h?: number;
   fit?: "cover" | "contain";
   /** Photo only — 0 square, 50 circle. Percent of the box's shorter side. */

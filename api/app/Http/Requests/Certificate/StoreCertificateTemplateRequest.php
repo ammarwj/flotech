@@ -48,6 +48,20 @@ class StoreCertificateTemplateRequest extends FormRequest
             'fields.*.align' => ['nullable', Rule::in(['left', 'center', 'right'])],
             'fields.*.bold' => ['nullable', 'boolean'],
             'fields.*.uppercase' => ['nullable', 'boolean'],
+
+            /*
+             * The text box. Both optional, and both have to be present for a
+             * field to be fitted: with no width there is nothing to wrap
+             * against, with no height no limit to fit into. Absent on both
+             * means the field renders exactly as every template saved before
+             * this existed.
+             *
+             * `wrap` is the ID card's older spelling of `w`, accepted here so
+             * one editor shape serves both surfaces.
+             */
+            'fields.*.w' => ['nullable', 'numeric', 'between:1,100'],
+            'fields.*.h' => ['nullable', 'numeric', 'between:1,100'],
+            'fields.*.wrap' => ['nullable', 'numeric', 'between:1,100'],
         ];
     }
 }

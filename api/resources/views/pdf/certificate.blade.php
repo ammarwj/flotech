@@ -43,7 +43,14 @@
         @php
             $x = (float) ($field['x'] ?? 50);
             $y = (float) ($field['y'] ?? 50);
-            $size = (float) ($field['size'] ?? 18);
+            /*
+             * The size CertificateService::fittedSizes() worked out, which is
+             * the field's own size unless it has a box and a value too long for
+             * it. Looked up by index rather than recomputed, because Blade
+             * cannot measure text and a second rule here would be a second
+             * answer that drifts from the one the editor previews.
+             */
+            $size = (float) ($sizes[$loop->index] ?? $field['size'] ?? 18);
             $align = $field['align'] ?? 'center';
 
             $top = $y / 100 * $pageH;
@@ -67,15 +74,48 @@
         @continue($value === '')
 
         @php
-            // The box that puts the text's alignment point exactly on x.
-            $box = match ($align) {
-                'left' => sprintf('left: %.2fpt; width: %.2fpt;', $x / 100 * $pageW, (100 - $x) / 100 * $pageW),
-                'right' => sprintf('left: 0pt; width: %.2fpt;', $x / 100 * $pageW),
-                default => $x <= 50
-                    ? sprintf('left: 0pt; width: %.2fpt;', 2 * $x / 100 * $pageW)
-                    : sprintf('right: 0pt; width: %.2fpt;', 2 * (100 - $x) / 100 * $pageW),
-            };
+            $wrapPercent = (float) ($field['w'] ?? $field['wrap'] ?? 0);
+
+            /*
+             * Two ways to build the box, and the older one has to stay.
+             *
+             * Without a width, the only way to put the alignment point on x
+             * without `transform` (which dompdf does not support) is to give
+             * the box a width of 2*x — so its own centre lands on x. Every
+             * template saved before `w` existed is laid out that way, and it
+             * means the text may wrap anywhere up to half the page.
+             *
+             * With a width, the box is stated outright and anchored off x by
+             * the alignment, which is what makes the wrap — and therefore the
+             * fitted size CertificateService worked out — match what prints.
+             */
+            $box = $wrapPercent > 0
+                ? (function () use ($align, $x, $wrapPercent, $pageW) {
+                    $w = $wrapPercent / 100 * $pageW;
+                    $left = match ($align) {
+                        'left' => $x / 100 * $pageW,
+                        'right' => $x / 100 * $pageW - $w,
+                        default => $x / 100 * $pageW - $w / 2,
+                    };
+
+                    return sprintf('left: %.2fpt; width: %.2fpt;', $left, $w);
+                })()
+                : match ($align) {
+                    'left' => sprintf('left: %.2fpt; width: %.2fpt;', $x / 100 * $pageW, (100 - $x) / 100 * $pageW),
+                    'right' => sprintf('left: 0pt; width: %.2fpt;', $x / 100 * $pageW),
+                    default => $x <= 50
+                        ? sprintf('left: 0pt; width: %.2fpt;', 2 * $x / 100 * $pageW)
+                        : sprintf('right: 0pt; width: %.2fpt;', 2 * (100 - $x) / 100 * $pageW),
+                };
         @endphp
+
+        {{--
+          `h` deliberately does NOT become a CSS height. Certificate text has no
+          vertical anchor — it always grows downwards from y — so the box height
+          means "how far down this may grow", which is exactly the limit the
+          size was fitted against. Rendering it as a height would add a
+          clipping edge the editor never showed anyone.
+        --}}
 
         <div style="
             position: absolute;

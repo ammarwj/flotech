@@ -48,6 +48,12 @@ class UpdateCertificateTemplateRequest extends FormRequest
             'fields.*.align' => ['nullable', Rule::in(['left', 'center', 'right'])],
             'fields.*.bold' => ['nullable', 'boolean'],
             'fields.*.uppercase' => ['nullable', 'boolean'],
+
+            // The text box — see the Store twin for why both halves are
+            // optional and what their absence means.
+            'fields.*.w' => ['nullable', 'numeric', 'between:1,100'],
+            'fields.*.h' => ['nullable', 'numeric', 'between:1,100'],
+            'fields.*.wrap' => ['nullable', 'numeric', 'between:1,100'],
         ];
     }
 }

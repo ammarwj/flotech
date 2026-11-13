@@ -506,4 +506,150 @@ class IdCardRenderTest extends TestCase
         );
         $this->assertNotSame($small, $large);
     }
+
+    /**
+     * A name too long for its box comes out smaller, and one that fits does
+     * not.
+     *
+     * Both halves in one test, because each alone passes a broken build: a
+     * renderer that shrank unconditionally satisfies "the long name got
+     * smaller", and one that never shrinks satisfies "the short name did not".
+     * The height is read off the PNG rather than from the field, because what
+     * is under test is a decision made inside the renderer.
+     */
+    public function test_a_long_value_is_shrunk_to_fit_its_box_while_a_short_one_is_not(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        // 14% of 54mm ≈ 7.6mm — room for one 5mm line, not two.
+        $boxed = $this->template($org, 85.6, 54, [
+            [
+                'key' => 'name', 'x' => 50, 'y' => 50, 'size' => 5,
+                'align' => 'center', 'valign' => 'middle', 'w' => 60, 'h' => 14,
+            ],
+        ]);
+
+        $heightOf = fn (IdCardTemplate $template, string $name) => (function (array $rows) {
+            return $rows[1] - $rows[0];
+        })($this->inkRows(
+            $this->decode($this->service()->render($template, $this->person(['name' => $name]))),
+            0,
+            1011,
+        ));
+
+        $short = 'ADIB';
+        $long = 'AHMAD FAUZI RAHMATULLAH ABDURRAHMAN';
+
+        $boxedShort = $heightOf($boxed, $short);
+        $boxedLong = $heightOf($boxed, $long);
+
+        // The box is ~160px at 300 DPI. A two-line block at the requested size
+        // would be far past it; shrunk, it has to come in under.
+        $limit = (int) round((14 / 100) * 638);
+
+        $this->assertLessThanOrEqual(
+            $limit + 6, // a few pixels of descender tolerance
+            $boxedLong,
+            'a long name should be shrunk until its block fits the box',
+        );
+
+        // And the short name was left alone — same template, same box.
+        $unboxed = $this->template($org, 85.6, 54, [
+            [
+                'key' => 'name', 'x' => 50, 'y' => 50, 'size' => 5,
+                'align' => 'center', 'valign' => 'middle', 'wrap' => 60,
+            ],
+        ]);
+
+        $this->assertEqualsWithDelta(
+            $heightOf($unboxed, $short),
+            $boxedShort,
+            2,
+            'a name that already fits must render at the size the organizer set',
+        );
+    }
+
+    /**
+     * A field with no `h` is never shrunk — the state every template written
+     * before this feature is in.
+     *
+     * Compared against the same long name in a box, because "it rendered" says
+     * nothing: a renderer that shrank everything would still draw something
+     * here, just smaller than the template asked for.
+     */
+    public function test_a_text_field_without_a_box_renders_at_the_size_it_was_given(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        $long = 'AHMAD FAUZI RAHMATULLAH ABDURRAHMAN';
+
+        $base = [
+            'key' => 'name', 'x' => 50, 'y' => 50, 'size' => 5,
+            'align' => 'center', 'valign' => 'middle', 'w' => 60,
+        ];
+
+        $render = fn (array $field) => $this->decode(
+            $this->service()->render(
+                $this->template($org, 85.6, 54, [$field]),
+                $this->person(['name' => $long]),
+            ),
+        );
+
+        $heightOf = fn (ImageInterface $img) => (fn (array $r) => $r[1] - $r[0])(
+            $this->inkRows($img, 0, 1011),
+        );
+
+        $without = $heightOf($render($base));
+        $with = $heightOf($render([...$base, 'h' => 14]));
+
+        // Unshrunk, the wrapped block is taller than the box it was not given.
+        $this->assertGreaterThan(
+            $with,
+            $without,
+            'without a box height nothing should be shrunk',
+        );
+    }
+
+    /**
+     * `w` narrows the wrap for a text field, and `wrap` still works for the
+     * templates that predate it.
+     *
+     * The pair is the test: a renderer reading only `wrap` ignores every box
+     * the editor now drags, and one reading only `w` silently widens every
+     * template already saved to the full card.
+     */
+    public function test_a_text_box_width_wraps_the_same_way_the_old_wrap_percentage_did(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+
+        $long = 'AHMAD FAUZI RAHMATULLAH ABDURRAHMAN';
+
+        $heightOf = fn (array $field) => (fn (array $r) => $r[1] - $r[0])($this->inkRows(
+            $this->decode($this->service()->render(
+                $this->template($org, 85.6, 54, [$field]),
+                $this->person(['name' => $long]),
+            )),
+            0,
+            1011,
+        ));
+
+        $base = ['key' => 'name', 'x' => 50, 'y' => 50, 'size' => 4, 'align' => 'center', 'valign' => 'middle'];
+
+        // The same narrow figure, written each way, must wrap to the same
+        // number of lines — hence the same block height.
+        $this->assertEqualsWithDelta(
+            $heightOf([...$base, 'wrap' => 40]),
+            $heightOf([...$base, 'w' => 40]),
+            2,
+            '`w` and `wrap` should wrap a text field identically',
+        );
+
+        // And a narrow box really is narrower than a wide one, or the
+        // assertion above would hold for a renderer that ignores both.
+        $this->assertGreaterThan(
+            $heightOf([...$base, 'w' => 90]),
+            $heightOf([...$base, 'w' => 40]),
+            'a narrower box should wrap to more lines',
+        );
+    }
 }

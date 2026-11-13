@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\IdCard;
 use App\Models\IdCardTemplate;
 use App\Support\TemplateFields;
+use App\Support\TextFit;
 use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Encoder\Encoder;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -18,6 +19,7 @@ use Illuminate\Support\Str;
 use Intervention\Image\Alignment;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Encoders\PngEncoder;
+use Intervention\Image\Geometry\Point;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Interfaces\ImageInterface;
 use Intervention\Image\Typography\FontFactory;
@@ -714,6 +716,73 @@ class IdCardService
     }
 
     /**
+     * Largest font size, at or below the one the organizer set, whose wrapped
+     * block still fits the field's box — or that size unchanged when the field
+     * has no box.
+     *
+     * This is what stops a template designed around "ADIB" from breaking on
+     * "AHMAD FAUZI RAHMATULLAH". With a fixed size, the long name wraps to two
+     * lines, doubles the block's height and grows straight out of the name
+     * plate, and nobody finds out until five hundred cards have been printed.
+     *
+     * Measured through the driver's own font processor rather than estimated
+     * from a characters-per-line guess, and that is load-bearing: `wrap` makes
+     * the break points depend on the *glyph widths* of this particular TTF, so
+     * any formula over `strlen` is wrong for exactly the names that need it —
+     * "WWW" and "iii" are the same length and nowhere near the same width.
+     * textBlock() runs the same wrapping code the draw call will, so what is
+     * measured is what gets drawn. The certificate side has to estimate instead
+     * (dompdf cannot be asked), which is exactly why the SEARCH lives in
+     * TextFit and only the measurement is local.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    protected function fittedSize(
+        ImageInterface $card,
+        string $value,
+        array $field,
+        string $font,
+        float $size,
+        int $wrap,
+    ): float {
+        $boxH = (float) ($field['h'] ?? 0);
+
+        // No box = nothing to fit into. Every template written before `h`
+        // existed lands here and renders exactly as it did.
+        if ($boxH <= 0) {
+            return $size;
+        }
+
+        $limit = ($boxH / 100) * $card->height();
+
+        // Off the image, not the manager: the manager holds no driver accessor,
+        // and taking it from the image guarantees the processor measuring the
+        // text is the one that will draw it.
+        $processor = $card->driver()->fontProcessor();
+
+        return TextFit::shrink($size, $limit, function (float $candidate) use (
+            $processor,
+            $value,
+            $font,
+            $wrap,
+        ): float {
+            $built = FontFactory::build(function (FontFactory $f) use ($font, $candidate, $wrap) {
+                $f->filename($font);
+                $f->size($candidate);
+                $f->lineHeight(1.2);
+                $f->wrap($wrap);
+            });
+
+            $block = $processor->textBlock($value, $built, new Point(0, 0));
+
+            // The same expression buildPivot() measures the block with: the
+            // leading between every line but the first, plus one cap height.
+            return $processor->leading($built) * ($block->count() - 1)
+                + $processor->capHeight($built);
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $field
      */
     protected function drawText(ImageInterface $card, array $field, string $value, int $w, int $h): void
@@ -737,7 +806,19 @@ class IdCardService
         // is Intervention's own px-to-pt step for imagettftext, which means
         // ->size() already takes pixels.
         $size = $this->px((float) ($field['size'] ?? 4));
-        $wrap = (int) round(((float) ($field['wrap'] ?? 100) / 100) * $w);
+
+        // `wrap` is a percentage of CARD width, not of the field's box, and it
+        // stays that way: it is the older of the two and every template already
+        // placed means card width by it. A field carrying `w` narrows it to the
+        // box, which is what dragging a text field's corner writes.
+        $wrapPercent = isset($field['w']) && (float) $field['w'] > 0
+            ? (float) $field['w']
+            : (float) ($field['wrap'] ?? 100);
+
+        $wrap = (int) round(($wrapPercent / 100) * $w);
+
+        // Shrunk only if the field has a box to be shrunk into.
+        $size = $this->fittedSize($card, $value, $field, $font, $size, $wrap);
 
         $card->text(
             $value,

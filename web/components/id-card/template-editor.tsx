@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { clampPercent, useCanvasDrag, useCanvasWidth } from "@/lib/canvas-drag";
+import { fitFontSize } from "@/lib/fit-text";
 import { fieldLabel, groupFields, isCustomFieldKey } from "@/lib/template-fields";
 import { cn } from "@/lib/utils";
 import type { IdCardField, IdCardFieldDef } from "@/types/api";
@@ -42,11 +43,28 @@ const DEFAULTS = {
   // and rounding the corners eats the finder patterns a scanner locates the
   // code by. Both are refused by the API rather than ignored.
   qr: { x: 70, y: 56, w: 20, h: 20 },
-  // `valign: "middle"` for new fields, while an omitted key still means `top`
-  // on the server so older templates render unchanged. Middle is what a name
-  // plate wants: anchored at the top, "ADIB" sits high in its box while a name
-  // long enough to wrap grows downwards out of it.
-  text: { x: 42, y: 30, size: 4, color: "#111827", align: "left", valign: "middle", wrap: 55 },
+  /*
+   * `valign: "middle"` for new fields, while an omitted key still means `top`
+   * on the server so older templates render unchanged. Middle is what a name
+   * plate wants: anchored at the top, "ADIB" sits high in its box while a name
+   * long enough to wrap grows downwards out of it.
+   *
+   * `w`/`h` are born set, and that is the point of giving text a box at all:
+   * without a height the renderer cannot shrink a long name, so a template
+   * designed around "ADIB" breaks on "AHMAD FAUZI RAHMATULLAH" and nobody finds
+   * out until the batch is printed. `w` supersedes `wrap`, which stays in the
+   * payload only for templates saved before this existed.
+   */
+  text: {
+    x: 42,
+    y: 30,
+    w: 55,
+    h: 14,
+    size: 4,
+    color: "#111827",
+    align: "left",
+    valign: "middle",
+  },
 } as const;
 
 /**
@@ -112,13 +130,40 @@ export function TemplateEditor({
           if (i !== drag.index) return f;
 
           if (drag.mode === "resize") {
-            // The far corner follows the pointer; the anchored corner stays put.
             // Floored at 1% because a zero-width box is invisible and therefore
             // unrecoverable without deleting the field.
+            const sized = (value: number) => clampPercent(Math.max(1, value));
+
+            // Two anchoring conventions, so two resize rules — and the split is
+            // the same one the rest of this editor already lives with. A box
+            // (`photo`/`qr`) is pinned at its top-left, so the far corner simply
+            // follows the pointer. A TEXT field hangs from its alignment point,
+            // which may sit anywhere along the box, so what has to stay still is
+            // that anchor: growing a centred name plate has to grow it both
+            // ways, or the text slides sideways as the organizer drags.
+            if (f.key === "photo" || f.key === "qr") {
+              return { ...f, w: sized(point.x - f.x), h: sized(point.y - f.y) };
+            }
+
+            const align = f.align ?? "left";
+            const valign = f.valign ?? "top";
+
             return {
               ...f,
-              w: clampPercent(Math.max(1, point.x - f.x)),
-              h: clampPercent(Math.max(1, point.y - f.y)),
+              w: sized(
+                align === "left"
+                  ? point.x - f.x
+                  : align === "right"
+                    ? f.x - point.x
+                    : 2 * Math.abs(point.x - f.x)
+              ),
+              h: sized(
+                valign === "top"
+                  ? point.y - f.y
+                  : valign === "bottom"
+                    ? f.y - point.y
+                    : 2 * Math.abs(point.y - f.y)
+              ),
             };
           }
 
@@ -177,6 +222,34 @@ export function TemplateEditor({
     ((active?.w ?? 0) / 100) * widthMm,
     ((active?.h ?? 0) / 100) * heightMm
   );
+
+  /*
+   * The selected text field's box and the size its sample would actually print
+   * at, both in MILLIMETRES.
+   *
+   * Millimetres, not percent, for the same reason `size` and the QR figure are:
+   * this is the number an organizer can hold a ruler against on a test print,
+   * and it is the only honest way to report a preview whose font is not the
+   * font the renderer draws with (see lib/fit-text.ts). 14% of a CR80 card and
+   * 14% of an A6 are very different plates.
+   */
+  const textBoxMm = ((active?.h ?? 0) / 100) * heightMm;
+
+  const fittedMm =
+    active && scale > 0
+      ? fitFontSize(
+          (() => {
+            const text = SAMPLE[active.key] ?? labelOf(active.key);
+            return active.uppercase ? text.toUpperCase() : text;
+          })(),
+          {
+            basePx: (active.size ?? 0) * scale,
+            maxWidthPx: (((active.w ?? active.wrap) ?? 100) / 100) * canvasWidth,
+            maxHeightPx: (textBoxMm / heightMm) * canvasHeight,
+            bold: active.bold,
+          }
+        ) / scale
+      : (active?.size ?? 0);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
@@ -284,6 +357,23 @@ export function TemplateEditor({
               .filter(Boolean)
               .join(" ") || "none";
 
+            const sample = SAMPLE[field.key] ?? labelOf(field.key);
+
+            // `w` where the field has one, `wrap` otherwise — the same
+            // precedence the renderer applies, so a long name breaks in the same
+            // place on screen as on paper.
+            const wrapPx = (((field.w ?? field.wrap) ?? 100) / 100) * canvasWidth;
+            const boxPx = ((field.h ?? 0) / 100) * canvasHeight;
+
+            // Mirrors IdCardService::fittedSize(). Zero box = no shrinking,
+            // which is what every template written before `h` existed means.
+            const fittedPx = fitFontSize(field.uppercase ? sample.toUpperCase() : sample, {
+              basePx: (field.size ?? 0) * scale,
+              maxWidthPx: wrapPx,
+              maxHeightPx: boxPx,
+              bold: field.bold,
+            });
+
             return (
               <div
                 key={index}
@@ -293,22 +383,42 @@ export function TemplateEditor({
                   setSelected(index);
                 }}
                 className={cn(
-                  "absolute cursor-move outline-offset-2",
-                  isSelected && "outline outline-2 outline-[var(--brand-600)]"
+                  "absolute cursor-move",
+                  // Dashed like the photo/QR boxes once the field HAS a box:
+                  // what is outlined then is the area the text is fitted into,
+                  // not the text's own extent, and a solid selection ring over
+                  // it would claim the glyphs reach the edges.
+                  isSelected &&
+                    (boxPx > 0
+                      ? "outline outline-2 outline-[var(--brand-600)]"
+                      : "outline outline-2 outline-offset-2 outline-[var(--brand-600)]")
                 )}
                 style={{
                   left: `${field.x}%`,
                   top: `${field.y}%`,
                   transform,
-                  // The wrap width the renderer will use, so a long name breaks
-                  // in the same place on screen as on paper.
-                  maxWidth: `${((field.wrap ?? 100) / 100) * canvasWidth}px`,
+                  width: `${wrapPx}px`,
+                  // A field with no box is as tall as its text, exactly as
+                  // before. One with a box is the box — that is what gets
+                  // dragged, and what the size is fitted into.
+                  ...(boxPx > 0 ? { height: `${boxPx}px` } : { maxWidth: `${wrapPx}px` }),
+                  display: boxPx > 0 ? "flex" : undefined,
+                  // Which edge the glyphs sit on inside the box, matching the
+                  // renderer's own vertical anchor rather than always centring.
+                  alignItems:
+                    boxPx > 0
+                      ? valign === "top"
+                        ? "flex-start"
+                        : valign === "bottom"
+                          ? "flex-end"
+                          : "center"
+                      : undefined,
                 }}
               >
                 <span
-                  className="block"
+                  className="block w-full"
                   style={{
-                    fontSize: (field.size ?? 0) * scale,
+                    fontSize: fittedPx,
                     color: field.color ?? "#111827",
                     fontWeight: field.bold ? 700 : 400,
                     textTransform: field.uppercase ? "uppercase" : "none",
@@ -316,16 +426,42 @@ export function TemplateEditor({
                     lineHeight: 1.2,
                   }}
                 >
-                  {SAMPLE[field.key] ?? labelOf(field.key)}
+                  {sample}
                 </span>
+
+                {isSelected && (
+                  /* Text fields get the same corner handle as the boxes: typing
+                     a percentage was the only way to change a name plate's
+                     width, which is not something anyone finds. Its own
+                     pointerdown stops the parent's, or every resize would start
+                     a move as well. */
+                  <span
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      start({ index, mode: "resize", dx: 0, dy: 0 });
+                    }}
+                    className={cn(
+                      "absolute h-3 w-3 cursor-nwse-resize rounded-full border border-white bg-[var(--brand-600)]",
+                      // On the corner the drag maths actually moves — pinned
+                      // opposite the field's own anchor, so the handle is under
+                      // the pointer rather than across the box from it.
+                      align === "right" ? "-left-1.5" : "-right-1.5",
+                      valign === "bottom" ? "-top-1.5" : "-bottom-1.5"
+                    )}
+                  />
+                )}
               </div>
             );
           })}
         </div>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Geser field ke posisinya; kotak foto dan QR bisa ditarik sudutnya untuk diubah ukuran.
-          Teks contoh hanya pratinjau — saat dicetak, isinya diambil dari data event.
+          Geser field ke posisinya, dan tarik sudutnya untuk mengubah ukuran kotak — termasuk
+          kotak teks. Nama yang terlalu panjang untuk kotaknya dikecilkan otomatis sampai muat,
+          jadi &ldquo;Adib&rdquo; dan &ldquo;Ahmad Fauzi Rahmatullah&rdquo; sama-sama tetap di
+          dalam platnya. Teks contoh hanya pratinjau — saat dicetak, isinya diambil dari data
+          event.
         </p>
 
         {/* Said here, where it can still be acted on. A card without this field
@@ -541,18 +677,58 @@ export function TemplateEditor({
                   </p>
                 </div>
 
-                <div>
-                  <Label htmlFor="f-wrap">Lebar maksimum (%)</Label>
-                  <Input
-                    id="f-wrap"
-                    type="number"
-                    min={10}
-                    max={100}
-                    value={active.wrap ?? 100}
-                    onChange={(e) => update(selected, { wrap: Number(e.target.value) })}
-                    className="mt-1"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="f-tw">Lebar kotak (%)</Label>
+                    <Input
+                      id="f-tw"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={active.w ?? active.wrap ?? 100}
+                      onChange={(e) => update(selected, { w: Number(e.target.value) })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="f-th">Tinggi kotak (%)</Label>
+                    <Input
+                      id="f-th"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={active.h ?? 0}
+                      onChange={(e) => update(selected, { h: Number(e.target.value) })}
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
+
+                {/* The whole point of the height, said where it can be acted on
+                    — and the 0 case said too, because a field without a height
+                    behaves exactly as this editor did before and an organizer
+                    who typed 0 would otherwise just see the shrinking stop. */}
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  {textBoxMm > 0 ? (
+                    <>
+                      Teks yang tidak muat dikecilkan otomatis sampai masuk kotak setinggi{" "}
+                      {textBoxMm.toFixed(1)} mm — nama panjang turun ukurannya, nama pendek tetap{" "}
+                      {(active.size ?? 0).toFixed(1)} mm.
+                      {fittedMm < (active.size ?? 0) - 0.05 && (
+                        <>
+                          {" "}
+                          Contoh di kanvas sekarang tercetak sekitar{" "}
+                          <strong>{fittedMm.toFixed(1)} mm</strong>.
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Tinggi 0 = tanpa batas: teks panjang akan terbelah beberapa baris dan tumbuh
+                      keluar platnya. Isi tingginya kalau kotaknya punya batas di desain.
+                    </>
+                  )}
+                </p>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -589,10 +765,10 @@ export function TemplateEditor({
                 </div>
 
                 <p className="-mt-1 text-xs text-muted-foreground">
-                  Titik Y memegang seluruh blok teks, bukan baris pertamanya. Pilih
+                  Titik X dan Y adalah tempat teks ditambatkan, dan kotaknya tumbuh dari sana —
+                  jadi perataan juga menentukan ke arah mana sudut tarik bergerak. Pilih
                   &ldquo;Tengah&rdquo; untuk kotak nama: dengan &ldquo;Atas&rdquo;, nama satu kata
-                  duduk tinggi sementara nama panjang yang terbelah dua baris turun keluar
-                  kotaknya.
+                  duduk tinggi di platnya sementara nama dua baris turun ke bawah.
                 </p>
 
                 <div>

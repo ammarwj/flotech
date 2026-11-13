@@ -83,6 +83,11 @@ class IdCardTemplateTest extends TestCase
         // The two shapes share one array, so the wildcard rules have to let both
         // `size` and `w` be null. Swapping the two fields' extras is therefore a
         // payload that passes every flat rule and is still nonsense.
+        //
+        // `w`/`h` are the one thing BOTH shapes may carry now — on text it is
+        // the box a long value is shrunk into — so what is asserted on the text
+        // field is `size`, and the picture-only pair is asserted separately
+        // below.
         $this->actingAs($user, 'api')
             ->postJson($url, $this->payload([
                 'fields' => [
@@ -93,7 +98,7 @@ class IdCardTemplateTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors([
                 'fields.0.w', 'fields.0.h', 'fields.0.size',
-                'fields.1.size', 'fields.1.w', 'fields.1.h',
+                'fields.1.size',
             ]);
 
         // The same payload with each field carrying its own extras is accepted,
@@ -102,6 +107,44 @@ class IdCardTemplateTest extends TestCase
         $this->actingAs($user, 'api')
             ->postJson($url, $this->payload())
             ->assertCreated();
+    }
+
+    /**
+     * A text field may carry a box, and may not carry the two settings that
+     * describe a picture.
+     *
+     * The pair is the test: asserting only the rejection passes a build that
+     * refuses `w`/`h` on text as well — which would make every box the editor
+     * drags unsavable — and asserting only the acceptance passes one that has
+     * stopped checking anything.
+     */
+    public function test_a_text_field_may_carry_a_box_but_not_photo_settings(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $this->eventOn($org);
+
+        $url = "/api/v1/organizations/{$org->id}/id-card-templates";
+
+        $this->actingAs($user, 'api')
+            ->postJson($url, $this->payload([
+                'fields' => [
+                    ['key' => 'name', 'x' => 40, 'y' => 30, 'size' => 5, 'w' => 55, 'h' => 14],
+                ],
+            ]))
+            ->assertCreated();
+
+        $this->actingAs($user, 'api')
+            ->postJson($url, $this->payload([
+                'fields' => [
+                    [
+                        'key' => 'name', 'x' => 40, 'y' => 30, 'size' => 5,
+                        'w' => 55, 'h' => 14, 'fit' => 'cover', 'radius' => 10,
+                    ],
+                ],
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['fields.0.fit', 'fields.0.radius']);
     }
 
     public function test_card_size_round_trips_in_millimetres(): void

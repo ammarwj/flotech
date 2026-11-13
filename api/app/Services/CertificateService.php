@@ -9,6 +9,7 @@ use App\Models\Player;
 use App\Models\Team;
 use App\Support\QrImage;
 use App\Support\TemplateFields;
+use App\Support\TextFit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Carbon;
@@ -168,17 +169,127 @@ class CertificateService
     /** The PDF bytes for one certificate. */
     public function render(Certificate $certificate, CertificateTemplate $template, ?string $background = null): string
     {
+        return Pdf::loadView('pdf.certificate', $this->viewData($certificate, $template, $background))
+            ->setPaper('a4', $template->orientation === 'portrait' ? 'portrait' : 'landscape')
+            ->output();
+    }
+
+    /**
+     * The same certificate as HTML, before dompdf gets it.
+     *
+     * Public for the reason ParticipantDocumentService::html() is: dompdf
+     * output is compressed streams, so a test holding the bytes can only say
+     * that *something* rendered — and that assertion stays green when a name
+     * stops being shrunk to fit its plate, which is invisible until a batch has
+     * been issued.
+     */
+    public function html(Certificate $certificate, CertificateTemplate $template, ?string $background = null): string
+    {
+        return view('pdf.certificate', $this->viewData($certificate, $template, $background))->render();
+    }
+
+    /**
+     * Resolved once so html() and render() cannot differ.
+     *
+     * @return array<string, mixed>
+     */
+    protected function viewData(
+        Certificate $certificate,
+        CertificateTemplate $template,
+        ?string $background = null,
+    ): array {
         $certificate->loadMissing('event.organization');
 
-        return Pdf::loadView('pdf.certificate', [
+        $values = $this->values($certificate);
+
+        return [
             'certificate' => $certificate,
             'template' => $template,
             'background' => $background ?? $this->backgroundDataUri($template->background_url),
-            'values' => $this->values($certificate),
+            'values' => $values,
             'qr' => QrImage::svgDataUri($certificate->verifyUrl()),
-        ])
-            ->setPaper('a4', $template->orientation === 'portrait' ? 'portrait' : 'landscape')
-            ->output();
+            // Resolved HERE, not in the view, because Blade cannot measure text
+            // and dompdf cannot be asked in advance. Keyed by the field's index
+            // so the template looks its own size up rather than re-deriving
+            // which field it is on — see fittedSizes().
+            'sizes' => $this->fittedSizes($template, $values),
+        ];
+    }
+
+    /**
+     * The point size each placed text field should actually print at, keyed by
+     * its index in `$template->fields`.
+     *
+     * The certificate twin of IdCardService::fittedSize(), and the reason it
+     * exists is the same: a template laid out around "Garuda FC" breaks on
+     * "Persatuan Sepak Bola Mahasiswa Yogyakarta", which wraps to three lines,
+     * triples the block's height and runs straight out of the plate the
+     * organizer drew — discovered only once a batch has been issued.
+     *
+     * What differs is who measures. GD draws the card, so there the driver's
+     * own font processor is asked and the answer is exact; here dompdf does the
+     * layout and cannot be asked in advance, so TextFit::lineCount() estimates
+     * the wrap against the same DejaVu TTF dompdf resolves `font-family: DejaVu
+     * Sans` to. Being off by one line costs one 4% step, not a name outside its
+     * box.
+     *
+     * Only fields carrying BOTH a wrap width and a box height are fitted: with
+     * no width there is nothing to wrap against, and with no height there is
+     * no limit to fit into. Everything else — which is every certificate
+     * template written before this existed — is handed back the size it was
+     * given, unchanged.
+     *
+     * @param  array<string, string>  $values
+     * @return array<int, float>
+     */
+    public function fittedSizes(CertificateTemplate $template, array $values): array
+    {
+        $pageH = ($template->orientation ?? 'landscape') === 'portrait' ? 842 : 595;
+        $pageW = ($template->orientation ?? 'landscape') === 'portrait' ? 595 : 842;
+
+        $sizes = [];
+
+        foreach ((array) $template->fields as $i => $field) {
+            $key = (string) ($field['key'] ?? '');
+            $size = (float) ($field['size'] ?? 18);
+
+            $sizes[$i] = $size;
+
+            if ($key === '' || $key === 'qr') {
+                continue;
+            }
+
+            $value = (string) ($values[$key] ?? '');
+            $wrapPercent = (float) ($field['w'] ?? $field['wrap'] ?? 0);
+            $boxPercent = (float) ($field['h'] ?? 0);
+
+            if ($value === '' || $wrapPercent <= 0 || $boxPercent <= 0) {
+                continue;
+            }
+
+            if (($field['uppercase'] ?? false)) {
+                $value = Str::upper($value);
+            }
+
+            $font = (string) config(
+                ($field['bold'] ?? false) ? 'certificate.fonts.bold' : 'certificate.fonts.regular',
+            );
+
+            $maxWidth = ($wrapPercent / 100) * $pageW;
+            $limit = ($boxPercent / 100) * $pageH;
+
+            $sizes[$i] = TextFit::shrink(
+                $size,
+                $limit,
+                // line-height 1.2, matching the view's own rule: a block of N
+                // lines is N * 1.2 * size tall, which is what the absolutely
+                // positioned div will occupy.
+                fn (float $candidate): float => TextFit::lineCount($value, $font, $candidate, $maxWidth)
+                    * $candidate * 1.2,
+            );
+        }
+
+        return $sizes;
     }
 
     /**

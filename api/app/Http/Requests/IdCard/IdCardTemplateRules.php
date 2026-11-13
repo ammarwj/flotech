@@ -88,10 +88,19 @@ class IdCardTemplateRules
      *
      * Two field shapes share one array, so `fields.*.size` has to be nullable
      * even though a text field without one is meaningless, and `fields.*.w` has
-     * to be nullable even though a photo without a box is. Left there, a text
-     * field carrying a stray `w` reaches the renderer, which then has to guess
+     * to be nullable even though a photo without a box is. Left there, a photo
+     * carrying a stray `size` reaches the renderer, which then has to guess
      * what the organizer meant — and guessing wrong is invisible until someone
      * looks at 500 printed cards.
+     *
+     * `w`/`h` are no longer box-only, and that is the one asymmetry here. A
+     * text field may carry them too: the box is what the renderer shrinks a
+     * long name into (see fittedSize()), and what dragging a text field's
+     * corner writes. The pair stays OPTIONAL for text — a field without it
+     * renders exactly as every template written before this existed — which is
+     * why "a box is required" is still asserted for `photo` and `qr` alone.
+     * `fit`/`radius` remain box-only: there is nothing to crop or round about
+     * a string.
      *
      * `qr` is a box like `photo` rather than a text field, and the pairing is
      * load-bearing in both directions: fall it through to the text branch and
@@ -179,9 +188,15 @@ class IdCardTemplateRules
                 $validator->errors()->add("fields.$i.size", 'Ukuran huruf wajib diisi.');
             }
 
-            foreach (['w', 'h', 'fit', 'radius'] as $boxOnly) {
+            // `w`/`h` are NOT in this list: a text field may carry a box, which
+            // is what the renderer shrinks a long value into. Only the two
+            // settings that describe a *picture* stay refused here.
+            foreach (['fit', 'radius'] as $boxOnly) {
                 if (isset($field[$boxOnly])) {
-                    $validator->errors()->add("fields.$i.$boxOnly", 'Hanya field foto yang punya kotak.');
+                    $validator->errors()->add(
+                        "fields.$i.$boxOnly",
+                        'Hanya field foto yang punya penyesuaian gambar dan sudut membulat.',
+                    );
                 }
             }
         }

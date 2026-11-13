@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { fitFontSize } from "@/lib/fit-text";
 import { fieldLabel, groupFields, isCustomFieldKey } from "@/lib/template-fields";
 import { cn } from "@/lib/utils";
 import type { CertificateField, CertificateFieldDef } from "@/types/api";
@@ -33,6 +34,9 @@ const SAMPLE: Record<string, string> = {
   date_of_birth: "17 Agustus 2004",
 };
 
+/** Which part of a field the pointer grabbed. */
+type Drag = { index: number; mode: "move" | "resize" };
+
 /**
  * Places fields on the organizer's artwork by dragging.
  *
@@ -58,7 +62,7 @@ export function TemplateEditor({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
-  const draggingRef = useRef<number | null>(null);
+  const draggingRef = useRef<Drag | null>(null);
 
   // Points → screen pixels. Everything on the canvas is sized through this.
   const scale = canvasWidth > 0 ? canvasWidth / page.w : 0;
@@ -73,15 +77,40 @@ export function TemplateEditor({
   }, []);
 
   const moveTo = useCallback(
-    (index: number, clientX: number, clientY: number) => {
+    (drag: Drag, clientX: number, clientY: number) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
-      const y = Math.min(100, Math.max(0, ((clientY - rect.top) / rect.height) * 100));
+      const pct = (value: number) => Math.round(Math.min(100, Math.max(0, value)) * 10) / 10;
+
+      const x = pct(((clientX - rect.left) / rect.width) * 100);
+      const y = pct(((clientY - rect.top) / rect.height) * 100);
 
       onChange(
-        fields.map((f, i) => (i === index ? { ...f, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 } : f))
+        fields.map((f, i) => {
+          if (i !== drag.index) return f;
+
+          if (drag.mode === "move") return { ...f, x, y };
+
+          // Certificate text hangs from its alignment point horizontally and
+          // always grows DOWNWARDS from y — there is no vertical anchor here,
+          // unlike the ID card. So the width grows both ways from a centred
+          // anchor while the height only ever grows down.
+          const align = f.align ?? "center";
+          const sized = (value: number) => pct(Math.max(1, value));
+
+          return {
+            ...f,
+            w: sized(
+              align === "left"
+                ? x - f.x
+                : align === "right"
+                  ? f.x - x
+                  : 2 * Math.abs(x - f.x)
+            ),
+            h: sized(y - f.y),
+          };
+        })
       );
     },
     [fields, onChange]
@@ -126,6 +155,12 @@ export function TemplateEditor({
         align: "center",
         bold: false,
         uppercase: false,
+        // Text fields are born with a box, and that is the point of having one:
+        // without a height nothing can be shrunk, so a template laid out around
+        // "Garuda FC" breaks on a club name three times as long and nobody
+        // finds out until the batch has been issued. A QR is sized by `size`
+        // alone, exactly as before.
+        ...(key === "qr" ? {} : { w: 60, h: 12 }),
       },
     ]);
     setSelected(fields.length);
@@ -170,21 +205,38 @@ export function TemplateEditor({
                   ? { left: `${field.x}%`, transform: "translateX(-100%)" }
                   : { left: `${field.x}%`, transform: "translateX(-50%)" };
 
+            const sample = SAMPLE[field.key] ?? labelOf(field.key);
+            const wrapPx = (((field.w ?? field.wrap) ?? 0) / 100) * canvasWidth;
+            const boxPx = ((field.h ?? 0) / 100) * canvasWidth * (page.h / page.w);
+
+            // Mirrors CertificateService::fittedSizes(). No box = no shrinking,
+            // which is what every template saved before this existed means.
+            const fittedPx = fitFontSize(field.uppercase ? sample.toUpperCase() : sample, {
+              basePx: field.size * scale,
+              maxWidthPx: wrapPx,
+              maxHeightPx: boxPx,
+              bold: field.bold,
+            });
+
             return (
               <div
                 key={index}
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  draggingRef.current = index;
+                  draggingRef.current = { index, mode: "move" };
                   setSelected(index);
                 }}
                 className={cn(
-                  "absolute cursor-move whitespace-nowrap outline-offset-2",
+                  "absolute cursor-move outline-offset-2",
+                  // Only a boxless field is nowrap: with a box, wrapping is the
+                  // thing being previewed.
+                  wrapPx <= 0 && "whitespace-nowrap",
                   selected === index && "outline outline-2 outline-[var(--brand-600)]"
                 )}
                 style={{
                   top: `${field.y}%`,
                   ...(isQr ? { left: `${field.x}%` } : anchor),
+                  ...(isQr || wrapPx <= 0 ? {} : { width: `${wrapPx}px` }),
                 }}
               >
                 {isQr ? (
@@ -196,16 +248,37 @@ export function TemplateEditor({
                   </span>
                 ) : (
                   <span
+                    className="block w-full"
                     style={{
-                      fontSize: field.size * scale,
+                      fontSize: fittedPx,
                       color: field.color ?? "#1f2430",
                       fontWeight: field.bold ? 700 : 400,
                       textTransform: field.uppercase ? "uppercase" : "none",
+                      textAlign: align,
                       lineHeight: 1.2,
                     }}
                   >
-                    {SAMPLE[field.key] ?? labelOf(field.key)}
+                    {sample}
                   </span>
+                )}
+
+                {selected === index && !isQr && (
+                  /* The corner handle, so a box can be dragged instead of typed
+                     — typing a percentage was the only way, which is not
+                     something anyone finds. Pinned opposite the field's own
+                     horizontal anchor so it sits under the pointer; always at
+                     the bottom, because certificate text only ever grows down. */
+                  <span
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      draggingRef.current = { index, mode: "resize" };
+                    }}
+                    className={cn(
+                      "absolute -bottom-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-white bg-[var(--brand-600)]",
+                      align === "right" ? "-left-1.5" : "-right-1.5"
+                    )}
+                  />
                 )}
               </div>
             );
@@ -213,8 +286,11 @@ export function TemplateEditor({
         </div>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Geser setiap field ke posisinya. Contoh teks di atas hanya pratinjau — saat digenerate,
-          isinya diambil dari data event.
+          Geser setiap field ke posisinya, dan tarik sudutnya untuk mengatur kotak teks. Nama
+          yang terlalu panjang untuk kotaknya dikecilkan otomatis sampai muat, jadi
+          &ldquo;Garuda FC&rdquo; dan &ldquo;Persatuan Sepak Bola Mahasiswa Yogyakarta&rdquo;
+          sama-sama tetap di dalam platnya. Contoh teks di atas hanya pratinjau — saat
+          digenerate, isinya diambil dari data event.
         </p>
       </div>
 
@@ -318,6 +394,51 @@ export function TemplateEditor({
 
             {active.key !== "qr" && (
               <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="f-tw">Lebar kotak (%)</Label>
+                    <Input
+                      id="f-tw"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={active.w ?? active.wrap ?? 0}
+                      onChange={(e) => update(selected, { w: Number(e.target.value) })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="f-th">Tinggi kotak (%)</Label>
+                    <Input
+                      id="f-th"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={active.h ?? 0}
+                      onChange={(e) => update(selected, { h: Number(e.target.value) })}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Both halves have to be set, so both cases are said — an
+                    organizer who fills one and sees nothing change would
+                    otherwise have no way to learn why. */}
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  {(active.w ?? active.wrap ?? 0) > 0 && (active.h ?? 0) > 0 ? (
+                    <>
+                      Teks yang tidak muat dikecilkan otomatis sampai masuk kotak ini — nama
+                      panjang turun ukurannya, nama pendek tetap {active.size} pt.
+                    </>
+                  ) : (
+                    <>
+                      Isi <strong>keduanya</strong> supaya teks panjang dikecilkan otomatis.
+                      Dengan salah satu kosong, teks tidak dipotong baris dan bisa melebar keluar
+                      kertas.
+                    </>
+                  )}
+                </p>
+
                 <div>
                   <Label htmlFor="f-align">Perataan</Label>
                   <Select
