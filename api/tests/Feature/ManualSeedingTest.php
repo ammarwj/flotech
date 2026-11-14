@@ -79,25 +79,90 @@ class ManualSeedingTest extends TestCase
         return $event->teams()->orderBy('name')->pluck('id')->all();
     }
 
-    public function test_it_rejects_a_seeding_that_leaves_a_team_out_of_the_bracket(): void
+    public function test_a_team_the_organizer_did_not_pair_takes_a_bye(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // Five teams pad to a bracket of eight: four opening slots, of which at
+        // least one has to be a real tie and the other three may be byes.
+        $event = $this->knockoutEvent($org, teams: 5);
+        $ids = $this->teamIds($event);
+
+        // Only one tie named. Teams 03, 04 and 05 are not mentioned at all, and
+        // that is no longer an error: the form only asks for the ties that are
+        // played, so whoever is left over walks into round two.
+        $this->actingAs($user, 'api')
+            ->postJson($this->scheduleUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => $ids[1]],
+                ],
+            ])
+            ->assertCreated();
+
+        $slots = $event->matches()->where('round', 1)->orderBy('order')->get();
+
+        // The named tie is untouched — their pairing *is* the intent.
+        $this->assertSame($ids[0], $slots[0]->home_team_id);
+        $this->assertSame($ids[1], $slots[0]->away_team_id);
+
+        // The three nobody paired are seated alone, as byes, written final.
+        $this->assertSame($ids[2], $slots[1]->home_team_id);
+        $this->assertNull($slots[1]->away_team_id);
+        $this->assertSame('finished', $slots[1]->status);
+
+        // Compared against the tie above: assert only "a bracket was built" and
+        // a version that silently dropped them would pass just as well.
+        $this->assertSame(
+            5,
+            $slots->sum(fn ($m) => ($m->home_team_id ? 1 : 0) + ($m->away_team_id ? 1 : 0)),
+            'every approved team has to be somewhere in the draw',
+        );
+    }
+
+    /**
+     * The mirror of the test above, and the reason it is not enough on its own:
+     * a bracket holds only so many byes, so too *few* ties strands a team just
+     * as surely as naming none at all. Four teams in a bracket of four have no
+     * room for a bye — both ties have to be played.
+     */
+    public function test_it_refuses_fewer_ties_than_the_bracket_needs(): void
     {
         $user = User::factory()->create();
         $org = $this->org($user);
         $event = $this->knockoutEvent($org, teams: 4);
         $ids = $this->teamIds($event);
 
-        // Team 04 is placed nowhere. Nothing tops the gap up any more, so it
-        // would simply never play.
+        $this->actingAs($user, 'api')
+            ->postJson($this->scheduleUrl($org, $event), [
+                'seeding' => 'manual',
+                'pairs' => [
+                    ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => $ids[1]],
+                ],
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame(0, $event->matches()->count(), 'a rejected payload must not build a bracket');
+    }
+
+    public function test_it_refuses_more_pairings_than_the_bracket_has_slots(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // Three teams pad to a bracket of four: two opening slots, no more.
+        $event = $this->knockoutEvent($org, teams: 3);
+        $ids = $this->teamIds($event);
+
         $this->actingAs($user, 'api')
             ->postJson($this->scheduleUrl($org, $event), [
                 'seeding' => 'manual',
                 'pairs' => [
                     ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => $ids[1]],
                     ['order' => 1, 'home_team_id' => $ids[2], 'away_team_id' => null],
+                    ['order' => 2, 'home_team_id' => null, 'away_team_id' => null],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonPath('errors.pairs.0', 'Ada 1 tim yang belum ditempatkan.');
+            ->assertStatus(422);
 
         $this->assertSame(0, $event->matches()->count(), 'a rejected payload must not build a bracket');
     }
@@ -141,60 +206,25 @@ class ManualSeedingTest extends TestCase
     {
         $user = User::factory()->create();
         $org = $this->org($user);
-        $event = $this->knockoutEvent($org, teams: 4);
+        $event = $this->knockoutEvent($org, teams: 3);
         $ids = $this->teamIds($event);
 
+        // Only an away side: nothing to play against, so it has to be read as a
+        // bye rather than an unwinnable tie — never advanced, and no opponent
+        // will ever arrive.
         $this->actingAs($user, 'api')
             ->postJson($this->scheduleUrl($org, $event), [
                 'seeding' => 'manual',
                 'pairs' => [
                     ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => $ids[1]],
-                    // Only an away side: nothing to play against, so it has to
-                    // be read as a bye rather than an unwinnable tie.
                     ['order' => 1, 'home_team_id' => null, 'away_team_id' => $ids[2]],
-                ],
-            ])
-            // Team 04 is placed nowhere, so this is refused for that reason —
-            // the swap is asserted on a payload that gets through, below.
-            ->assertStatus(422);
-
-        $this->actingAs($user, 'api')
-            ->postJson($this->scheduleUrl($org, $event), [
-                'seeding' => 'manual',
-                'pairs' => [
-                    ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => $ids[1]],
-                    ['order' => 1, 'home_team_id' => $ids[3], 'away_team_id' => null],
-                ],
-            ])
-            ->assertStatus(422);
-
-        $this->actingAs($user, 'api')
-            ->postJson($this->scheduleUrl($org, $event), [
-                'seeding' => 'manual',
-                'pairs' => [
-                    ['order' => 0, 'home_team_id' => $ids[0], 'away_team_id' => null],
-                    ['order' => 1, 'home_team_id' => null, 'away_team_id' => $ids[1]],
-                ],
-            ])
-            ->assertStatus(422);
-
-        // With every team placed, the lone away side lands at home as a bye.
-        $event2 = $this->knockoutEvent($org, teams: 3);
-        $ids2 = $this->teamIds($event2);
-
-        $this->actingAs($user, 'api')
-            ->postJson($this->scheduleUrl($org, $event2), [
-                'seeding' => 'manual',
-                'pairs' => [
-                    ['order' => 0, 'home_team_id' => $ids2[0], 'away_team_id' => $ids2[1]],
-                    ['order' => 1, 'home_team_id' => null, 'away_team_id' => $ids2[2]],
                 ],
             ])
             ->assertCreated();
 
-        $bye = $event2->matches()->where('round', 1)->where('order', 1)->firstOrFail();
+        $bye = $event->matches()->where('round', 1)->where('order', 1)->firstOrFail();
 
-        $this->assertSame($ids2[2], $bye->home_team_id);
+        $this->assertSame($ids[2], $bye->home_team_id);
         $this->assertNull($bye->away_team_id);
         $this->assertSame('finished', $bye->status);
     }

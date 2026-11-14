@@ -1,7 +1,6 @@
 "use client";
 
 import { DateTimePicker } from "@/components/ui/date-time-picker";
-import { dialogConsequences } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { unplacedTeams } from "@/lib/bracket";
@@ -71,6 +70,21 @@ export function BracketSeedEditor({
   emptyLabel?: string;
 }) {
   const slots = Math.max(1, slotCount);
+
+  /**
+   * How many of those slots are a tie between two teams.
+   *
+   * A bracket of `slots` ties seats `2 * slots` entrants, so a field short of
+   * that is short by exactly the number of byes — and every bye costs one tie
+   * its second side. Hence `pool - slots`: 36 teams in a bracket of 64 play
+   * four opening ties and 28 walk straight through.
+   *
+   * This is what the editor asks for. The alternative, which is what it used to
+   * do, was thirty-two rows of which twenty-eight read "team vs Bye" — an
+   * organizer typing the word "Bye" twenty-eight times is being asked to do the
+   * arithmetic the bracket already knows.
+   */
+  const realTies = Math.max(0, Math.min(slots, pool.length - slots));
   const unplaced = unplacedTeams(pool, value);
 
   const pairAt = (order: number): SeedPair =>
@@ -117,7 +131,7 @@ export function BracketSeedEditor({
       {mode === "manual" && (
         <div className="grid gap-2">
           <div className="grid gap-2 rounded-lg border border-border p-2">
-            {Array.from({ length: slots }, (_, order) => {
+            {Array.from({ length: realTies }, (_, order) => {
               const pair = pairAt(order);
               const taken = takenElsewhere(order);
               /* The other side of this same tie joins the placed set: nobody
@@ -191,11 +205,22 @@ export function BracketSeedEditor({
             })}
           </div>
 
+          {/*
+            Whoever is left over walks into round two. Shown as a list rather
+            than asked for as rows: the pairing above decides it entirely, so a
+            second place to type it is a second place to get it wrong — and
+            "team vs Bye" twenty-eight times is the form doing arithmetic out
+            loud that the bracket already did.
+          */}
           {unplaced.length > 0 && (
-            <p className={dialogConsequences.danger}>
-              {unplaced.length} {entityLabel.toLowerCase()} belum ditempatkan:{" "}
-              {unplaced.map((t) => t.name).join(", ")}. Semua harus punya slot sebelum disimpan.
-            </p>
+            <div className="grid gap-1 rounded-lg border border-border bg-[var(--surface-2)] p-3">
+              <p className="text-xs font-semibold">
+                Langsung ke babak berikutnya ({unplaced.length})
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {unplaced.map((t) => t.name).join(", ")}
+              </p>
+            </div>
           )}
 
           <p className="text-xs text-muted-foreground">

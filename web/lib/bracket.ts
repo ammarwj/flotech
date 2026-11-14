@@ -248,6 +248,19 @@ export function sideLabel(m: Match, side: "home" | "away"): string {
   return "TBD";
 }
 
+/**
+ * A side of a tie that nothing will ever arrive on.
+ *
+ * A bye is only *written* as one — `isBye()` above — once a team is sitting in
+ * it. Before that it is an ordinary empty slot whose opponent the server has
+ * already captioned "Bye" (see MatchNumberService), because the feeder that
+ * would have filled it does not exist. On a chart that branch simply runs
+ * straight through, so the row is dropped rather than printed as a placeholder
+ * paired against a word.
+ */
+export const isDeadSide = (m: Match, side: "home" | "away") =>
+  (side === "home" ? m.home_source : m.away_source) === "Bye";
+
 /** Fixtures worth listing on a public schedule — a bye was never played. */
 export const playableMatches = (matches: Match[]) => matches.filter((m) => !isBye(m));
 

@@ -58,6 +58,7 @@ import {
   isThirdPlace,
   matchMatchesQuery,
   phaseLabel,
+  playableMatches,
   sideLabel,
 } from "@/lib/bracket";
 import { groupNames, hybridConfig, knockoutMatches } from "@/lib/hybrid";
@@ -491,7 +492,13 @@ function ScheduleView() {
       toast.error(parseApiError(err, "Gagal menambah pertandingan.").message),
   });
 
-  const sections = buildMatchSections(matches, isKnockout, isDouble, isHybrid, isSwiss);
+  // A bye was never played, so it is not a fixture to schedule, start, score or
+  // confirm — and twenty-eight of them is what a field of 36 puts in front of an
+  // organizer looking for the four ties that *are* played. It still belongs on
+  // the bracket, which draws the branch its winner walked out of; the public
+  // schedule has filtered them out from the beginning for the same reason.
+  const played = playableMatches(matches);
+  const sections = buildMatchSections(played, isKnockout, isDouble, isHybrid, isSwiss);
 
   // Only when it says something the section heading doesn't: a matchday mixes
   // the groups, and a knockout round number isn't a name. A league fixture's
@@ -527,7 +534,7 @@ function ScheduleView() {
 
   // The list view shows one matchday at a time; round/group headings are kept
   // inside the day, so a fixture never loses its context.
-  const dateGroups = groupByDate(matches, tz);
+  const dateGroups = groupByDate(played, tz);
   const activeDateKey =
     dateKey && dateGroups.some((g) => g.key === dateKey)
       ? dateKey
@@ -541,7 +548,7 @@ function ScheduleView() {
    * two tabs over.
    */
   const searching = search.trim().length > 0;
-  const searchHits = searching ? matches.filter((m) => matchMatchesQuery(m, search)) : [];
+  const searchHits = searching ? played.filter((m) => matchMatchesQuery(m, search)) : [];
   const daySections = sections
     .map(
       ([label, list]) =>

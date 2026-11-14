@@ -184,10 +184,16 @@ class MatchNumberTest extends TestCase
         $this->assertNull($rows[$semi->id]['home_source']);
         $this->assertNull($rows[$semi->id]['away_source']);
 
-        // Compared against a slot fed by two real ties, which is captioned.
+        // A bye is not a fixture, so it takes no number at all — otherwise the
+        // numbers that *are* printed come out with gaps in them.
+        $this->assertNull($rows[$bye->id]['match_no']);
+
+        // Compared against a slot fed by two real ties, which is captioned —
+        // and numbered P1/P2, because the two byes ahead of them counted for
+        // nothing.
         $other = $this->slot($event, 2, 1);
-        $this->assertSame('Pemenang P3', $rows[$other->id]['home_source']);
-        $this->assertSame('Pemenang P4', $rows[$other->id]['away_source']);
+        $this->assertSame('Pemenang P1', $rows[$other->id]['home_source']);
+        $this->assertSame('Pemenang P2', $rows[$other->id]['away_source']);
     }
 
     /**
@@ -204,8 +210,11 @@ class MatchNumberTest extends TestCase
 
         $rows = $this->payload($user, $org, $event);
 
-        // Round 2 starts right after the 32 openers.
-        $this->assertSame(33, $rows[$this->slot($event, 2, 0)->id]['match_no']);
+        // 28 of the 32 openers are byes, and a bye is numbered not at all. So
+        // round 2 starts at P5, right after the four ties that are played —
+        // not at P33. An organizer writing "P33" on a programme would otherwise
+        // be naming the fifth fixture by its thirty-third position.
+        $this->assertSame(5, $rows[$this->slot($event, 2, 0)->id]['match_no']);
 
         // 28 byes fill the front of round 1, so the first round-2 slots are fed
         // by walkovers and carry their teams already — no caption to give.
@@ -214,8 +223,12 @@ class MatchNumberTest extends TestCase
         // The back of round 1 holds the four real ties; the slots they feed are
         // the ones still waiting, and they name the tie by number.
         $last = $this->slot($event, 2, 15);
-        $this->assertSame('Pemenang P31', $rows[$last->id]['home_source']);
-        $this->assertSame('Pemenang P32', $rows[$last->id]['away_source']);
+        $this->assertSame('Pemenang P3', $rows[$last->id]['home_source']);
+        $this->assertSame('Pemenang P4', $rows[$last->id]['away_source']);
+
+        // And nothing printed carries a gap: the visible fixtures run 1..n.
+        $printed = collect($rows)->pluck('match_no')->filter()->sort()->values()->all();
+        $this->assertSame(range(1, count($printed)), $printed);
     }
 
     /**

@@ -102,6 +102,74 @@ class BracketSeeding
     }
 
     /**
+     * Pairings in which two entrants actually meet.
+     *
+     * A lone entrant in a slot is a bye, not a tie, and the two are counted
+     * apart because the bracket has room for only so many byes — see the
+     * minimum-ties check in MatchController::seedingError().
+     *
+     * @param  array<int, array<string, mixed>>  $pairs  the raw validated pairs
+     */
+    public static function realTies(array $pairs): int
+    {
+        return count(array_filter(
+            $pairs,
+            fn (array $p) => ($p['home_team_id'] ?? null) !== null
+                && ($p['away_team_id'] ?? null) !== null,
+        ));
+    }
+
+    /**
+     * Seat everyone the organizer did not pair, each alone in a slot of their
+     * own — which is to say, give them a bye.
+     *
+     * The form only asks for the ties that are actually played: a field of 36
+     * in a bracket of 64 is four pairings, not thirty-two rows of which
+     * twenty-eight read "team vs Bye". Whoever is left over walks into round
+     * two, and this is what writes that down.
+     *
+     * Byes go into the slots the organizer left empty, in pool order, and the
+     * pairings they typed are never moved — their pairing *is* the intent, the
+     * same reason manual seeding skips seedOrder() entirely.
+     *
+     * Automatic seeding does not come through here: it deals the whole field
+     * out itself and already knows which slots are short.
+     *
+     * @param  array<int, Slot>  $pairs  normalized slots
+     * @param  array<int, string>|Collection<int, string>  $pool
+     * @return array<int, Slot>
+     */
+    public static function fill(array $pairs, $pool): array
+    {
+        $waiting = self::unplacedTeams(
+            array_map(
+                fn (array $slot) => ['home_team_id' => $slot['home'], 'away_team_id' => $slot['away']],
+                $pairs,
+            ),
+            $pool,
+        );
+
+        foreach ($pairs as $order => $slot) {
+            if ($waiting === []) {
+                break;
+            }
+            // Only a slot nobody is standing in. One already holding a lone
+            // team is a bye the organizer asked for, and topping it up would
+            // hand them a tie they never chose.
+            if ($slot['home'] === null && $slot['away'] === null) {
+                $pairs[$order] = self::slot(
+                    array_shift($waiting),
+                    null,
+                    $slot['scheduled_at'],
+                    $slot['venue'],
+                );
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
      * One first-round slot in the shape ScheduleService writes matches from.
      * Automatic seeding builds its slots through here too, so a single shape
      * reaches GameMatch::create() no matter which path produced it.

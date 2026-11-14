@@ -174,3 +174,118 @@ karena baris ragged masih ada di DB: `bracket_slots`, `roundSlotsFromFirst()`,
 `isLoneFeeder()`, dan seluruh perbaikan tata letak kolom bagan (grid baris
 bersama + `cardShift()`), yang **juga** memperbaiki bagan pangkat dua.
 
+## Bye tetap ada, tapi tidak diketik / dijadwalkan / digambar
+
+Keluhan terakhir: 36 tim berarti organizer mengetik 28 baris "vs Bye", lalu
+jadwalnya tertimbun 28 kartu kosong. Catatan penting yang perlu diluruskan
+lebih dulu: **36 tim tidak bisa tanpa bye**. Babak 2 harus berisi 32 tim; 4 laga
+menghasilkan 4 pemenang, 28 tim sisanya wajib lewat tanpa main. Itu aritmetika.
+Bracket HQ pun begitu — ia cuma tidak menggambarnya.
+
+Jadi yang dihapus penampakan & pengetikannya, di tiga tempat:
+
+- **Form seeding** hanya menanyakan `peserta − slot` laga (36 tim → 4 baris),
+  sisanya daftar baca-saja "Langsung ke babak berikutnya".
+  `BracketSeeding::fill()` menempatkannya di server.
+- **Jadwal organizer** memfilter bye (`playableMatches`) lewat satu variabel
+  `played` yang dibaca section, `groupByDate`, dan pencarian sekaligus.
+- **Bagan** tidak menggambar kartu bye; selnya tetap (memiliki baris di grid).
+
+### Bug yang ditemukan sambil jalan
+
+`fill()` hanya bisa memakai slot **kosong**, jadi payload dengan terlalu sedikit
+pasangan menelantarkan tim tanpa error. 4 tim di bagan 4 (2 slot, nol ruang bye)
+mengirim 1 pasangan → dulu 201 dengan satu tim hilang. Sekarang 422.
+**Yang menangkapnya** assert yang menjumlahkan total tim terpasang di babak 1,
+bukan assert "bracket terbentuk" — yang itu hijau penuh.
+
+### Test yang berubah artinya
+
+`unplacedTeams()` tidak lagi menolak; ia sekarang **sumber daftar bye**. Tiga
+test yang menegakkan aturan lama ditulis ulang: dua di `ManualSeedingTest`
+(+ satu test baru untuk batas minimum), satu di `HybridFormatTest`. Dua kali
+fixture-nya salah pilih ukuran lapangan — 4 tim dan 4 qualifier sama-sama tidak
+punya ruang bye, jadi perlu 5 tim / 3 qualifier.
+
+## Satu grid untuk seluruh bagan (bukan satu grid per kolom)
+
+Dua keluhan sesudah bye disembunyikan: nomor melompat (P1–P4 lalu P33) dan
+bagannya berantakan. Keduanya akibat yang sama, tapi perbaikannya berbeda.
+
+- **Penomoran**: bye tidak lagi diberi nomor (`number` = null). Nomor harus
+  menghitung apa yang **terlihat**; kalau tidak, "P33" di program acara menamai
+  pertandingan ke-5 lewat posisinya yang ke-33. Ada assert yang memeriksa seluruh
+  nomor tercetak = `range(1, n)` — assert satu nomor saja tidak menangkapnya.
+- **Tata letak**: perombakan. Versi sebelumnya memberi tiap kolom grid sendiri
+  lalu membagikan daftar track yang sama — yang **tidak menyejajarkan apa pun**,
+  karena track menghitung tinggi dari isi grid-nya sendiri. Meleset 263px.
+
+### Yang dipelajari, supaya tidak diulang
+
+1. **Grid terpisah tidak bisa disejajarkan dengan menyamakan daftar track.**
+   Gejalanya: angka selisih **tidak berubah** sesudah "perbaikan" — tanda
+   mekanismenya tidak pernah menyala.
+2. **`repeat(n, 1fr)` menyamakan semua baris setinggi kartu tertinggi.** 28 baris
+   kosong → 3648px untuk 4 laga. Track dibangun per baris: `1fr` kalau ada kartu,
+   `auto` kalau tidak. Hasil: 2329px.
+3. **`cardShift()` dihapus.** Aritmetika baris mentok di 20px karena bernalar
+   dalam baris sementara browser bernalar dalam piksel. `drawnSpan()` rekursif
+   menyerahkannya ke grid.
+4. **Selektor konektor tidak bisa struktural lagi** — tidak ada elemen per-kolom.
+   Diganti kelas eksplisit dari komponen: `.bkt-feeds`/`.bkt-joins`/`.bkt-fed`.
+5. Ronde dibungkus `React.Fragment`; elemen pembungkus akan jadi grid item dan
+   mengembalikan persarangan yang justru dibuang.
+
+### Dua detail konektor sesudah perombakan
+
+Keduanya tampil ke user sebagai "bagannya tidak rapi":
+
+6. **`.bkt-fed` harus menanyakan apakah ada pengumpan yang digambar.**
+   `col > 0 && !blank` menggambar lead-in untuk kartu yang kedua pengumpannya
+   bye — garis menjulur ke kolom kosong (terlihat di P6/P7/P8 pada draw 36).
+7. **`drawnSpan()` memakai GABUNGAN rentang pengumpan**, bukan "baris tengah"
+   tiap pengumpan. Versi baris-tengah membulatkan ke bilangan bulat dan meleset
+   6px di tiap kartu bernama dua baris, 59px kalau satu ronde mencampur tinggi
+   kartu. Gabungan rentang membuat kedua ujung memakai batas yang sama dengan
+   pengumpannya, jadi titik tengahnya berimpit berapa pun tinggi barisnya.
+
+Sisa simpangan ≤53px ada di tiga kartu babak akhir, dan itu batas struktural:
+kartu terpusat di rentang barisnya sementara kedua pengumpan terpusat di
+sub-rentang masing-masing — sama hanya kalau kedua sub-rentang sama tinggi.
+Menutupnya butuh pengukuran runtime (ResizeObserver), karena tinggi kartu baru
+diketahui sesudah render. Tidak terlihat di layar; dibiarkan sebagai utang.
+8. **Panjang vertikal harus diukur runtime.** `height: 100%` (tinggi sel) lewat
+   106px dari kartu pasangannya begitu baris bye kolaps tidak merata.
+   `--bkt-drop` diisi `ResizeObserver`; pasangan dicari lewat `data-pair`
+   karena `nextElementSibling` menyeberang ronde di grid tunggal. Hook wajib di
+   atas early return (`react-hooks/rules-of-hooks` yang menangkapnya).
+   Verifikasi: ujung vertikal vs `cardMid` pasangan → 106px jadi 2px.
+9. **`--bkt-drop` diukur antar SEL, bukan antar kartu, dan tanpa pembulatan.**
+   Stub digambar di `top: 50%` **sel**; kartu terpusat di selnya hanya sampai
+   batas pembulatan, jadi mengukur dari mid-kartu meleset ~1px dan tampil
+   sebagai takik di siku (gambar user: P2 → P19). Ukur dari sumber yang sama
+   dengan yang digambar. Verifikasi: ujung vertikal = ujung stub pasangan,
+   587.38 = 587.38; sisa ±1.00px itu overshoot setengah garis yang disengaja
+   supaya sikunya persegi.
+10. **Paruh bawah tanpa pasangan kehilangan seluruh penghubungnya.** Vertikal
+    digambar paruh atas; kalau paruh atas bye, stub (18px) dan lead-in (38px)
+    tetap digambar tapi 56px di antaranya kosong. `.bkt-solo` merentangkan stub
+    ke `--bkt-gap`. Perlu `.bkt-cell.bkt-solo` — spesifisitas setara kalah.
+
+### Cara menemukannya (tiga ronde pengukuran gagal lebih dulu)
+
+Metrik geometri DOM bilang "semua rapat ≤2px" sementara user masih melihat
+putus, tiga kali berturut-turut. Yang akhirnya berhasil: **memindai piksel
+screenshot**, mencari ujung segmen garis yang bersentuhan dengan ruang putih
+dan tidak dekat tepi kartu. Dua jebakan di pemindai itu sendiri:
+- Warna border kartu `(229,231,235)` hampir sama dengan garis `(209,213,219)`;
+  menghitung keduanya sebagai "garis" menutup celah secara palsu.
+- Crop yang dipakai mengukur harus diambil ulang tiap kali, karena Playwright
+  mengosongkan `test-results/` dan koordinatnya bergeser.
+
+Dan yang paling memakan waktu: **saya memotret bracket yang salah.** Ada tiga
+bracket 36-tim di DB lokal; yang user lihat ada di event `panra-cup` (yang
+akunnya bukan anggota saya), bukan di `flobamora-event`. Bentuk babak-2-nya
+beda — slot `-T`, `T-`, `--` — dan harus direplikasi dulu lewat `fill()`
+sebelum bug-nya bisa muncul sama sekali.
+

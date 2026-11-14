@@ -792,16 +792,21 @@ class HybridFormatTest extends TestCase
         $this->assertSame($q[2], $final->home_team_id);
     }
 
-    public function test_partial_manual_seeding_is_refused_rather_than_topped_up(): void
+    public function test_a_qualifier_the_organizer_did_not_pair_takes_a_bye(): void
     {
         $user = User::factory()->create();
         $org = $this->org($user);
-        [$event, $q] = $this->readyForKnockout($user, $org);
+        // 3 groups of 3, winners only → 3 qualifiers in a bracket of 4, which
+        // leaves exactly one slot free for a bye.
+        [$event, $q] = $this->readyForKnockout($user, $org, [
+            'groups' => 3,
+            'teams_per_group' => 3,
+            'qualification' => ['top_per_group' => 1],
+        ], teams: 9);
 
-        // Only the one tie the organizer cares about. This used to be valid:
-        // the field was topped up in slot order. It no longer is — an empty
-        // slot is now taken at face value, so filling the gap would hand them
-        // a tie they never picked, and the two teams left out would never play.
+        // Only the one tie the organizer cares about. The form asks for the
+        // ties that are played and nothing else, so whoever is left over walks
+        // into the next round rather than being refused.
         $this->actingAs($user, 'api')
             ->postJson($this->knockoutUrl($org, $event), [
                 'seeding' => 'manual',
@@ -809,10 +814,20 @@ class HybridFormatTest extends TestCase
                     ['order' => 1, 'home_team_id' => $q[0], 'away_team_id' => $q[1]],
                 ],
             ])
-            ->assertStatus(422)
-            ->assertJsonPath('errors.pairs.0', 'Ada 2 tim yang belum ditempatkan.');
+            ->assertCreated();
 
-        $this->assertSame(0, $event->matches()->where('stage', 'knockout')->count());
+        $slots = $event->matches()
+            ->where('stage', 'knockout')->where('round', 1)->orderBy('order')->get();
+
+        // The named tie keeps the slot it was given — the organizer's pairing
+        // is the intent, and nothing re-seats it.
+        $this->assertSame($q[0], $slots[1]->home_team_id);
+        $this->assertSame($q[1], $slots[1]->away_team_id);
+
+        // And the qualifier nobody paired is seated alone, as a bye.
+        $this->assertSame($q[2], $slots[0]->home_team_id);
+        $this->assertNull($slots[0]->away_team_id);
+        $this->assertSame('finished', $slots[0]->status);
     }
 
     public function test_swapping_two_seeds_keeps_the_rest_of_the_bracket(): void

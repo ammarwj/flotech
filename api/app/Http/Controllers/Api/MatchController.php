@@ -10,7 +10,6 @@ use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\GameMatch;
 use App\Models\Organization;
-use App\Models\Team;
 use App\Services\Catalog;
 use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
@@ -100,11 +99,16 @@ class MatchController extends Controller
 
             $seeding = $request->validate(BracketSeeding::validationRules($half, $approved));
 
-            if ($error = $this->seedingError($seeding, $approved)) {
+            if ($error = $this->seedingError($seeding, $half, $approved)) {
                 return $error;
             }
 
             $pairs = BracketSeeding::normalize($seeding, $half);
+            // The form only asks for the ties that are played; whoever is left
+            // over takes a bye, and this is what seats them.
+            if ($pairs !== null) {
+                $pairs = BracketSeeding::fill($pairs, $approved);
+            }
             $lockedOrders = BracketSeeding::lockedOrders($pairs);
 
             $count = $this->schedule->generateKnockout($categoryModel, $pairs);
@@ -571,11 +575,14 @@ class MatchController extends Controller
         $half = intdiv($config->bracketSize(), 2);
         $seeding = $request->validate(BracketSeeding::validationRules($half, $qualifiers));
 
-        if ($error = $this->seedingError($seeding, $qualifiers)) {
+        if ($error = $this->seedingError($seeding, $half, $qualifiers)) {
             return $error;
         }
 
         $pairs = BracketSeeding::normalize($seeding, $half);
+        if ($pairs !== null) {
+            $pairs = BracketSeeding::fill($pairs, $qualifiers);
+        }
         $fromPlan = false;
 
         // No teams named in the request → follow the draw the organizer saved
@@ -1396,10 +1403,11 @@ class MatchController extends Controller
      * keys of one row.
      *
      * @param  array<string, mixed>  $seeding  the validated payload
-     * @param  array<int, string>|\Illuminate\Support\Collection<int, string>  $pool  team ids that must all be placed
+     * @param  int  $slots  first-round slots the bracket has room for
+     * @param  array<int, string>|\Illuminate\Support\Collection<int, string>  $pool  everyone who has to fit in it
      * @return JsonResponse|null the error to return, or null when it's sound
      */
-    protected function seedingError(array $seeding, $pool): ?JsonResponse
+    protected function seedingError(array $seeding, int $slots, $pool): ?JsonResponse
     {
         if (! BracketSeeding::isManual($seeding)) {
             return null;
@@ -1426,15 +1434,35 @@ class MatchController extends Controller
             ], 422);
         }
 
-        // Leaving a slot empty is deliberate; leaving a team out of the bracket
-        // is not. Nothing fills the gap any more, so an unplaced team would
-        // simply never play.
-        if ($unplaced = BracketSeeding::unplacedTeams($pairs, $pool)) {
-            $names = Team::whereIn('id', $unplaced)->orderBy('name')->pluck('name')->implode(', ');
-
+        // A team the organizer did not pair is no longer an error: it takes a
+        // bye, which generation seats for it (see BracketSeeding::fill()). That
+        // is the whole reason the form stopped asking for them — a field of 36
+        // in a bracket of 64 would otherwise be twenty-eight rows reading
+        // "team vs Bye", which is the organizer doing arithmetic the bracket
+        // already did.
+        //
+        // What is still refused is the opposite: more pairings than the bracket
+        // has room for, which no amount of byes can absorb.
+        if (count($pairs) > $slots) {
             return ApiResponse::error(
-                'Semua tim harus ditempatkan di bracket. Belum ditempatkan: '.$names.'.',
-                ['pairs' => ['Ada '.count($unplaced).' tim yang belum ditempatkan.']],
+                "Bracket ini hanya punya {$slots} slot babak pertama.",
+                ['pairs' => ['Jumlah pasangan melebihi kapasitas bracket.']],
+                422,
+            );
+        }
+
+        // And too *few* ties, which is the same failure from the other end: a
+        // bracket of `slots` has room for `slots` byes at most, so a field of
+        // `pool` must contain at least `pool - slots` real ties or somebody is
+        // left with nowhere to stand. Four teams in a bracket of four need both
+        // ties played; one pairing there would strand a team silently, because
+        // fill() can only seat byes in slots nobody is already using.
+        $needed = count($pool) - $slots;
+
+        if ($needed > 0 && BracketSeeding::realTies($pairs) < $needed) {
+            return ApiResponse::error(
+                "Bracket ini butuh minimal {$needed} pertandingan di babak pertama — sisanya langsung lolos.",
+                ['pairs' => ["Butuh minimal {$needed} pertandingan babak pertama."]],
                 422,
             );
         }

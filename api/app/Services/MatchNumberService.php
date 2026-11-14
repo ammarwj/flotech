@@ -116,9 +116,19 @@ class MatchNumberService
             ])
             ->values();
 
+        // A bye takes no number. It is not a fixture — nobody plays it, no
+        // screen lists it, and the bracket does not draw it — so counting it
+        // would leave the numbers that *are* printed with gaps in them: a draw
+        // of 36 would run P1..P4 and then jump to P33, and an organizer writing
+        // "P33" on a programme would be naming the fifth tie by its
+        // thirty-third position. The number has to count what people can see.
         $numbers = [];
-        foreach ($ordered as $i => $match) {
-            $numbers[$match->id] = $i + 1;
+        $n = 0;
+        foreach ($ordered as $match) {
+            if ($this->isBye($match)) {
+                continue;
+            }
+            $numbers[$match->id] = ++$n;
         }
 
         // Which fixture feeds which slot. Byes are deliberately not sources:
@@ -131,7 +141,10 @@ class MatchNumberService
 
         foreach ($ordered as $match) {
             $out[$match->id] = [
-                'number' => $numbers[$match->id],
+                // Null for a bye, which is unnumbered above. Clients already
+                // read a null number as "nothing to print" — that is what a
+                // door which never attached this gives them.
+                'number' => $numbers[$match->id] ?? null,
                 'home_source' => $this->sourceLabel($match, 'home', $feeders, $numbers),
                 'away_source' => $this->sourceLabel($match, 'away', $feeders, $numbers),
             ];

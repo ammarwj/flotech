@@ -1207,72 +1207,75 @@ img { max-width: 100%; display: block; }
    technique: each cell owns an equal vertical slot, so elbow
    lines join pairs purely with pseudo-elements.
    ============================================================ */
+/* ONE grid for the whole bracket, not one per column.
+   Columns are its X axis (a round each, separated by --bkt-gap), rows its Y.
+
+   A grid per column was the shape this had, and it cannot line a card up with
+   the ties feeding it once some rows are empty: tracks size from their own
+   grid's content, so "row 5" is 142px tall in the column drawing four cards and
+   33px in the column drawing sixteen. Sharing the *track list* between separate
+   grids shares only its spelling. The cards drifted up to 263px apart, and no
+   amount of arithmetic in the component could have closed it.
+
+   With a single grid every column measures row 5 the same, which is the whole
+   property the tree is drawn on: a card spans the rows its feeders occupy, so
+   centring it inside that span puts it exactly where their lines meet. An empty
+   row collapses to nothing and costs no height anywhere. */
 .bkt {
   --bkt-gap: 56px;
   --bkt-stub: 18px;                                  /* source → meeting point */
   --bkt-lead: calc(var(--bkt-gap) - var(--bkt-stub)); /* meeting point → next card */
   --bkt-line: var(--border-strong);
-  --bkt-w: 2px;                                      /* line thickness */
+  /* 1px, the same as a card's border — and that is the point, not a style
+     choice. A 2px line has to straddle the mid-line it is centred on, so when
+     that mid-line lands on a half-pixel one row paints against the card and
+     the other against the page: a hairline sticking out past the card, read on
+     screen as a line that stops short. Matching the border makes the join
+     exact at every zoom level. */
+  --bkt-w: 1px;                                      /* line thickness */
   --bkt-half: calc(var(--bkt-w) / 2);                /* horizontals straddle their y by this */
-  display: flex; align-items: stretch;
+  display: grid;
+  /* Fixed column width, not min-width: a column must not take its size from the
+     names inside it. Racket categories put a whole doubles pair in one card
+     ("Raffael Suwondo / Bagas Maulana"), which as max-content is several
+     hundred pixels — the column would grow past the gap into the next one and
+     the tree would come apart. Long names wrap onto more lines instead. */
+  grid-auto-columns: 212px;
+  grid-auto-flow: column;
+  column-gap: var(--bkt-gap);
+  grid-template-rows: auto var(--bkt-rows, 1fr);
   overflow-x: auto; padding: 6px 2px 16px;
 }
-/* Fixed width, not min-width: a column must not take its size from the names
-   inside it. Racket categories put a whole doubles pair in one card ("Raffael
-   Suwondo / Bagas Maulana"), which as max-content is several hundred pixels —
-   the column would grow past the gap into the next one and the tree would come
-   apart. Long names wrap onto more lines; the tree keeps its grid. */
-.bkt-col { display: flex; flex-direction: column; flex: 0 0 auto; width: 212px; }
-.bkt-col:not(:last-child) { margin-right: var(--bkt-gap); }
 .bkt-head {
+  grid-row: 1;
   text-align: center; margin-bottom: 12px;
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   font-weight: 700; color: var(--text-muted);
 }
-/* Equal rows via `grid-auto-rows: 1fr`, not flex `flex:1` cells. Both give every
-   cell the same slot — which the connectors below depend on — but a flex cell's
-   basis is 0, so the column's intrinsic height came out as 64px × cells and
-   ignored how tall the cards actually are. A card carrying .bkt-sets is half
-   again taller than that and overflowed onto the card below it. An fr row is
-   floored at its own content, so the tallest card in the tree sets the slot and
-   nothing can spill out of one. */
-/* Every column is divided into the *same* number of rows — the opening round's
-   slot count, set inline as --bkt-rows — and a later card spans the rows its
-   feeders occupy. That is what puts it on their midpoint.
-
-   Dividing each column into its own cell count instead (plain `grid-auto-rows:
-   1fr`) is exact only while every round halves cleanly. A ragged draw does not:
-   9 ties do not divide into 5, so each card drifts off the pair feeding it and
-   the error compounds rightward — 278px by the fourth round, with the line
-   entering a card well above the card itself. On a power-of-two bracket the two
-   are identical, because spanning 2^col of 2^n rows *is* an equal division. */
-.bkt-body {
-  flex: 1; display: grid;
-  grid-template-rows: repeat(var(--bkt-rows, 1), minmax(64px, 1fr));
-}
 .bkt-cell {
   /* min-width:0 is load-bearing. A grid item's automatic minimum size applies on
-     both axes (a column-flex item's only on the block axis), so without this the
-     track is floored at the card's min-content — the longest unbreakable run in
-     a team name — and the card paints outside its column. */
-  min-height: 64px; min-width: 0; position: relative;
-  display: flex; flex-direction: column; justify-content: center; padding: 6px 0;
-  /* Where the card sits in its band. Zero — dead centre, from the
-     justify-content above — for every cell whose two feeders are the same
-     height, which is all of them in a power-of-two draw. A ragged draw has one
-     cell per bracket whose feeders are not: in a 36-team field the final's two
-     semifinals span sixteen rows and two, so their lines meet five-eighths of
-     the way down rather than halfway, and centring the card there leaves the
-     connector arriving well above it.
-
-     The shift is a percentage of the cell's own height, which is what makes
-     this work where two earlier attempts did not: a percentage margin or
-     padding resolves against the containing block's *width*, and a percentage
-     translate against the element's own height — the card's, not the band's.
-     `top` on a relatively-positioned box resolves against the containing
-     block's height, which is the band being divided. */
-  top: var(--bkt-shift, 0%);
+     both axes, so without this the track is floored at the card's min-content —
+     the longest unbreakable run in a team name — and the card paints outside
+     its column. */
+  min-width: 0; position: relative;
+  display: flex; flex-direction: column; justify-content: center;
+  /* Gap between cards, taken as a margin rather than padding: padding is inside
+     the cell, so a first row padded at the top and a last row padded at the
+     bottom shift the span's midpoint by half the difference between them —
+     6px wherever a name wrapped onto two lines. A margin sits outside the box
+     the midpoint is measured from. */
+  margin: 6px 0;
+  /* Nothing positions the card inside its cell any more: with one grid for the
+     whole bracket, a cell spans exactly the rows its feeders are drawn in (see
+     drawnSpan), so dead centre *is* where their lines meet. The arithmetic that
+     used to shift it — rows above versus rows below — got within 20px and could
+     not do better, because it reasoned about rows while the browser reasoned
+     about pixels. */
 }
+/* A bye draws no card, so its row carries nothing and collapses — see
+   BracketView. The cell stays because it owns rows every other column is
+   measured against; it simply paints neither card nor connector. */
+.bkt-cell-blank { min-height: 0; }
 
 /* Flat card, matching the simpler .ematch look. */
 .bkt-match {
@@ -1331,28 +1334,45 @@ img { max-width: 100%; display: block; }
 
 /* Connectors. The pair meets near the source cards: a short stub out the right
    of each cell, a vertical joining the pair just past it, then a longer lead-in
-   that carries the merged line into the next card. */
-.bkt-col:not(:last-child) .bkt-cell::after {
+   that carries the merged line into the next card.
+
+   Which cells draw what is decided in BracketView and carried as classes, not
+   read off the DOM: with one grid for the whole bracket there is no element
+   around a column for `:not(:last-child)` to match, and `nth-child(odd)` would
+   count across every round at once. The component already knows which cell
+   feeds which, so it says so. */
+.bkt-feeds::after {
   content: ""; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
   width: var(--bkt-stub); height: var(--bkt-w); background: var(--bkt-line);
 }
-/* Overshoots its pair's mid-lines by half a line at each end. The stubs are
-   centred on those mid-lines, so a vertical that merely spans mid → mid stops
-   half a line short of each stub's outer edge and the elbows come out as
-   stair-steps rather than square corners. */
-.bkt-col:not(:last-child) .bkt-cell:nth-child(odd)::before {
+/* A card whose partner is a bye has no vertical to meet, so its stub carries
+   the whole way across to the parent instead of stopping at the meeting point.
+   Left at the usual 18px it ended in mid-air and the parent's lead-in started
+   38px further on, so the gap between the two columns was simply unpainted —
+   two cards side by side, apparently unconnected. */
+.bkt-cell.bkt-solo::after { width: var(--bkt-gap); }
+/* The vertical joining a pair, drawn by its upper half and only when both
+   halves are on the chart.
+
+   Its length is `--bkt-drop`: the distance from this card's mid-line to its
+   partner's, measured after layout and set inline. It used to be the cell's own
+   height, which is the same thing only while a cell's two halves are equally
+   tall — and they are not, once a bye's row collapses to nothing. The line then
+   ran 106px past the card it was supposed to reach, ending in open space.
+
+   Overshoots the two mid-lines by half a line at each end: the stubs are
+   centred on them, so a vertical spanning exactly mid → mid stops half a line
+   short of each stub's outer edge and the elbows come out as stair-steps
+   rather than square corners. */
+.bkt-joins::before {
   content: ""; position: absolute; left: calc(100% + var(--bkt-stub));
-  top: calc(50% - var(--bkt-half)); height: calc(100% + var(--bkt-w));
+  top: calc(50% - var(--bkt-half)); height: calc(var(--bkt-drop, 100%) + var(--bkt-w));
   width: var(--bkt-w); background: var(--bkt-line);
 }
-.bkt-col:not(:first-child) .bkt-match::before {
+.bkt-fed .bkt-match::before {
   content: ""; position: absolute; right: 100%; top: 50%; transform: translateY(-50%);
   width: var(--bkt-lead); height: var(--bkt-w); background: var(--bkt-line);
 }
-/* A round of one (the final) needs no outgoing connectors; an unpaired odd
-   cell (bye carrying a team forward) must not dangle a vertical. */
-.bkt-col:not(:last-child) .bkt-body:has(.bkt-cell:only-child) .bkt-cell::after,
-.bkt-col:not(:last-child) .bkt-cell:nth-child(odd):last-child::before { display: none; }
 
 
 /* Third-place play-off: hangs off the final's own cell, so it reads as a
