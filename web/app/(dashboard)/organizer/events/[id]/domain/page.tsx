@@ -190,7 +190,7 @@ export default function EventDomainPage() {
               {ev.domain_status === "pending" && (
                 <p className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
-                  Menunggu sertifikat HTTPS. Pemeriksaan jalan otomatis setiap jam.
+                  Menunggu sertifikat HTTPS. Pemeriksaan jalan otomatis tiap menit.
                 </p>
               )}
 
@@ -246,9 +246,9 @@ export default function EventDomainPage() {
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Setelah disimpan, biarkan saja — pemeriksaan jalan otomatis setiap jam dan
-                    sertifikat HTTPS-nya terbit sendiri. Biasanya beberapa menit sampai beberapa
-                    jam.
+                    Setelah disimpan, biarkan saja — kami periksa otomatis tiap menit dan
+                    sertifikat HTTPS-nya terbit sendiri. Yang lama bukan di kami, tapi menunggu
+                    setelan DNS-mu menyebar: biasanya beberapa menit, kadang sampai beberapa jam.
                   </p>
                   {/* The way out for someone who cannot do it, and the reason
                       the copy above can stay short. Without it the page is a

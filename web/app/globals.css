@@ -527,6 +527,51 @@ img { max-width: 100%; display: block; }
   .nav-group-rows { transition: none; }
 }
 
+/* ---- domain add-on, the collapsed/expanded picker ----
+   Same mechanism as .nav-group-rows above, and for the same reason: `display:
+   none` cannot transition, so the content stays in the box and 1fr → 0fr closes
+   it. What differs is that BOTH halves are always mounted — the teaser row and
+   the picker swap, so each has to be able to animate out while the other
+   animates in. Unmounting the teaser (which is what a plain ternary does) makes
+   the panel appear at full height with nothing to grow from, which is exactly
+   the jump this replaces.
+
+   Kept here rather than as utilities because the row-track trick needs the
+   `> *` child rule, which Tailwind cannot express inline. */
+.addon-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.28s var(--ease), opacity 0.2s var(--ease);
+}
+.addon-fold[data-open="false"] {
+  grid-template-rows: 0fr;
+  /* Faster than the height, so the outgoing half is gone before the box
+     finishes closing — otherwise its text is still legible while being
+     squashed, which reads as a rendering fault rather than a transition. */
+  opacity: 0;
+}
+.addon-fold > * {
+  /* What actually lets a 0fr track collapse its content. */
+  min-height: 0;
+}
+
+/* The panel's own entrance, which the fold alone cannot give it: a box growing
+   from zero height slides its content up from the bottom edge, and the cards
+   read better arriving from slightly above their resting place. */
+.addon-panel {
+  animation: addon-panel-in 0.28s var(--ease) both;
+}
+@keyframes addon-panel-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addon-fold { transition: none; }
+  .addon-panel { animation: none; }
+}
+
 /* ---- footer ---- */
 .footer {
   background: var(--bg-alt);

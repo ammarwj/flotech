@@ -630,8 +630,9 @@ class EventPlanOrderService
      * The three kinds part ways here, and only here:
      *
      *  - `subdomain` — we hold the zone, so the name is ours to issue. Attached
-     *    immediately; `domains:sync` picks it up and certifies it within the
-     *    hour.
+     *    immediately; `domains:sync` runs every minute and certifies it on its
+     *    next pass. Nothing waits on anyone outside: the wildcard A record
+     *    already resolves, so the ACME challenge can answer at once.
      *  - `own` — the organizer holds the name. Attached immediately too, which
      *    is what publishes the port-80 vhost that the ACME challenge needs;
      *    certification then waits on their DNS, which is outside our control.

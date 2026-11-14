@@ -45,7 +45,11 @@ export const DOMAIN_KIND_META: Record<
   },
   subdomain: {
     label: "Pakai subdomain floevent.id",
-    description: "Langsung aktif",
+    // Not "langsung aktif": the certificate still has to be issued, which
+    // `domains:sync` does on its next pass. What it genuinely skips is the
+    // waiting that belongs to someone else — no registrar, no DNS to point,
+    // nothing the organizer has to go and do.
+    description: "Tanpa setelan DNS, aktif beberapa menit.",
     prompt: "Nama subdomain",
     placeholder: "liga-anda",
   },
