@@ -399,41 +399,10 @@ function CategoryEditor({
         />
       )}
 
-      {/* The two bracket settings single elimination has. Still not a card of
-          their own: a card implies a section to come back to, and these are two
-          answers given once before the draw. */}
+      {/* The only bracket setting single elimination has, so it gets a lone
+          checkbox rather than a card of its own. */}
       {isSingleElim && (
         <div className="grid gap-3">
-          <div className="grid gap-1.5">
-            <Label className="font-semibold">Letak bye</Label>
-            <Select
-              value={cat.bracket_config?.bye_round ?? "first"}
-              onChange={(e) =>
-                onChange({
-                  bracket_config: {
-                    ...cat.bracket_config,
-                    bye_round: e.target.value as "first" | "late",
-                  },
-                })
-              }
-            >
-              <option value="first">Babak pertama</option>
-              <option value="late">Semua main dulu</option>
-            </Select>
-            {/*
-              Both are real tournament shapes and neither is guessable from the
-              field size, which is why this is asked rather than derived — and
-              why the hint states what each one does to *this* draw rather than
-              naming the rule. An organizer picking this has a wall chart in
-              front of them and wants to know which one it is.
-            */}
-            <p className="text-xs text-muted-foreground">
-              {(cat.bracket_config?.bye_round ?? "first") === "late"
-                ? "Semua tim bermain di babak pertama; yang tidak kebagian lawan dapat bye di babak berikutnya. Ini bentuk bagan yang umum dipakai turnamen sekolah."
-                : "Bagan dibulatkan ke 8/16/32/64, dan tim yang tidak kebagian lawan langsung lolos ke babak kedua."}
-            </p>
-          </div>
-
           <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="checkbox"

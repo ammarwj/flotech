@@ -655,17 +655,9 @@ class ScheduleService
      * front (later rounds start with empty slots) and bye winners are advanced
      * immediately.
      *
-     * Where the byes land is the category's own choice — see
-     * HybridConfig::$byeRound and BracketSeeding::roundSlots(). `first` pads
-     * the draw to a power of two and seats them all in the opening round;
-     * `late` pairs as many as it can every round and byes the odd team out
-     * where the numbers first stop halving, which is the shape printed on most
-     * school-cup draws.
-     *
-     * The bye is always the *last* slot of its round, and that is load-bearing:
-     * it leaves the ties below it pairing up as (2k, 2k+1) into slot k, so
-     * advanceWinner(), parentOf() and clearDownstream() walk the ragged tree on
-     * exactly the edges they already walked the square one.
+     * The draw is padded to the next power of two and every bye sits in the
+     * opening round — see BracketSeeding::roundSlots(), which is the only thing
+     * that decides the shape.
      *
      * @param  array<int, array{home: ?string, away: ?string, scheduled_at: ?string, venue: ?string}>|null  $pairs
      *                                                                                                              the organizer's own first-round slots, or null to seed by team name
@@ -684,20 +676,16 @@ class ScheduleService
             return 0;
         }
 
-        $byeRound = HybridConfig::fromCategory($category)->byeRound;
-
         // Manual seeding names the opening ties itself, so the field it drew is
         // the bracket: its slot count wins over anything derived from the team
         // list. The rounds above it still follow from that one number.
         $rounds = $pairs !== null
             ? BracketSeeding::roundSlotsFromFirst(count($pairs))
-            : BracketSeeding::roundSlots($n, $byeRound);
+            : BracketSeeding::roundSlots($n);
 
         $totalRounds = count($rounds);
         $matchesR1 = $rounds[0];
-        // Opening slots short of a pair. With `first` this is the whole padding
-        // (28 of them for 36 teams); with `late` it is 0 or 1, and the deeper
-        // byes fall out of the slot counts above rather than out of the field.
+        // The padding: 28 of them for a field of 36 in a bracket of 64.
         $byes = max(0, 2 * $matchesR1 - $n);
 
         $start = $this->categoryStart($category);
@@ -709,24 +697,12 @@ class ScheduleService
 
         for ($o = 0; $o < $matchesR1; $o++) {
             // Manual slots are taken as given, empties included; automatic ones
-            // deal the field out in order.
-            //
-            // Which end the byes sit at differs, and the difference is not
-            // cosmetic. A padded draw is a full power of two, so every slot has
-            // a sibling and a bye may sit anywhere — it has sat at the front
-            // since the first version of this, and the slot editor's tests name
-            // those positions. A ragged draw is short of a pair by exactly one,
-            // and that short pair has to be the *last* slot of its round: that
-            // is what leaves the ties below it still pairing (2k, 2k+1) into
-            // slot k, which is the only reason advanceWinner() walks this tree
-            // unchanged.
-            $isBye = $byeRound === 'late'
-                ? $o >= $matchesR1 - $byes
-                : $o < $byes;
-
+            // deal the field out in order, byes first — where they have sat
+            // since the first version of this, and where the slot editor's
+            // tests name them.
             $slot = $pairs[$o] ?? BracketSeeding::slot(
                 array_shift($queue),
-                $isBye ? null : array_shift($queue),
+                $o < $byes ? null : array_shift($queue),
             );
 
             // A lone team walks over. Both slots empty is not a bye — manual
@@ -971,11 +947,13 @@ class ScheduleService
      * True when nothing will ever arrive in the slot beside this one, so the
      * tie above is a walkover rather than a fixture-to-be.
      *
-     * A ragged draw byes the odd team out in whatever round the numbers first
-     * stop halving, which may be any round but the first — round 3 of a 36-team
-     * draw, say. Generation cannot write those byes: nobody is in them yet.
-     * They only become real as the slot fills, which is why this is asked on
-     * the way up rather than written on the way out.
+     * Generation no longer draws a bracket this can fire on: every draw is
+     * padded to a power of two, so every round halves cleanly and no slot is
+     * ever short a feeder. It stays for the brackets that were drawn while the
+     * other shape existed and are still in the database with their rounds
+     * already written — those bye the odd team out in whatever round the
+     * numbers first stopped halving, and nobody is in that slot until the round
+     * below it is played. Removing this would strand their winners.
      *
      * Derived from the *recorded* shape, never from "is there a row beside
      * this one". Two half-empty slots look identical and mean opposite things:
@@ -984,7 +962,8 @@ class ScheduleService
      * a team which had not lost. Only a bracket whose opening width generation
      * wrote down can answer which — a hybrid bracket is always a power of two
      * and a hand-built fixture tree is neither, so both answer false and keep
-     * the behaviour they have always had.
+     * the behaviour they have always had. A freshly drawn bracket answers false
+     * too, since its rounds halve exactly.
      */
     protected function isLoneFeeder(GameMatch $match): bool
     {

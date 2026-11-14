@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { firstRoundSlots, unplacedTeams, type ByeRound } from "@/lib/bracket";
+import { firstRoundSlots, unplacedTeams } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
@@ -33,7 +33,6 @@ export function ScheduleSettingsDialog({
   hasMatches,
   pending,
   seedTeams,
-  byeRound = "first",
   onClose,
   onSubmit,
 }: {
@@ -47,13 +46,6 @@ export function ScheduleSettingsDialog({
    * engine — league fixtures and hybrid group stages have no seeding.
    */
   seedTeams?: SeedTeam[];
-  /**
-   * Where this category's draw takes its byes. Decides how many opening ties
-   * the editor offers — a 36-team `late` draw has 18, a padded one 32 — and the
-   * API validates `pairs.*.order` against the same number, so a mismatch is a
-   * form that rejects half its own rows at submit.
-   */
-  byeRound?: ByeRound;
   onClose: () => void;
   onSubmit: (options: ScheduleOptions & SeedingPayload) => void;
 }) {
@@ -229,7 +221,7 @@ export function ScheduleSettingsDialog({
           {seedTeams && seedTeams.length >= 2 && (
             <div className="border-t border-border pt-4">
               <BracketSeedEditor
-                slots={firstRoundSlots(seedTeams.length, byeRound)}
+                slots={firstRoundSlots(seedTeams.length)}
                 pool={seedTeams}
                 mode={seeding}
                 value={pairs}
@@ -237,11 +229,7 @@ export function ScheduleSettingsDialog({
                 courts={courts}
                 onModeChange={setSeeding}
                 onChange={setPairs}
-                autoHint={
-                  byeRound === "late"
-                    ? "Tim diurutkan berdasarkan nama; yang tidak kebagian lawan mendapat bye di babak berikutnya."
-                    : "Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
-                }
+                autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
               />
             </div>
           )}

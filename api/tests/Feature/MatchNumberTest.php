@@ -33,7 +33,7 @@ class MatchNumberTest extends TestCase
         ]);
     }
 
-    private function knockoutEvent(Organization $org, int $teams, ?string $byeRound = null): Event
+    private function knockoutEvent(Organization $org, int $teams): Event
     {
         $event = $org->events()->create([
             'plan_id' => $this->planId(),
@@ -50,7 +50,7 @@ class MatchNumberTest extends TestCase
             'slug' => 'sma',
             'participant_type' => 'team',
             'tournament_format' => 'knockout_single',
-            'bracket_config' => $byeRound === null ? null : ['bye_round' => $byeRound],
+            'bracket_config' => null,
             'registration_fee' => 0,
             'sort_order' => 0,
         ]);
@@ -191,37 +191,31 @@ class MatchNumberTest extends TestCase
     }
 
     /**
-     * The ragged shape is the one this was built for: 36 teams, 18 openers, and
-     * a round-two slot fed by two of them.
+     * A large field, where every opening slot but four is a bye — that is what
+     * padding 36 teams up to a bracket of 64 means, and the round above it is
+     * nothing but captions.
      */
-    public function test_it_captions_a_ragged_draw(): void
+    public function test_it_captions_a_large_padded_draw(): void
     {
         $user = User::factory()->create();
         $org = $this->org($user);
-        $event = $this->knockoutEvent($org, 36, 'late');
+        $event = $this->knockoutEvent($org, 36);
         $this->generate($user, $org, $event);
 
         $rows = $this->payload($user, $org, $event);
 
-        // Round 2 starts right after the 18 openers.
-        $this->assertSame(19, $rows[$this->slot($event, 2, 0)->id]['match_no']);
-        $this->assertSame('Pemenang P1', $rows[$this->slot($event, 2, 0)->id]['home_source']);
-        $this->assertSame('Pemenang P2', $rows[$this->slot($event, 2, 0)->id]['away_source']);
+        // Round 2 starts right after the 32 openers.
+        $this->assertSame(33, $rows[$this->slot($event, 2, 0)->id]['match_no']);
 
-        // 18 openers pair up exactly, so round 2 is full at nine — the odd slot
-        // is one round further on (9 → 5), and *that* is the one with a single
-        // feeder. Its empty side is not captioned, because nothing will ever
-        // arrive there.
-        $lonely = $this->slot($event, 3, 4);
-        $this->assertSame('Pemenang P27', $rows[$lonely->id]['home_source']);
-        // Not "TBD": nothing can ever arrive there, and promising an opponent
-        // who will not come is the one thing the wall chart never does.
-        $this->assertSame('Bye', $rows[$lonely->id]['away_source']);
+        // 28 byes fill the front of round 1, so the first round-2 slots are fed
+        // by walkovers and carry their teams already — no caption to give.
+        $this->assertNull($rows[$this->slot($event, 2, 0)->id]['home_source']);
 
-        // Compared against its neighbour, which has two feeders and says so.
-        $paired = $this->slot($event, 3, 0);
-        $this->assertSame('Pemenang P19', $rows[$paired->id]['home_source']);
-        $this->assertSame('Pemenang P20', $rows[$paired->id]['away_source']);
+        // The back of round 1 holds the four real ties; the slots they feed are
+        // the ones still waiting, and they name the tie by number.
+        $last = $this->slot($event, 2, 15);
+        $this->assertSame('Pemenang P31', $rows[$last->id]['home_source']);
+        $this->assertSame('Pemenang P32', $rows[$last->id]['away_source']);
     }
 
     /**

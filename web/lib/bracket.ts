@@ -30,18 +30,14 @@ export function bracketSizeFor(teams: number): number {
   return size;
 }
 
-/** Where a draw that is not a power of two takes its byes. */
-export type ByeRound = "first" | "late";
-
 /**
  * How many ties the opening round holds. Mirrors
  * BracketSeeding::firstRoundSlotCount(), and has to: the seed editor draws one
  * row per slot and the API validates `pairs.*.order` against the same number,
- * so a draw of 36 offering 32 rows would reject half of them at submit.
+ * so a count that disagreed would reject rows the form had just offered.
  */
-export function firstRoundSlots(teams: number, byeRound: ByeRound = "first"): number {
-  const entrants = byeRound === "late" ? Math.max(2, teams) : bracketSizeFor(Math.max(2, teams));
-  return Math.ceil(entrants / 2);
+export function firstRoundSlots(teams: number): number {
+  return bracketSizeFor(Math.max(2, teams)) / 2;
 }
 
 /**
@@ -199,6 +195,36 @@ export function isBye(m: Match): boolean {
  */
 export const matchNumberLabel = (m: Match): string | null =>
   m.match_no === null || m.match_no === undefined ? null : `P${m.match_no}`;
+
+/**
+ * Does this fixture answer to what the organizer typed?
+ *
+ * Matches against the three things people call a fixture by: its number
+ * ("P13", or just "13"), either team's name, and the court. The number is
+ * compared **exactly** once the query looks like one — a substring test would
+ * make "P1" return P1, P10 through P19 and P100, which is the opposite of
+ * useful for the one query that names a single fixture. A bare number is
+ * accepted because the "P" is the UI's spelling, not something anybody says
+ * out loud.
+ *
+ * Placeholder captions ("Pemenang P5") are deliberately **not** searched: they
+ * name a *different* fixture, so a search for P5 would also return every slot
+ * waiting on it — results the organizer has to read past to find the one they
+ * asked for.
+ */
+export function matchMatchesQuery(m: Match, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const asNumber = q.replace(/^p/, "");
+  if (/^\d+$/.test(asNumber) && m.match_no !== null && m.match_no !== undefined) {
+    if (String(m.match_no) === asNumber) return true;
+  }
+
+  return [m.home_team?.name, m.away_team?.name, m.venue].some((s) =>
+    s?.toLowerCase().includes(q)
+  );
+}
 
 /**
  * What to print on one side of a fixture that holds no team yet.

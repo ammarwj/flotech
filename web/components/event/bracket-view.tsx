@@ -184,33 +184,36 @@ export function BracketView({
   };
 
   /**
-   * How far off the centre of its band a card has to sit, in rows.
+   * How far off the centre of its band a card has to sit.
    *
-   * Zero whenever a cell's two feeders are the same height, and in a
-   * power-of-two draw they always are. A ragged draw breaks it at one cell per
-   * bracket: in a 36-team field the final's two semifinals span sixteen rows
-   * and two, so the point their lines meet is five-eighths of the way down the
-   * final's band rather than halfway. Centring the card there anyway leaves the
-   * connector arriving well above it — the one place the tree still looked
-   * wrong after the shared row grid went in.
+   * A card belongs on the point where the lines feeding it meet, which is its
+   * band's centre only while both feeders are the same height. A ragged draw
+   * puts one cell per bracket where they are not: in a 36-team field the
+   * final's two semifinals span sixteen rows and two, so their lines meet
+   * five-eighths of the way down the final's band, and centring the card there
+   * anyway leaves the connector arriving well above it.
+   *
+   * Every feeder counts, byes included — a bye is drawn like any other tie, so
+   * the line out of it is a line like any other.
    *
    * Returned as a percentage of the band's own height, which is what `top` on
-   * the cell resolves against — so the arithmetic here never needs to know how
-   * tall a row came out.
+   * the cell resolves against, so none of this needs to know how tall a row
+   * came out.
    */
   const cardShift = (col: number, i: number): string => {
     if (col === 0) return "0%";
 
     const [from, to] = rowSpan(col, i);
-    const belowCount = rounds[col - 1][1].length;
-    const feeders = [2 * i, 2 * i + 1]
-      .filter((k) => k < belowCount)
+    const below = rounds[col - 1][1];
+
+    const mids = [2 * i, 2 * i + 1]
+      .filter((k) => k < below.length)
       .map((k) => {
         const [a, b] = rowSpan(col - 1, k);
         return (a + b) / 2;
       });
 
-    const mid = feeders.reduce((sum, m) => sum + m, 0) / feeders.length;
+    const mid = mids.reduce((sum, m) => sum + m, 0) / mids.length;
 
     return `${((mid - (from + to) / 2) / (to - from)) * 100}%`;
   };

@@ -15,17 +15,11 @@ use Illuminate\Support\Str;
  * The SMA/SMK/MA draw of Panra Cup 2026, thirty-six schools, copied off the
  * organizer's own wall chart.
  *
- * It exists to exercise the two things that chart made obvious and the app
- * could not do: a field that is not a power of two drawn so that *everybody
- * plays round one*, and fixtures that can be referred to before their teams
- * exist. Thirty-six is the number that makes both visible — 36 → 18 → 9 → 5 →
- * 3 → 2 → 1 byes in three different rounds, and round two is nothing but
- * "Pemenang P1 vs Pemenang P2" all the way down.
- *
- * Two categories on purpose, the same thirty-six schools in each: one drawn
- * `late` (the wall chart) and one drawn `first` (what the app did before).
- * Comparing them on screen is the whole point — either shape alone looks
- * perfectly reasonable.
+ * It exists to exercise what that chart made obvious and the app could not do:
+ * referring to a fixture before its teams exist. Thirty-six is the number that
+ * makes it visible — padded to a bracket of 64, round two is nothing but
+ * "Pemenang P1 vs Pemenang P2" all the way down, and nothing on the chart can
+ * be named without the match numbers.
  *
  * Idempotent, keyed on the event slug. Run it explicitly; like the other demo
  * seeders it is not part of DatabaseSeeder:
@@ -88,25 +82,16 @@ class PanraCupSeeder extends Seeder
         $org = $this->makeOrg($owner);
         $event = $this->makeEvent($org);
 
-        // The same thirty-six schools drawn twice, so the two shapes can be put
-        // side by side. Asserting either on its own proves nothing — that is
-        // the point of the test suite too.
-        $ragged = $this->makeCategory($event, 'SMA/SMK/MA', 'late', 0);
-        $padded = $this->makeCategory($event, 'SMA/SMK/MA (bye di babak 1)', 'first', 1);
+        $category = $this->makeCategory($event, 'SMA/SMK/MA', 0);
 
-        foreach ([$ragged, $padded] as $category) {
-            foreach (self::SCHOOLS as $i => $school) {
-                $this->makeTeam($category, $school, $i);
-            }
+        foreach (self::SCHOOLS as $i => $school) {
+            $this->makeTeam($category, $school, $i);
         }
 
         $this->command?->info("Seeded \"{$event->name}\" untuk \"{$org->name}\".");
         $this->command?->table(
-            ['Kategori', 'Letak bye', 'Peserta'],
-            [
-                [$ragged->name, 'late (semua main dulu)', $ragged->teams()->count()],
-                [$padded->name, 'first (bagan 64)', $padded->teams()->count()],
-            ],
+            ['Kategori', 'Peserta'],
+            [[$category->name, $category->teams()->count()]],
         );
         $this->command?->info('Jadwal sengaja belum dibuat — jalankan "Buat Jadwal" dari dashboard untuk melihat bentuk bagannya.');
     }
@@ -157,7 +142,7 @@ class PanraCupSeeder extends Seeder
         );
     }
 
-    private function makeCategory(Event $event, string $name, string $byeRound, int $sort): EventCategory
+    private function makeCategory(Event $event, string $name, int $sort): EventCategory
     {
         return EventCategory::updateOrCreate(
             ['event_id' => $event->id, 'slug' => Str::slug($name)],
@@ -165,7 +150,7 @@ class PanraCupSeeder extends Seeder
                 'name' => $name,
                 'participant_type' => 'team',
                 'tournament_format' => 'knockout_single',
-                'bracket_config' => ['bye_round' => $byeRound, 'third_place' => true],
+                'bracket_config' => ['third_place' => true],
                 'registration_fee' => 350_000,
                 'max_teams' => count(self::SCHOOLS),
                 'sort_order' => $sort,

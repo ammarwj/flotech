@@ -120,3 +120,57 @@ Keputusan: **nomor diturunkan di server, per kategori**, bukan kolom tersimpan.
   tengah pengumpannya. **Bagan ganjil 0px, bagan pangkat dua 0px.** Mata tidak
   bisa membedakan meleset 30px dari lurus; angka bisa.
 
+## Bye tidak digambar sama sekali (seperti bracket cetak)
+
+Keluhan berikutnya: bagan penuh kotak "vs Bye". Itu memang bukan cara bracket
+dicetak — tim yang dapat bye digambar **sekali**, di babak tempat ia benar-benar
+masuk, dan cabangnya mulai lebih ke kanan.
+
+> **Invarian: kartu bye tidak dirender, SELNYA tetap ada.** Sel itu memiliki
+> baris di grid bersama yang dipakai seluruh kolom (`--bkt-rows`), jadi
+> menghapus selnya akan menggeser **setiap** kartu di atasnya keluar dari garis
+> pengumpannya. Yang dibuang hanya kartunya (`.bkt-cell-blank`, `min-height: 0`)
+> plus konektor yang keluar/masuk ke sana — garis yang berangkat dari sel kosong
+> adalah garis yang mulai di udara.
+
+> **Dua bentuk "bye", dan keduanya harus disembunyikan.** `isBye(m)` = baris
+> yang **sudah** ditulis bye (satu tim duduk, `status: finished`). Tapi di bagan
+> ragged ada bentuk kedua: slot yang **belum** ada isinya dan pengumpan
+> sebelahnya memang tidak pernah ada — server sudah mengkaptionnya `"Bye"`.
+> Yang ini bukan `isBye()` (statusnya masih `scheduled`), jadi butuh
+> `isDeadSide(m, side)` di `web/lib/bracket.ts` yang membaca caption server,
+> bukan menyusun ulang aturannya. Tanpa itu `P32` tetap berbunyi
+> "Pemenang P27 vs Bye". Ujilah dengan **membandingkan** bagan padded (bye
+> tertulis) dan ragged (bye belum tertulis) — satu bentuk saja lolos walau
+> bentuk lain masih mencetak "Bye".
+
+- **`cardShift()` membuang bye dari rata-ratanya.** Kartu duduk di titik temu
+  garis yang **digambar**, jadi kartu yang satu pengumpannya bye harus sejajar
+  dengan pengumpan yang nyata — itu yang membuat konektornya garis lurus, bukan
+  siku yang menjulur ke laga yang tidak ada di bagan.
+- **Efek sampingnya menjawab keluhan awal**: tanpa kartu bye, mode `first` pun
+  rapi. 36 tim di bagan 64 = 4 laga di kolom 1, 28 tim langsung tampil di kolom
+  2 — tidak ada lagi 28 kotak "vs Bye".
+
+## Dibatalkan: mode `late` dan penyembunyian kartu bye
+
+Dua keputusan dicabut setelah dilihat di layar sungguhan. Keduanya **benar
+secara data** — garis presisi 0px, bagan sesuai gambar — dan tetap dibuang
+karena bacaannya lebih buruk. Catatan ini ada supaya tidak dibangun ulang.
+
+- **`bracket_config.bye_round` dihapus seluruhnya** (konstanta, validasi,
+  parameter `roundSlots()`, field di `event-form.tsx`, tipe di `types/api.ts`,
+  key whitelist di `hybrid.ts`, prop `byeRound` di `schedule-settings-dialog`).
+  Satu bentuk = tidak ada setelan yang harus dijaga sejalan antara dua jalur.
+  `KnockoutByeRoundTest` dihapus; `MatchNumberTest::test_it_captions_a_ragged_draw`
+  ditulis ulang jadi `test_it_captions_a_large_padded_draw` (36 tim di bagan 64).
+- **Kartu "vs Bye" dikembalikan.** Menyembunyikannya meniru bracket cetak, tapi
+  di layar justru jadi aneh — cabang yang tiba-tiba mulai di kolom kedua tanpa
+  penjelasan. `isDeadSide()` dan `.bkt-cell-blank` dihapus, `cardShift()` kembali
+  menghitung semua pengumpan.
+
+**Yang TETAP dipertahankan** meski generation tidak lagi membuat bagan ragged,
+karena baris ragged masih ada di DB: `bracket_slots`, `roundSlotsFromFirst()`,
+`isLoneFeeder()`, dan seluruh perbaikan tata letak kolom bagan (grid baris
+bersama + `cardShift()`), yang **juga** memperbaiki bagan pangkat dua.
+

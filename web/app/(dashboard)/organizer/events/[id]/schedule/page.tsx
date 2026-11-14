@@ -10,8 +10,7 @@ import {
   Shuffle,
   Sparkles,
   Goal,
-  LayoutList,
-  CalendarRange,
+  Search,
   Plus,
   Trash2,
   Repeat,
@@ -57,7 +56,7 @@ import {
   isSwiss as isSwissFormat,
   isDecider,
   isThirdPlace,
-  matchNumberLabel,
+  matchMatchesQuery,
   phaseLabel,
   sideLabel,
 } from "@/lib/bracket";
@@ -81,6 +80,7 @@ import {
 import { isExportEnabled } from "@/lib/plan";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUrlState } from "@/lib/hooks/use-url-state";
@@ -105,7 +105,6 @@ import { MatchScheduleEditor } from "@/components/event/match-schedule-editor";
 import { TeamTags } from "@/components/event/team-tags";
 import { SetScoreEditor } from "@/components/event/set-score-editor";
 import { RubberScoreEditor } from "@/components/event/rubber-score-editor";
-import { MatchCalendar } from "@/components/event/match-calendar";
 import { MatchCardHeader } from "@/components/event/match-card-header";
 import { ScheduleSettingsDialog } from "@/components/event/schedule-settings-dialog";
 import { ManualMatchDialog } from "@/components/event/manual-match-dialog";
@@ -144,7 +143,13 @@ function ScheduleView() {
   const { params: urlState, setParams } = useUrlState();
   const tab = urlState.get("tab") as Tab | null;
   const categoryId = urlState.get("category") ?? "";
-  const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list");
+  /**
+   * Free-text fixture search. Deliberately **not** in the URL beside tab and
+   * category: those name where you are, this names what you are looking at
+   * right now, and a shared link that arrives pre-filtered hides fixtures the
+   * recipient never asked to hide.
+   */
+  const [search, setSearch] = useState("");
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [drawDialog, setDrawDialog] = useState(false);
   const [manualDialog, setManualDialog] = useState(false);
@@ -528,13 +533,26 @@ function ScheduleView() {
       ? dateKey
       : defaultDateKey(dateGroups, tz);
   const activeDateGroup = dateGroups.find((g) => g.key === activeDateKey);
+  /**
+   * Searching leaves the matchday behind on purpose. "P13" names one fixture
+   * in the whole category, and the organizer asking for it does not know which
+   * day it sits on — that is usually *why* they are searching. Filtering
+   * inside the active day would answer "tidak ada" while the fixture exists
+   * two tabs over.
+   */
+  const searching = search.trim().length > 0;
+  const searchHits = searching ? matches.filter((m) => matchMatchesQuery(m, search)) : [];
   const daySections = sections
     .map(
       ([label, list]) =>
         [
           label,
           list
-            .filter((m) => dateKeyOf(m.scheduled_at, tz) === activeDateKey)
+            .filter((m) =>
+              searching
+                ? matchMatchesQuery(m, search)
+                : dateKeyOf(m.scheduled_at, tz) === activeDateKey
+            )
             // Earliest kickoff first — the API orders by round/insertion, so without
             // this the top card is just whichever fixture was created first, not the
             // one that starts first. Unscheduled fixtures sink to the bottom; equal
@@ -901,91 +919,98 @@ function ScheduleView() {
           )
         ) : activeTab === "schedule" ? (
           <div>
-            <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-[var(--surface)] p-0.5 text-xs font-semibold">
-              {(
-                [
-                  ["list", "List", LayoutList],
-                  ["calendar", "Kalender", CalendarRange],
-                ] as const
-              ).map(([key, label, Icon]) => (
-                <button
-                  key={key}
-                  onClick={() => setScheduleView(key)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1 transition-colors",
-                    scheduleView === key
-                      ? "bg-[var(--brand-600)] text-white"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+            {/* One matchday at a time, like the public page — but not while
+                searching, when the result may be on any day and the tabs would
+                be filters on top of a filter. */}
+            {!searching && (
+              <MatchDayTabs
+                groups={dateGroups}
+                activeKey={activeDateKey}
+                onSelect={setDateKey}
+              />
+            )}
+
+            {/* The search box rides the day heading rather than sitting above
+                the matchday tabs: there it read as a filter *on* the tabs,
+                which is the one thing it is not — a hit may be on any day. The
+                heading is also the line it answers, since finding something
+                rewrites both halves of it. */}
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
+              <div className="grid min-w-0 gap-1">
+                <h2
+                  className="text-base font-bold"
+                  style={{ fontFamily: "var(--font-display)" }}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
-                </button>
-              ))}
+                  {searching
+                    ? `Hasil pencarian “${search.trim()}”`
+                    : fullDateLabel(activeDateGroup?.iso ?? null, tz)}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {searching
+                    ? `${searchHits.length} pertandingan · seluruh tanggal`
+                    : `${activeDateGroup?.list.length ?? 0} pertandingan`}
+                </p>
+              </div>
+
+              {/* Floored, not just capped: below ~14rem the placeholder is an
+                  ellipsis, and the example in it is the whole reason anybody
+                  knows "P13" is a thing you can type. */}
+              <div className="relative w-full min-w-[14rem] sm:w-64">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari P13, tim, lapangan…"
+                  aria-label="Cari pertandingan"
+                  className="h-9 pl-9"
+                />
+              </div>
             </div>
 
-            {scheduleView === "calendar" ? (
-              <MatchCalendar matches={matches} />
-            ) : (
-              <>
-                {/* One matchday at a time, like the public page. */}
-                <MatchDayTabs
-                  groups={dateGroups}
-                  activeKey={activeDateKey}
-                  onSelect={setDateKey}
-                />
-
-                <div className="mb-6 grid gap-1 border-b border-border pb-3">
-                  <h2
-                    className="text-base font-bold"
-                    style={{ fontFamily: "var(--font-display)" }}
-                  >
-                    {fullDateLabel(activeDateGroup?.iso ?? null, tz)}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {activeDateGroup?.list.length ?? 0} pertandingan
-                  </p>
-                </div>
-
-                {/* Sections (matchday / knockout round) are spaced apart from each
-                  other, not just from the day heading. */}
-                <div className="grid gap-8">
-                  {daySections.map(([label, list]) => (
-                    // Spacing via gap, not heading margins: a global `h1..h4 {
-                    // margin: 0 }` can out-rank margin utilities.
-                    <div key={label} className="grid gap-4">
-                      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        {label}
-                      </h3>
-                      {/* Wide screens fit two fixtures side by side. grid-cols-1
-                        is load-bearing on phones: an implicit `auto` track is
-                        sized by its widest child's min-content, so one card that
-                        refuses to shrink drags the whole page wider than the
-                        viewport. minmax(0,1fr) — what grid-cols-* compiles to —
-                        caps that. */}
-                      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
-                        {list.map((m) => (
-                          <MatchCard
-                            key={m.id}
-                            match={m}
-                            orgId={orgId!}
-                            eventId={eventId}
-                            setBased={setBased}
-                            rubbers={!!selectedCategory?.uses_rubbers}
-                            knockout={isKnockout || m.stage === "knockout" || isDecider(m)}
-                            phase={phaseOf(m)}
-                            courts={courts}
-                            bans={disciplineQuery.data?.matches?.[m.id] ?? []}
-                            sport={eventQuery.data?.sport ?? null}
-                            disciplineRules={disciplineQuery.data?.rules ?? null}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
+            {searching && searchHits.length === 0 && (
+              <p className="rounded-md border border-border bg-[var(--surface-2)] px-3 py-6 text-center text-sm text-muted-foreground">
+                Tidak ada pertandingan yang cocok.
+              </p>
             )}
+
+            {/* Sections (matchday / knockout round) are spaced apart from each
+                other, not just from the day heading. */}
+            <div className="grid gap-8">
+              {daySections.map(([label, list]) => (
+                // Spacing via gap, not heading margins: a global `h1..h4 {
+                // margin: 0 }` can out-rank margin utilities.
+                <div key={label} className="grid gap-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </h3>
+                  {/* Wide screens fit two fixtures side by side. grid-cols-1
+                    is load-bearing on phones: an implicit `auto` track is
+                    sized by its widest child's min-content, so one card that
+                    refuses to shrink drags the whole page wider than the
+                    viewport. minmax(0,1fr) — what grid-cols-* compiles to —
+                    caps that. */}
+                  <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+                    {list.map((m) => (
+                      <MatchCard
+                        key={m.id}
+                        match={m}
+                        orgId={orgId!}
+                        eventId={eventId}
+                        setBased={setBased}
+                        rubbers={!!selectedCategory?.uses_rubbers}
+                        knockout={isKnockout || m.stage === "knockout" || isDecider(m)}
+                        phase={phaseOf(m)}
+                        courts={courts}
+                        bans={disciplineQuery.data?.matches?.[m.id] ?? []}
+                        sport={eventQuery.data?.sport ?? null}
+                        disciplineRules={disciplineQuery.data?.rules ?? null}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : activeTab === "stats" ? (
           <div className="grid gap-8">
@@ -1115,10 +1140,6 @@ function ScheduleView() {
             hasMatches={matches.length > 0}
             pending={generate.isPending}
             seedTeams={engine === "knockout_single" ? approvedTeams : undefined}
-            // The category's own bye placement: a 36-team `late` draw seeds 18
-            // opening ties where a padded one seeds 32, and the API validates
-            // the slot numbers against the same count.
-            byeRound={config.bye_round ?? "first"}
             onClose={() => setScheduleDialog(false)}
             onSubmit={(options) => generate.mutate(options)}
           />

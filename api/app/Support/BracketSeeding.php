@@ -208,41 +208,25 @@ class BracketSeeding
     /**
      * How many ties each round of the draw holds, first round first.
      *
-     * Two shapes, and the difference is only where a field that isn't a power
-     * of two takes its byes:
+     * The draw is padded up to the next power of two and every bye is seated in
+     * the opening round: 36 teams become a bracket of 64, where eight of them
+     * play on day one and twenty-eight walk straight into round two. Slot
+     * counts then halve all the way down — 32, 16, 8, 4, 2, 1.
      *
-     * - `first` pads up to the next power of two and seats every bye in the
-     *   opening round. 36 teams become a bracket of 64: eight of them play on
-     *   day one and twenty-eight walk straight into round two. Slot counts
-     *   halve all the way down — 32, 16, 8, 4, 2, 1.
-     * - `late` pairs as many as it can every round and byes whoever is left
-     *   over. All 36 play round one and the byes appear where the numbers first
-     *   stop halving — 18, 9, 5, 3, 2, 1.
-     *
-     * The second shape is the one printed on most Indonesian school-cup draws,
-     * and it was unreachable before: the old code padded unconditionally.
-     *
-     * > A round of E entrants holds ceil(E / 2) ties, so it is short of a pair
-     * > by `2 * ceil(E / 2) - E`, which is **0 or 1 and never more**. That is
-     * > what keeps the whole tree on the positional edges advanceWinner() walks:
-     * > one bye, always the last slot of its round, so the ties below it still
-     * > pair up as (2k, 2k+1) into slot k. A bye anywhere else — or two of them
-     * > — would break that mapping and send a winner into a slot nobody fed.
+     * A second shape, pairing as many as possible each round and bye-ing the
+     * odd team out (36 → 18 → 9 → 5 → 3 → 2 → 1), was built and then removed:
+     * it reads worse on a chart than the padding it replaced, and one shape
+     * means no setting to keep two code paths honest about.
      *
      * @return array<int, int> slot count per round, index 0 = round 1
      */
-    public static function roundSlots(int $teams, string $byeRound = 'first'): array
+    public static function roundSlots(int $teams): array
     {
-        $entrants = max(2, $teams);
-
-        if ($byeRound !== 'late') {
-            $entrants = self::sizeFor($entrants);
-        }
-
+        $entrants = self::sizeFor(max(2, $teams));
         $slots = [];
 
         while ($entrants > 1) {
-            $entrants = intdiv($entrants + 1, 2); // ceil(entrants / 2)
+            $entrants = intdiv($entrants, 2);
             $slots[] = $entrants;
         }
 
@@ -250,19 +234,18 @@ class BracketSeeding
     }
 
     /** Ties in the opening round of a draw for $teams. */
-    public static function firstRoundSlotCount(int $teams, string $byeRound = 'first'): int
+    public static function firstRoundSlotCount(int $teams): int
     {
-        return self::roundSlots($teams, $byeRound)[0] ?? 1;
+        return self::roundSlots($teams)[0] ?? 1;
     }
 
     /**
      * Slot counts for the rounds above a first round of $slots ties.
      *
-     * The mirror of roundSlots() for a bracket that already exists: generation
-     * stored how wide its opening round is, and every round above it follows
-     * from that one number. Needed because the tree itself cannot say — a round
-     * of N ties was fed by either 2N or 2N-1, and nothing on the rows tells you
-     * which.
+     * The mirror of roundSlots() for a bracket that already exists. It still
+     * rounds up rather than halving cleanly, because manual seeding may hand it
+     * any slot count at all — and because a bracket drawn while the second
+     * shape existed is still in the database, with its rounds already written.
      *
      * @return array<int, int> slot count per round, index 0 = round 1
      */

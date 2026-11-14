@@ -637,19 +637,6 @@ export interface BracketConfig {
    * shows the derived number as a *placeholder* rather than writing it in.
    */
   swiss_rounds?: number | null;
-  /**
-   * Where a knockout draw that is not a power of two takes its byes.
-   *
-   * `first` (the default, and what every bracket drawn before this played)
-   * pads up to 8/16/32/64 and seats every bye in the opening round — 36 teams
-   * become a bracket of 64 where only eight play on day one. `late` pairs as
-   * many as it can each round and byes the odd team out where the numbers
-   * first stop halving: 36 → 18 → 9 → 5 → 3 → 2 → 1.
-   *
-   * Both are real tournament shapes, which is why it is asked rather than
-   * derived from the field size.
-   */
-  bye_round?: "first" | "late";
 }
 export type EventStatus =
   | "draft"

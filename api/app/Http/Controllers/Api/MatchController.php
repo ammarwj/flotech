@@ -94,13 +94,9 @@ class MatchController extends Controller
             $count = $this->schedule->generateRoundRobin($categoryModel);
         } elseif ($engine === 'knockout_single') {
             $approved = $categoryModel->teams()->where('status', 'approved')->pluck('id');
-            // How many opening ties the organizer is being offered, which is the
-            // category's own bye placement: a 36-team `late` draw seeds 18 of
-            // them where a padded one seeds 32.
-            $half = BracketSeeding::firstRoundSlotCount(
-                $approved->count(),
-                HybridConfig::fromCategory($categoryModel)->byeRound,
-            );
+            // How many opening ties the organizer is being offered: the draw is
+            // padded to a power of two, so a field of 36 seeds 32 of them.
+            $half = BracketSeeding::firstRoundSlotCount($approved->count());
 
             $seeding = $request->validate(BracketSeeding::validationRules($half, $approved));
 
