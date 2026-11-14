@@ -219,6 +219,7 @@ export const ADMIN_NAV: NavSection[] = [
       { href: "/admin/feature-definitions", label: "Definisi Fitur", icon: SlidersHorizontal },
       { href: "/admin/plan-orders", label: "Pembelian Paket", icon: BadgeCheck },
       { href: "/admin/discount-codes", label: "Kode Diskon", icon: TicketPercent },
+      { href: "/admin/domain-orders", label: "Pesanan Domain", icon: Globe },
     ],
   },
   {

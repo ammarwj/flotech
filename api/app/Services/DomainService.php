@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\DomainException;
 use App\Models\Event;
+use App\Support\DomainNames;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -140,8 +141,93 @@ class DomainService
 
         $event->forceFill([
             'custom_domain' => $domain,
+            // Assigning an outside domain clears the subdomain label: the two
+            // name one hostname between them, and a stale label would claim we
+            // issued a name the organizer actually brought — which is the one
+            // thing the column exists to distinguish. Releasing it here rather
+            // than leaving it also returns the label to the pool.
+            'subdomain' => null,
             'domain_verified_at' => $previous === $domain ? $event->domain_verified_at : null,
             'domain_certified_at' => $previous === $domain ? $event->domain_certified_at : null,
+            'domain_error' => null,
+            'domain_attempted_at' => null,
+        ])->save();
+
+        self::flush();
+        $this->publish();
+
+        return $event;
+    }
+
+    /**
+     * Attach a label under the platform's own domain, e.g. `liga-a` →
+     * `liga-a.floevent.id`.
+     *
+     * Writes BOTH columns: the label to `subdomain` and the composed hostname to
+     * `custom_domain`. That is what lets the certificate, the nginx vhost, the
+     * routing map and the white-label flag stay one mechanism — a subdomain is
+     * not a second kind of domain, it is a domain whose name we happened to
+     * issue. See the migration for which reader needs which column.
+     *
+     * Four refusals, and each is a different thing the organizer can act on.
+     * They live here rather than in a FormRequest for the reason assign()'s do:
+     * three of them have to look at other rows or at config.
+     *
+     * @throws DomainException
+     */
+    public function assignSubdomain(Event $event, string $input): Event
+    {
+        $label = DomainNames::normalizeLabel($input);
+
+        if (! DomainNames::isValidLabel($label)) {
+            throw new DomainException(
+                'Nama subdomain tidak valid. Pakai 3–40 huruf kecil, angka, atau tanda hubung — misalnya liga-a.',
+                ['subdomain' => ['Nama subdomain tidak valid.']],
+            );
+        }
+
+        if (DomainNames::isReservedLabel($label)) {
+            throw new DomainException(
+                'Nama itu dipakai platform dan tidak bisa diberikan ke event.',
+                ['subdomain' => ['Nama itu dipakai platform.']],
+            );
+        }
+
+        if ($event->status === 'draft') {
+            throw new DomainException(
+                'Event masih draf. Publikasikan dulu sebelum memasang subdomain.',
+                ['subdomain' => ['Event masih draf.']],
+            );
+        }
+
+        $host = DomainNames::hostFor($label);
+
+        // Both columns are checked, not just `subdomain`. An organizer who
+        // genuinely owns a name under a domain we also serve would be sitting in
+        // `custom_domain` with no label beside them, and issuing the same
+        // hostname to someone else would generate two server blocks for one name
+        // — nginx then serves whichever it loaded first.
+        $taken = Event::where('id', '!=', $event->id)
+            ->where(fn ($q) => $q->where('subdomain', $label)->orWhere('custom_domain', $host))
+            ->exists();
+
+        if ($taken) {
+            throw new DomainException(
+                'Subdomain itu sudah dipakai event lain.',
+                ['subdomain' => ['Subdomain sudah dipakai event lain.']],
+            );
+        }
+
+        $previous = $event->custom_domain;
+        if ($previous && $previous !== $host) {
+            $this->deleteCertificate($previous);
+        }
+
+        $event->forceFill([
+            'subdomain' => $label,
+            'custom_domain' => $host,
+            'domain_verified_at' => $previous === $host ? $event->domain_verified_at : null,
+            'domain_certified_at' => $previous === $host ? $event->domain_certified_at : null,
             'domain_error' => null,
             'domain_attempted_at' => null,
         ])->save();
@@ -159,6 +245,7 @@ class DomainService
 
         $event->forceFill([
             'custom_domain' => null,
+            'subdomain' => null,
             'domain_verified_at' => null,
             'domain_certified_at' => null,
             'domain_error' => null,
@@ -181,6 +268,13 @@ class DomainService
      * Checked before every certificate request, because a domain whose DNS is
      * not ready yet fails the ACME challenge — and five of those in an hour lock
      * out every other domain on the account, not just this one.
+     *
+     * Platform subdomains take this same path and need no branch: a wildcard
+     * `*.floevent.id` A record resolves every label to this IP, so the check
+     * passes for any label the moment the wildcard exists — and fails for all of
+     * them while it does not, which is precisely the outcome worth having. A
+     * `kind === 'subdomain'` exemption would skip straight to certbot and burn
+     * the shared failure quota on a zone we had simply forgotten to configure.
      */
     public function verifyDns(string $domain): bool
     {

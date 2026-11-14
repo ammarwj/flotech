@@ -47,6 +47,27 @@ class EventResource extends JsonResource
             'requires_payment_channel' => app(PaymentRails::class)->methodFor($this->resource) === 'gateway',
             'name' => $this->name,
             'slug' => $this->slug,
+            // The event's own hostname, and how far it has got. The organizer's
+            // domain page is the one screen that has to explain a pending DNS
+            // record or a failed certificate, so the error string comes with it
+            // — it is the only clue why activation did not take.
+            //
+            // `domain_status` is derived (Event::domainStatus): there is no
+            // column, because whether a domain is live is a fact about a
+            // certificate on disk. `subdomain` beside the hostname is what says
+            // we issued the name rather than the organizer bringing it.
+            'custom_domain' => $this->custom_domain,
+            'subdomain' => $this->subdomain,
+            'domain_status' => $this->domainStatus(),
+            'domain_error' => $this->domain_error,
+            // The A record a `own`-kind domain has to point at. Config, not a
+            // secret — it is in the public DNS of every domain already live —
+            // and published here so the instructions on that page cannot name a
+            // different IP than verifyDns() checks against.
+            'domain_server_ip' => (string) config('domains.server_ip'),
+            // Unlisted from /event, no platform footer. One method answers it
+            // (Event::isWhiteLabel), the same one PublicEventResource publishes.
+            'white_label' => $this->isWhiteLabel(),
             'sport_type' => $this->sport_type,
             // The sport itself, so the client doesn't have to look it up.
             'sport' => $this->sportDefinition(),

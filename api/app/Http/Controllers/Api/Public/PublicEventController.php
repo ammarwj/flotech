@@ -54,6 +54,18 @@ class PublicEventController extends Controller
     {
         $page = Event::query()
             ->where('status', '!=', 'draft')
+            // White-labelled events are unlisted. Having bought a domain, the
+            // event presents itself as its own site — being one card in our
+            // catalogue is the thing the add-on was bought to stop.
+            //
+            // Spelled as the two columns Event::isWhiteLabel() reads rather than
+            // filtered in PHP after the fact: this query paginates, and dropping
+            // rows from a page would leave `total` counting events the page does
+            // not contain — one row published on two pages while its neighbour
+            // vanishes, the same failure the `id` tiebreaker below exists to
+            // prevent. The two readings cannot drift because there is nothing
+            // else in that method: a live domain is a certified one.
+            ->where(fn ($q) => $q->whereNull('custom_domain')->orWhereNull('domain_certified_at'))
             // `plan` is what registrationIsPubliclyOpen() reads; without it the
             // relation is lazy-loaded once per card.
             ->with(['organization', 'categories', 'plan'])

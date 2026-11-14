@@ -63,6 +63,9 @@ class Event extends Model
         'name',
         'slug',
         'custom_domain',
+        // The label half of a platform subdomain. `custom_domain` still carries
+        // the full hostname — see the migration for why both are stored.
+        'subdomain',
         'domain_verified_at',
         'domain_certified_at',
         'domain_error',
@@ -393,6 +396,33 @@ class Event extends Model
     public function hasLiveDomain(): bool
     {
         return $this->domainStatus() === 'active';
+    }
+
+    /** Was the live hostname issued by us under floevent.id, or brought by the organizer? */
+    public function usesPlatformSubdomain(): bool
+    {
+        return $this->subdomain !== null;
+    }
+
+    /**
+     * Does this event present itself as its own site rather than as one entry in
+     * ours?
+     *
+     * White label is DERIVED from the live domain, and that is the whole design:
+     * there is no `white_label` column, so there is no second fact to drift. An
+     * event is unlisted from the public catalogue and drops the "Didukung
+     * flo-event" link exactly while its hostname is serving — and if the
+     * certificate is revoked or the domain released, it reappears in the
+     * catalogue instead of becoming unreachable from everywhere at once.
+     *
+     * Both halves read this one method: PublicEventController::index() excludes
+     * these rows, and PublicEventResource publishes the flag the page branches
+     * on. Recomposing it anywhere else is the `effective_payment_method` bug
+     * again — two readers of one rule, disagreeing invisibly.
+     */
+    public function isWhiteLabel(): bool
+    {
+        return $this->hasLiveDomain();
     }
 
     public function canTransitionTo(string $status): bool

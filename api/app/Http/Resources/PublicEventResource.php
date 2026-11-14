@@ -61,6 +61,18 @@ class PublicEventResource extends JsonResource
             // `registration_is_open` docblock refuses; a second boolean the
             // server already knows is the cheaper answer.
             'online_registration_enabled' => app(PlanGate::class)->allows($this->resource, 'online_registration'),
+            // This event presents itself as its own site: the page drops the
+            // "Didukung flo-event" back-link and the platform footer, and the
+            // catalogue does not list it.
+            //
+            // Published rather than derived client-side from a hostname, for the
+            // reason `registration_is_open` gives at length: the page is served
+            // on two hosts and the one answer has to come from one place.
+            // Reading `window.location` instead would also be wrong twice over —
+            // it mismatches on the server render, and an event with a live
+            // domain is white-labelled on BOTH hosts, including the
+            // `/{org}/{event}` URL that still resolves.
+            'white_label' => $this->isWhiteLabel(),
             // The *shape* of the form, which the public register page has to
             // have to render itself. The answers given to it stay organizer-side
             // — see the roster below, trimmed for the same reason: an address or

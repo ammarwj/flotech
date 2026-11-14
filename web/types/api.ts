@@ -424,6 +424,84 @@ export interface EventPlanOrder extends ManualPaymentFields {
   organization?: { id: string; name: string };
   /** Name of the super admin who accepted the receipt — approval log only. */
   verified_by?: string | null;
+
+  /**
+   * Domain add-on. `domain_kind` null means this order bought no domain, which
+   * is every ordinary plan purchase — branch on that, not on the price being
+   * zero: a super admin may legitimately set the configuration fee to 0.
+   *
+   * `amount` already includes `domain_addon_amount`. The setup/registration
+   * pair beside it is the split the invoice prints, never something to add on
+   * top — the same rule as `gateway_tax` inside `gateway_fee`.
+   */
+  domain_kind: DomainAddonKind | null;
+  /**
+   * The hostname bought, stored as a full name even for a subdomain. Null is
+   * legitimate on a `register` order: the organizer may name it later, or leave
+   * the choice to us, and the super admin fills it in on fulfilment.
+   */
+  domain_name: string | null;
+  domain_setup_amount: number;
+  domain_register_amount: number;
+  domain_addon_amount: number;
+  domain_fulfilled_at: string | null;
+  /** Registrar reference, or why the requested name could not be had. */
+  domain_note: string | null;
+  /**
+   * A human still has to go and register the name. Only `register` can ever be
+   * true — the other two kinds are fulfilled by being paid for.
+   */
+  awaiting_domain_fulfilment: boolean;
+  /**
+   * An order with no plan: a domain bought on its own. It is never a credit, so
+   * the billing page must not render it under "Paket siap dipakai" or print an
+   * empty plan name.
+   */
+  addon_only: boolean;
+  /** The event the domain is for — not always `event`, which is the credit ledger. */
+  domain_event?: {
+    id: string;
+    name: string;
+    slug: string;
+    custom_domain: string | null;
+    domain_status: DomainStatus;
+  } | null;
+  /** Name of the super admin who registered it — fulfilment log only. */
+  domain_fulfilled_by?: string | null;
+}
+
+/** Which of the three ways an organizer got their hostname. */
+export type DomainAddonKind = "own" | "register" | "subdomain";
+
+/**
+ * The add-on price list, from `/domain-addons`. Public, like `/plans`: it is
+ * quoted on the pricing page before anyone logs in.
+ */
+export interface DomainAddonQuote {
+  /** Charged on all three kinds — it is the work we do every time. */
+  setup_fee: number;
+  kinds: DomainAddonKind[];
+  /** `total` is registration + setup: what the organizer actually pays. */
+  tlds: { tld: string; price: number; total: number }[];
+  /** The domain subdomains are issued under, e.g. `floevent.id`. */
+  platform_domain: string;
+}
+
+/**
+ * What an add-on would cost, resolved by the server.
+ *
+ * `amount` is the figure that gets handed to ChannelPicker — never one worked
+ * out in the browser, for the reason DiscountPreview gives: a percentage fee
+ * previewed over a price nobody is charged is the `effective_payment_method` bug
+ * in another shape.
+ */
+export interface DomainAddonPreview {
+  domain_kind: DomainAddonKind;
+  /** Echoed as it will be stored, so the dialog can show the full hostname. */
+  domain_name: string | null;
+  setup_amount: number;
+  register_amount: number;
+  amount: number;
 }
 
 /**
@@ -1249,6 +1327,31 @@ export interface SportEvent {
   requires_payment_channel: boolean;
   name: string;
   slug: string;
+  /**
+   * The hostname this event is served on, null while it has none.
+   *
+   * Carries the FULL name even for a platform subdomain; `subdomain` beside it
+   * holds just the label, and a non-null one is what says we issued the name
+   * rather than the organizer bringing their own.
+   */
+  custom_domain: string | null;
+  subdomain: string | null;
+  /**
+   * How far the hostname has got. Derived server-side from a certificate on
+   * disk (`Event::domainStatus`) — there is no column, so do not recombine one
+   * from the timestamps.
+   */
+  domain_status: DomainStatus;
+  /** The last DNS or certbot failure, verbatim. The only clue why it did not take. */
+  domain_error: string | null;
+  /** The A record an organizer-owned domain must point at. "" disables the feature. */
+  domain_server_ip: string;
+  /**
+   * Unlisted from `/event`, no platform footer on the public page. One server
+   * method answers it (`Event::isWhiteLabel`), and `PublicEventResource`
+   * publishes the same one.
+   */
+  white_label: boolean;
   sport_type: SportType;
   /** The sport itself, embedded so the UI needn't look it up. */
   sport: SportDef | null;
@@ -1963,6 +2066,17 @@ export interface PublicEvent {
    * that does not exist only raises a question.
    */
   online_registration_enabled: boolean;
+  /**
+   * This event presents itself as its own site: no "Didukung flo-event"
+   * back-link, no platform footer, and it is not listed in `/event`.
+   *
+   * Derived server-side from the live hostname (`Event::isWhiteLabel`) — there
+   * is no column for it, so there is no second fact to drift. Do NOT recombine
+   * it from the host the page is served on: the `/{org}/{event}` URL still
+   * resolves for a white-labelled event, and it has to be white-labelled there
+   * too.
+   */
+  white_label: boolean;
   location_name: string | null;
   location_address: string | null;
   description: string | null;

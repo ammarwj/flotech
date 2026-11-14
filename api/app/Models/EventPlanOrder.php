@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasManualPayment;
+use App\Support\DomainAddons;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -33,6 +34,18 @@ class EventPlanOrder extends Model
         'discount_amount',
         'event_id',
         'consumed_at',
+        // Domain add-on. `domain_event_id` is kept apart from `event_id` on
+        // purpose — see the migration: the latter is unique and means "the
+        // credit was spent here", which an add-on has no claim on.
+        'domain_kind',
+        'domain_name',
+        'domain_setup_amount',
+        'domain_register_amount',
+        'domain_addon_amount',
+        'domain_event_id',
+        'domain_fulfilled_at',
+        'domain_fulfilled_by',
+        'domain_note',
         'idle_reminded_at',
         'upgrade_of_id',
         'invoice_number',
@@ -72,6 +85,14 @@ class EventPlanOrder extends Model
             'service_fee' => 'decimal:2',
             'consumed_at' => 'datetime',
             'idle_reminded_at' => 'datetime',
+            // Snapshot of the add-on price at checkout. `amount` already
+            // includes `domain_addon_amount`, so nothing downstream adds these
+            // on top — the pair beside it exists so a document can print the
+            // registration and configuration lines separately.
+            'domain_setup_amount' => 'decimal:2',
+            'domain_register_amount' => 'decimal:2',
+            'domain_addon_amount' => 'decimal:2',
+            'domain_fulfilled_at' => 'datetime',
             'paid_at' => 'datetime',
             'payment_proof_uploaded_at' => 'datetime',
             'payment_deadline_at' => 'datetime',
@@ -121,6 +142,18 @@ class EventPlanOrder extends Model
     {
         return $query->where('status', 'paid')
             ->whereNull('event_id')
+            // A domain add-on bought on its own is an order with no plan, and a
+            // plan is the entire substance of a credit. Without this, the first
+            // such purchase becomes the oldest "credit" in the pool and
+            // EventController::claimOrder() spends it: the organizer gets an
+            // event with `plan_id` null — zero entitlements, every gate shut —
+            // while the plan they actually paid for sits unspent. It also lands
+            // in the idle-credit reminder and in the "Paket siap dipakai"
+            // section, both of which would be naming something that was never a
+            // plan. Read off `plan_id` rather than `domain_kind`, because what
+            // disqualifies the row is the absence of a plan, not the presence of
+            // an add-on: an add-on bought *alongside* a plan is still a credit.
+            ->whereNotNull('plan_id')
             // An order that has been upgraded is not a credit any more. The
             // organizer only paid the difference, so its money is already spent
             // on whatever the successor now holds; handing it back to the pool
@@ -173,6 +206,64 @@ class EventPlanOrder extends Model
     public function isSuperseded(): bool
     {
         return $this->upgrades()->where('status', 'paid')->exists();
+    }
+
+    /** Was a domain bought on this order? */
+    public function hasDomainAddon(): bool
+    {
+        return $this->domain_kind !== null;
+    }
+
+    /**
+     * An add-on bought on its own, with no plan beside it.
+     *
+     * The shape `plan_id` was made nullable for. Every reader of an order has to
+     * tolerate it: there is no plan name to print, no features to publish, and
+     * scopeUnconsumed() excludes it so it is never mistaken for a credit.
+     */
+    public function isAddonOnly(): bool
+    {
+        return $this->plan_id === null && $this->hasDomainAddon();
+    }
+
+    /**
+     * Still waiting on a super admin to actually register the name.
+     *
+     * Only `register` ever waits: the other two kinds are fulfilled by being
+     * paid for, and activate() stamps them immediately. Derived from the stamp
+     * rather than stored as a status, for the same reason `awaiting_verification`
+     * is — a third spelling of "where has this got to" is a third thing that can
+     * disagree with the other two.
+     */
+    public function isAwaitingDomainFulfilment(): bool
+    {
+        return $this->domain_kind === DomainAddons::KIND_REGISTER
+            && $this->status === 'paid'
+            && $this->domain_fulfilled_at === null;
+    }
+
+    /** The super admin's domain registration queue, oldest paid first. */
+    public function scopeAwaitingDomainFulfilment(Builder $query): Builder
+    {
+        return $query->where('domain_kind', DomainAddons::KIND_REGISTER)
+            ->where('status', 'paid')
+            ->whereNull('domain_fulfilled_at')
+            // Oldest first, unlike every other list in the app: these are people
+            // who have paid and are waiting, the same reason the refund queue
+            // orders this way.
+            ->oldest('paid_at');
+    }
+
+    /** The event this order's domain add-on is for, if it has one. */
+    public function domainEvent(): BelongsTo
+    {
+        return $this->belongsTo(Event::class, 'domain_event_id');
+    }
+
+    /** The super admin who registered the name. */
+    public function domainFulfiller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'domain_fulfilled_by');
     }
 
     public function organization(): BelongsTo

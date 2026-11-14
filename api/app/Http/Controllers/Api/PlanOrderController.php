@@ -16,8 +16,11 @@ use App\Services\DiscountCodeService;
 use App\Services\EventPlanOrderService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
+use App\Support\DomainAddonRules;
+use App\Support\DomainAddons;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -69,11 +72,22 @@ class PlanOrderController extends Controller
         $org = $request->attributes->get('organization');
         $plan = Plan::findOrFail($request->input('plan_id'));
 
+        // The add-on is optional here, so an absent `domain_kind` means "no
+        // domain" — not a validation failure. CheckoutRequest carries the shape
+        // rules; the cross-row checks need a validator instance, which is why
+        // they run here rather than in the FormRequest.
+        $addonValidator = Validator::make($request->all(), DomainAddonRules::rules(), DomainAddonRules::messages());
+        DomainAddonRules::check($addonValidator);
+        $addon = $addonValidator->validate();
+
         $result = $this->orders->checkout(
             $org,
             $plan,
             $request->string('payment_channel')->toString() ?: null,
             $request->string('discount_code')->toString() ?: null,
+            ($addon['domain_kind'] ?? null) === null
+                ? null
+                : ['kind' => $addon['domain_kind'], 'domain' => $addon['domain_name'] ?? null],
         );
 
         return ApiResponse::success($this->checkoutPayload($result), 'Checkout dibuat', 201);
@@ -170,6 +184,94 @@ class PlanOrderController extends Controller
         $result = $this->orders->checkoutUpgrade($planOrder, Plan::findOrFail($data['plan_id']), $data['payment_channel'] ?? null);
 
         return ApiResponse::success($this->checkoutPayload($result), 'Tagihan upgrade dibuat', 201);
+    }
+
+    /**
+     * What a domain add-on would cost, before committing to it.
+     *
+     * Runs the same DomainAddons::quote() the checkout does, so nothing priced
+     * here can be billed differently at the till — the same arrangement as
+     * `plan-orders/discount-preview`, and for the same reason: the client never
+     * computes a price itself, and the figure returned here is what gets handed
+     * to ChannelPicker so the percentage-fee preview is built on the amount
+     * actually charged.
+     *
+     * Validation of the *name* deliberately runs here too, through the shared
+     * rules — a subdomain already taken, a reserved label, an unsellable TLD are
+     * all things the organizer can act on, and finding out at the till instead
+     * means paying first.
+     */
+    public function domainPreview(Request $request): JsonResponse
+    {
+        $validator = Validator::make(
+            $request->all(),
+            DomainAddonRules::rules(required: true),
+            DomainAddonRules::messages(),
+        );
+
+        DomainAddonRules::check($validator);
+
+        $data = $validator->validate();
+        $quote = DomainAddons::quote($data['domain_kind'], $data['domain_name'] ?? null);
+
+        return ApiResponse::success([
+            'domain_kind' => $data['domain_kind'],
+            // Echoed in the shape it will be stored in, so the dialog can show
+            // the organizer the full hostname they are buying rather than the
+            // label they typed.
+            'domain_name' => DomainAddonRules::hostFor($data['domain_kind'], $data['domain_name'] ?? null),
+            'setup_amount' => $quote['setup'],
+            'register_amount' => $quote['registration'],
+            'amount' => $quote['total'],
+        ], 'Harga add-on domain');
+    }
+
+    /**
+     * Buy a domain for an event that already exists.
+     *
+     * Separate from `plan-orders/checkout`, which takes the add-on alongside a
+     * plan. One service method could not serve both: that one spends a plan
+     * price and leaves `event_id` null for a credit to be claimed later, this
+     * one has an event in hand and no plan at all.
+     */
+    public function domainCheckout(Request $request): JsonResponse
+    {
+        /** @var Organization $org */
+        $org = $request->attributes->get('organization');
+
+        // Scoped to the organization, not merely proven to exist: buying a
+        // domain for someone else's event would attach a hostname they never
+        // asked for. Resolved before validation so the availability check below
+        // can exclude this event's own outstanding order — re-buying a domain
+        // for the event that already holds it is a renewal, not a collision.
+        $eventId = (string) $request->input('event_id');
+        $event = $eventId === '' ? null : $org->events()->whereKey($eventId)->first();
+
+        if (! $event) {
+            return ApiResponse::error(
+                'Event itu tidak ditemukan.',
+                ['event_id' => ['Pilih event yang akan dipasangi domain.']],
+                422,
+            );
+        }
+
+        $validator = Validator::make($request->all(), [
+            'payment_channel' => ['nullable', 'string'],
+            ...DomainAddonRules::rules(required: true),
+        ], DomainAddonRules::messages());
+
+        DomainAddonRules::check($validator, excluding: $event);
+
+        $data = $validator->validate();
+
+        $result = $this->orders->checkoutAddon(
+            $org,
+            $event,
+            ['kind' => $data['domain_kind'], 'domain' => $data['domain_name'] ?? null],
+            $data['payment_channel'] ?? null,
+        );
+
+        return ApiResponse::success($this->checkoutPayload($result), 'Checkout domain dibuat', 201);
     }
 
     /**

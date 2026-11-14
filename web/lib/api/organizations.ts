@@ -4,6 +4,7 @@ import type {
   ApiEnvelope,
   CheckoutResult,
   DiscountPreview,
+  DomainAddonKind,
   Organization,
   PublicOrganization,
   SocialLinks,
@@ -66,15 +67,33 @@ export async function updateOrganization(
  * `paymentChannel` is required exactly when the org's gateway is live (see
  * `org.payment_gateway_enabled`) — ignored on the manual rail.
  */
+/**
+ * Buy a plan, optionally with a domain add-on on the same invoice.
+ *
+ * The add-on is a parameter here rather than its own call because it is the same
+ * purchase: one order row, one invoice number, one payment. Buying a domain for
+ * an event that already exists is the other door —
+ * `checkoutDomainAddon()` in `lib/api/domains.ts`.
+ */
 export async function checkoutPlan(
   orgId: string,
   planId: string,
   paymentChannel?: string,
-  discountCode?: string
+  discountCode?: string,
+  addon?: { kind?: DomainAddonKind; name?: string }
 ): Promise<CheckoutResult> {
   const { data } = await apiClient.post<ApiEnvelope<CheckoutResult>>(
     `/organizations/${orgId}/plan-orders/checkout`,
-    { plan_id: planId, payment_channel: paymentChannel, discount_code: discountCode }
+    {
+      plan_id: planId,
+      payment_channel: paymentChannel,
+      discount_code: discountCode,
+      // Absent, not null: the server reads a missing `domain_kind` as "no
+      // add-on", and an explicit null would have to be tolerated by the
+      // `Rule::in` beside it.
+      domain_kind: addon?.kind,
+      domain_name: addon?.name,
+    }
   );
   return data.data;
 }

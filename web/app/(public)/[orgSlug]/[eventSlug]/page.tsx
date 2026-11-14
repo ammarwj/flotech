@@ -394,11 +394,24 @@ function PublicEventView() {
       {/* ===== HERO ===== */}
       <header className="ehero">
         <div className="container ehero-inner">
-          <div className="ehero-top">
-            <Link href={catalogUrl} className="ehero-back">
-              <ArrowLeft />
-              <span className="min-w-0 truncate">Didukung flo-event</span>
-            </Link>
+          {/* `space-between` with one child left-aligns it, and the controls on
+              the right are the only child left once the back-link goes. */}
+          <div className={ev.white_label ? "ehero-top ehero-top-solo" : "ehero-top"}>
+            {/* The add-on the organizer paid for is partly this link's absence:
+                a white-labelled event presents itself as its own site, so the
+                back-arrow out to our catalogue goes. Read from the server's
+                `white_label` rather than from `onCustomDomain`, and the
+                difference is load-bearing — the `/{org}/{event}` URL still
+                resolves for a white-labelled event (anyone with the old link, or
+                a bookmark), and it has to be white-labelled there too. The flag
+                is also the only thing that knows the certificate is live; a
+                hostname alone does not. */}
+            {!ev.white_label && (
+              <Link href={catalogUrl} className="ehero-back">
+                <ArrowLeft />
+                <span className="min-w-0 truncate">Didukung flo-event</span>
+              </Link>
+            )}
             <div className="flex shrink-0 items-center gap-2">
               {/* Widget akun disembunyikan di custom domain: sesinya memang tidak
                   ikut ke sini, jadi ia hanya akan menawarkan login yang gagal. */}
@@ -950,17 +963,24 @@ function PublicEventView() {
       )}
 
       {/* ===== FOOTER ===== */}
-      <footer className="footer !py-7">
-        <div className="container">
-          <div
-            className="footer-bottom"
-            style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
-          >
-            <Logo href={homeUrl} />
-            <span>Halaman event ini dibuat dengan floevent · © 2026</span>
+      {/* The other half of the add-on: no platform logo, no "dibuat dengan
+          floevent". Removed outright rather than replaced with the organizer's
+          own mark — we have no footer of theirs to put there, and a bar holding
+          nothing is a visible seam (the same call `Proof()` makes when every
+          metric is off). */}
+      {!ev.white_label && (
+        <footer className="footer !py-7">
+          <div className="container">
+            <div
+              className="footer-bottom"
+              style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}
+            >
+              <Logo href={homeUrl} />
+              <span>Halaman event ini dibuat dengan floevent · © 2026</span>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </EventTimezoneProvider>
   );
 }

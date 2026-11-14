@@ -113,6 +113,37 @@ class PlatformSettings
             'label' => 'Fee platform ke organizer (Rp)',
             'description' => 'Margin platform pada pembelian paket event oleh organizer. Nominal tetap per transaksi, ditambahkan ke tagihan organizer di atas fee gateway.',
         ],
+        // Domain add-on. Three prices, not one: the configuration fee is the
+        // work we do on every kind, while the two registration prices are what
+        // a registrar charges us and move independently of it. Read through
+        // App\Support\DomainAddons, never directly — it is what the checkout
+        // and the price preview both ask, so neither can quote a price the
+        // other refuses. Adding a TLD means a key here AND an entry in
+        // DomainAddons::REGISTRABLE_TLDS: a TLD with no setting quotes as free.
+        'domain_setup_fee_amount' => [
+            'config' => 'domains.setup_fee_amount',
+            'type' => 'money',
+            'min' => 0,
+            'max' => 10_000_000,
+            'label' => 'Biaya konfigurasi domain (Rp)',
+            'description' => 'Dibebankan pada ketiga jenis add-on domain — domain milik sendiri, domain yang dibeli dari flo-event, maupun subdomain floevent.id. Ini biaya pemasangan DNS, sertifikat, dan konfigurasi server.',
+        ],
+        'domain_register_com_amount' => [
+            'config' => 'domains.register_com_amount',
+            'type' => 'money',
+            'min' => 0,
+            'max' => 50_000_000,
+            'label' => 'Harga registrasi domain .com (Rp / tahun)',
+            'description' => 'Hanya untuk organizer yang membeli domain baru dari flo-event. Ditambahkan di atas biaya konfigurasi.',
+        ],
+        'domain_register_id_amount' => [
+            'config' => 'domains.register_id_amount',
+            'type' => 'money',
+            'min' => 0,
+            'max' => 50_000_000,
+            'label' => 'Harga registrasi domain .id (Rp / tahun)',
+            'description' => 'Hanya untuk organizer yang membeli domain baru dari flo-event. Ditambahkan di atas biaya konfigurasi.',
+        ],
     ];
 
     /**

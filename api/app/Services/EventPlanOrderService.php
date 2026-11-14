@@ -12,6 +12,8 @@ use App\Models\EventPlanOrder;
 use App\Models\User;
 use App\Notifications\PlanOrderPaid;
 use App\Notifications\PlanOrderInvoiceIssued;
+use App\Support\DomainAddons;
+use App\Support\DomainNames;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -67,10 +69,32 @@ class EventPlanOrderService
      *
      * @throws \Illuminate\Validation\ValidationException  when the code is refused
      */
-    public function checkout(Organization $org, Plan $plan, ?string $channel = null, ?string $discountCode = null): array
-    {
+    public function checkout(
+        Organization $org,
+        Plan $plan,
+        ?string $channel = null,
+        ?string $discountCode = null,
+        ?array $addon = null,
+    ): array {
         $discount = $this->discounts->resolve($discountCode, $org, $plan);
         $amount = $discount === null ? (float) $plan->price : $discount['amount'];
+
+        // The add-on is priced here and folded into `amount` BEFORE
+        // resolvePayment(), for the same reason the discount is: gateway fees
+        // are a percentage of `$amount` and platformDestination() branches on
+        // `$amount <= 0`. Adding it afterwards would charge Midtrans one number
+        // and record another.
+        //
+        // The discount never touches it. A code is sold against a plan
+        // (`discount_code_plan` is plan-keyed, and DiscountCodeService::resolve
+        // takes a Plan), so letting it eat into a domain price would discount
+        // something it was never scoped to — and `paidTowardsPlan()`, which
+        // prices upgrades off `amount`, would start crediting domain money
+        // towards a plan. `discount_amount` therefore stays computed against the
+        // plan price alone, and the add-on is added on top of the discounted
+        // figure.
+        $quote = $this->quoteAddon($addon);
+        $amount = round($amount + $quote['total'], 2);
 
         // Asked *before* the row exists: a refused checkout must not burn an
         // invoice number, and nextNumber() has no way to hand one back.
@@ -78,6 +102,7 @@ class EventPlanOrderService
 
         $order = $org->planOrders()->create([
             'plan_id' => $plan->id,
+            ...$this->addonColumns($addon, $quote),
             'invoice_number' => $this->nextNumber('invoice'),
             'amount' => $amount,
             // The FK is the usage ledger; the three values beside it are a
@@ -107,6 +132,176 @@ class EventPlanOrderService
         }
 
         return $result;
+    }
+
+    /**
+     * Buy a domain add-on on its own, for an event that already exists.
+     *
+     * The second half of "both ways": an add-on normally rides along with the
+     * plan at checkout, but an organizer who decides a month in that they want
+     * their own hostname should not have to buy a second plan to get one. One
+     * order shape serves both — this one simply has no plan.
+     *
+     * `plan_id` null is what makes it an add-on-only order, and
+     * scopeUnconsumed() excludes exactly that so it is never mistaken for a
+     * credit. `domain_event_id` is stamped straight away rather than left for a
+     * claim: the event is sitting right here, which is the whole difference from
+     * the plan path.
+     *
+     * No discount code. Codes are plan-keyed (`discount_code_plan`) and
+     * DiscountCodeService::resolve() takes a Plan, so there is nothing here for
+     * one to be resolved against — the same reason `plan-orders/{order}/upgrade`
+     * takes none.
+     *
+     * @param  array{kind: string, domain?: string|null}  $addon
+     *
+     * @throws PaymentException|PlanFeatureException
+     */
+    public function checkoutAddon(Organization $org, Event $event, array $addon, ?string $channel = null): array
+    {
+        if ($event->organization_id !== $org->id) {
+            throw new PlanFeatureException('Event itu bukan milik organisasi ini.', ['feature' => 'domain_addon_event']);
+        }
+
+        // Refused before the row exists, so a rejected purchase burns no invoice
+        // number. An outstanding bill is reopened rather than duplicated, the
+        // same rule checkoutUpgrade() follows: two live bills for one domain
+        // would let the organizer settle both.
+        $pending = $org->planOrders()
+            ->whereNotNull('domain_kind')
+            ->where('domain_event_id', $event->id)
+            ->where('status', 'past_due')
+            ->latest()
+            ->first();
+
+        if ($pending) {
+            return $this->pay($pending, $channel);
+        }
+
+        $quote = $this->quoteAddon($addon);
+        $payment = $this->resolvePayment($quote['total'], $channel);
+
+        $order = $org->planOrders()->create([
+            // No plan. Every reader of an order has to tolerate this — see
+            // EventPlanOrder::isAddonOnly().
+            'plan_id' => null,
+            ...$this->addonColumns($addon, $quote),
+            'domain_event_id' => $event->id,
+            'invoice_number' => $this->nextNumber('invoice'),
+            'amount' => $quote['total'],
+            'status' => 'past_due',
+            'payment_method' => $payment['bank'] !== null ? 'manual' : 'gateway',
+            'payment_channel' => $payment['channel'],
+            'gateway_fee' => $payment['gateway_fee'],
+            'gateway_tax' => $payment['gateway_tax'],
+            'service_fee' => $payment['service_fee'],
+            'payment_deadline_at' => $payment['bank'] !== null ? $this->rails->deadline() : null,
+        ]);
+
+        $result = $this->start($order, $payment['bank'], $payment['midtrans_payments']);
+
+        if ($order->refresh()->status === 'past_due') {
+            $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderInvoiceIssued($o));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Price an add-on, or zeros when there is none.
+     *
+     * Goes through DomainAddons so the checkout and the price preview endpoint
+     * cannot answer differently — the same arrangement as
+     * DiscountCodeService::resolve() serving both the till and
+     * `discount-preview`.
+     *
+     * Validation of the *name* is not here: that belongs to DomainService, which
+     * is the only thing allowed to attach one, and it runs at activate(). What
+     * is checked here is only what pricing depends on — the kind, and for a
+     * registration the TLD, because an unsellable TLD prices at zero and would
+     * otherwise be billed as free.
+     *
+     * @param  array{kind: string, domain?: string|null}|null  $addon
+     * @return array{setup: float, registration: float, total: float}
+     *
+     * @throws PlanFeatureException
+     */
+    protected function quoteAddon(?array $addon): array
+    {
+        if ($addon === null) {
+            return ['setup' => 0.0, 'registration' => 0.0, 'total' => 0.0];
+        }
+
+        $kind = $addon['kind'];
+
+        if (! in_array($kind, DomainAddons::KINDS, true)) {
+            throw new PlanFeatureException('Jenis add-on domain tidak dikenal.', ['feature' => 'domain_addon_kind']);
+        }
+
+        if ($kind === DomainAddons::KIND_REGISTER) {
+            $tld = DomainAddons::tldOf((string) ($addon['domain'] ?? ''));
+
+            if (! array_key_exists($tld, DomainAddons::REGISTRABLE_TLDS)) {
+                throw new PlanFeatureException(
+                    'Ekstensi domain itu belum dijual di flo-event.',
+                    ['feature' => 'domain_addon_tld'],
+                );
+            }
+        }
+
+        return DomainAddons::quote($kind, $addon['domain'] ?? null);
+    }
+
+    /**
+     * The add-on columns an order row carries, prices snapshotted.
+     *
+     * Spelled once because three call sites write them (plan checkout, add-on
+     * checkout, and the event-creation claim reads them back) and a second copy
+     * is how one of them starts storing a price the invoice does not print.
+     *
+     * @param  array{kind: string, domain?: string|null}|null  $addon
+     * @param  array{setup: float, registration: float, total: float}  $quote
+     * @return array<string, mixed>
+     */
+    protected function addonColumns(?array $addon, array $quote): array
+    {
+        if ($addon === null) {
+            return [];
+        }
+
+        return [
+            'domain_kind' => $addon['kind'],
+            // Normalised at storage time, so the invoice, the certificate and
+            // the routing map all name the same string. A subdomain is stored
+            // as its full hostname for the reason given in the migration; the
+            // label is written to the event, not to the order.
+            'domain_name' => $this->addonHost($addon),
+            'domain_setup_amount' => $quote['setup'],
+            'domain_register_amount' => $quote['registration'],
+            'domain_addon_amount' => $quote['total'],
+        ];
+    }
+
+    /**
+     * The hostname an add-on is for, as stored on the order.
+     *
+     * Null is legitimate for `register`: an organizer may buy "a .id domain" and
+     * tell us the name later, or ask us to pick one. The super admin fills it in
+     * when they fulfil the order.
+     *
+     * @param  array{kind: string, domain?: string|null}  $addon
+     */
+    protected function addonHost(array $addon): ?string
+    {
+        $raw = trim((string) ($addon['domain'] ?? ''));
+
+        if ($raw === '') {
+            return null;
+        }
+
+        return $addon['kind'] === DomainAddons::KIND_SUBDOMAIN
+            ? DomainNames::hostFor(DomainNames::normalizeLabel($raw))
+            : DomainService::normalize($raw);
     }
 
     /**
@@ -378,6 +573,10 @@ class EventPlanOrderService
             $this->applyUpgrade($order);
         }
 
+        if ($order->hasDomainAddon()) {
+            $this->applyDomainAddon($order->refresh());
+        }
+
         if (! $alreadyPaid) {
             $this->mail($order, fn (EventPlanOrder $o) => new PlanOrderPaid($o));
         }
@@ -423,6 +622,128 @@ class EventPlanOrderService
                 Event::whereKey($eventId)->update(['plan_id' => $order->plan_id]);
             }
         });
+    }
+
+    /**
+     * Put a paid domain add-on into effect.
+     *
+     * The three kinds part ways here, and only here:
+     *
+     *  - `subdomain` — we hold the zone, so the name is ours to issue. Attached
+     *    immediately; `domains:sync` picks it up and certifies it within the
+     *    hour.
+     *  - `own` — the organizer holds the name. Attached immediately too, which
+     *    is what publishes the port-80 vhost that the ACME challenge needs;
+     *    certification then waits on their DNS, which is outside our control.
+     *  - `register` — nobody holds the name yet. Left unstamped, which is what
+     *    puts it in the super admin's queue (see scopeAwaitingDomainFulfilment).
+     *    Attaching a name we have not bought would publish a vhost for a
+     *    hostname that resolves to someone else.
+     *
+     * Runs under activate(), so it must survive a re-delivered webhook: every
+     * write is the same value the second time round, and assign() is a no-op
+     * when the name has not changed (it deliberately keeps the certificate in
+     * that case, so a replay cannot knock a live domain offline).
+     *
+     * A failure here is logged, never rethrown. The money has moved and the
+     * order is paid; bubbling a DNS or nginx problem into the Midtrans webhook
+     * would provoke a retry and, worse, leave the organizer's payment unrecorded
+     * over something they can fix from the domain page. Same call the mail()
+     * wrapper below makes.
+     */
+    protected function applyDomainAddon(EventPlanOrder $order): void
+    {
+        // `register` waits for a human. Nothing to stamp, nothing to attach.
+        if ($order->domain_kind === DomainAddons::KIND_REGISTER) {
+            return;
+        }
+
+        // Fulfilled by being paid for: there is no work left for anyone. Stamped
+        // rather than left null so these never show up in a queue that exists
+        // for orders someone has to act on.
+        $order->update(['domain_fulfilled_at' => $order->domain_fulfilled_at ?? Carbon::now()]);
+
+        $event = $order->domainEvent;
+
+        // Bought alongside a plan and the event does not exist yet. The claim in
+        // EventController::store() carries the add-on over and attaches it
+        // there — this is the ordinary path for a checkout, not an error.
+        if (! $event || $order->domain_name === null) {
+            return;
+        }
+
+        $this->attachDomain($event, $order);
+    }
+
+    /**
+     * Hand `$order`'s domain to `$event`.
+     *
+     * Shared by applyDomainAddon() and the event-creation claim, so a domain
+     * bought before the event existed is attached by exactly the same code as
+     * one bought after — two copies would differ the day one of them forgot to
+     * swallow its errors or forgot the subdomain branch.
+     */
+    public function attachDomain(Event $event, EventPlanOrder $order): void
+    {
+        if ($order->domain_name === null) {
+            return;
+        }
+
+        try {
+            $domains = app(DomainService::class);
+
+            if ($order->domain_kind === DomainAddons::KIND_SUBDOMAIN) {
+                // Hand it the label. assignSubdomain() writes both columns, and
+                // the label is what distinguishes a name we issued from one the
+                // organizer brought.
+                $domains->assignSubdomain($event, $order->domain_name);
+
+                return;
+            }
+
+            $domains->assign($event, $order->domain_name);
+        } catch (Throwable $e) {
+            Log::error('Gagal memasang domain add-on', [
+                'plan_order_id' => $order->id,
+                'event_id' => $event->id,
+                'domain' => $order->domain_name,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * A super admin has registered (or failed to register) the name an organizer
+     * bought.
+     *
+     * The one kind that needs a human: `own` and `subdomain` are fulfilled by
+     * activate(). Attaching the domain is the same call the other two kinds
+     * make, so a registered name behaves identically from here on.
+     *
+     * @throws PaymentException
+     */
+    public function fulfilDomain(EventPlanOrder $order, User $admin, ?string $domain, ?string $note): void
+    {
+        if (! $order->isAwaitingDomainFulfilment()) {
+            throw new PaymentException('Pesanan domain ini tidak sedang menunggu registrasi.');
+        }
+
+        $order->update([
+            'domain_fulfilled_at' => Carbon::now(),
+            'domain_fulfilled_by' => $admin->id,
+            // The name may differ from what was asked for — the requested one
+            // was taken, or the organizer left it to us. Written over the
+            // request rather than beside it: what matters afterwards is the name
+            // they actually got, and `domain_note` carries the explanation.
+            'domain_name' => $domain === null ? $order->domain_name : DomainService::normalize($domain),
+            'domain_note' => $note,
+        ]);
+
+        $event = $order->refresh()->domainEvent;
+
+        if ($event) {
+            $this->attachDomain($event, $order);
+        }
     }
 
     /**

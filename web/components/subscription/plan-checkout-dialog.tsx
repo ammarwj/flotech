@@ -13,8 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChannelPicker } from "@/components/payment/channel-picker";
+import { DomainAddonField } from "@/components/domain/domain-addon-field";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import type { DiscountPreview, Plan } from "@/types/api";
+import type { DiscountPreview, DomainAddonPreview, Plan } from "@/types/api";
 
 /**
  * The plan checkout dialog: discount code, price breakdown, channel picker.
@@ -66,8 +67,16 @@ export function PlanCheckoutDialog({
   // channel picker quote a fee on a price nobody is being charged.
   const [applied, setApplied] = useState<DiscountPreview | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
+  // Server-priced too, and for the same reason as the discount: the fee preview
+  // below is built from the total, so an add-on costed in the browser would
+  // quote a percentage of a price nobody is charged.
+  const [domain, setDomain] = useState<DomainAddonPreview | null>(null);
 
-  const payable = applied ? applied.amount : (plan?.price ?? 0);
+  // The discount comes off the plan only — codes are sold against plans, so
+  // letting one eat into a domain price would discount something it was never
+  // scoped to. The add-on is added on top of the discounted figure, which is
+  // exactly the arithmetic EventPlanOrderService::checkout() performs.
+  const payable = (applied ? applied.amount : (plan?.price ?? 0)) + (domain?.amount ?? 0);
   // Free after a full discount: there is no channel to pick, and the server
   // settles the order outright.
   const needsChannel = gatewayLive && payable > 0;
@@ -77,6 +86,7 @@ export function PlanCheckoutDialog({
     setCodeInput("");
     setApplied(null);
     setCodeError(null);
+    setDomain(null);
   };
 
   const close = () => {
@@ -102,8 +112,23 @@ export function PlanCheckoutDialog({
   });
 
   const checkout = useMutation({
-    mutationFn: ({ plan, channel, code }: { plan: Plan; channel: string | null; code?: string }) =>
-      checkoutPlan(orgId!, plan.id, channel ?? undefined, code),
+    mutationFn: ({
+      plan,
+      channel,
+      code,
+      addon,
+    }: {
+      plan: Plan;
+      channel: string | null;
+      code?: string;
+      addon?: DomainAddonPreview | null;
+    }) =>
+      checkoutPlan(orgId!, plan.id, channel ?? undefined, code, {
+        kind: addon?.domain_kind,
+        // The name the server echoed back, not what was typed: it comes back
+        // already normalised into the hostname it will be stored as.
+        name: addon?.domain_name ?? undefined,
+      }),
     onSuccess: (res) => {
       const outcome = checkoutOutcome(res);
 
@@ -193,6 +218,22 @@ export function PlanCheckoutDialog({
                 {codeError && <p className="text-sm text-[var(--danger)]">{codeError}</p>}
               </div>
 
+              <DomainAddonField
+                orgId={orgId}
+                applied={domain}
+                disabled={checkout.isPending}
+                onApply={(preview) => {
+                  setDomain(preview);
+                  // An add-on changes the amount a percentage fee is taken
+                  // from, so the previously picked channel's quote is stale.
+                  setChannel(null);
+                }}
+                onClear={() => {
+                  setDomain(null);
+                  setChannel(null);
+                }}
+              />
+
               <div className="grid gap-1 rounded-lg border p-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Harga paket</span>
@@ -202,6 +243,15 @@ export function PlanCheckoutDialog({
                   <div className="flex justify-between text-[var(--success)]">
                     <span>Diskon {applied.code}</span>
                     <span>&minus;{rupiah(applied.discount_amount)}</span>
+                  </div>
+                )}
+                {domain && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Add-on domain
+                      {domain.domain_name ? ` (${domain.domain_name})` : ""}
+                    </span>
+                    <span>{rupiah(domain.amount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-medium">
@@ -240,6 +290,8 @@ export function PlanCheckoutDialog({
                 channel: needsChannel ? channel : null,
                 // Only a code the preview accepted is ever sent.
                 code: applied?.code,
+                // Likewise: only an add-on the server has already priced.
+                addon: domain,
               });
             }}
           >

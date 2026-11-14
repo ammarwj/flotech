@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\BlogCategoryController;
 use App\Http\Controllers\Api\Admin\BlogPostController;
 use App\Http\Controllers\Api\Admin\ConfigOptionController;
 use App\Http\Controllers\Api\Admin\DiscountCodeController;
+use App\Http\Controllers\Api\Admin\DomainOrderController as AdminDomainOrderController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\FaqController;
 use App\Http\Controllers\Api\Admin\FeatureDefinitionController;
@@ -93,6 +94,7 @@ use App\Models\Plan;
 use App\Models\SiteSetting;
 use App\Models\Testimonial;
 use App\Support\ApiResponse;
+use App\Support\DomainAddons;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -118,6 +120,11 @@ Route::prefix('v1')->group(function () {
                 ->get()
         )
     ));
+
+    // Domain add-on price list. Public for the same reason /plans is: it is
+    // priced on the pricing page, before anyone has logged in. Read through
+    // DomainAddons so the figure quoted here is the figure the till charges.
+    Route::get('/domain-addons', fn () => ApiResponse::success(DomainAddons::catalogue()));
 
     // Landing page content, edited by super_admin under /admin/testimonials & /admin/faqs.
     Route::get('/testimonials', fn () => ApiResponse::success(
@@ -400,6 +407,12 @@ Route::prefix('v1')->group(function () {
                 // a literal segment registered after them is swallowed by the
                 // binding and resolves as an order id.
                 Route::post('plan-orders/discount-preview', [PlanOrderController::class, 'discountPreview']);
+                // Buy a domain for an event that already exists — the other half
+                // of "an add-on rides along with the plan". Literal segments, so
+                // they are declared ahead of the {planOrder} routes below for
+                // the reason spelled out above.
+                Route::post('plan-orders/domain-preview', [PlanOrderController::class, 'domainPreview']);
+                Route::post('plan-orders/domain-checkout', [PlanOrderController::class, 'domainCheckout']);
                 Route::post('plan-orders/{planOrder}/pay', [PlanOrderController::class, 'pay']);
                 // Upgrade only — there is no downgrade route, and the absence is
                 // enforced in PlanGate::planCovers() rather than by leaving one out.
@@ -889,6 +902,14 @@ Route::prefix('v1')->group(function () {
             Route::get('plan-orders/purchases', [AdminPlanOrderController::class, 'purchases']);
             Route::post('plan-orders/{planOrder}/approve', [AdminPlanOrderController::class, 'approve']);
             Route::post('plan-orders/{planOrder}/reject', [AdminPlanOrderController::class, 'reject']);
+
+            // Domains an organizer has paid for and we still have to register.
+            // Only the `register` kind ever lands here: `own` and `subdomain`
+            // are fulfilled by being paid for (see
+            // EventPlanOrderService::applyDomainAddon), so a queue listing them
+            // would be a queue of work nobody has to do.
+            Route::get('domain-orders', [AdminDomainOrderController::class, 'index']);
+            Route::post('domain-orders/{planOrder}/fulfil', [AdminDomainOrderController::class, 'fulfil']);
             // The escape hatch for an event stuck on the wrong plan — see the
             // controller for why it is super_admin and not the organizer's own.
             Route::post('events/{event}/reassign-plan', [AdminPlanOrderController::class, 'reassignPlan']);

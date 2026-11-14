@@ -94,18 +94,53 @@
         @hasSection('items')
             @yield('items')
         @else
-            <tr>
-                <td>
-                    <div style="font-weight: bold;">Paket {{ $plan?->name ?? '—' }}</div>
-                    <div class="muted">Berlaku untuk 1 event</div>
-                </td>
-                {{-- A credit that has not been spent yet is still a valid document. --}}
-                <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
-                {{-- The catalogue price, reconstructed: `amount` is already net
-                     of the discount, and a discount line needs something above
-                     it to be a discount *off*. Without a code the two are equal. --}}
-                <td class="right">{{ $money($order->amount + ($order->discount_amount ?? 0)) }}</td>
-            </tr>
+            @php($addon = (float) ($order->domain_addon_amount ?? 0))
+            {{-- The add-on rides inside `amount`, so it has to come back out
+                 before the plan line can print a plan price. An add-on bought on
+                 its own has no plan at all, and printing "Paket —" above a
+                 domain charge would name a purchase that never happened. --}}
+            @if ($plan)
+                <tr>
+                    <td>
+                        <div style="font-weight: bold;">Paket {{ $plan->name }}</div>
+                        <div class="muted">Berlaku untuk 1 event</div>
+                    </td>
+                    {{-- A credit that has not been spent yet is still a valid document. --}}
+                    <td class="muted">{{ $order->event?->name ?? 'Belum dipakai' }}</td>
+                    {{-- The catalogue price, reconstructed: `amount` is already net
+                         of the discount and gross of the add-on, and a discount line
+                         needs something above it to be a discount *off*. Without a
+                         code and without an add-on the two are equal. --}}
+                    <td class="right">{{ $money($order->amount - $addon + ($order->discount_amount ?? 0)) }}</td>
+                </tr>
+            @endif
+            @if (($order->domain_kind ?? null) !== null)
+                {{-- Two lines in one cell, not two rows: the registration price
+                     and the configuration fee are bought together and the
+                     organizer is never charged one without the other. Printing
+                     them separately would also make the add-on look like two
+                     purchases on a receipt that settled once. --}}
+                <tr>
+                    <td>
+                        <div style="font-weight: bold;">
+                            Add-on domain
+                            @if ($order->domain_name)
+                                — {{ $order->domain_name }}
+                            @endif
+                        </div>
+                        <div class="muted">
+                            @if ((float) $order->domain_register_amount > 0)
+                                Registrasi domain 1 tahun {{ $money($order->domain_register_amount) }}
+                                + biaya konfigurasi {{ $money($order->domain_setup_amount) }}
+                            @else
+                                Biaya konfigurasi domain
+                            @endif
+                        </div>
+                    </td>
+                    <td class="muted">{{ $order->domainEvent?->name ?? $order->event?->name ?? '—' }}</td>
+                    <td class="right">{{ $money($addon) }}</td>
+                </tr>
+            @endif
         @endif
         {{-- Only plan orders carry a discount; the null-coalesce is what keeps
              this one shared layout printing ticket and registration documents

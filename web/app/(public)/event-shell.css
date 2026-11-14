@@ -19,6 +19,10 @@
 }
 .ehero-inner { position: relative; padding-block: 40px 64px; }
 .ehero-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* White label drops the "Didukung flo-event" back-link, leaving the controls as
+   the only child — `space-between` would pin them to the left, where nothing
+   else sits. */
+.ehero-top-solo { justify-content: flex-end; }
 .ehero-back { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.85); white-space: nowrap; }
 .ehero-back svg { flex-shrink: 0; }
 .ehero-back:hover { color: #fff; }

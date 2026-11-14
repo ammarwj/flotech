@@ -60,6 +60,38 @@ return [
     // Let's Encrypt failure quota, which is shared across every domain we hold.
     'retry_after_minutes' => (int) env('CUSTOM_DOMAIN_RETRY_MINUTES', 60),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Domain add-on
+    |--------------------------------------------------------------------------
+    |
+    | Organizers buy a domain alongside (or after) their plan: their own name,
+    | one we register for them, or a label under the platform's domain. See
+    | App\Support\DomainAddons.
+    |
+    | The three prices below are DEFAULTS only — each is overridable at runtime
+    | from /admin/settings, the same arrangement as config/wallet.php and
+    | PlatformSettings. They are commercial numbers, so they must be changeable
+    | without a deploy; the paths and the server IP above are not and are not.
+    |
+    */
+
+    // The domain subdomains are issued under. Separate from `reserved` above
+    // (which is a list of names an event may not CLAIM) because this one is a
+    // zone we hand labels out of — and the apex itself stays reserved.
+    'platform_domain' => env('APP_DOMAIN', 'floevent.id'),
+
+    // Charged on all three kinds: it is the work we do every time (DNS check,
+    // certificate, vhost), and it is no cheaper when the organizer brought
+    // their own name.
+    'setup_fee_amount' => (float) env('DOMAIN_SETUP_FEE_AMOUNT', 100_000),
+
+    // One year of registration, per TLD, for the kinds we resell. Adding a TLD
+    // is one entry in DomainAddons::REGISTRABLE_TLDS plus one definition in
+    // PlatformSettings — a TLD with no setting would quote as free.
+    'register_com_amount' => (float) env('DOMAIN_REGISTER_COM_AMOUNT', 300_000),
+    'register_id_amount' => (float) env('DOMAIN_REGISTER_ID_AMOUNT', 370_000),
+
     // How long the public domain list stays cached. The Next middleware reads
     // it on every request for an unknown host, so it must not be a query.
     'cache_ttl' => (int) env('CUSTOM_DOMAIN_CACHE_TTL', 60),

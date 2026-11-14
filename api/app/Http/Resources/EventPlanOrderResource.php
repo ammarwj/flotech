@@ -62,6 +62,42 @@ class EventPlanOrderResource extends JsonResource
                 'name' => $this->event->name,
             ]),
 
+            // Domain add-on. `domain_kind` null means this order has no domain
+            // on it, which is every ordinary plan purchase — the client branches
+            // on that one field rather than on the price being zero, because a
+            // super admin may legitimately set the configuration fee to 0.
+            //
+            // `amount` already includes `domain_addon_amount`; the setup and
+            // registration pair beside it is the split the invoice prints, never
+            // something to add on top.
+            'domain_kind' => $this->domain_kind,
+            'domain_name' => $this->domain_name,
+            'domain_setup_amount' => (float) $this->domain_setup_amount,
+            'domain_register_amount' => (float) $this->domain_register_amount,
+            'domain_addon_amount' => (float) $this->domain_addon_amount,
+            'domain_fulfilled_at' => $this->domain_fulfilled_at,
+            'domain_note' => $this->domain_note,
+            // Derived, like `awaiting_verification` beside it: whether a human
+            // still has to go and buy the name. Only `register` can ever be
+            // true.
+            'awaiting_domain_fulfilment' => $this->isAwaitingDomainFulfilment(),
+            // An order with no plan — a domain bought on its own. Published
+            // because the billing page must not render it as a credit or print
+            // an empty plan name; scopeUnconsumed() already keeps it out of the
+            // credit pool server-side.
+            'addon_only' => $this->isAddonOnly(),
+            'domain_event' => $this->whenLoaded('domainEvent', fn () => $this->domainEvent === null ? null : [
+                'id' => $this->domainEvent->id,
+                'name' => $this->domainEvent->name,
+                'slug' => $this->domainEvent->slug,
+                'custom_domain' => $this->domainEvent->custom_domain,
+                'domain_status' => $this->domainEvent->domainStatus(),
+            ]),
+            'domain_fulfilled_by' => $this->whenLoaded(
+                'domainFulfiller',
+                fn () => $this->domainFulfiller?->full_name,
+            ),
+
             'midtrans_order_id' => $this->midtrans_order_id,
             'payment_type' => $this->payment_type,
             'paid_at' => $this->paid_at,

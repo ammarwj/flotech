@@ -4,7 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Eye, CalendarClock, ClipboardList, Images, TicketPercent } from "lucide-react";
+import {
+  Trash2,
+  Eye,
+  CalendarClock,
+  ClipboardList,
+  Globe,
+  Images,
+  TicketPercent,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -233,6 +241,15 @@ export default function EditEventPage() {
               <Link href={`/organizer/events/${eventId}/media`}>
                 <Images className="h-4 w-4" />
                 Galeri & Sponsor
+              </Link>
+            </Button>
+            {/* Always offered, including for a draft: that page explains why a
+                draft cannot hold a certificate yet, which is more use than a
+                button that is not there. */}
+            <Button asChild variant="outline">
+              <Link href={`/organizer/events/${eventId}/domain`}>
+                <Globe className="h-4 w-4" />
+                Domain
               </Link>
             </Button>
             {deletable && (

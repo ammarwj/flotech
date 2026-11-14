@@ -19,6 +19,7 @@ use App\Models\Player;
 use App\Models\RegistrationDocument;
 use App\Models\TeamOfficial;
 use App\Services\Catalog;
+use App\Services\EventPlanOrderService;
 use App\Services\MediaCleanupService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
@@ -99,6 +100,23 @@ class EventController extends Controller
             }
 
             $this->syncCategories($event, $categories);
+
+            // A domain bought alongside this plan has been waiting for the event
+            // to exist. Stamped inside the same transaction as the claim, so the
+            // order can never name an event the claim rolled back.
+            //
+            // The attach itself happens AFTER the commit, below: it writes an
+            // nginx config and asks the host to reload, neither of which rolls
+            // back — doing it here would leave a vhost for an event that never
+            // got created.
+            // The add-on is only bound to the event here; it is NOT attached.
+            // A new event is always a draft, and DomainService refuses to
+            // certify one (a draft 404s publicly, and asking Let's Encrypt for
+            // a certificate on a page nobody can open burns shared quota).
+            // Publishing is what attaches it — see transition().
+            if ($order->hasDomainAddon() && $order->domain_event_id === null) {
+                $order->update(['domain_event_id' => $event->id]);
+            }
 
             return $event;
         });
@@ -245,6 +263,8 @@ class EventController extends Controller
             'status_before_cancel' => $status === 'cancelled' ? $model->status : null,
         ]);
 
+        $this->attachPaidDomain($model);
+
         return ApiResponse::success(
             new EventResource($model->load('categories')),
             // Restoring lands on an ordinary status, so the per-status message
@@ -254,6 +274,53 @@ class EventController extends Controller
                 ? 'Event diaktifkan kembali'
                 : (self::STATUS_MESSAGES[$status] ?? 'Status event diperbarui'),
         );
+    }
+
+    /**
+     * Attach a domain this event has already been paid for, once it is allowed
+     * to have one.
+     *
+     * Called on every status change rather than only on the first publish, and
+     * that is deliberate: it is the moment the refusal in DomainService::assign()
+     * stops applying. A domain bought at checkout cannot be attached when the
+     * event is created — a new event is a draft, a draft 404s publicly, and
+     * asking Let's Encrypt to certify a page nobody can open spends quota the
+     * whole platform shares. So the purchase binds the order to the event and
+     * publishing is what hands the name over.
+     *
+     * Idempotent, which is what makes "on every transition" safe: assign() is a
+     * no-op when the name has not changed (it keeps the existing certificate in
+     * that case precisely so a repeat cannot knock a live domain offline), and
+     * attachDomain() swallows its own failures. An event that is cancelled and
+     * reactivated therefore gets its domain back rather than needing a human.
+     *
+     * Only FULFILLED orders are read. An unfulfilled `register` has no name yet
+     * — publishing must not invent one — and fulfilDomain() attaches it itself
+     * the moment the super admin buys it, whichever order the two happen in.
+     */
+    protected function attachPaidDomain(Event $model): void
+    {
+        // Nothing to hand over while a name is already live. Cheap guard, and it
+        // keeps a routine status change (open → ongoing → finished) from
+        // rewriting the nginx config three times for no reason.
+        if ($model->custom_domain !== null) {
+            return;
+        }
+
+        if ($model->status === 'draft') {
+            return;
+        }
+
+        $order = EventPlanOrder::where('domain_event_id', $model->id)
+            ->where('status', 'paid')
+            ->whereNotNull('domain_fulfilled_at')
+            ->whereNotNull('domain_name')
+            ->latest('paid_at')
+            ->first();
+
+        if ($order) {
+            app(EventPlanOrderService::class)->attachDomain($model, $order);
+        }
     }
 
     /** @var array<string, string> */

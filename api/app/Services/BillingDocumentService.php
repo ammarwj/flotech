@@ -71,7 +71,11 @@ class BillingDocumentService
 
     protected function pdf(string $view, EventPlanOrder $order): DomPdf
     {
-        $order->loadMissing('plan', 'organization');
+        // `domainEvent` too: the add-on line names the event its domain is for,
+        // and that is not always `event` — an add-on bought on its own has no
+        // credit to have been spent, so `event_id` is null while
+        // `domain_event_id` points at a live event.
+        $order->loadMissing('plan', 'organization', 'event', 'domainEvent');
 
         $pdf = Pdf::loadView("pdf.{$view}", [
             'order' => $order,
