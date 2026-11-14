@@ -5,7 +5,7 @@ import { Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { downstreamImpact, matchNumberLabel, sideLabel } from "@/lib/bracket";
+import { byeFilledSides, downstreamImpact, matchNumberLabel, sideLabel } from "@/lib/bracket";
 import { SeedEntitySelect } from "./seed-entity-select";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SeedTeam } from "./bracket-seed-editor";
@@ -85,7 +85,17 @@ function Dialog({
   }, [onClose]);
 
   const affected = downstreamImpact(match, bracket);
-  const canSave = home !== "" && home !== away;
+  /**
+   * Round one needs a home side: an empty slot there is a tie nobody will
+   * play, and a lone team only reads as a bye when it sits at home.
+   *
+   * A later round needs neither. Its blank sides are slots still waiting on a
+   * result — the bracket fills them — so demanding a home team locks the
+   * organizer out of the very side they are allowed to edit, which is how the
+   * Simpan button came to be dead on a half-bye slot.
+   */
+  const canSave = (match.round === 1 ? home !== "" : home !== "" || away !== "")
+    && home !== away;
 
   // Teams sitting in another first-round slot: picking one exchanges the two
   // rather than being refused, which is the only useful move in a full bracket.
@@ -95,7 +105,11 @@ function Dialog({
       .flatMap((m) => [m.home_team_id, m.away_team_id])
       .filter((id): id is string => !!id)
   );
-  const swaps = placedElsewhere.has(home) || placedElsewhere.has(away);
+  // Only round one actually exchanges: displaceOccupants() searches the
+  // opening slots, so a later-round pick takes the team without vacating
+  // anything. Saying otherwise there promises a move that will not happen.
+  const swaps =
+    match.round === 1 && (placedElsewhere.has(home) || placedElsewhere.has(away));
 
   /**
    * The only team genuinely out of bounds is the one on the other side — a slot
@@ -103,6 +117,14 @@ function Dialog({
    * get a note instead, because picking one is the swap the dialog exists for.
    */
   const blocked = (opposite: string) => (opposite ? new Set([opposite]) : new Set<string>());
+
+  /**
+   * A side fed by a real tie is the bracket's to fill, not this form's: it
+   * either holds somebody who won their way in or is waiting for them, and
+   * anything typed over it is overwritten the moment that tie is confirmed.
+   * The server refuses it; this keeps the select from inviting the attempt.
+   */
+  const editableSide = byeFilledSides(match, bracket);
 
   /**
    * Slots this tie may move to: same round, no result yet.
@@ -161,13 +183,17 @@ function Dialog({
         </div>
 
         <div className="grid gap-4 overflow-y-auto p-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* `items-start`, not the default stretch: one side may carry a note
+              the other does not, and a stretched column pushes its select down
+              to match the taller neighbour — the two fields stop lining up. */}
+          <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="slot-home" className="font-semibold">
                 Tim tuan rumah<span className="text-[var(--danger)]"> *</span>
               </Label>
               <SeedEntitySelect
                 id="slot-home"
+                disabled={!editableSide.home}
                 value={home || null}
                 onChange={(v) => setHome(v ?? "")}
                 pool={teams}
@@ -178,6 +204,11 @@ function Dialog({
                 placeholder="Cari tim…"
                 ariaLabel="Tim tuan rumah"
               />
+              {!editableSide.home && (
+                <p className="text-xs text-muted-foreground">
+                  Diisi pemenang babak sebelumnya — ubah pasangannya di babak itu.
+                </p>
+              )}
               {fieldErrors?.home_team_id && (
                 <p className="text-xs text-[var(--danger)]">{fieldErrors.home_team_id}</p>
               )}
@@ -189,6 +220,7 @@ function Dialog({
               {/* An empty away side is a walkover, not an unfinished form. */}
               <SeedEntitySelect
                 id="slot-away"
+                disabled={!editableSide.away}
                 value={away || null}
                 onChange={(v) => setAway(v ?? "")}
                 pool={teams}
@@ -199,6 +231,11 @@ function Dialog({
                 placeholder="Cari tim…"
                 ariaLabel="Tim tamu"
               />
+              {!editableSide.away && (
+                <p className="text-xs text-muted-foreground">
+                  Diisi pemenang babak sebelumnya — ubah pasangannya di babak itu.
+                </p>
+              )}
               {fieldErrors?.away_team_id && (
                 <p className="text-xs text-[var(--danger)]">{fieldErrors.away_team_id}</p>
               )}

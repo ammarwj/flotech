@@ -1079,7 +1079,17 @@ class MatchController extends Controller
             );
         }
 
-        if ($matchModel->round !== 1) {
+        // A later round is normally out of bounds: whoever sits there won their
+        // way in, and typing over them claims a place nobody played for.
+        //
+        // Unless nobody played for it. A slot fed entirely by byes was filled
+        // by generation, not by a result, so there is no outcome to contradict
+        // — and in a field like 36-in-64 that is most of round two, which is
+        // exactly where an organizer needs to correct a draw. The gate is
+        // therefore "was this reached by playing", not "which round is this".
+        $byeSides = $this->byeFilledSides($matchModel);
+
+        if ($matchModel->round !== 1 && ! $byeSides['home'] && ! $byeSides['away']) {
             return ApiResponse::error(
                 'Tim di babak lanjutan ditentukan oleh hasil babak sebelumnya — ubah pasangan di babak pertama.',
                 ['feature' => 'bracket_edit'],
@@ -1090,7 +1100,13 @@ class MatchController extends Controller
         // A single-elimination bracket shares (stage null, round 1) with the
         // hand-added friendlies of storeManual(), whose order keeps counting
         // past the bracket. Those are not slots — delete and re-add instead.
-        if ($matchModel->stage === null && $matchModel->order >= $this->bracketSlotCount($matchModel)) {
+        //
+        // Round 1 only: the count is the *opening* round's width, so applying
+        // it to a later round would refuse every slot past its halfway point —
+        // and a friendly is always written on round 1 anyway.
+        if ($matchModel->stage === null
+            && $matchModel->round === 1
+            && $matchModel->order >= $this->bracketSlotCount($matchModel)) {
             return ApiResponse::error(
                 'Pertandingan tambahan bukan bagian dari bracket — hapus lalu tambahkan ulang.',
                 ['feature' => 'bracket_edit'],
@@ -1121,16 +1137,51 @@ class MatchController extends Controller
         $home = $data['home_team_id'] ?? null;
         $away = $data['away_team_id'] ?? null;
 
-        if ($home === null && $away === null) {
-            return ApiResponse::error('Slot harus punya minimal satu tim.', [
-                'home_team_id' => ['Pilih tim untuk slot ini.'],
-            ], 422);
-        }
+        // A side fed by a real tie belongs to the bracket, not to this form:
+        // it is either holding somebody who won their way in, or waiting for
+        // them, and either way whatever is typed here would be overwritten the
+        // moment that tie is confirmed. The slot as a whole is still editable
+        // — that is the point of going side by side — so the locked half is
+        // simply held at what it already has.
+        foreach (['home' => &$home, 'away' => &$away] as $side => &$value) {
+            if ($byeSides[$side]) {
+                continue;
+            }
 
-        if ($home === null) {
-            return ApiResponse::error('Isi tim di slot pertama; slot kedua yang dikosongkan berarti bye.', [
-                'home_team_id' => ['Pilih tim untuk slot pertama.'],
-            ], 422);
+            $current = $matchModel->{$side.'_team_id'};
+
+            if ($value !== $current) {
+                return ApiResponse::error(
+                    'Sisi ini diisi pemenang babak sebelumnya — ubah pasangan di babak itu.',
+                    [$side.'_team_id' => ['Ditentukan oleh hasil babak sebelumnya.']],
+                    422,
+                );
+            }
+        }
+        unset($value);
+
+        // Both rules below describe round one, where an empty side *means*
+        // something: a slot with nobody in it is a tie that will never be
+        // played, and a lone team belongs at home because that is the only
+        // shape generation reads as a bye.
+        //
+        // A later round says neither. Its empty sides are slots still waiting
+        // on a result — the bracket fills them, so leaving one blank is the
+        // normal state, not an unfinished form. Applying the round-one rules
+        // there locks the organizer out of the one side they are allowed to
+        // edit.
+        if ($matchModel->round === 1) {
+            if ($home === null && $away === null) {
+                return ApiResponse::error('Slot harus punya minimal satu tim.', [
+                    'home_team_id' => ['Pilih tim untuk slot ini.'],
+                ], 422);
+            }
+
+            if ($home === null) {
+                return ApiResponse::error('Isi tim di slot pertama; slot kedua yang dikosongkan berarti bye.', [
+                    'home_team_id' => ['Pilih tim untuk slot pertama.'],
+                ], 422);
+            }
         }
 
         // Picking a team that already has a slot swaps the two, rather than
@@ -1164,6 +1215,54 @@ class MatchController extends Controller
                 ? "Tim diperbarui — {$cleared} pertandingan babak berikutnya direset"
                 : 'Tim di slot bracket diperbarui',
         );
+    }
+
+    /**
+     * Which sides of a later-round slot were filled by a bye rather than won.
+     *
+     * Generation seats a walkover immediately, which is why a round-two slot
+     * can hold teams before a ball is kicked — and those teams are editable,
+     * because no result says they belong there. A side fed by a real tie is
+     * not: it is either holding somebody who won, or waiting for them, and
+     * either way the answer is the bracket's to give.
+     *
+     * So the unit is the *side*, not the slot. A slot fed by one bye and one
+     * real tie is the common shape in a padded draw, and refusing the whole
+     * thing would lock the half nobody played for.
+     *
+     * Reads the feeders rather than the slot: a half-filled slot looks the
+     * same whether its empty side is a bye that walked over or a tie nobody
+     * has played, and only the feeder tells the two apart.
+     *
+     * @return array{home: bool, away: bool}
+     */
+    protected function byeFilledSides(GameMatch $match): array
+    {
+        if ($match->round <= 1) {
+            // Round one has no feeders; its slots are editable outright.
+            return ['home' => true, 'away' => true];
+        }
+
+        $feeders = $match->category->matches()
+            ->where('stage', $match->stage)
+            ->where('round', $match->round - 1)
+            ->whereIn('order', [2 * $match->order, 2 * $match->order + 1])
+            ->get()
+            ->keyBy('order');
+
+        $isBye = fn (?GameMatch $f) => $f !== null
+            && $f->status === 'finished'
+            && $f->home_score === null
+            && $f->away_score === null
+            && $f->sets === null
+            && ($f->home_team_id === null) !== ($f->away_team_id === null);
+
+        // Even-ordered feeders fill the home side, odd ones the away side —
+        // the same edges advanceWinner() walks.
+        return [
+            'home' => $isBye($feeders[2 * $match->order] ?? null),
+            'away' => $isBye($feeders[2 * $match->order + 1] ?? null),
+        ];
     }
 
     /**

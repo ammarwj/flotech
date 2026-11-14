@@ -49,6 +49,7 @@ export function SeedEntitySelect({
   value,
   onChange,
   pool,
+  disabled = false,
   disabledIds,
   noteIds,
   noteLabel,
@@ -63,6 +64,14 @@ export function SeedEntitySelect({
   value: string | null;
   onChange: (id: string | null) => void;
   pool: SeedOption[];
+  /**
+   * The whole field is out of bounds — not a *choice* that is forbidden but
+   * the question itself. The slot editor uses it for a bracket side the
+   * tournament fills on its own: whatever is typed there is overwritten the
+   * moment the tie feeding it is confirmed, so the server refuses it and this
+   * keeps the form from inviting the attempt.
+   */
+  disabled?: boolean;
   /** Ids placed in another tie (or on the other side of this one). */
   disabledIds: Set<string>;
   /**
@@ -208,6 +217,7 @@ export function SeedEntitySelect({
         id={id}
         type="text"
         role="combobox"
+        disabled={disabled}
         aria-expanded={open}
         aria-controls={listId}
         aria-label={ariaLabel}

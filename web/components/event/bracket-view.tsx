@@ -8,6 +8,7 @@ import {
   matchWinnerId,
   crestGradient,
   groupByRound,
+  byeFilledSides,
   isBye,
   isDeadSide,
   isThirdPlace,
@@ -380,12 +381,24 @@ export function BracketView({
           {list.map((m, i) => {
             // The backend refuses a slot whose result is already in, so the
             // affordance must not appear there either.
+            //
+            // Later rounds are offered too, but only where every feeder was a
+            // bye: those teams were seated by generation rather than by a
+            // result, so there is nothing to contradict. In a 36-in-64 draw
+            // that is most of round two — and the round an organizer is most
+            // likely to want corrected, since it is the first one holding
+            // real pairings.
             const editable =
               onEditSlot &&
-              m.round === 1 &&
-              m.order < slotCount &&
               m.home_score === null &&
-              m.away_score === null;
+              m.away_score === null &&
+              (m.round === 1
+                ? m.order < slotCount
+                : // At least one side was seated by a bye. The dialog locks
+                  // whichever side was not — offering the pencil for a slot
+                  // where only half is editable is still the right call, since
+                  // that half is the one the organizer came to fix.
+                  Object.values(byeFilledSides(m, matches)).some(Boolean));
             // Under the last cell of the last column — the final.
             const withThird =
               third.length > 0 && col === rounds.length - 1 && i === list.length - 1;

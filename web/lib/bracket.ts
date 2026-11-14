@@ -261,6 +261,38 @@ export function sideLabel(m: Match, side: "home" | "away"): string {
 export const isDeadSide = (m: Match, side: "home" | "away") =>
   (side === "home" ? m.home_source : m.away_source) === "Bye";
 
+/**
+ * Which sides of a later-round slot were filled by a bye rather than won.
+ *
+ * Generation seats a walkover immediately, which is why a round-two slot can
+ * hold teams before a ball is kicked — and those are editable, because no
+ * result says they belong there. A side fed by a real tie is not: it either
+ * holds somebody who won their way in or is waiting for them, and whatever is
+ * typed over it would be overwritten the moment that tie is confirmed.
+ *
+ * The unit is the *side*, not the slot: one bye and one real tie is the common
+ * shape in a padded draw, and locking the whole thing would freeze the half
+ * nobody played for. Mirrors MatchController::byeFilledSides().
+ */
+export function byeFilledSides(
+  m: Match,
+  bracket: Match[]
+): { home: boolean; away: boolean } {
+  if (m.round <= 1) return { home: true, away: true };
+
+  const feeder = (order: number) =>
+    bracket.find((f) => f.stage === m.stage && f.round === m.round - 1 && f.order === order);
+
+  // Even-ordered feeders fill the home side, odd ones the away side — the
+  // same edges advanceWinner() walks.
+  const bye = (f?: Match) => !!f && isBye(f);
+
+  return {
+    home: bye(feeder(2 * m.order)),
+    away: bye(feeder(2 * m.order + 1)),
+  };
+}
+
 /** Fixtures worth listing on a public schedule — a bye was never played. */
 export const playableMatches = (matches: Match[]) => matches.filter((m) => !isBye(m));
 

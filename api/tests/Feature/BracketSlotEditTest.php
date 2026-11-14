@@ -250,6 +250,157 @@ class BracketSlotEditTest extends TestCase
         $this->assertSame($original, $tie->fresh()->home_team_id);
     }
 
+    /**
+     * A later-round slot whose feeders were all byes may be edited: generation
+     * seated those teams, not a result, so there is nothing to contradict. In
+     * a 36-in-64 field that describes most of round two — the first round
+     * holding real pairings, and the one an organizer actually wants to fix.
+     */
+    public function test_a_later_slot_filled_only_by_byes_can_be_edited(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // 5 of 8: the first three opening slots are byes, so round-2 slot 0 is
+        // fed by two of them and holds both its teams already.
+        $event = $this->knockoutEvent($org, teams: 5);
+        $this->generate($user, $org, $event);
+        $spare = $this->spareTeam($event);
+
+        $slot = $this->slot($event, 2, 0);
+        $this->assertNotNull($slot->home_team_id, 'fixture assumption: both feeders are byes');
+        $this->assertNotNull($slot->away_team_id);
+
+        $keep = $slot->away_team_id;
+
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $slot), [
+                'home_team_id' => $spare,
+                'away_team_id' => $keep,
+            ])
+            ->assertOk();
+
+        $this->assertSame($spare, $slot->fresh()->home_team_id);
+        $this->assertSame($keep, $slot->fresh()->away_team_id);
+    }
+
+    /**
+     * The common shape in a padded draw: one bye, one real tie. The bye side
+     * is editable, the other is not — and refusing the whole slot would lock
+     * the half nobody played for.
+     */
+    public function test_a_mixed_slot_edits_its_bye_side_and_locks_the_other(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // 7 of 8: slot 0 is the only bye, so round-2 slot 0 is fed by that bye
+        // (home side) and by the real tie in slot 1 (away side).
+        $event = $this->knockoutEvent($org, teams: 7);
+        $this->generate($user, $org, $event);
+        $spare = $this->spareTeam($event);
+
+        $slot = $this->slot($event, 2, 0);
+        $this->assertNotNull($slot->home_team_id, 'fixture assumption: the bye walked over');
+        $this->assertNull($slot->away_team_id, 'fixture assumption: the other side awaits a winner');
+
+        // The bye side changes hands.
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $slot), [
+                'home_team_id' => $spare,
+                'away_team_id' => null,
+            ])
+            ->assertOk();
+
+        $this->assertSame($spare, $slot->fresh()->home_team_id);
+
+        // The side waiting on a result does not. Compared against the call
+        // above: assert only the refusal and a build that locks the whole slot
+        // passes just as well.
+        $other = $this->spareTeam($event, 'Another Late Entry');
+
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $slot), [
+                'home_team_id' => $spare,
+                'away_team_id' => $other,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.away_team_id.0', 'Ditentukan oleh hasil babak sebelumnya.');
+
+        $this->assertNull($slot->fresh()->away_team_id);
+    }
+
+    /**
+     * A later-round slot may be saved with its home side empty.
+     *
+     * Round one requires a home team — an empty slot there is a tie nobody
+     * plays, and a lone team only reads as a bye at home. A later round says
+     * neither: its blank sides are waiting on results the bracket will supply.
+     * Applying the round-one rule there left Simpan dead on exactly the slots
+     * this endpoint was just opened up for.
+     */
+    public function test_a_later_slot_saves_with_an_empty_home_side(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        // 7 of 8: round-2 slot 0 is fed by the bye in slot 0 (home) and the
+        // real tie in slot 1 (away), so its away side is still waiting.
+        $event = $this->knockoutEvent($org, teams: 7);
+        $this->generate($user, $org, $event);
+        $spare = $this->spareTeam($event);
+
+        $slot = $this->slot($event, 2, 0);
+        $this->assertNull($slot->away_team_id, 'fixture assumption: away awaits a winner');
+
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $slot), [
+                'home_team_id' => $spare,
+                'away_team_id' => null,
+            ])
+            ->assertOk();
+
+        $this->assertSame($spare, $slot->fresh()->home_team_id);
+        $this->assertNull($slot->fresh()->away_team_id, 'the waiting side stays waiting');
+
+        // Compared against round one, where the same shape is still refused:
+        // assert only the success above and a build that dropped the rule
+        // everywhere would pass just as well.
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $this->slot($event, 1, 1)), [
+                'home_team_id' => null,
+                'away_team_id' => null,
+            ])
+            ->assertStatus(422);
+    }
+
+    /**
+     * The mirror, and the reason the test above is not enough on its own: a
+     * later slot reached by *playing* stays locked. Typing over it would claim
+     * a place somebody won.
+     */
+    public function test_a_later_slot_reached_by_playing_still_refuses(): void
+    {
+        $user = User::factory()->create();
+        $org = $this->org($user);
+        $event = $this->knockoutEvent($org, teams: 8);
+        $this->generate($user, $org, $event);
+        $spare = $this->spareTeam($event);
+
+        // Both feeders are real ties; play one so the slot holds a winner.
+        $this->playAndConfirm($user, $org, $this->slot($event, 1, 0));
+
+        $slot = $this->slot($event, 2, 0);
+        $before = $slot->fresh()->home_team_id;
+        $this->assertNotNull($before, 'fixture assumption: a winner advanced');
+
+        $this->actingAs($user, 'api')
+            ->patchJson($this->teamsUrl($org, $slot), [
+                'home_team_id' => $spare,
+                'away_team_id' => null,
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame($before, $slot->fresh()->home_team_id);
+    }
+
     public function test_editing_a_bye_is_allowed_and_reseats_the_walkover(): void
     {
         $user = User::factory()->create();
