@@ -1167,6 +1167,133 @@ class MatchController extends Controller
     }
 
     /**
+     * Move a tie to another slot of the same round — who plays whom stays, the
+     * branch they sit on changes.
+     *
+     * The twin of updateTeams(), and deliberately not folded into it: that one
+     * answers "who is in this slot", this one "where in the draw does this tie
+     * sit". An organizer looking at a chart that pairs the wrong halves wants
+     * the second question, and getting there through the first means retyping
+     * four teams across two slots and hoping the displacement lands right.
+     *
+     * The two slots trade contents, which is the only move that keeps the
+     * bracket full: every tie already sits somewhere, so a slot cannot be
+     * vacated without something taking its place.
+     */
+    public function moveSlot(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+        $category = $matchModel->category;
+
+        if ($error = $this->movableSlotError($matchModel, $category)) {
+            return $error;
+        }
+
+        $data = $request->validate([
+            'target_id' => ['required', 'uuid'],
+        ]);
+
+        $target = $category->matches()->find($data['target_id']);
+
+        if (! $target || $target->is($matchModel)) {
+            return ApiResponse::error('Slot tujuan tidak ditemukan di bracket ini.', [
+                'target_id' => ['Pilih slot tujuan yang lain.'],
+            ], 422);
+        }
+
+        // Same round, because the rounds are not interchangeable: a tie moved
+        // up a round would be claiming a place its teams never played for, and
+        // one moved down would leave the slot it came from fed by nothing.
+        if ($target->round !== $matchModel->round || $target->stage !== $matchModel->stage) {
+            return ApiResponse::error('Slot tujuan harus di babak yang sama.', [
+                'target_id' => ['Pilih slot di babak yang sama.'],
+            ], 422);
+        }
+
+        if ($error = $this->movableSlotError($target, $category, 'tujuan')) {
+            return $error;
+        }
+
+        // Snapshot both sides before either is written: seatSlot() clears the
+        // slot it writes, so reading the second one afterwards would read what
+        // the first write already erased.
+        $from = [$matchModel->home_team_id, $matchModel->away_team_id];
+        $to = [$target->home_team_id, $target->away_team_id];
+
+        // Clear first, then re-seat: the other way round empties the very slot
+        // a walkover just filled. Same ordering updateTeams() relies on.
+        $cleared = $this->schedule->clearDownstream($matchModel)
+            + $this->schedule->clearDownstream($target);
+
+        $this->reseat($matchModel, $to[0], $to[1]);
+        $this->reseat($target->fresh(), $from[0], $from[1]);
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($category)),
+            $cleared > 0
+                ? "Slot ditukar — {$cleared} pertandingan babak berikutnya direset"
+                : 'Slot bracket ditukar',
+        );
+    }
+
+    /**
+     * Why this slot cannot be moved, or null when it can.
+     *
+     * Keyed on the scoreline rather than the status, the same way updateTeams()
+     * is: a bye is written finished and confirmed with no scores, and moving a
+     * bye onto a different branch is one of the corrections this exists for. A
+     * tie that has actually been played is not — its result belongs to the
+     * place it was played in.
+     */
+    protected function movableSlotError(GameMatch $match, EventCategory $category, string $which = 'ini'): ?JsonResponse
+    {
+        $engine = $category->engine();
+
+        if ($engine === 'knockout_double') {
+            return ApiResponse::error(
+                'Bracket double elimination belum bisa diatur manual.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        $isBracket = $engine === 'knockout_single'
+            ? $match->stage === null
+            : $match->stage === 'knockout';
+
+        if (! $isBracket || $match->bracket === 'third_place') {
+            return ApiResponse::error(
+                "Slot {$which} bukan bagian dari bracket knockout.",
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        // A hand-added friendly shares (stage null, round 1) with the bracket
+        // and its order keeps counting past it — not a slot, and moving one
+        // would hand the tree a fixture it never planned for.
+        if ($match->stage === null
+            && $match->round === 1
+            && $match->order >= $this->bracketSlotCount($match)) {
+            return ApiResponse::error(
+                'Pertandingan tambahan bukan bagian dari bracket — hapus lalu tambahkan ulang.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        if ($match->home_score !== null || $match->away_score !== null || $match->sets !== null) {
+            return ApiResponse::error(
+                "Slot {$which} sudah punya hasil — hapus hasilnya dulu sebelum memindahkan.",
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        return null;
+    }
+
+    /**
      * Hand the outgoing teams of $match to whichever first-round slots the
      * incoming ones are being taken from.
      *

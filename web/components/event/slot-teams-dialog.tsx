@@ -5,7 +5,7 @@ import { Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { downstreamImpact } from "@/lib/bracket";
+import { downstreamImpact, matchNumberLabel, sideLabel } from "@/lib/bracket";
 import { SeedEntitySelect } from "./seed-entity-select";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SeedTeam } from "./bracket-seed-editor";
@@ -33,6 +33,30 @@ interface SlotTeamsDialogProps {
   fieldErrors?: FieldErrors;
   onClose: () => void;
   onSubmit: (payload: MatchTeamsPayload) => void;
+  /**
+   * Move this tie to another slot of the same round, the two trading contents.
+   *
+   * A different question from the selects above, and in the same dialog
+   * because an organizer reading a wrong chart cannot tell in advance which of
+   * the two they need: "this pairing is wrong" and "this pairing is in the
+   * wrong place" look identical until you try to fix one.
+   */
+  onMove: (targetId: string) => void;
+}
+
+/**
+ * What a slot holds, in the words the chart already uses: the two teams, the
+ * caption for a side still waiting ("Pemenang P5"), or the word for a slot
+ * nobody is in yet. Reuses sideLabel() rather than spelling it again — a
+ * picker that named a slot differently from the card beside it would be two
+ * answers to the same question.
+ */
+/** Nothing is ever out of bounds in the target picker — every slot it lists
+ *  is already filtered to the ones the server will accept. */
+const EMPTY_IDS = new Set<string>();
+
+function slotSummary(m: Match): string {
+  return `${sideLabel(m, "home")} vs ${sideLabel(m, "away")}`;
 }
 
 export function SlotTeamsDialog({ open, ...props }: SlotTeamsDialogProps & { open: boolean }) {
@@ -48,9 +72,11 @@ function Dialog({
   fieldErrors,
   onClose,
   onSubmit,
+  onMove,
 }: SlotTeamsDialogProps) {
   const [home, setHome] = useState(match.home_team_id ?? "");
   const [away, setAway] = useState(match.away_team_id ?? "");
+  const [target, setTarget] = useState("");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -77,6 +103,32 @@ function Dialog({
    * get a note instead, because picking one is the swap the dialog exists for.
    */
   const blocked = (opposite: string) => (opposite ? new Set([opposite]) : new Set<string>());
+
+  /**
+   * Slots this tie may move to: same round, no result yet.
+   *
+   * The round is fixed because the rounds are not interchangeable — a tie
+   * moved up would claim a place its teams never played for. The scoreline is
+   * what rules a slot out, not its status: a bye is stored finished with no
+   * score, and moving one onto the right branch is a correction this offers.
+   * The server enforces both; this only keeps the list from offering a move it
+   * would then refuse.
+   */
+  const moveTargets = bracket
+    .filter(
+      (m) =>
+        m.id !== match.id &&
+        m.round === match.round &&
+        m.stage === match.stage &&
+        m.bracket !== "third_place" &&
+        m.home_score === null &&
+        m.away_score === null,
+    )
+    .sort((a, b) => a.order - b.order)
+    .map((m) => ({
+      id: m.id,
+      name: `${matchNumberLabel(m) ?? `Slot ${m.order + 1}`} — ${slotSummary(m)}`,
+    }));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -165,6 +217,42 @@ function Dialog({
               Mengganti tim di slot ini akan mengosongkan {affected} pertandingan babak
               berikutnya beserta hasilnya.
             </p>
+          )}
+
+          {/* The other question this dialog answers: not who is in the slot,
+              but which branch the tie sits on. Below the selects and behind a
+              divider because it is the rarer of the two and replaces, rather
+              than accompanies, what is typed above — moving posts on its own. */}
+          {moveTargets.length > 0 && (
+            <div className="grid gap-2 border-t border-border pt-4">
+              <Label htmlFor="slot-move" className="font-semibold">
+                Pindahkan ke slot lain
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Pasangan ini pindah ke slot yang dipilih, dan isi slot itu pindah ke
+                sini. Siapa melawan siapa tidak berubah — hanya posisinya di bagan.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <SeedEntitySelect
+                  id="slot-move"
+                  value={target || null}
+                  onChange={(v) => setTarget(v ?? "")}
+                  pool={moveTargets}
+                  disabledIds={EMPTY_IDS}
+                  emptyLabel="Pilih slot tujuan…"
+                  placeholder="Cari slot…"
+                  ariaLabel="Slot tujuan"
+                  className="min-w-[12rem] flex-1"
+                />
+                <Button
+                  variant="outline"
+                  disabled={!target || pending}
+                  onClick={() => onMove(target)}
+                >
+                  Pindahkan
+                </Button>
+              </div>
+            </div>
           )}
         </div>
 

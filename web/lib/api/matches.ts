@@ -484,6 +484,27 @@ export async function updateMatchTeams(
   return data.data;
 }
 
+/**
+ * Move a tie to another slot of the same round: the two trade contents, each
+ * keeping its own pairing.
+ *
+ * The twin of updateMatchTeams() and a different question — that one changes
+ * who is in a slot, this one changes which branch a tie sits on. Answers with
+ * the whole category, because a move rewrites two slots plus whatever their
+ * occupants had reached.
+ */
+export async function moveMatchSlot(
+  orgId: string,
+  matchId: string,
+  targetId: string
+): Promise<Match[]> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/matches/${matchId}/slot`,
+    { target_id: targetId }
+  );
+  return data.data;
+}
+
 export async function getMatchStats(orgId: string, matchId: string): Promise<MatchStatsData> {
   const { data } = await apiClient.get<ApiEnvelope<MatchStatsData>>(
     `/organizations/${orgId}/matches/${matchId}/stats`

@@ -32,6 +32,7 @@ import {
   generateKnockout,
   shuffleBracket,
   deleteKnockout,
+  moveMatchSlot,
   updateMatchTeams,
   createMatch,
   deleteMatch,
@@ -412,6 +413,25 @@ function ScheduleView() {
       );
       setSlotErrors(fieldErrors);
       // Field-level problems are already spelled out beside the select.
+      if (Object.keys(fieldErrors).length === 0) toast.error(message);
+    },
+  });
+
+  // Move a tie to another slot of the same round. Separate from editSlot
+  // above because the two answer different questions — that one replaces the
+  // occupants of a slot, this one leaves the pairing alone and changes where
+  // the bracket carries it.
+  const moveSlot = useMutation({
+    mutationFn: (targetId: string) => moveMatchSlot(orgId!, slotMatch!.id, targetId),
+    onSuccess: () => {
+      toast.success("Slot bracket ditukar");
+      setSlotMatch(null);
+      setSlotErrors({});
+      refreshEventData();
+    },
+    onError: (err) => {
+      const { message, fieldErrors } = parseApiError(err, "Gagal memindahkan slot.");
+      setSlotErrors(fieldErrors);
       if (Object.keys(fieldErrors).length === 0) toast.error(message);
     },
   });
@@ -1183,13 +1203,14 @@ function ScheduleView() {
             match={slotMatch}
             bracket={isHybrid ? knockoutTies : matches}
             teams={slotPool}
-            pending={editSlot.isPending}
+            pending={editSlot.isPending || moveSlot.isPending}
             fieldErrors={slotErrors}
             onClose={() => {
               setSlotMatch(null);
               setSlotErrors({});
             }}
             onSubmit={(payload) => editSlot.mutate(payload)}
+            onMove={(targetId) => moveSlot.mutate(targetId)}
           />
         )}
         </RaceRouteGuard>

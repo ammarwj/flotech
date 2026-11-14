@@ -524,6 +524,12 @@ Route::prefix('v1')->group(function () {
             Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
             // Fix a wrong seed in place, instead of rebuilding the whole bracket.
             Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
+            // Move a whole tie to another slot of the same round — the branch
+            // it sits on, not who is in it. Separate from `teams` above because
+            // the two answer different questions: that one replaces occupants
+            // and leaves the fixture where it is, this one leaves the pairing
+            // alone and changes where the bracket carries it.
+            Route::patch('matches/{match}/slot', [MatchController::class, 'moveSlot']);
             // Signing a result off is what makes it count, so it belongs to
             // whoever runs the org. An operator records; they don't ratify —
             // otherwise saving-as-admin auto-confirms for nothing.
