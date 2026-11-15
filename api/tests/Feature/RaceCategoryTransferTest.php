@@ -955,6 +955,223 @@ class RaceCategoryTransferTest extends TestCase
         $pay($open->id)->assertOk();
     }
 
+    /**
+     * A runner who topped up and then moved back down is owed the money the
+     * platform IS holding — even though their entry itself was paid off-platform.
+     *
+     * Dibandingkan **entry rail manual + top-up rail gateway** dengan entry
+     * yang rail-nya manual seluruhnya: yang pertama menitipkan uang top-up ke
+     * platform, jadi turun kategori berutang transfer balik; yang kedua tidak
+     * pernah. Assert "yang manual tidak menulis payout" sendirian lolos di
+     * build yang melewatkan kedua-duanya — dan di sana pelari yang uangnya
+     * benar-benar kami pegang tidak pernah masuk antrean siapa pun.
+     */
+    public function test_a_downgrade_returns_top_up_money_the_platform_actually_holds(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $k5 = $this->category($event, '5K', ['Early Bird' => 100_000]);
+        $k10 = $this->category($event, '10K', ['Early Bird' => 200_000]);
+
+        // Both entries were paid off-platform, so neither has a `race_entry`
+        // credit of its own.
+        $mixed = $this->paidEntry($org, $event, $k5);
+        $allManual = $this->paidEntry($org, $event, $k5, 'manual@test.com');
+        foreach ([$mixed, $allManual] as $e) {
+            $e->update(['payment_method' => 'manual']);
+            WalletTransaction::where('source_id', $e->id)->delete();
+        }
+
+        // `mixed` tops up on the GATEWAY rail: that money really does land in
+        // the platform's account and is credited.
+        $this->move($mixed, $k10)->assertCreated();
+        $this->settleOpen($mixed);
+        $topUp = $mixed->fresh()->transfers->first();
+        $this->assertSame(
+            100_000.0,
+            (float) WalletTransaction::where('source_id', $topUp->id)->firstOrFail()->amount,
+        );
+
+        // `allManual` tops up by hand: nothing reaches us.
+        $this->forceManualRail($org);
+        $this->move($allManual, $k10)->assertCreated();
+        app(RaceTransferService::class)->settle(
+            $allManual->fresh()->transfers->first()
+        );
+        PlatformSettings::put(['payment_gateway_enabled' => true], null);
+
+        // Both now move back down to 5K.
+        $this->move($mixed->fresh(), $k5)->assertCreated();
+        $this->move($allManual->fresh(), $k5)->assertCreated();
+
+        $mixedDown = $mixed->fresh()->transfers->last();
+        $manualDown = $allManual->fresh()->transfers->last();
+
+        // The pair. One owes a transfer back because we are holding the money;
+        // the other cannot, because we never were.
+        $this->assertDatabaseHas('refund_payouts', [
+            'source_id' => $mixedDown->id,
+            'amount' => '100000.00',
+        ]);
+        $this->assertDatabaseMissing('refund_payouts', ['source_id' => $manualDown->id]);
+    }
+
+    /**
+     * The ledger identity still holds after a chain of moves.
+     *
+     * `wallet:audit` is the invariant every money rail in this app is finally
+     * measured against — `balance_available = Σ ±amount WHERE available`, same
+     * for pending — and a new rail that writes rows the balances do not follow
+     * is exactly the drift it exists to catch. Run over a wallet that has taken
+     * an entry, a top-up and a downgrade: three writes, three categories, one
+     * identity.
+     */
+    public function test_the_ledger_still_reconciles_after_a_chain_of_moves(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $k5 = $this->category($event, '5K', ['Early Bird' => 100_000]);
+        $k10 = $this->category($event, '10K', ['Early Bird' => 200_000]);
+        $k21 = $this->category($event, '21K', ['Early Bird' => 350_000]);
+
+        $entry = $this->paidEntry($org, $event, $k5);
+
+        $this->move($entry, $k21)->assertCreated();
+        $this->settleOpen($entry);
+
+        $this->move($entry->fresh(), $k10)->assertCreated();
+        $this->settleOpen($entry);
+
+        $this->artisan('wallet:audit')->assertSuccessful();
+
+        // And the balances are what the rows say they are, which is the thing
+        // the audit asserts — restated here so a failure names the number.
+        $wallet = $org->fresh()->wallet;
+        $rows = WalletTransaction::where('wallet_id', $wallet->id)->get();
+
+        $this->assertSame(
+            round($rows->where('status', 'available')->sum(fn ($r) => $r->signedAmount()), 2),
+            round((float) $wallet->balance_available, 2),
+        );
+        $this->assertSame(
+            round($rows->where('status', 'pending')->sum(fn ($r) => $r->signedAmount()), 2),
+            round((float) $wallet->balance_pending, 2),
+        );
+    }
+
+    /**
+     * What the runner reads back after moving: the running total, the new
+     * category, and their own answers with labels.
+     *
+     * Dibandingkan **`gross_amount` dengan `paid_total`** pada satu entry yang
+     * sudah pindah: yang pertama wajib **tetap** (kwitansinya sudah terbit dan
+     * dirender dari baris itu), yang kedua wajib naik. Assert salah satunya
+     * sendirian lolos di build yang menulis ulang `gross_amount` — dan di sana
+     * dokumen yang sudah diunduh orang berubah isinya. Ini bug yang benar-benar
+     * dilaporkan: kartu peserta mencetak Rp 125.440 di samping kategori yang
+     * sudah bukan miliknya lagi.
+     */
+    public function test_a_moved_entry_reports_what_was_actually_paid_without_rewriting_its_bill(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+        // A form field, so the labelled answers have something to resolve.
+        $event->update(['registration_form' => [
+            'team_fields' => [[
+                'key' => 'ukuran_jersey',
+                'label' => 'Ukuran Jersey',
+                'type' => 'short_text',
+                'required' => false,
+                'is_public' => false,
+            ]],
+        ]]);
+
+        $from = $this->category($event, '3K', ['Early Bird' => 100_000]);
+        $to = $this->category($event, '5K', ['Early Bird' => 130_000]);
+
+        $entry = $this->paidEntry($org, $event, $from);
+        $entry->update(['custom_fields' => ['ukuran_jersey' => 'XS']]);
+
+        $grossBefore = (float) $entry->fresh()->gross_amount;
+
+        $this->move($entry, $to)->assertCreated();
+        $this->settleOpen($entry);
+
+        $payload = $this->getJson("/api/v1/race-entries/{$entry->id}")->assertOk()->json('data');
+
+        // The pair: the bill is frozen, the running total moved with them.
+        $this->assertSame($grossBefore, (float) $payload['gross_amount']);
+        $this->assertGreaterThan($grossBefore, (float) $payload['paid_total']);
+        $this->assertSame('5K', $payload['category']['name']);
+        // 30k difference plus this entry's own fees, which the top-up's fees
+        // are added to — never `price` alone, which leaves the fees out.
+        $this->assertSame(
+            round($grossBefore + 30_000 + (float) $entry->fresh()->transfers->first()->gateway_fee
+                + (float) $entry->fresh()->transfers->first()->service_fee, 2),
+            (float) $payload['paid_total'],
+        );
+
+        // And the answers come back LABELLED — the raw map is keyed by schema
+        // keys, which is the one shape the person who filled it in cannot read.
+        $this->assertSame(
+            [['key' => 'ukuran_jersey', 'label' => 'Ukuran Jersey', 'value' => 'XS']],
+            $payload['answers'],
+        );
+    }
+
+    /**
+     * The participant dashboard reports the same figures as the proof page.
+     *
+     * Dibandingkan **dua endpoint untuk satu entry**: `GET my-race-entries` dan
+     * `GET race-entries/{id}` wajib menyebut angka yang sama. Assert satu
+     * endpoint sendirian lolos di build yang lupa memuat `transfers` di sebelah
+     * — dan itulah bug yang dilaporkan: kartu dashboard mencetak harga lama
+     * sementara halaman buktinya benar.
+     *
+     * `answers` diperiksa **ada** di keduanya, bukan cuma di satu: ia
+     * `whenLoaded` pada `event`, jadi daftar yang lupa memuatnya diam-diam
+     * mengirim key mentah ke layar.
+     */
+    public function test_the_dashboard_list_and_the_proof_page_agree_on_the_total(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->orgFor($owner);
+        $event = $this->raceEvent($org);
+
+        $from = $this->category($event, '3K', ['Early Bird' => 100_000]);
+        $to = $this->category($event, '5K', ['Early Bird' => 130_000]);
+
+        $runner = User::factory()->create();
+        $id = $this->actingAs($runner, 'api')
+            ->postJson("/api/v1/public/events/{$org->slug}/{$event->slug}/race/register", [
+                'race_category_id' => $from->id,
+                'full_name' => 'Ammar',
+                'email' => 'ammar@test.com',
+                'payment_channel' => 'va',
+            ])
+            ->json('data.entry.id');
+
+        $entry = RaceEntry::findOrFail($id);
+        app(RaceEntryService::class)->markPaid($entry);
+
+        $this->move($entry, $to)->assertCreated();
+        $this->settleOpen($entry);
+
+        $fromList = $this->actingAs($runner, 'api')
+            ->getJson('/api/v1/my-race-entries')
+            ->assertOk()
+            ->json('data.0');
+
+        $fromPage = $this->getJson("/api/v1/race-entries/{$entry->id}")->assertOk()->json('data');
+
+        // The pair: one entry, two screens, one number.
+        $this->assertSame($fromPage['paid_total'], $fromList['paid_total']);
+        $this->assertSame($fromPage['category']['name'], $fromList['category']['name']);
+        $this->assertArrayHasKey('answers', $fromList);
+    }
+
     // ---- documents ----
 
     /**

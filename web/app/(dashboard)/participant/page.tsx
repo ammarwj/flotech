@@ -271,9 +271,23 @@ export default function ParticipantPage() {
                           {date}
                         </span>
                       )}
-                      {/* The gross, not `price`: that is what the runner was
-                          actually charged, fees included. */}
-                      <span>{entry.gross_amount > 0 ? rupiah(entry.gross_amount) : "Gratis"}</span>
+                      {/* `paid_total` where the server sent it, falling back to
+                          the entry's own gross — never `price`, which leaves
+                          out the fees the runner was actually charged.
+
+                          The fallback is not belt-and-braces: `paid_total` is
+                          `whenLoaded`, so a surface that does not eager-load the
+                          moves genuinely has no total to print, and `??` is what
+                          keeps this card right on both. Where they differ the
+                          entry moved category, and `gross_amount` is its own
+                          FROZEN bill — printing it there shows the old price
+                          beside the new category, which is exactly the
+                          contradiction this reads around. */}
+                      <span>
+                        {(entry.paid_total ?? entry.gross_amount) > 0
+                          ? rupiah(entry.paid_total ?? entry.gross_amount)
+                          : "Gratis"}
+                      </span>
                       {entry.bib_number && <span>BIB {entry.bib_number}</span>}
                     </div>
                   </div>

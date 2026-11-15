@@ -1888,6 +1888,16 @@ export interface RaceEntry extends ManualPaymentFields {
   emergency_contact_relation: string | null;
   custom_fields: Record<string, string>;
   /**
+   * The same answers, labelled and in the order the form asked them.
+   *
+   * **Optional** — only the pages that eager-load the event get it. Render THIS
+   * and not `custom_fields` above: that map is keyed by schema keys
+   * (`status_mahasiswa_uad_umum`), which is the one form a runner reading back
+   * their own submission cannot use, and joining the schema on the client would
+   * be a second reader of a rule the server owns.
+   */
+  answers?: { key: string; label: string; value: string }[];
+  /**
    * The price snapshot, both halves. Neither is derived from the period row:
    * organizers reprice mid-sale, and a receipt already issued must keep saying
    * what was charged and which window it was bought in.
@@ -1910,6 +1920,17 @@ export interface RaceEntry extends ManualPaymentFields {
   service_fee: number;
   /** price + gateway_fee + service_fee — what the runner is actually charged. */
   gross_amount: number;
+  /**
+   * Everything the runner has actually handed over: this entry plus every
+   * settled category move, fees and all.
+   *
+   * **Optional**, and where it exists it is what a card should print.
+   * `gross_amount` above is this entry's own FROZEN bill — the receipt it backs
+   * was issued before any move — so a registration that moved category reads
+   * its old figure there, beside a category it no longer matches. Never sum the
+   * moves on the client: the server owns that arithmetic.
+   */
+  paid_total?: number;
   /** Null on a free entry, which never had a bill to document. */
   invoice_number: string | null;
   receipt_number: string | null;

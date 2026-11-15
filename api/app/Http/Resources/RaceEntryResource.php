@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
+use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -28,6 +30,23 @@ class RaceEntryResource extends JsonResource
             'emergency_contact_phone' => $this->emergency_contact_phone,
             'emergency_contact_relation' => $this->emergency_contact_relation,
             'custom_fields' => (object) ($this->custom_fields ?? []),
+            // The same answers, labelled and in the order the form asked them.
+            //
+            // Raw `custom_fields` above is a map of schema KEYS
+            // (`status_mahasiswa_uad_umum`), which is the one thing a runner
+            // reading back their own submission cannot use — and a client that
+            // joined the schema itself would be the second reader of a rule the
+            // server already owns. `ownAnswers()` and not `publicAnswers()`:
+            // `is_public` decides what strangers see, and filtering on it here
+            // would hide a runner's own emergency contact from them.
+            //
+            // `whenLoaded` because it needs the event's schema: the organizer's
+            // list renders this resource per row and has no use for it, so the
+            // cost belongs to the pages that eager-load `event`.
+            'answers' => $this->whenLoaded(
+                'event',
+                fn () => RegistrationForm::forEvent($this->event)->ownAnswers('team', $this->custom_fields),
+            ),
 
             // The price snapshot, both halves. `period_name` is published
             // alongside `price` because that is what makes the number
@@ -56,6 +75,34 @@ class RaceEntryResource extends JsonResource
             'gateway_tax' => (float) $this->gateway_tax,
             'service_fee' => (float) $this->service_fee,
             'gross_amount' => (float) $this->gross_amount,
+            /**
+             * Everything this runner has actually handed over: this entry plus
+             * every settled category move.
+             *
+             * Published because `gross_amount` above is NOT it, and the
+             * difference is visible the moment somebody moves category — an
+             * entry bought at Rp 119.000 and topped up to Umum 5K still reads
+             * Rp 125.440 there, beside a category it no longer matches. That
+             * column is the entry's own bill and must stay frozen: the receipt
+             * it backs was issued before the move. So the running total is its
+             * own field rather than a rewrite, and the client never sums the
+             * moves itself — that would be the second reader of
+             * `paidTowards()`, which is the one place the chain is added up.
+             *
+             * `chargedTotal()` and not `paidTowards()`: the first answers "what
+             * left my account" (fees and all), the second "how much of the
+             * category price is covered" — which is what the next move's
+             * difference is measured against and therefore excludes fees. A
+             * card printing the second is short by exactly those fees.
+             *
+             * `whenLoaded` on the relation that feeds it, so the organizer's
+             * list pays nothing: it renders this resource per row and has no
+             * total to show.
+             */
+            'paid_total' => $this->whenLoaded(
+                'transfers',
+                fn () => RaceEntryTransfer::chargedTotal($this->resource),
+            ),
 
             // Null on a free entry, which never had a bill to document. The
             // client shows a download button per number rather than guessing

@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Event;
+use Illuminate\Support\Carbon;
 
 /**
  * The shape of one event's registration form, as the organizer defined it.
@@ -285,6 +286,47 @@ final class RegistrationForm
     }
 
     /**
+     * Every answer somebody gave, labelled — for the person who gave it.
+     *
+     * A THIRD reader beside publicAnswers() and albumRows(), and the three
+     * differ in exactly the two ways this file keeps having to separate: which
+     * fields, and what to do with a blank. This one takes **all** fields,
+     * because the owner is reading back their own submission and `is_public` is
+     * about what strangers see — filtering here would hide a runner's own
+     * emergency contact from them. Blanks are dropped, like publicAnswers() and
+     * unlike the album: this is a summary to check, not a form to fill in by
+     * hand, and a labelled empty row reads as data that went missing.
+     *
+     * Keyed by nothing and ordered by the form, so the page can render it
+     * without knowing the schema — the same call publicAnswers() makes, and the
+     * reason neither returns a map.
+     *
+     * @param  array<string, mixed>|null  $answers
+     * @return list<array{key: string, label: string, value: string}>
+     */
+    public function ownAnswers(string $section, ?array $answers): array
+    {
+        $answers ??= [];
+        $out = [];
+
+        foreach ($this->fieldsFor($section) as $field) {
+            $value = $answers[$field['key']] ?? null;
+
+            if (! is_scalar($value) || trim((string) $value) === '') {
+                continue;
+            }
+
+            $out[] = [
+                'key' => $field['key'],
+                'label' => $field['label'],
+                'value' => self::displayValue($field, trim((string) $value)),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * The rows the printed album should carry for one person, label and all.
      *
      * Unlike publicAnswers(), an unanswered field is **kept** — blank. The album
@@ -407,7 +449,7 @@ final class RegistrationForm
             // reads windows on (RacePeriod, TicketCategory, the hold release).
             // App timezone is UTC, so formatting naively would print a consent
             // given at 00:30 WIB as the previous day.
-            return 'Ya · '.\Illuminate\Support\Carbon::parse($value)
+            return 'Ya · '.Carbon::parse($value)
                 ->timezone(config('wallet.timezone', 'Asia/Jakarta'))
                 ->format('d/m/Y H:i');
         } catch (\Throwable) {

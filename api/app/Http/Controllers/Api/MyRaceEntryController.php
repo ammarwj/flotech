@@ -39,7 +39,13 @@ class MyRaceEntryController extends Controller
     {
         $entries = auth('api')->user()
             ->raceEntries()
-            ->with(['category', 'event.organization', 'documents'])
+            // `transfers` is what makes the card print what the runner actually
+            // paid: `gross_amount` is this entry's own frozen bill, so a
+            // registration that moved category reads its old figure beside a
+            // category it no longer matches. `event` carries the registration
+            // schema the labelled answers are resolved against — both are
+            // `whenLoaded` on the resource, so this list is the one that opts in.
+            ->with(['category', 'event.organization', 'documents', 'transfers'])
             ->latest('created_at')
             ->get();
 

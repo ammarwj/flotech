@@ -247,20 +247,30 @@ class WalletService
             return null;
         }
 
-        // Nothing was ever credited for this entry: a free place, or one paid
-        // by manual transfer straight into the organizer's own account. The
-        // runner is still owed their difference — by the organizer, out of
-        // money the platform never held.
-        $hasCredit = WalletTransaction::where('source_type', 'race_entry')
-            ->where('source_id', $entry->id)
-            ->where('category', 'race_entry')
-            ->where('type', 'credit')
-            ->where('status', '!=', 'cancelled')
-            ->exists();
+        // What the platform is ACTUALLY holding for this runner, and the debit
+        // is capped at it.
+        //
+        // > **Both rails count, and asking only about the entry's own credit is
+        // > a bug this test caught.** A registration paid by manual transfer
+        // > has no `race_entry` credit — that money went to the organizer's own
+        // > bank — but a top-up paid on the GATEWAY rail afterwards really did
+        // > land in the platform's account and really was credited. Reading
+        // > only the entry would have the one runner whose money we hold be the
+        // > one nobody queues a transfer for. The reverse pairing is just as
+        // > real: a gateway entry topped up by hand.
+        //
+        // Capped rather than all-or-nothing, for the same reason: the platform
+        // cannot return more than it took. A manual entry that topped up
+        // 100k on the gateway and then drops 150k owes 100k back here, and the
+        // remaining 50k is between the runner and the organizer — exactly as it
+        // was for the manual half of what they paid in the first place.
+        $held = $this->heldForEntry($entry);
 
-        if (! $hasCredit) {
+        if ($held <= 0) {
             return null;
         }
+
+        $amount = min($amount, $held);
 
         $wallet = $this->forOrganization($event->organization);
 
@@ -285,6 +295,37 @@ class WalletService
                 ? "Selisih pindah kategori {$entry->full_name} — {$event->name} ({$reason})"
                 : "Selisih pindah kategori {$entry->full_name} — {$event->name}",
         ]);
+    }
+
+    /**
+     * What the platform is still holding for one runner: every live credit
+     * raised by their entry and by its category moves, minus whatever has
+     * already been handed back.
+     *
+     * One query over `source_id`, which is what makes it rail-agnostic: a
+     * registration paid by hand and topped up through the gateway contributes
+     * only its top-up, and the reverse pairing contributes only its entry. A
+     * boolean "was anything credited" cannot express either, which is how the
+     * first version of `debitRaceEntryTransfer()` came to skip the one runner
+     * whose money we actually held.
+     *
+     * `cancelled` rows are excluded because they never counted towards a
+     * balance; earlier downgrade debits ARE subtracted, so two moves down
+     * cannot return the same money twice.
+     */
+    protected function heldForEntry(RaceEntry $entry): float
+    {
+        $sourceIds = $entry->transfers()->pluck('id')->push($entry->id)->all();
+
+        $rows = WalletTransaction::whereIn('source_id', $sourceIds)
+            ->whereIn('source_type', ['race_entry', 'race_entry_transfer'])
+            ->where('status', '!=', 'cancelled')
+            ->get(['type', 'amount']);
+
+        return round(
+            $rows->sum(fn (WalletTransaction $row) => $row->signedAmount()),
+            2,
+        );
     }
 
     /**

@@ -116,6 +116,34 @@ class RaceEntryTransfer extends Model
     }
 
     /**
+     * What the runner has actually been CHARGED, fees and all.
+     *
+     * Distinct from `paidTowards()` above, and the two are not
+     * interchangeable: that one answers "how much of the category price has
+     * been covered", which is what the next move's difference is measured
+     * against and therefore must exclude fees nobody's entry fee benefits from.
+     * This one answers "what left my account", which is what the runner reads
+     * on a card — and a page printing the first as if it were the second is
+     * short by exactly the service and gateway fees.
+     *
+     * A downward move subtracts its `amount` only: the fees on the top-up that
+     * preceded it were spent, not banked, so they do not come back. That is the
+     * same thing `refund_payouts` records — the difference, never the fees.
+     */
+    public static function chargedTotal(RaceEntry $entry): float
+    {
+        $entry->loadMissing('transfers');
+
+        $moves = $entry->transfers
+            ->where('status', 'paid')
+            ->sum(fn (self $transfer) => $transfer->direction === self::DOWN
+                ? -(float) $transfer->amount
+                : (float) $transfer->gross_amount);
+
+        return round((float) $entry->gross_amount + $moves, 2);
+    }
+
+    /**
      * This move's signed contribution to what the runner has paid.
      *
      * `amount` is always positive and `direction` gives it the sign, the shape
