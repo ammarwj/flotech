@@ -8,6 +8,7 @@ import type {
   RacePeriod,
   RaceTransfer,
   RaceTransferOffer,
+  PayRaceTransferResult,
   RaceReport,
   RaceScanResponse,
   RegisterRaceEntryResult,
@@ -476,6 +477,46 @@ export async function startRaceTransfer(
   const { data } = await apiClient.post<ApiEnvelope<StartRaceTransferResult>>(
     `/race-entries/${entryId}/transfer`,
     input
+  );
+  return data.data;
+}
+
+/**
+ * Pay for a move that was started and never finished.
+ *
+ * The runner who closed the Midtrans tab lands back on the proof page with an
+ * open move and — before this — nowhere to pay it: Snap tokens expire after
+ * about a day, so the original link is dead, and the hourly sweep that would
+ * release the held place only reaches the manual rail.
+ *
+ * The difference is NOT re-quoted; the move was priced when it was created.
+ * Only the channel is, because its fee is a percentage of that difference. A
+ * gateway that went down since lands the response on `payment_method: "manual"`
+ * with a bank account, and the row is rewritten to match — read the response,
+ * never the state the page was already holding.
+ */
+export async function payRaceTransfer(
+  transferId: string,
+  channel: string | null
+): Promise<PayRaceTransferResult> {
+  const { data } = await apiClient.post<ApiEnvelope<PayRaceTransferResult>>(
+    `/race-transfers/${transferId}/pay`,
+    { payment_channel: channel }
+  );
+  return data.data;
+}
+
+/**
+ * Give up on a move that was started and never paid for.
+ *
+ * Returns the ENTRY, not the transfer: the thing that changed from the runner's
+ * point of view is that they no longer have an open move, and the entry is what
+ * every panel on the page reads. Their registration is untouched — it never
+ * left its original category.
+ */
+export async function cancelRaceTransfer(transferId: string): Promise<RaceEntry> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
+    `/race-transfers/${transferId}/cancel`
   );
   return data.data;
 }

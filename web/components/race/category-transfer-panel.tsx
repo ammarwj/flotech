@@ -52,12 +52,24 @@ export function CategoryTransferPanel({
   entry,
   pending,
   onSubmit,
+  onPay,
+  onCancel,
   open: openProp,
   onOpenChange,
 }: {
   entry: RaceEntry;
   pending: boolean;
   onSubmit: (input: { categoryId: string; reason: string | null; channel: string | null }) => void;
+  /**
+   * Finish paying for a move already open, and give up on one.
+   *
+   * Optional, so a surface that only offers starting a move (an organizer list,
+   * say) renders the status card without controls it cannot serve. The page
+   * that owns the proof view passes both: without them the card reports a debt
+   * with no way to settle it and no way to release the place it is holding.
+   */
+  onPay?: (transferId: string, channel: string) => void;
+  onCancel?: (transferId: string) => void;
   /**
    * Controlled mode — see `RefundRequestPanel`, which takes the same pair for
    * the same reason. Passing `open` also suppresses this panel's own trigger,
@@ -71,6 +83,11 @@ export function CategoryTransferPanel({
   const controlled = openProp !== undefined;
   const open = controlled ? openProp : openSelf;
   const setOpen = controlled ? (onOpenChange ?? (() => {})) : setOpenSelf;
+  // The reopen dialog's own state, kept apart from the start dialog's: they are
+  // two different questions about two different rows, and sharing `picked`
+  // would seed one with the other's answer.
+  const [payOpen, setPayOpen] = useState(false);
+  const [payChannel, setPayChannel] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -160,9 +177,99 @@ export function CategoryTransferPanel({
                 Bukti sebelumnya ditolak: {openTransfer.rejected_reason}
               </p>
             )}
+
+            {/* The way out of the dead end this card used to be.
+
+                A move started on the gateway rail and abandoned left the runner
+                here with a sentence and no button: the Snap token expires after
+                about a day, so the original tab cannot be returned to, and the
+                hourly sweep that would release the held place only reaches the
+                manual rail. Gated on the rail rather than on `onPay` being
+                passed, because a manual top-up is paid by uploading proof in
+                the panel below — two payment affordances for one debt is the
+                state nothing on screen could explain.
+
+                Giving up sits beside it and is deliberately plain: it releases
+                the place the move is holding in the target category, which is
+                the other thing nobody could do from here. */}
+            {!openTransfer.awaiting_verification && (
+              <div className="mt-3 flex flex-wrap items-center gap-1">
+                {openTransfer.payment_method !== "manual" && onPay && (
+                  <Button type="button" size="sm" onClick={() => setPayOpen(true)}>
+                    Bayar selisih
+                  </Button>
+                )}
+                {onCancel && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => onCancel(openTransfer.id)}
+                    disabled={pending}
+                  >
+                    Batalkan pindah
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </Card>
       )}
+
+      {/* Picking a channel again, because the fee is a percentage of the
+          difference and the first choice was never re-quoted. Its own dialog
+          rather than inline in the card: the card is a status card on a page
+          that polls, and a half-filled form inside one is a form that can be
+          replaced mid-typing. */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent>
+          <DialogHeader
+            icon={ArrowLeftRight}
+            title="Bayar selisih kategori"
+            description={
+              openTransfer?.to_category
+                ? `Pindah ke ${openTransfer.to_category}. Harganya tidak berubah dari saat kamu mengajukan.`
+                : "Harganya tidak berubah dari saat kamu mengajukan."
+            }
+          />
+          <DialogBody>
+            {openTransfer && (
+              <ChannelPicker
+                amount={openTransfer.amount}
+                audience="race_entry"
+                value={payChannel}
+                onChange={(next) => {
+                  setPayChannel(next);
+                  if (error) setError(null);
+                }}
+              />
+            )}
+            <FieldError message={error ?? undefined} />
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPayOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (!payChannel) {
+                  setError("Pilih metode pembayaran.");
+                  return;
+                }
+
+                setError(null);
+                onPay?.(openTransfer!.id, payChannel);
+                setPayOpen(false);
+              }}
+            >
+              {pending ? "Memproses…" : "Lanjut bayar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ---- Start one ----
           Ghost weight, like the refund button beside it and for the same

@@ -378,6 +378,75 @@ class RaceTransferService
     }
 
     /**
+     * Reopen payment for a top-up that was started and never finished.
+     *
+     * The runner who closed the Midtrans tab, or backed out of it, has an open
+     * move on their proof page saying money is owed and — before this — nowhere
+     * to pay it. The place was already taken in the target category and the
+     * hourly sweep only reaches the manual rail, so without this door that
+     * place sits held until a human notices.
+     *
+     * > **A FRESH Midtrans order id, keeping the invoice number.** Snap tokens
+     * > expire after about 24 hours, so reusing the id hands back a token that
+     * > cannot be paid; reissuing the invoice number instead would put a second
+     * > bill in front of somebody for one debt. Exactly the split
+     * > `EventPlanOrderService::pay()` makes, including what happens to the old
+     * > id: it is abandoned and expires on Midtrans' side, and a late webhook
+     * > for it finds no row and 404s — harmless, because the row it would have
+     * > settled is the one being paid for here.
+     *
+     * Only an upward move on the gateway rail can be reopened. A manual one is
+     * paid by uploading proof (`submitProof()`), and an even or downward move
+     * was settled the moment it was created.
+     *
+     * @throws PaymentException
+     */
+    public function reopen(RaceEntryTransfer $transfer): RaceEntryTransfer
+    {
+        if ($transfer->status !== 'pending') {
+            throw new PaymentException('Pindah kategori ini sudah tidak menunggu pembayaran.');
+        }
+
+        if ($transfer->direction !== RaceEntryTransfer::UP || (float) $transfer->amount <= 0) {
+            throw new PaymentException('Pindah kategori ini tidak perlu dibayar.');
+        }
+
+        if ($transfer->isManual()) {
+            throw new PaymentException('Pindah kategori ini dibayar lewat transfer manual. Unggah bukti transfernya.');
+        }
+
+        $transfer->update([
+            'midtrans_order_id' => $this->newOrderId(),
+            // Cleared so a stale token cannot be handed back if minting the new
+            // one fails: an expired token in the client's hand looks exactly
+            // like a working one until the runner clicks it.
+            'midtrans_token' => null,
+        ]);
+
+        return $transfer->fresh();
+    }
+
+    /**
+     * Give up on a move the runner started and no longer wants.
+     *
+     * Their own door into `cancel()`, which is what releases the place held in
+     * the target category. Without it the only thing that frees it is the
+     * hourly sweep — and that reaches the manual rail only, so a runner who
+     * backed out of a gateway payment would hold two places until the organizer
+     * noticed. The entry is untouched: it never left its original category.
+     *
+     * @throws PaymentException
+     */
+    public function abandon(RaceEntryTransfer $transfer): void
+    {
+        if ($transfer->status !== 'pending') {
+            throw new PaymentException('Pindah kategori ini sudah tidak bisa dibatalkan.');
+        }
+
+        $this->cancel($transfer);
+    }
+
+    /**
      * The runner uploads their transfer receipt for the top-up.
      *
      * @throws PaymentException

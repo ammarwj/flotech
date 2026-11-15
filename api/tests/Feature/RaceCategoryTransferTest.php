@@ -774,6 +774,187 @@ class RaceCategoryTransferTest extends TestCase
         $this->assertSame('Early Bird', $orphan->fresh()->period_name);
     }
 
+    // ---- finishing, or giving up on, a move already started ----
+
+    /**
+     * Reopening payment mints a FRESH Midtrans order id and keeps the invoice
+     * number.
+     *
+     * Dibandingkan **keduanya dalam satu test**: order id wajib berubah (Snap
+     * token kedaluwarsa ~24 jam, jadi id lama memberi token yang tidak bisa
+     * dibayar), nomor invoice wajib tetap (menerbitkan yang kedua menaruh dua
+     * tagihan di depan orang untuk satu utang). Assert salah satunya lolos di
+     * build yang menulis ulang keduanya, atau tidak satu pun. Pola yang sama
+     * dengan `EventPlanOrderService::pay()`.
+     */
+    public function test_reopening_payment_mints_a_new_order_id_and_keeps_the_invoice(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $from = $this->category($event, '5K', ['Early Bird' => 100_000]);
+        $to = $this->category($event, '10K', ['Early Bird' => 200_000]);
+
+        $entry = $this->paidEntry($org, $event, $from);
+        // Manual so the move stays genuinely open, then flipped to the gateway
+        // rail: that is the row a runner who closed the Midtrans tab is left
+        // holding, and the only one `pay` serves.
+        $this->forceManualRail($org);
+        $this->move($entry, $to)->assertCreated();
+
+        $transfer = RaceEntryTransfer::firstOrFail();
+        $transfer->update([
+            'payment_method' => 'gateway',
+            'midtrans_order_id' => 'RXF-OLDONE123',
+            'midtrans_token' => 'stale-token',
+        ]);
+        PlatformSettings::put(['payment_gateway_enabled' => true], null);
+
+        $this->postJson("/api/v1/race-transfers/{$transfer->id}/pay", [
+            'payment_channel' => 'va',
+        ])->assertOk();
+
+        $transfer->refresh();
+
+        // The pair.
+        $this->assertNotSame('RXF-OLDONE123', $transfer->midtrans_order_id);
+        $this->assertStringStartsWith('RXF-', (string) $transfer->midtrans_order_id);
+        $this->assertSame('INV-RXF/2026/01/0001', $transfer->invoice_number);
+
+        // And reopening is not a SECOND move: one row, one target place. With
+        // no Midtrans server key the suite settles on the spot, so the quota
+        // has legitimately finished moving by now — which is why the assertion
+        // that matters is the count, not the tally. A build that created a
+        // fresh transfer here would read `taken` identically on the target and
+        // leave the source held by a row nobody will ever pay.
+        $this->assertCount(1, $entry->fresh()->transfers);
+        $this->assertSame(1, $to->fresh()->taken);
+        $this->assertSame(0, $from->fresh()->taken);
+    }
+
+    /**
+     * Reopening never re-quotes the difference — only the channel's fee.
+     *
+     * Dibandingkan **selisih sebelum dan sesudah** melintasi batas periode: ia
+     * wajib tetap, sementara `gateway_fee` boleh berubah mengikuti channel yang
+     * dipilih ulang. Assert "pembayaran terbuka" sendirian lolos di build yang
+     * menghitung ulang harga — dan di sana pelari yang menunggu lewat batas
+     * periode ditagih angka yang berbeda dari kartu yang sedang ia lihat.
+     */
+    public function test_reopening_keeps_the_price_it_was_quoted_at(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $from = $this->category($event, '5K', ['Early Bird' => 100_000, 'Normal' => 150_000]);
+        $to = $this->category($event, '10K', ['Early Bird' => 200_000, 'Normal' => 400_000]);
+
+        $entry = $this->paidEntry($org, $event, $from);
+        $this->forceManualRail($org);
+        $this->move($entry, $to)->assertCreated();
+
+        $transfer = RaceEntryTransfer::firstOrFail();
+        $transfer->update(['payment_method' => 'gateway']);
+        PlatformSettings::put(['payment_gateway_enabled' => true], null);
+        $amountBefore = (float) $transfer->amount;
+
+        // The sale moves on. The open move does not.
+        Carbon::setTestNow('2026-01-20 03:00:00');
+
+        $this->postJson("/api/v1/race-transfers/{$transfer->id}/pay", [
+            'payment_channel' => 'ewallet',
+        ])->assertOk();
+
+        $transfer->refresh();
+
+        // The pair: the difference is frozen, the fee followed the new channel.
+        $this->assertSame($amountBefore, (float) $transfer->amount);
+        $this->assertSame(100_000.0, (float) $transfer->amount);
+        $this->assertSame('ewallet', $transfer->payment_channel);
+        $this->assertGreaterThan(0, (float) $transfer->gateway_fee);
+    }
+
+    /**
+     * Giving up releases the TARGET place and leaves the registration alone.
+     *
+     * Dibandingkan **kedua kategori plus kategori entry-nya**: tujuan kembali
+     * nol, asal tetap satu, pelarinya tidak pindah. Assert "transfer
+     * dibatalkan" sendirian lolos walau pelarinya ikut kehilangan tempat yang
+     * sudah ia bayar — dan sesudahnya ia boleh mengajukan lagi, karena yang
+     * ditolak gate adalah pindahan yang masih terbuka.
+     */
+    public function test_abandoning_a_move_frees_the_target_and_reopens_the_door(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $from = $this->category($event, '5K', ['Early Bird' => 100_000]);
+        $to = $this->category($event, '10K', ['Early Bird' => 200_000]);
+
+        $entry = $this->paidEntry($org, $event, $from);
+        $this->forceManualRail($org);
+        $this->move($entry, $to)->assertCreated();
+
+        $transfer = RaceEntryTransfer::firstOrFail();
+        $this->assertSame([1, 1], [$from->fresh()->taken, $to->fresh()->taken]);
+
+        $this->postJson("/api/v1/race-transfers/{$transfer->id}/cancel")->assertOk();
+
+        // The triple.
+        $this->assertSame('cancelled', $transfer->fresh()->status);
+        $this->assertSame([1, 0], [$from->fresh()->taken, $to->fresh()->taken]);
+        $this->assertSame($from->id, $entry->fresh()->race_category_id);
+
+        // And the door is open again — the guard refuses an OPEN move, not a
+        // runner who has moved before.
+        $this->assertTrue($entry->fresh()->canTransferCategory());
+        $this->move($entry->fresh(), $to)->assertCreated();
+    }
+
+    /**
+     * A settled move, and a manual one, both refuse `pay`.
+     *
+     * Dibandingkan **ketiganya satu test** (lunas / manual / gateway terbuka):
+     * assert satu penolakan sendirian lolos di build yang menolak semuanya —
+     * dan di sana tombol yang justru jadi alasan fitur ini ada tidak pernah
+     * jalan. Manual ditolak karena dibayar dengan mengunggah bukti; dua
+     * affordance untuk satu utang adalah keadaan yang tak bisa dijelaskan
+     * layar mana pun.
+     */
+    public function test_pay_refuses_a_settled_move_and_a_manual_one(): void
+    {
+        $org = $this->orgFor(User::factory()->create());
+        $event = $this->raceEvent($org);
+
+        $k5 = $this->category($event, '5K', ['Early Bird' => 100_000]);
+        $k10 = $this->category($event, '10K', ['Early Bird' => 200_000]);
+
+        $settledEntry = $this->paidEntry($org, $event, $k5);
+        $this->move($settledEntry, $k10)->assertCreated();
+        $this->settleOpen($settledEntry);
+        $settled = $settledEntry->fresh()->transfers->first();
+
+        $manualEntry = $this->paidEntry($org, $event, $k5, 'manual@test.com');
+        $openEntry = $this->paidEntry($org, $event, $k5, 'open@test.com');
+        $this->forceManualRail($org);
+        $this->move($manualEntry, $k10)->assertCreated();
+        $this->move($openEntry, $k10)->assertCreated();
+
+        $manual = $manualEntry->fresh()->transfers->first();
+        $open = $openEntry->fresh()->transfers->first();
+        $open->update(['payment_method' => 'gateway']);
+        PlatformSettings::put(['payment_gateway_enabled' => true], null);
+
+        $pay = fn (string $id) => $this->postJson("/api/v1/race-transfers/{$id}/pay", [
+            'payment_channel' => 'va',
+        ]);
+
+        // The triple.
+        $pay($settled->id)->assertStatus(422);
+        $pay($manual->id)->assertStatus(422);
+        $pay($open->id)->assertOk();
+    }
+
     // ---- documents ----
 
     /**

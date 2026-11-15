@@ -8,7 +8,9 @@ import { toast } from "sonner";
 import { ArrowLeftRight, CheckCircle2, Clock, Download, Flag, Loader2, Undo2 } from "lucide-react";
 
 import {
+  cancelRaceTransfer,
   getRaceEntry,
+  payRaceTransfer,
   requestRaceEntryRefund,
   startRaceTransfer,
   submitRaceEntryProof,
@@ -162,6 +164,58 @@ export default function RaceEntryPage() {
       );
     },
     onError: (err) => toast.error(parseApiError(err, "Gagal memindahkan kategori.").message),
+  });
+
+  /**
+   * Finishing a move that was started and left unpaid.
+   *
+   * The way out of a dead end: a Snap token expires after about a day, so the
+   * tab the runner closed cannot be returned to, and the sweep that would
+   * release the place their open move is holding only reaches the manual rail.
+   *
+   * The response decides where they go, never the state this page was holding:
+   * a gateway that went down since lands this on the manual rail, and then
+   * staying put is correct — the upload panel below renders for it.
+   */
+  const payTransfer = useMutation({
+    mutationFn: ({ transferId, channel }: { transferId: string; channel: string }) =>
+      payRaceTransfer(transferId, channel),
+    onSuccess: (res) => {
+      if (res.payment_method === "gateway" && !res.mock && res.redirect_url) {
+        window.location.assign(res.redirect_url);
+        return;
+      }
+
+      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
+      toast.success(
+        res.transfer.status === "paid" ? "Kategori berhasil dipindah" : "Lanjutkan pembayaran",
+        {
+          description:
+            res.payment_method === "manual"
+              ? "Pembayaran online sedang tidak tersedia. Transfer manual sesuai panel di bawah."
+              : undefined,
+        }
+      );
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal membuka pembayaran.").message),
+  });
+
+  /**
+   * Giving up on a move. Releases the place it was holding in the target
+   * category; the registration itself never left its original one.
+   */
+  const cancelTransfer = useMutation({
+    mutationFn: (transferId: string) => cancelRaceTransfer(transferId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
+      // The quota just moved, so a list fetched before this is wrong about
+      // which categories have room.
+      qc.invalidateQueries({ queryKey: ["race-transfer-options", params.entryId] });
+      toast.success("Pindah kategori dibatalkan", {
+        description: "Pendaftaranmu tetap di kategori sekarang.",
+      });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal membatalkan.").message),
   });
 
   /**
@@ -343,8 +397,10 @@ export default function RaceEntryPage() {
           is exactly what they are not. */}
       <CategoryTransferPanel
         entry={entry}
-        pending={transfer.isPending}
         onSubmit={(input) => transfer.mutate(input)}
+        onPay={(transferId, channel) => payTransfer.mutate({ transferId, channel })}
+        onCancel={(transferId) => cancelTransfer.mutate(transferId)}
+        pending={transfer.isPending || payTransfer.isPending || cancelTransfer.isPending}
         open={transferOpen}
         onOpenChange={setTransferOpen}
       />

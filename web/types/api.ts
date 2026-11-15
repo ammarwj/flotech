@@ -2147,6 +2147,20 @@ export interface StartRaceTransferResult extends PaymentStart {
   entry: RaceEntry;
 }
 
+/**
+ * Reopening payment for a move that was started and left unpaid.
+ *
+ * No `entry` — nothing about the registration changed, which is the whole point
+ * of the quota ordering: the runner is still in their original category until
+ * this settles. `payment_method` may differ from what the move was created on:
+ * a gateway that went down since lands this on `manual` with a bank account,
+ * and the server rewrites the row to match. Read it from here, never from the
+ * state the page was already holding.
+ */
+export interface PayRaceTransferResult extends PaymentStart {
+  transfer: RaceTransfer;
+}
+
 /** What the public fun run page reads: what is on sale, and the windows. */
 export interface PublicRaceOffer {
   categories: RaceCategory[];

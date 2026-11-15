@@ -272,6 +272,13 @@ Route::prefix('v1')->group(function () {
     // Keyed on the TRANSFER, not the entry: the row being paid for is the
     // transfer, and routing through the entry would need a second lookup rule
     // ("the open one") that the guard refusing a second move already owns.
+    // Finishing — or giving up on — a move that was started and left unpaid.
+    // Without these two a runner who closed the Midtrans tab had no way to pay
+    // and no way to release the place the move was holding: the hourly sweep
+    // only reaches the manual rail. `pay` mints a FRESH Midtrans order id and
+    // keeps the invoice number, the split EventPlanOrderService::pay() makes.
+    Route::post('race-transfers/{transfer}/pay', [PublicRaceController::class, 'payTransfer']);
+    Route::post('race-transfers/{transfer}/cancel', [PublicRaceController::class, 'cancelTransfer']);
     Route::post('race-transfers/{transfer}/proof', [PublicRaceController::class, 'transferProof']);
     // A top-up is its own bill, so it has its own two documents — the entry's
     // original receipt keeps saying exactly what it said, which is the whole

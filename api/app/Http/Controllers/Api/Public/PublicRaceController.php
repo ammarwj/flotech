@@ -679,6 +679,152 @@ class PublicRaceController extends Controller
     }
 
     /**
+     * Pay for a move that was started and never finished.
+     *
+     * The runner who closed the Midtrans tab lands back on their proof page
+     * with a card saying money is owed; this is the button on it. Without this
+     * door the only way out was to wait for a sweep that never reaches the
+     * gateway rail — so the place stayed held and the move could not be paid
+     * for at all.
+     *
+     * The channel may be re-picked, and usually is: the fee is a percentage of
+     * the difference and the previous choice is not re-quoted. Re-sending the
+     * same one is fine — the breakdown is recomputed either way, from the
+     * transfer's stored `amount` and never from a fresh quote. That is the
+     * point: the move was priced when it was created, and repricing it here
+     * would let a runner who waited out a period boundary pay a different
+     * figure than the one on their open card.
+     */
+    public function payTransfer(Request $request, string $transfer): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_channel' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $model = RaceEntryTransfer::with(['entry', 'event.organization.bankAccounts', 'fromCategory', 'toCategory'])
+            ->findOrFail($transfer);
+
+        $entry = $model->entry;
+        $event = $model->event;
+        $owed = (float) $model->amount;
+
+        // Throws PaymentException (422) for a settled, cancelled, manual or
+        // nothing-owed move — each with a message naming its own cause.
+        $model = $this->transfers->reopen($model);
+
+        $bank = $this->rails->destinationFor($event, $owed);
+
+        // The rail moved under them: the gateway went down since this move was
+        // created, so the top-up is now a manual transfer. Written to the row
+        // rather than answered on the fly, because `payment_method` is a
+        // snapshot every later reader trusts — the verification queue, the
+        // sweep, and the panel deciding whether to show an upload form.
+        if ($bank !== null) {
+            $model->update([
+                'payment_method' => 'manual',
+                'payment_channel' => null,
+                'gateway_fee' => 0,
+                'gateway_tax' => 0,
+                'service_fee' => 0,
+                'payment_deadline_at' => $this->rails->deadline(),
+                'midtrans_order_id' => null,
+            ]);
+
+            return ApiResponse::success([
+                'transfer' => $this->transferPayload($model->fresh()->load(['fromCategory', 'toCategory']), $bank),
+                'snap_token' => null,
+                'redirect_url' => null,
+                'mock' => false,
+                'payment_method' => 'manual',
+                'bank_account' => new PublicBankAccountResource($bank),
+            ], 'Pembayaran online sedang tidak tersedia. Selesaikan lewat transfer manual.');
+        }
+
+        if (empty($data['payment_channel'])) {
+            return ApiResponse::error(
+                'Pilih metode pembayaran.',
+                ['payment_channel' => ['Metode pembayaran wajib dipilih.']],
+                422,
+            );
+        }
+
+        $breakdown = $this->fees->forChannel(
+            $data['payment_channel'],
+            $owed,
+            PaymentFeeCalculator::AUDIENCE_RACE_ENTRY,
+        );
+
+        // The fees are rewritten because the channel may have changed, and they
+        // are what `gross_amount` is built from — a stale breakdown would have
+        // Midtrans charged one figure while the row claims another.
+        $model->update([
+            'payment_channel' => $breakdown['channel'],
+            'gateway_fee' => $breakdown['gateway_fee'],
+            'gateway_tax' => $breakdown['gateway_tax'],
+            'service_fee' => $breakdown['service_fee'],
+        ]);
+
+        $model = $model->fresh();
+
+        $snap = $this->midtrans->createSnapTransaction(
+            [
+                'order_id' => $model->midtrans_order_id,
+                'gross_amount' => (int) round($model->gross_amount),
+            ],
+            ['first_name' => $entry->full_name, 'email' => $entry->email],
+            rtrim((string) config('app.frontend_url'), '/').'/race-entries/'.$entry->id,
+            $breakdown['midtrans_payments'],
+        );
+
+        if ($snap['token']) {
+            $model->update(['midtrans_token' => $snap['token']]);
+        }
+
+        // Dev with no Midtrans credentials settles on the spot, exactly as the
+        // create path does. `mock` means "no server key", never "paid" — which
+        // is why the manual rail returned above before reaching this.
+        if ($snap['mock']) {
+            $this->transfers->settle($model->fresh());
+        }
+
+        $model = $model->fresh()->load(['fromCategory', 'toCategory']);
+
+        return ApiResponse::success([
+            'transfer' => $this->transferPayload($model),
+            'snap_token' => $snap['token'],
+            'redirect_url' => $snap['redirect_url'],
+            'mock' => $snap['mock'],
+            'payment_method' => 'gateway',
+            'bank_account' => null,
+        ], $model->status === 'paid'
+            ? 'Kategori berhasil dipindah.'
+            : 'Lanjutkan pembayaran selisihnya.');
+    }
+
+    /**
+     * Give up on a move that was started and never paid for.
+     *
+     * The other half of the dead end: a runner who changed their mind had no
+     * way to release the place their open move was holding in the target
+     * category, and the hourly sweep only reaches the manual rail. Their entry
+     * is untouched — it never left its original category, which is exactly what
+     * the quota ordering guarantees.
+     */
+    public function cancelTransfer(string $transfer): JsonResponse
+    {
+        $model = RaceEntryTransfer::with('entry')->findOrFail($transfer);
+
+        $this->transfers->abandon($model);
+
+        return ApiResponse::success(
+            new RaceEntryResource(
+                $model->entry->fresh()->load(['category', 'event.organization.bankAccounts', 'documents', 'transfers']),
+            ),
+            'Pindah kategori dibatalkan. Pendaftaranmu tetap di kategori sekarang.',
+        );
+    }
+
+    /**
      * Upload the transfer receipt for a manual top-up.
      *
      * Addressed by the TRANSFER's id, not the entry's, and that is deliberate
