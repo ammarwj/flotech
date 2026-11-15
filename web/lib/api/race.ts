@@ -6,9 +6,12 @@ import type {
   RaceCheckinPage,
   RaceEntry,
   RacePeriod,
+  RaceTransfer,
+  RaceTransferOffer,
   RaceReport,
   RaceScanResponse,
   RegisterRaceEntryResult,
+  StartRaceTransferResult,
 } from "@/types/api";
 
 /**
@@ -428,6 +431,69 @@ export async function requestRaceEntryRefund(
   const { data } = await apiClient.post<ApiEnvelope<RaceEntry>>(
     `/race-entries/${entryId}/refund-request`,
     { reason }
+  );
+  return data.data;
+}
+
+// ---- Moving to another category ----
+
+/**
+ * Which categories this entry could move to, and what each would cost.
+ *
+ * The preview endpoint shares its quote with the create below, so nothing is
+ * offered here and then refused at the till — the `upgradeOptions()` pattern.
+ * Whether the panel renders at all is `offer.can_transfer` (equal to
+ * `entry.can_transfer_category`), which the SERVER answers: never rebuild it
+ * from `status`/`checked_in_at`, because the real rule also asks about an open
+ * move and a surviving sale window.
+ *
+ * The prices come from the entry's OWN sale window, not today's — a runner who
+ * bought in Early Bird moves at Early Bird prices. That is why every option
+ * carries `period_name`: without it the two figures cannot be read against any
+ * price list the page is showing.
+ */
+export async function getRaceTransferOptions(entryId: string): Promise<RaceTransferOffer> {
+  const { data } = await apiClient.get<ApiEnvelope<RaceTransferOffer>>(
+    `/race-entries/${entryId}/transfer-options`
+  );
+  return data.data;
+}
+
+/**
+ * Move the entry, and start payment for the difference if there is one.
+ *
+ * `payment_channel` is required only when the runner OWES something and the
+ * gateway rail is live — an even or downward move is settled by the server on
+ * the spot, so demanding a channel there would ask about a payment that never
+ * happens. The channel must be re-picked whenever the chosen category changes:
+ * the difference is the amount a percentage fee is taken from, the same rule
+ * every `onApply` in this codebase follows.
+ */
+export async function startRaceTransfer(
+  entryId: string,
+  input: { race_category_id: string; reason?: string | null; payment_channel?: string | null }
+): Promise<StartRaceTransferResult> {
+  const { data } = await apiClient.post<ApiEnvelope<StartRaceTransferResult>>(
+    `/race-entries/${entryId}/transfer`,
+    input
+  );
+  return data.data;
+}
+
+/**
+ * Upload the transfer receipt for a manual top-up.
+ *
+ * Keyed on the TRANSFER's id, not the entry's: the row being paid for is the
+ * transfer, and the guard refusing a second open move is what makes "the open
+ * one" unambiguous without a second lookup rule here.
+ */
+export async function submitRaceTransferProof(
+  transferId: string,
+  proofUrl: string
+): Promise<RaceTransfer> {
+  const { data } = await apiClient.post<ApiEnvelope<RaceTransfer>>(
+    `/race-transfers/${transferId}/proof`,
+    { payment_proof_url: proofUrl }
   );
   return data.data;
 }

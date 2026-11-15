@@ -264,6 +264,20 @@ Route::prefix('v1')->group(function () {
     // arrived from an email and never signed up, and `user_id` is nullable
     // precisely because an entry outlives the account that filed it.
     Route::post('race-entries/{raceEntry}/refund-request', [PublicRaceController::class, 'requestRefund']);
+    // Moving to another category. Public for the same reason as the doors
+    // around it, and the preview shares `quote()` with the create below so no
+    // option is offered on screen and then refused at the till.
+    Route::get('race-entries/{raceEntry}/transfer-options', [PublicRaceController::class, 'transferOptions']);
+    Route::post('race-entries/{raceEntry}/transfer', [PublicRaceController::class, 'transfer']);
+    // Keyed on the TRANSFER, not the entry: the row being paid for is the
+    // transfer, and routing through the entry would need a second lookup rule
+    // ("the open one") that the guard refusing a second move already owns.
+    Route::post('race-transfers/{transfer}/proof', [PublicRaceController::class, 'transferProof']);
+    // A top-up is its own bill, so it has its own two documents — the entry's
+    // original receipt keeps saying exactly what it said, which is the whole
+    // reason `race_entries.price` is never rewritten.
+    Route::get('race-transfers/{transfer}/invoice', [PublicRaceController::class, 'transferInvoice']);
+    Route::get('race-transfers/{transfer}/receipt', [PublicRaceController::class, 'transferReceipt']);
     Route::get('race-entries/{raceEntry}/invoice', [PublicRaceController::class, 'invoice']);
     Route::get('race-entries/{raceEntry}/receipt', [PublicRaceController::class, 'receipt']);
     // The e-BIB, public for the same reason the two documents above are: the
@@ -772,6 +786,12 @@ Route::prefix('v1')->group(function () {
                 Route::post('events/{event}/payments/teams/{team}/reject', [PaymentVerificationController::class, 'rejectTeam']);
                 Route::post('events/{event}/payments/race-entries/{raceEntry}/approve', [PaymentVerificationController::class, 'approveRaceEntry']);
                 Route::post('events/{event}/payments/race-entries/{raceEntry}/reject', [PaymentVerificationController::class, 'rejectRaceEntry']);
+                // Category moves. `org.admin` like the four rails beside it,
+                // and here the stakes are higher than money: approving one
+                // MOVES the runner between categories, releases the place they
+                // came from and drops their bib number.
+                Route::post('events/{event}/payments/race-transfers/{transfer}/approve', [PaymentVerificationController::class, 'approveRaceTransfer']);
+                Route::post('events/{event}/payments/race-transfers/{transfer}/reject', [PaymentVerificationController::class, 'rejectRaceTransfer']);
             });
 
             // Wallet & payouts (Phase 4). Money endpoints are narrowed to the

@@ -170,6 +170,69 @@ class RaceEntry extends Model
     }
 
     /**
+     * A category move this runner has started and not finished paying for.
+     *
+     * Derived, never a sixth value in `status`, for the reason written at
+     * length in the refund migration and again in `race_entry_transfers`:
+     * three services guard on `in_array($this->status, [...])`, and a new value
+     * there would stop the hourly sweep expiring an abandoned entry while also
+     * making `refundRaceEntry()` refuse rows it exists to refund. `status`
+     * keeps meaning what the MONEY did; this means what has been asked for.
+     *
+     * Reads the loaded relation when it is there, so the proof page — which
+     * eager-loads `transfers` and polls every four seconds — pays for one
+     * query rather than one per read.
+     */
+    public function hasOpenTransfer(): bool
+    {
+        return $this->relationLoaded('transfers')
+            ? $this->transfers->contains(fn (RaceEntryTransfer $t) => $t->isOpen())
+            : $this->transfers()->open()->exists();
+    }
+
+    /**
+     * May this runner move to another category?
+     *
+     * Published by the resource rather than reassembled on the client, the same
+     * call `canRequestRefund()` makes and for the same reason: four conditions
+     * read twice drift, and the drift here is a button that submits into a 422.
+     *
+     * Paid only — an unpaid entry has no money to compare against, and the
+     * runner's own answer is to cancel and enter the category they meant. Not
+     * checked in, because by then they have run. No open move, because a second
+     * quote would be measured against money the first one has not collected
+     * yet. And a period on the row, because the prices are read from the
+     * ENTRY's window and a deleted one leaves nothing honest to quote — see the
+     * migration.
+     */
+    public function canTransferCategory(): bool
+    {
+        return $this->status === 'paid'
+            && $this->checked_in_at === null
+            && $this->race_period_id !== null
+            && ! $this->hasOpenRefundRequest()
+            && ! $this->hasOpenTransfer();
+    }
+
+    /**
+     * Every category move this entry has been through, oldest first.
+     *
+     * Ordered here rather than at each call site: the chain only means anything
+     * in sequence ("5K → 10K → 21K"), and a reader that sorts differently would
+     * print a history that never happened.
+     */
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(RaceEntryTransfer::class, 'race_entry_id')
+            // Eager-loaded on the relation rather than asked for at each call
+            // site: `open_transfer` in the resource names the target category,
+            // and a `whenLoaded` payload that lazy-loads one more relation per
+            // row is the silent N+1 `fixtureRelations()` exists to prevent.
+            ->with('toCategory')
+            ->oldest();
+    }
+
+    /**
      * This event's open requests, oldest first — the organizer's queue.
      *
      * A scope rather than two `where`s at each call site, the same reasoning as

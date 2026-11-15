@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Models\Event;
-use App\Models\RaceEntry;
 use App\Models\Organization;
+use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
@@ -53,7 +54,7 @@ class WalletService
      *
      * @var list<string>
      */
-    private const EARNING_CATEGORIES = ['ticket_sale', 'registration_fee', 'race_entry'];
+    private const EARNING_CATEGORIES = ['ticket_sale', 'registration_fee', 'race_entry', 'race_entry_transfer'];
 
     public function forOrganization(Organization $org): Wallet
     {
@@ -151,6 +152,39 @@ class WalletService
     }
 
     /**
+     * Credit an organizer for the difference a runner paid to move up a
+     * category.
+     *
+     * Its own category rather than a second `race_entry` row, and the unique
+     * index over `(source_type, source_id, category)` is why it has to be: a
+     * transfer is a different source row, so the pair would not collide — but
+     * the ledger would then carry two rows a reader cannot tell apart, and
+     * `refundRaceEntry()` looks its row up by exactly that triple. A move to a
+     * cheaper category is NOT this method's business: that reverses part of the
+     * original credit through `RefundService`, because writing a negative
+     * credit here is how a balance starts running backwards.
+     */
+    public function creditRaceEntryTransfer(RaceEntryTransfer $transfer): ?WalletTransaction
+    {
+        $entry = $transfer->entry;
+        $event = $transfer->event;
+
+        return $this->credit(
+            $event,
+            'race_entry_transfer',
+            (float) $transfer->amount,
+            // Nothing is taken off a top-up: the entry it tops up was already
+            // charged whatever the event's fee arrangement is, and a second cut
+            // on the difference would make moving cost more than entering the
+            // target category outright.
+            0.0,
+            'race_entry_transfer',
+            $transfer->id,
+            "Pindah kategori {$entry->full_name} — {$event->name}",
+        );
+    }
+
+    /**
      * Sweep every pending credit whose boundary has passed. Idempotent: a second
      * run moves nothing.
      *
@@ -167,6 +201,90 @@ class WalletService
             ->where('available_at', '<=', $now);
 
         return $this->releaseTransactions($query, $now);
+    }
+
+    /**
+     * Take back the difference a runner is owed after moving to a CHEAPER
+     * category.
+     *
+     * Not `reverseCredit()`, and the difference is the whole reason this method
+     * exists: that one undoes a credit ROW, and here the row must survive
+     * untouched. The entry is still live, the organizer still keeps the price of
+     * the category the runner moved into, and `wallet:audit` reconstructs the
+     * balances from whole rows — editing one is how a ledger stops reconciling.
+     * After a chain (5K→21K→10K) there are several credit rows feeding one
+     * place anyway, so "which row does this come out of" has no honest answer;
+     * what is owed is a number, so a number is what gets debited.
+     *
+     * > **Written as `available`, always, with no pending arm.** That looks
+     * > wrong beside `reverseCredit()`, which cancels a pending credit in place
+     * > — but that branch exists because it undoes the very row it is reading,
+     * > and there is no such row here. Splitting the debit across the two
+     * > buckets by guessing which credit it belongs to would need a second rule
+     * > nothing else in the ledger has, and the per-bucket identity
+     * > (`balance_* = Σ ±amount WHERE status = …`) holds either way: an
+     * > available debit sums into available. The arithmetic also lands right
+     * > over time — a downgrade before release leaves available at −100 and
+     * > pending at +200, and the 01:00 sweep releases the credit into it for a
+     * > net 100. A negative balance is an accepted state with a designed
+     * > consequence (it locks the next withdrawal), already written for a
+     * > refund of money the organizer may have withdrawn.
+     *
+     * Returns the debit so `RefundPayoutService::record()` can READ the amount
+     * that actually left the wallet instead of recomputing it — the
+     * `refund_payouts` invariant. Null when there was nothing to take back,
+     * which is a manual-rail or free entry: that money never reached the
+     * platform, so the organizer owes the runner directly and there is no
+     * platform transfer to queue.
+     */
+    public function debitRaceEntryTransfer(RaceEntryTransfer $transfer, ?User $actor = null, ?string $reason = null): ?WalletTransaction
+    {
+        $entry = $transfer->entry;
+        $event = $transfer->event;
+        $amount = round((float) $transfer->amount, 2);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        // Nothing was ever credited for this entry: a free place, or one paid
+        // by manual transfer straight into the organizer's own account. The
+        // runner is still owed their difference — by the organizer, out of
+        // money the platform never held.
+        $hasCredit = WalletTransaction::where('source_type', 'race_entry')
+            ->where('source_id', $entry->id)
+            ->where('category', 'race_entry')
+            ->where('type', 'credit')
+            ->where('status', '!=', 'cancelled')
+            ->exists();
+
+        if (! $hasCredit) {
+            return null;
+        }
+
+        $wallet = $this->forOrganization($event->organization);
+
+        return $this->record($wallet, [
+            'organization_id' => $event->organization_id,
+            'event_id' => $event->id,
+            'type' => 'debit',
+            // The same category every other money-going-back row carries, so
+            // the ledger filter that finds refunds finds this one too.
+            'category' => 'refund',
+            'status' => 'available',
+            'amount' => $amount,
+            'gross_amount' => $amount,
+            'fee_amount' => 0,
+            // Keyed to the TRANSFER, not the entry: the entry's own credit is
+            // still standing, and `(source_type, source_id, category)` is what
+            // makes a replayed downgrade a no-op.
+            'source_type' => 'race_entry_transfer',
+            'source_id' => $transfer->id,
+            'created_by' => $actor?->id,
+            'description' => $reason
+                ? "Selisih pindah kategori {$entry->full_name} — {$event->name} ({$reason})"
+                : "Selisih pindah kategori {$entry->full_name} — {$event->name}",
+        ]);
     }
 
     /**

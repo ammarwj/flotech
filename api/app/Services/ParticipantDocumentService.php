@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BankAccount;
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -25,24 +26,27 @@ use Symfony\Component\HttpFoundation\Response;
  * is typed to EventPlanOrder, and widening it to a union would push a branch
  * into every one of its readers to answer a question only this class asks.
  *
- * **Three members, and that is near the limit.** A fun run entry was added here
- * rather than given its own service for the opposite reason BillingDocumentService
- * was kept out: the issuer is the same (the organizer), so the whole difference
- * fits inside subject()'s handful of strings and neither the blade templates nor
- * methodLabel() changed a line. A fourth member would be the signal that
- * subject() has become a dispatch table and the shape wants splitting — at which
- * point the seam to cut along is the issuer, not the subject.
+ * **Four members, and the limit was reached deliberately rather than drifted
+ * past.** The note that stood here said a fourth would be the signal to split,
+ * and named the seam to cut along: the ISSUER, not the subject. A category
+ * transfer has the same issuer, the same payer and the same two documents as the
+ * entry it tops up — so by that criterion it belongs here, and splitting would
+ * put two classes that differ in nothing but a handful of strings in front of
+ * every reader. What the warning was really about still holds and is now live:
+ * subject() is a four-arm dispatch, and the honest reading is that the shape
+ * wants a `BillableSubject` contract on the models rather than a fifth arm.
+ * Treat a fifth member as that work falling due, not as one more `instanceof`.
  *
  * Rendered on demand, never stored — same as the plan-order documents.
  */
 class ParticipantDocumentService
 {
-    public function invoice(TicketOrder|Team|RaceEntry $order): Response
+    public function invoice(TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): Response
     {
         return $this->render('invoice', $order);
     }
 
-    public function receipt(TicketOrder|Team|RaceEntry $order): Response
+    public function receipt(TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): Response
     {
         return $this->render('receipt', $order);
     }
@@ -52,20 +56,20 @@ class ParticipantDocumentService
      *
      * @param  'invoice'|'receipt'  $kind
      */
-    public function bytes(string $kind, TicketOrder|Team|RaceEntry $order): string
+    public function bytes(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): string
     {
         return $this->pdf($kind, $order)->output();
     }
 
     /** Filename the recipient sees: "Kwitansi-KW-T-2026-09-0002.pdf". */
-    public function filename(string $kind, TicketOrder|Team|RaceEntry $order): string
+    public function filename(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): string
     {
         $number = $kind === 'receipt' ? $order->receipt_number : $order->invoice_number;
 
         return $this->label($kind).'-'.str_replace('/', '-', (string) ($number ?? $order->id)).'.pdf';
     }
 
-    protected function render(string $kind, TicketOrder|Team|RaceEntry $order): Response
+    protected function render(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): Response
     {
         return $this->pdf($kind, $order)->download($this->filename($kind, $order));
     }
@@ -81,7 +85,7 @@ class ParticipantDocumentService
      *
      * @param  'invoice'|'receipt'  $kind
      */
-    public function html(string $kind, TicketOrder|Team|RaceEntry $order): string
+    public function html(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): string
     {
         return $this->view($kind, $order)->render();
     }
@@ -91,13 +95,13 @@ class ParticipantDocumentService
         return $kind === 'receipt' ? 'Kwitansi' : 'Invoice';
     }
 
-    protected function pdf(string $kind, TicketOrder|Team|RaceEntry $order): DomPdf
+    protected function pdf(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): DomPdf
     {
         return Pdf::loadHTML($this->html($kind, $order))->setPaper('a4');
     }
 
     /** The view, resolved once so html() and pdf() cannot render differently. */
-    protected function view(string $kind, TicketOrder|Team|RaceEntry $order): View
+    protected function view(string $kind, TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): View
     {
         return view("pdf.participant-{$kind}", [
             'order' => $order,
@@ -157,7 +161,7 @@ class ParticipantDocumentService
      *
      * @return array<string, mixed>
      */
-    protected function subject(TicketOrder|Team|RaceEntry $order): array
+    protected function subject(TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): array
     {
         if ($order instanceof TicketOrder) {
             $order->loadMissing('event.organization', 'category');
@@ -175,6 +179,37 @@ class ParticipantDocumentService
                 'itemNote' => 'Harga satuan '.$this->rupiah($order->unit_price)
                     .$this->ticketDaysNote($order),
                 'itemAmount' => (float) $order->total_price,
+                'methodLabel' => $this->methodLabel($order),
+            ];
+        }
+
+        if ($order instanceof RaceEntryTransfer) {
+            $order->loadMissing('event.organization', 'entry', 'fromCategory', 'toCategory');
+
+            return [
+                'org' => $order->event?->organization,
+                'payerName' => $order->entry?->full_name ?? '—',
+                'payerLines' => array_values(array_filter([$order->entry?->email, $order->entry?->phone])),
+                // Both ends named, because that pair is the whole subject: a
+                // bill reading "Pindah kategori" alone cannot be checked
+                // against anything, and the runner is holding the original
+                // receipt for the category on the left of the arrow.
+                'itemTitle' => 'Pindah kategori — '
+                    .($order->fromCategory?->name ?? '—').' → '.($order->toCategory?->name ?? '—'),
+                // The arithmetic spelled out, because the number below is a
+                // DIFFERENCE and no other document in this app prints one. The
+                // period is named for the reason the entry's own note names it:
+                // these are that window's prices, not today's, and without it
+                // the two figures cannot be read against any price list.
+                'itemNote' => 'Periode '.$order->period_name
+                    .' · '.$this->rupiah($order->to_price).' − sudah dibayar '.$this->rupiah($order->paid_before),
+                // The difference itself, NOT `to_price`: the runner is being
+                // billed the top-up, and printing the target category's full
+                // price over a total that is smaller reads as an error in the
+                // document. No discount reconstruction here — a code is sold
+                // against an entry, never against a move, so `discount_amount`
+                // has no column on this row for the layout to find.
+                'itemAmount' => (float) $order->amount,
                 'methodLabel' => $this->methodLabel($order),
             ];
         }
@@ -226,7 +261,7 @@ class ParticipantDocumentService
      * buyer actually picked. The two off-platform rails answer before the
      * lookup, because neither has a channel to name.
      */
-    protected function methodLabel(TicketOrder|Team|RaceEntry $order): string
+    protected function methodLabel(TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): string
     {
         if ($order->isManual()) {
             return 'Transfer manual (diverifikasi penyelenggara)';
@@ -244,7 +279,7 @@ class ParticipantDocumentService
     }
 
     /** Where a manual transfer goes: the organizer's primary account. */
-    protected function organizerAccount(TicketOrder|Team|RaceEntry $order): ?BankAccount
+    protected function organizerAccount(TicketOrder|Team|RaceEntry|RaceEntryTransfer $order): ?BankAccount
     {
         return $order->event?->organization?->bankAccounts()->where('is_primary', true)->first();
     }

@@ -9,10 +9,12 @@ use App\Http\Resources\TicketOrderResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\PaymentRails;
 use App\Services\RaceEntryService;
+use App\Services\RaceTransferService;
 use App\Services\RegistrationService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
@@ -39,6 +41,7 @@ class PaymentVerificationController extends Controller
         protected RegistrationService $registration,
         protected PaymentRails $rails,
         protected RaceEntryService $raceEntries,
+        protected RaceTransferService $raceTransfers,
     ) {}
 
     /**
@@ -61,6 +64,17 @@ class PaymentVerificationController extends Controller
             'race_entries' => RaceEntryResource::collection(
                 $eventModel->raceEntries()->awaitingVerification()->with('category')->latest('payment_proof_uploaded_at')->get(),
             ),
+            // The fifth rail, and the only one whose approval moves somebody
+            // rather than just settling money — see approveRaceTransfer().
+            // Present unconditionally like the key above it, for the reason
+            // written there.
+            'race_transfers' => RaceEntryTransfer::where('event_id', $eventModel->id)
+                ->awaitingVerification()
+                ->with(['entry', 'fromCategory', 'toCategory'])
+                ->latest('payment_proof_uploaded_at')
+                ->get()
+                ->map(fn (RaceEntryTransfer $t) => $this->transferRow($t))
+                ->all(),
         ]);
     }
 
@@ -93,6 +107,13 @@ class PaymentVerificationController extends Controller
             'race_entries' => RaceEntryResource::collection(
                 $eventModel->raceEntries()->verified()->with(['category', 'verifier'])->limit(50)->get(),
             ),
+            'race_transfers' => RaceEntryTransfer::where('event_id', $eventModel->id)
+                ->verified()
+                ->with(['entry', 'fromCategory', 'toCategory', 'verifier'])
+                ->limit(50)
+                ->get()
+                ->map(fn (RaceEntryTransfer $t) => $this->transferRow($t))
+                ->all(),
         ]);
     }
 
@@ -168,6 +189,75 @@ class PaymentVerificationController extends Controller
         );
     }
 
+    /**
+     * Accept a top-up for a category move.
+     *
+     * The approval is what MOVES the runner: `approveProof()` settles the
+     * transfer, which swaps `race_entries.race_category_id`, releases the
+     * source place and drops the category-stamped bib. So this is the one arm
+     * on this screen whose refusal matters beyond the money — and the message
+     * says so, because an org admin who has just clicked it is about to look at
+     * a start list that changed.
+     */
+    public function approveRaceTransfer(Request $request, string $organization, string $event, string $transfer): JsonResponse
+    {
+        $model = $this->raceTransfer($request, $event, $transfer);
+
+        $this->raceTransfers->approveProof($model, $request->user());
+
+        return ApiResponse::success(
+            $this->transferRow($model->fresh()->load(['entry', 'fromCategory', 'toCategory'])),
+            'Pembayaran diterima. Peserta sudah pindah kategori.',
+        );
+    }
+
+    public function rejectRaceTransfer(Request $request, string $organization, string $event, string $transfer): JsonResponse
+    {
+        $model = $this->raceTransfer($request, $event, $transfer);
+
+        $this->raceTransfers->rejectProof($model, $this->reason($request), $this->rails->deadline());
+
+        return ApiResponse::success(
+            $this->transferRow($model->fresh()->load(['entry', 'fromCategory', 'toCategory'])),
+            'Bukti ditolak. Peserta dapat mengunggah ulang.',
+        );
+    }
+
+    /**
+     * One pending move, as this queue reads it.
+     *
+     * Inline rather than a JsonResource, the same call PublicRaceController
+     * makes for the runner's panel: this is a handful of fields read by one
+     * screen. What it must carry is BOTH category names — an admin approving a
+     * transfer is about to change who stands where, and a row saying only
+     * "Pindah kategori" cannot be checked against the receipt in front of them.
+     *
+     * @return array<string, mixed>
+     */
+    private function transferRow(RaceEntryTransfer $transfer): array
+    {
+        return [
+            'id' => $transfer->id,
+            'runner_name' => $transfer->entry?->full_name,
+            'runner_email' => $transfer->entry?->email,
+            'race_entry_id' => $transfer->race_entry_id,
+            'from_category' => $transfer->fromCategory?->name,
+            'to_category' => $transfer->toCategory?->name,
+            'period_name' => $transfer->period_name,
+            'amount' => (float) $transfer->amount,
+            'gross_amount' => (float) $transfer->gross_amount,
+            'status' => $transfer->status,
+            'payment_method' => $transfer->payment_method,
+            'awaiting_verification' => $transfer->isAwaitingVerification(),
+            'payment_proof_url' => $transfer->payment_proof_url,
+            'payment_proof_uploaded_at' => $transfer->payment_proof_uploaded_at,
+            'rejected_reason' => $transfer->rejected_reason,
+            'verified_at' => $transfer->verified_at,
+            'verified_by' => $transfer->relationLoaded('verifier') ? $transfer->verifier?->full_name : null,
+            'reason' => $transfer->reason,
+        ];
+    }
+
     private function reason(Request $request): string
     {
         return $request->validate([
@@ -188,6 +278,18 @@ class PaymentVerificationController extends Controller
     private function raceEntry(Request $request, string $eventId, string $entryId): RaceEntry
     {
         return $this->event($request, $eventId)->raceEntries()->findOrFail($entryId);
+    }
+
+    /**
+     * Scoped through `event_id`, which is the reason that column is on
+     * `race_entry_transfers` at all: going through `raceEntries()` would need a
+     * join to prove a transfer belongs to this organization, and a tenant check
+     * that needs a join is one somebody eventually writes without it.
+     */
+    private function raceTransfer(Request $request, string $eventId, string $transferId): RaceEntryTransfer
+    {
+        return RaceEntryTransfer::where('event_id', $this->event($request, $eventId)->id)
+            ->findOrFail($transferId);
     }
 
     /**

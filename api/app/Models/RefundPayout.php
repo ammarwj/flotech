@@ -73,6 +73,12 @@ class RefundPayout extends Model
      */
     public const SOURCE_LABELS = [
         'race_entry' => 'Pendaftaran lomba',
+        // A move to a cheaper category, which owes back only the difference.
+        // Its own label rather than borrowing the one above: a super admin
+        // reading this queue is about to transfer a number, and "Pendaftaran
+        // lomba" over a part-refund invites them to look for a full entry fee
+        // that was never owed.
+        'race_entry_transfer' => 'Pindah kategori lomba',
         'team' => 'Pendaftaran tim',
         'ticket_order' => 'Pesanan tiket',
     ];

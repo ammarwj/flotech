@@ -11,6 +11,7 @@ use App\Http\Resources\RacePeriodResource;
 use App\Models\Event;
 use App\Models\Organization;
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Services\BibService;
 use App\Services\Catalog;
 use App\Services\EventDiscountCodeService;
@@ -20,6 +21,7 @@ use App\Services\PaymentFeeCalculator;
 use App\Services\PaymentRails;
 use App\Services\PlanGate;
 use App\Services\RaceEntryService;
+use App\Services\RaceTransferService;
 use App\Support\ApiResponse;
 use App\Support\RacePricing;
 use Illuminate\Http\JsonResponse;
@@ -48,6 +50,7 @@ class PublicRaceController extends Controller
         protected ParticipantDocumentService $documents,
         protected EventDiscountCodeService $discounts,
         protected BibService $bibs,
+        protected RaceTransferService $transfers,
     ) {}
 
     /**
@@ -335,6 +338,7 @@ class PublicRaceController extends Controller
             'event.organization.bankAccounts',
             'documents',
             'refundPayout',
+            'transfers',
         ])->findOrFail($raceEntry);
 
         // The one read in this app that writes, and it is confined to here on
@@ -350,6 +354,7 @@ class PublicRaceController extends Controller
             'event.organization.bankAccounts',
             'documents',
             'refundPayout',
+            'transfers',
         ])));
     }
 
@@ -476,6 +481,309 @@ class PublicRaceController extends Controller
             ])),
             'Pengajuan refund terkirim. Menunggu keputusan penyelenggara.',
         );
+    }
+
+    /**
+     * Where this entry could move to, and what each move would cost.
+     *
+     * Public behind the entry's unguessable id, beside `proof()` and
+     * `requestRefund()` and for the reason already written on both: a runner may
+     * have arrived from an email and never signed up, and `race_entries.user_id`
+     * is nullable precisely because an entry outlives the account that filed it.
+     *
+     * Every option here comes out of the SAME `quote()` the create endpoint
+     * calls, so nothing can be offered on screen and refused at the till — the
+     * `upgradeOptions()` pattern. `can_transfer` rides along as the server's own
+     * answer rather than something the client reassembles from
+     * `status`/`checked_in_at`: that is the `effective_payment_method` bug in
+     * another shape, and here it looks like a button that submits into a 422.
+     */
+    public function transferOptions(string $raceEntry): JsonResponse
+    {
+        $entry = RaceEntry::with([
+            'category.prices',
+            'event.racePeriods',
+            'period',
+            'transfers',
+        ])->findOrFail($raceEntry);
+
+        $options = $entry->canTransferCategory() ? $this->transfers->options($entry) : [];
+
+        return ApiResponse::success([
+            'can_transfer' => $entry->canTransferCategory(),
+            // What they have actually handed over, all moves in — the number
+            // every difference below was measured against. Published so the
+            // panel can show the arithmetic rather than a bare figure the
+            // runner cannot check against their own receipts.
+            'paid_so_far' => RaceEntryTransfer::paidTowards($entry),
+            'current_category_id' => $entry->race_category_id,
+            'options' => array_map(fn (array $option) => [
+                'category' => [
+                    'id' => $option['category']->id,
+                    'name' => $option['category']->name,
+                    'slug' => $option['category']->slug,
+                    'remaining' => $option['category']->remaining(),
+                ],
+                'direction' => $option['quote']['direction'],
+                'amount' => $option['quote']['amount'],
+                'to_price' => $option['quote']['to_price'],
+                'paid_before' => $option['quote']['paid_before'],
+                'period_name' => $option['quote']['period_name'],
+            ], $options),
+        ]);
+    }
+
+    /**
+     * Move this entry to another category: quote it, hold the new place, and
+     * start payment for the difference if there is one.
+     *
+     * The ordering is the invariant every money path in this app carries: the
+     * quote is taken before anything is written (a refused move burns no invoice
+     * number), and the difference lands in `$amount` BEFORE `destinationFor()`
+     * and the fee breakdown — `forChannel()` takes a percentage of it and
+     * `destinationFor()` branches on `$amount <= 0`. A difference applied
+     * afterwards leaves `gateway_fee` disagreeing with what Midtrans is charged.
+     *
+     * A downward or even move never reaches the payment half: `start()` settles
+     * it on the spot, the difference comes back through `refund_payouts`, and
+     * there is nothing to collect. That is why the channel is only demanded when
+     * the runner actually owes something.
+     */
+    public function transfer(Request $request, string $raceEntry): JsonResponse
+    {
+        $data = $request->validate([
+            'race_category_id' => ['required', 'uuid'],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'payment_channel' => ['nullable', 'string', 'max:30'],
+        ]);
+
+        $entry = RaceEntry::with([
+            'category.prices',
+            'event.organization',
+            'event.racePeriods',
+            'period',
+            'transfers',
+        ])->findOrFail($raceEntry);
+
+        $event = $entry->event;
+
+        $target = $event->raceCategories()
+            ->with(['prices', 'event.racePeriods'])
+            ->find($data['race_category_id']);
+
+        if (! $target) {
+            return ApiResponse::error(
+                'Kategori tidak ditemukan.',
+                ['race_category_id' => ['Kategori tidak valid.']],
+                422,
+            );
+        }
+
+        // Throws PaymentException (422) for every reason a move is refused —
+        // same category, inactive, full, wrong email domain, not sold in this
+        // entry's window, or a deleted window. Asked before any row is written.
+        $quote = $this->transfers->quote($entry, $target);
+        $owed = $quote['direction'] === RaceEntryTransfer::UP ? $quote['amount'] : 0.0;
+
+        // Throws when the organizer cannot collect at all. A bank account back
+        // means the gateway is off and the runner transfers directly; null means
+        // Midtrans, or nothing owed.
+        $bank = $this->rails->destinationFor($event, $owed);
+        $manual = $bank !== null;
+
+        $channel = null;
+        $gatewayFee = 0.0;
+        $gatewayTax = 0.0;
+        $serviceFee = 0.0;
+        $enabledPayments = [];
+
+        if (! $manual && $owed > 0) {
+            if (empty($data['payment_channel'])) {
+                return ApiResponse::error(
+                    'Pilih metode pembayaran.',
+                    ['payment_channel' => ['Metode pembayaran wajib dipilih.']],
+                    422,
+                );
+            }
+
+            // AUDIENCE_RACE_ENTRY, not a fifth audience: this is the same runner
+            // paying the same organizer for the same place, and a separate rate
+            // would be a number nobody could say the meaning of. No unit
+            // multiplier — one runner, one place.
+            $breakdown = $this->fees->forChannel(
+                $data['payment_channel'],
+                $owed,
+                PaymentFeeCalculator::AUDIENCE_RACE_ENTRY,
+            );
+            $channel = $breakdown['channel'];
+            $gatewayFee = $breakdown['gateway_fee'];
+            $gatewayTax = $breakdown['gateway_tax'];
+            $serviceFee = $breakdown['service_fee'];
+            $enabledPayments = $breakdown['midtrans_payments'];
+        }
+
+        $transfer = $this->transfers->start(
+            $entry,
+            $target,
+            $data['reason'] ?? null,
+            $manual ? 'manual' : 'gateway',
+            $manual ? $this->rails->deadline() : null,
+            $channel,
+            $gatewayFee,
+            $serviceFee,
+            $gatewayTax,
+        );
+
+        $snap = ['token' => null, 'redirect_url' => null, 'mock' => false];
+
+        if (! $manual && $owed > 0) {
+            $snap = $this->midtrans->createSnapTransaction(
+                [
+                    'order_id' => $transfer->midtrans_order_id,
+                    'gross_amount' => (int) round($transfer->gross_amount),
+                ],
+                ['first_name' => $entry->full_name, 'email' => $entry->email],
+                rtrim((string) config('app.frontend_url'), '/').'/race-entries/'.$entry->id,
+                $enabledPayments,
+            );
+
+            if ($snap['token']) {
+                $transfer->update(['midtrans_token' => $snap['token']]);
+            }
+        }
+
+        // Dev with no Midtrans credentials settles on the spot. A manual
+        // transfer must never reach this: `mock` means "no server key", not
+        // "paid", and settling one would move a runner into a category nobody
+        // paid for. An even or downward move is already settled inside start().
+        $settled = ! $manual && $snap['mock'] && $owed > 0;
+        if ($settled) {
+            $this->transfers->settle($transfer->fresh());
+        }
+
+        $transfer = $transfer->fresh();
+
+        return ApiResponse::success([
+            'transfer' => $this->transferPayload($transfer, $bank),
+            'entry' => new RaceEntryResource(
+                $entry->fresh()->load(['category', 'event.organization.bankAccounts', 'documents', 'transfers']),
+            ),
+            'snap_token' => $snap['token'],
+            'redirect_url' => $snap['redirect_url'],
+            'mock' => $settled,
+            'payment_method' => $manual ? 'manual' : 'gateway',
+            'bank_account' => $bank ? new PublicBankAccountResource($bank) : null,
+        ], $transfer->status === 'paid'
+            ? 'Kategori berhasil dipindah.'
+            : 'Pindah kategori dibuat. Selesaikan pembayaran selisihnya agar berlaku.', 201);
+    }
+
+    /**
+     * Upload the transfer receipt for a manual top-up.
+     *
+     * Addressed by the TRANSFER's id, not the entry's, and that is deliberate
+     * even though a runner only ever has one open move: the row being paid for
+     * is the transfer, and routing through the entry would need a second lookup
+     * rule ("the open one") that the guard refusing a second move already owns.
+     */
+    public function transferProof(Request $request, string $transfer): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_proof_url' => ['required', 'string', 'url', 'max:2048'],
+        ]);
+
+        $model = RaceEntryTransfer::with(['entry', 'event.organization.bankAccounts', 'fromCategory', 'toCategory'])
+            ->findOrFail($transfer);
+
+        $this->transfers->submitProof($model, $data['payment_proof_url']);
+
+        return ApiResponse::success(
+            $this->transferPayload($model->fresh()->load(['entry', 'event.organization.bankAccounts', 'fromCategory', 'toCategory'])),
+            'Bukti pembayaran terkirim. Menunggu verifikasi penyelenggara.',
+        );
+    }
+
+    /**
+     * A top-up's own invoice and receipt.
+     *
+     * Its own pair rather than a rewrite of the entry's, and that is the shape
+     * of the whole feature: `race_entries.price` is never touched, so the
+     * original documents keep saying what they said and the difference gets a
+     * bill of its own. Public for the reason `invoice()` above is.
+     *
+     * Only an upward move has numbers, so only an upward move has documents:
+     * 404 rather than a Rp 0 document claiming a transaction that never
+     * happened — the call every rail here makes for a free order.
+     */
+    public function transferInvoice(string $transfer): Response
+    {
+        $model = RaceEntryTransfer::findOrFail($transfer);
+
+        abort_if($model->invoice_number === null, 404);
+
+        return $this->documents->invoice($model);
+    }
+
+    public function transferReceipt(string $transfer): Response|JsonResponse
+    {
+        $model = RaceEntryTransfer::findOrFail($transfer);
+
+        abort_if($model->receipt_number === null, 404);
+
+        if (! $model->paid_at) {
+            return ApiResponse::error('Kwitansi baru tersedia setelah pembayaran lunas.', null, 403);
+        }
+
+        return $this->documents->receipt($model);
+    }
+
+    /**
+     * One transfer, as the runner's panel reads it.
+     *
+     * Inline rather than a JsonResource, and the line is the one `RefundPayout`
+     * draws for `refund_transfer`: this is a handful of fields read by exactly
+     * one screen, and a resource would invite the organizer's own lists to grow
+     * a dependency on it. `bank_account` comes from the caller because only the
+     * caller knows whether this payment is the one being made right now — the
+     * same `when()` reasoning RaceEntryResource::payTo() uses.
+     *
+     * @return array<string, mixed>
+     */
+    protected function transferPayload(RaceEntryTransfer $transfer, mixed $bank = null): array
+    {
+        return [
+            'id' => $transfer->id,
+            'from_category' => $transfer->fromCategory?->name,
+            'to_category' => $transfer->toCategory?->name,
+            'period_name' => $transfer->period_name,
+            'from_price' => (float) $transfer->from_price,
+            'to_price' => (float) $transfer->to_price,
+            'paid_before' => (float) $transfer->paid_before,
+            'direction' => $transfer->direction,
+            'amount' => (float) $transfer->amount,
+            'gateway_fee' => (float) $transfer->gateway_fee,
+            'gateway_tax' => (float) $transfer->gateway_tax,
+            'service_fee' => (float) $transfer->service_fee,
+            'gross_amount' => (float) $transfer->gross_amount,
+            'status' => $transfer->status,
+            'payment_method' => $transfer->payment_method,
+            // Derived, not stored — see HasManualPayment for why there is no
+            // `awaiting_verification` status value.
+            'awaiting_verification' => $transfer->isAwaitingVerification(),
+            'payment_proof_url' => $transfer->payment_proof_url,
+            'payment_deadline_at' => $transfer->payment_deadline_at,
+            'rejected_reason' => $transfer->rejected_reason,
+            'invoice_number' => $transfer->invoice_number,
+            'receipt_number' => $transfer->receipt_number,
+            'paid_at' => $transfer->paid_at,
+            'created_at' => $transfer->created_at,
+            // Only while this top-up is still owed — there is nothing to pay
+            // once it is settled, the same gate the entry's own `bank_account`
+            // carries.
+            'bank_account' => $bank && ! $transfer->isSettled()
+                ? new PublicBankAccountResource($bank)
+                : null,
+        ];
     }
 
     /**

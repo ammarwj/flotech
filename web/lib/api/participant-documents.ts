@@ -29,15 +29,27 @@ export type DocumentSubject =
    * out of their only proof.
    */
   | { kind: "race-entry"; id: string }
+  /**
+   * A category top-up, addressed by the TRANSFER's id.
+   *
+   * Its own subject rather than a flag on `race-entry`, because it really is a
+   * different row: the entry's documents keep saying what they said when it was
+   * issued, and the difference paid to move categories is its own bill on its
+   * own number stream. Only an upward move ever has one — the server answers
+   * 404 for the rest, which is why the caller gates these buttons on the
+   * numbers being present.
+   */
+  | { kind: "race-transfer"; id: string }
   /** The manager's own copy, scoped by their session. */
   | { kind: "my-team"; id: string }
   /** The same team's documents from the organizer's side, scoped by the event. */
   | { kind: "registration"; orgId: string; eventId: string; id: string };
 
 /** The id-addressed subjects and the path segment each uses. */
-const BY_ID: Record<"ticket-order" | "race-entry" | "my-team", string> = {
+const BY_ID: Record<"ticket-order" | "race-entry" | "race-transfer" | "my-team", string> = {
   "ticket-order": "ticket-orders",
   "race-entry": "race-entries",
+  "race-transfer": "race-transfers",
   "my-team": "my-teams",
 };
 

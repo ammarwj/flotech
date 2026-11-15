@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\WalletException;
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Models\User;
@@ -132,6 +133,55 @@ class RefundService
                 $entry->event->organization,
                 $entry->event_id,
                 $reversal,
+                $entry->full_name,
+                $reason,
+            );
+        });
+    }
+
+    /**
+     * Hand back the difference after a runner moved to a CHEAPER category.
+     *
+     * Its own arm rather than a branch inside `refundRaceEntry()`, and the two
+     * differ in the one way that matters: that one VOIDS the entry and gives its
+     * place up, while here the entry is still live and still has a place — only
+     * part of the money goes back. Folding them would need the void half gated
+     * on a flag, which is the shape this codebase keeps refusing.
+     *
+     * The original credit row is left byte-identical, for the reason written at
+     * length on `WalletService::debitRaceEntryTransfer()`: `wallet:audit`
+     * reconstructs the balances from whole rows, and after a chain there are
+     * several credits feeding one place anyway, so "which row does this come out
+     * of" has no honest answer.
+     *
+     * No status guard here, unlike the three above. The caller is
+     * `RaceTransferService::settle()`, inside its own transaction, and the thing
+     * that must be true — this transfer is a downward one that has not already
+     * been paid out — is held by `settle()`'s own idempotency and by the
+     * `(source_type, source_id, category)` index underneath. A second copy of
+     * those rules here would be the second reader that drifts.
+     *
+     * @throws WalletException
+     */
+    public function refundRaceEntryTransfer(RaceEntryTransfer $transfer, ?RaceEntry $entry = null, ?User $actor = null): void
+    {
+        $entry ??= $transfer->entry;
+        $reason = "Selisih pindah kategori ke {$transfer->toCategory?->name}";
+
+        DB::transaction(function () use ($transfer, $entry, $actor, $reason) {
+            // Null when nothing was ever credited for this entry — a free
+            // place, or one paid by manual transfer into the organizer's own
+            // account. The runner is still owed their difference, by the
+            // organizer, out of money the platform never held; `record()`
+            // writes nothing for a null reversal, which is exactly right.
+            $debit = $this->wallet->debitRaceEntryTransfer($transfer, $actor, $reason);
+
+            $this->payouts->record(
+                'race_entry_transfer',
+                $transfer->id,
+                $transfer->event->organization,
+                $transfer->event_id,
+                $debit,
                 $entry->full_name,
                 $reason,
             );

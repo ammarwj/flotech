@@ -1956,6 +1956,64 @@ export interface RaceEntry extends ManualPaymentFields {
    * bug in another shape.
    */
   can_request_refund: boolean;
+  /**
+   * Whether this runner may move to another category, answered by the server
+   * for the reason `can_request_refund` above gives. Never rebuilt here from
+   * `status`/`checked_in_at`: the server also checks for an open move and for a
+   * surviving sale window, and a client that guesses would offer a button that
+   * submits into a 422.
+   */
+  can_transfer_category: boolean;
+  /**
+   * The move they started and have not paid for, if any.
+   *
+   * **Optional**, because only the pages that eager-load `transfers` get it —
+   * the organizer's runner list renders this same type per row and has nothing
+   * to say about moves. Null means "loaded, and there is none". Note what is
+   * NOT here either: a `RaceEntryStatus` value. See `RaceEntry::hasOpenTransfer()`.
+   */
+  open_transfer?: {
+    id: string;
+    to_category: string | null;
+    direction: RaceTransferDirection;
+    /** The difference owed, never the target category's full price. */
+    amount: number;
+    /** amount + gateway_fee + service_fee — what the runner actually pays. */
+    gross_amount: number;
+    status: RaceEntryStatus;
+    payment_method: PaymentMethod;
+    awaiting_verification: boolean;
+    payment_deadline_at: string | null;
+    rejected_reason: string | null;
+    /**
+     * Where to transfer this top-up, on the manual rail only.
+     *
+     * Its own field rather than the entry's `bank_account` below: that one is
+     * gated on the ENTRY being manual and unsettled, and an entry with a
+     * top-up outstanding is fully paid — so it is absent exactly when a manual
+     * move needs it.
+     */
+    bank_account: PublicBankAccount | null;
+  } | null;
+  /**
+   * The moves that actually happened, oldest first. Settled only.
+   *
+   * **Optional** like `open_transfer`, and present for one concrete reason: a
+   * settled top-up has its own invoice and receipt, and this list is the only
+   * place their numbers are reachable from. The entry's own receipt
+   * deliberately does not mention them — it was issued before the move and must
+   * keep saying what it said.
+   */
+  transfer_history?: {
+    id: string;
+    to_category: string | null;
+    direction: RaceTransferDirection;
+    amount: number;
+    paid_at: string | null;
+    /** Null on an even or downward move, which had no bill to document. */
+    invoice_number: string | null;
+    receipt_number: string | null;
+  }[];
   /** Ever asked, decided or not — what makes the history block render. */
   refund_requested: boolean;
   /** Asked and still waiting on the organizer. */
@@ -2009,6 +2067,83 @@ export interface RegisterTeamResult extends PaymentStart {
 }
 
 export interface RegisterRaceEntryResult extends PaymentStart {
+  entry: RaceEntry;
+}
+
+/**
+ * Which way the difference runs on a category move.
+ *
+ * `up` = the runner owes the difference and the move waits for it; `down` = it
+ * comes back to them through the refund-payout queue and the move applies at
+ * once; `even` = two categories at one price, settled on the spot. The amount
+ * beside this is ALWAYS positive — this is what gives it a sign, the shape
+ * `wallet_transactions` uses for `amount`/`type`.
+ */
+export type RaceTransferDirection = "up" | "down" | "even";
+
+/** One category the runner could move to, with what it would cost them. */
+export interface RaceTransferOption {
+  category: { id: string; name: string; slug: string; remaining: number | null };
+  direction: RaceTransferDirection;
+  /** The difference, always positive — `direction` carries the sign. */
+  amount: number;
+  /** The target category's price in the entry's own sale window. */
+  to_price: number;
+  /** Everything already handed over, this entry plus every settled move. */
+  paid_before: number;
+  /** The entry's window, not today's — the prices above are that window's. */
+  period_name: string;
+}
+
+/**
+ * What the transfer panel reads.
+ *
+ * `options` is empty when `can_transfer` is false, and a category that fails
+ * any guard is ABSENT rather than listed with an error — the runner cannot act
+ * on "full" or "not sold in your window" beyond picking something else. Built
+ * from the same quote the create endpoint uses, so nothing is offered here and
+ * refused at the till.
+ */
+export interface RaceTransferOffer {
+  can_transfer: boolean;
+  paid_so_far: number;
+  current_category_id: string;
+  options: RaceTransferOption[];
+}
+
+/** One category move, as the runner's panel and the organizer's queue read it. */
+export interface RaceTransfer {
+  id: string;
+  from_category: string | null;
+  to_category: string | null;
+  period_name: string;
+  from_price: number;
+  to_price: number;
+  paid_before: number;
+  direction: RaceTransferDirection;
+  amount: number;
+  gateway_fee: number;
+  gateway_tax: number;
+  service_fee: number;
+  gross_amount: number;
+  status: RaceEntryStatus;
+  payment_method: PaymentMethod;
+  /** Derived from the proof columns, never a `status` value. */
+  awaiting_verification: boolean;
+  payment_proof_url: string | null;
+  payment_deadline_at: string | null;
+  rejected_reason: string | null;
+  /** Null on an even or downward move, which has no bill to document. */
+  invoice_number: string | null;
+  receipt_number: string | null;
+  paid_at: string | null;
+  created_at: string;
+  /** Where to transfer, only while this top-up is still owed. */
+  bank_account: PublicBankAccount | null;
+}
+
+export interface StartRaceTransferResult extends PaymentStart {
+  transfer: RaceTransfer;
   entry: RaceEntry;
 }
 

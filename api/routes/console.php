@@ -20,6 +20,10 @@ Schedule::command('wallet:audit')->dailyAt('01:00');
 Schedule::command('tickets:expire-manual')->hourly()->withoutOverlapping();
 // Same for fun run entries, which hold a place in a category's quota.
 Schedule::command('race-entries:expire-manual')->hourly()->withoutOverlapping();
+// And for category moves, which hold a place in the TARGET category while the
+// runner still holds their original one — see the command for why that ordering
+// makes this sweep load-bearing rather than tidy-up.
+Schedule::command('race-transfers:expire-manual')->hourly()->withoutOverlapping();
 // Same for plan bills, which hold no quota but do print a deadline.
 Schedule::command('plan-orders:expire-manual')->hourly()->withoutOverlapping();
 

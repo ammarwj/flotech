@@ -95,6 +95,77 @@ class RaceEntryResource extends JsonResource
             // four conditions read twice drift, and the drift looks like a
             // button that submits into a 422. Same call as
             // `effective_payment_method`.
+            // Whether this runner may move to another category, answered by the
+            // server for the reason `can_request_refund` below is: four
+            // conditions read twice drift, and the drift looks like a button
+            // that submits into a 422.
+            'can_transfer_category' => $this->canTransferCategory(),
+            // The move they have started and not paid for, if any. Derived from
+            // the transfers relation rather than a column on this row — see
+            // RaceEntry::hasOpenTransfer() for why there is no sixth `status`
+            // value. `whenLoaded` keeps the N+1 off the organizer's list, which
+            // renders this resource per row and has nothing to say about moves.
+            'open_transfer' => $this->whenLoaded('transfers', function () {
+                $open = $this->transfers->first(fn ($t) => $t->isOpen());
+
+                if (! $open) {
+                    return null;
+                }
+
+                return [
+                    'id' => $open->id,
+                    'to_category' => $open->toCategory?->name,
+                    'direction' => $open->direction,
+                    'amount' => (float) $open->amount,
+                    'gross_amount' => (float) $open->gross_amount,
+                    'status' => $open->status,
+                    'payment_method' => $open->payment_method,
+                    'awaiting_verification' => $open->isAwaitingVerification(),
+                    'payment_deadline_at' => $open->payment_deadline_at,
+                    'rejected_reason' => $open->rejected_reason,
+                    // Where to transfer this top-up. It has to be published
+                    // HERE rather than reusing `bank_account` below: that one is
+                    // gated on the ENTRY being manual and unsettled, and an
+                    // entry with a top-up outstanding is fully paid — so it is
+                    // always absent exactly when a manual move needs it. The
+                    // rails are genuinely independent: an entry bought on the
+                    // gateway can be topped up by hand if the gateway went down
+                    // in between.
+                    'bank_account' => $open->isManual() && ! $open->isSettled()
+                        ? $this->payTo()
+                        : null,
+                ];
+            }),
+            /**
+             * The moves that actually happened, oldest first.
+             *
+             * Published for one concrete reason: a settled top-up has its own
+             * invoice and receipt, and this list is the ONLY place their
+             * numbers are reachable from. Without it the documents exist at a
+             * URL nobody can discover — and the entry's own receipt deliberately
+             * does not mention them, because it was issued before the move and
+             * must keep saying exactly what it said.
+             *
+             * Settled only. A pending move is `open_transfer` above, a cancelled
+             * one is a thing that did not happen, and listing either here would
+             * make this a log of attempts rather than of the chain the runner
+             * actually paid for.
+             */
+            'transfer_history' => $this->whenLoaded('transfers', fn () => $this->transfers
+                ->where('status', 'paid')
+                ->map(fn ($t) => [
+                    'id' => $t->id,
+                    'to_category' => $t->toCategory?->name,
+                    'direction' => $t->direction,
+                    'amount' => (float) $t->amount,
+                    'paid_at' => $t->paid_at,
+                    // Null on an even or downward move, which had no bill — the
+                    // client shows a button per number rather than guessing
+                    // from the direction.
+                    'invoice_number' => $t->invoice_number,
+                    'receipt_number' => $t->receipt_number,
+                ])
+                ->values()),
             'can_request_refund' => $this->canRequestRefund(),
             'refund_requested' => $this->refund_requested_at !== null,
             'refund_pending' => $this->hasOpenRefundRequest(),

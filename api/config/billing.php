@@ -59,6 +59,15 @@ return [
 
     'race_receipt_prefix' => env('BILLING_RACE_RECEIPT_PREFIX', 'KW-RUN'),
 
+    // Category moves. A fifth stream, and the reason is the same one that keeps
+    // the four above apart: a top-up is its own bill against its own row, and
+    // the entry's original receipt must keep saying exactly what it said. One
+    // shared prefix would interleave two unrelated ledgers into a single run of
+    // numbers, and a gap in an invoice sequence is what an auditor asks about.
+    'transfer_invoice_prefix' => env('BILLING_TRANSFER_INVOICE_PREFIX', 'INV-RXF'),
+
+    'transfer_receipt_prefix' => env('BILLING_TRANSFER_RECEIPT_PREFIX', 'KW-RXF'),
+
     // Days a past_due invoice stays payable before it reads as overdue.
     'due_days' => (int) env('BILLING_DUE_DAYS', 7),
 

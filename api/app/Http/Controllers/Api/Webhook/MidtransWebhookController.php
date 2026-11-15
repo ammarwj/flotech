@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api\Webhook;
 use App\Http\Controllers\Controller;
 use App\Models\EventPlanOrder;
 use App\Models\RaceEntry;
+use App\Models\RaceEntryTransfer;
 use App\Models\Team;
 use App\Models\TicketOrder;
 use App\Services\EventPlanOrderService;
 use App\Services\MidtransService;
 use App\Services\RaceEntryService;
+use App\Services\RaceTransferService;
 use App\Services\RegistrationService;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
@@ -25,6 +27,7 @@ class MidtransWebhookController extends Controller
         protected TicketService $tickets,
         protected RegistrationService $registration,
         protected RaceEntryService $raceEntries,
+        protected RaceTransferService $raceTransfers,
     ) {}
 
     /**
@@ -72,6 +75,7 @@ class MidtransWebhookController extends Controller
             Str::startsWith($orderId, 'TIX-') => $this->handleTicket($orderId, $transactionStatus, $paymentType),
             Str::startsWith($orderId, 'REG-') => $this->handleRegistration($orderId, $transactionStatus, $paymentType),
             Str::startsWith($orderId, 'RUN-') => $this->handleRaceEntry($orderId, $transactionStatus, $paymentType),
+            Str::startsWith($orderId, 'RXF-') => $this->handleRaceTransfer($orderId, $transactionStatus, $paymentType),
             default => $this->handlePlanOrder($orderId, $transactionStatus, $paymentType),
         };
     }
@@ -129,6 +133,35 @@ class MidtransWebhookController extends Controller
             // thing that gives it back is the hourly sweep — which never
             // touches a gateway order, because this is what does.
             'deny', 'cancel', 'expire' => $this->raceEntries->cancel($entry),
+            default => null,
+        };
+
+        return ApiResponse::success(null, 'Webhook diproses');
+    }
+
+    /**
+     * The fifth rail: a runner topping up to a dearer category.
+     *
+     * Its own prefix rather than riding on `RUN-`: that one resolves against
+     * `race_entries`, and an id carrying it would have this controller look up
+     * an entry by an order id only `race_entry_transfers` holds.
+     *
+     * The failure arm is wired for the same reason the entry's is — an
+     * abandoned move is holding a place in the TARGET category's quota, and the
+     * hourly sweep never touches a gateway order because this is what does.
+     * What it must not touch is the entry: `cancel()` leaves the runner exactly
+     * where they were, in the category they already paid for.
+     */
+    protected function handleRaceTransfer(string $orderId, string $status, ?string $paymentType = null): JsonResponse
+    {
+        $transfer = RaceEntryTransfer::where('midtrans_order_id', $orderId)->first();
+        if (! $transfer) {
+            return ApiResponse::error('Pindah kategori tidak ditemukan.', null, 404);
+        }
+
+        match ($status) {
+            'capture', 'settlement' => $this->raceTransfers->settle($transfer, $paymentType),
+            'deny', 'cancel', 'expire' => $this->raceTransfers->cancel($transfer),
             default => null,
         };
 

@@ -6,7 +6,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, Download, Flag, Loader2 } from "lucide-react";
 
-import { getRaceEntry, requestRaceEntryRefund, submitRaceEntryProof } from "@/lib/api/race";
+import {
+  getRaceEntry,
+  requestRaceEntryRefund,
+  startRaceTransfer,
+  submitRaceEntryProof,
+  submitRaceTransferProof,
+} from "@/lib/api/race";
 import { downloadMyBib } from "@/lib/api/bibs";
 import { parseApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
@@ -16,6 +22,7 @@ import { QrCode } from "@/components/event/qr-code";
 import { Badge } from "@/components/ui/badge";
 import { ManualTransferPanel } from "@/components/payment/manual-transfer-panel";
 import { RefundRequestPanel } from "@/components/payment/refund-request-panel";
+import { CategoryTransferPanel } from "@/components/race/category-transfer-panel";
 import { ParticipantDocumentButtons } from "@/components/payment/document-buttons";
 import { CopyLinkButton } from "@/components/shared/copy-link-button";
 import { rupiah } from "@/lib/labels";
@@ -109,6 +116,67 @@ export default function RaceEntryPage() {
   });
 
   /**
+   * Moving to another category.
+   *
+   * A paid top-up hands off to Midtrans; everything else stays on this page —
+   * an even or downward move is already applied when the response lands, and a
+   * manual one uploads its receipt in the panel below. One destination either
+   * way, the same call the registration form makes.
+   *
+   * `mock` is checked before `redirect_url` for the reason written in
+   * `checkoutOutcome()`: a Midtrans error also returns a null url, so the two
+   * must not be read as one signal.
+   */
+  const transfer = useMutation({
+    mutationFn: (input: { categoryId: string; reason: string | null; channel: string | null }) =>
+      startRaceTransfer(params.entryId, {
+        race_category_id: input.categoryId,
+        reason: input.reason,
+        payment_channel: input.channel,
+      }),
+    onSuccess: (res) => {
+      if (!res.mock && res.redirect_url) {
+        window.location.assign(res.redirect_url);
+        return;
+      }
+
+      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
+      // The options are now stale in two ways — the quota moved and this entry
+      // has an open move — so the next open of the dialog must not reuse them.
+      qc.invalidateQueries({ queryKey: ["race-transfer-options", params.entryId] });
+      toast.success(
+        res.transfer.status === "paid" ? "Kategori berhasil dipindah" : "Pindah kategori dibuat",
+        {
+          description:
+            res.transfer.status === "paid"
+              ? "Nomor BIB kamu diterbitkan ulang mengikuti kategori baru."
+              : "Selesaikan pembayaran selisihnya agar kategorinya berpindah.",
+        }
+      );
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal memindahkan kategori.").message),
+  });
+
+  /**
+   * The receipt for a manual top-up.
+   *
+   * The transfer's id travels as the mutation ARGUMENT rather than being read
+   * off the query at call time: the page polls, so the row could be replaced
+   * between the click and the request, and the id that was on screen is the one
+   * the runner is paying for. Keyed on the transfer and not the entry because
+   * the transfer is the row being paid for.
+   */
+  const transferProof = useMutation({
+    mutationFn: ({ transferId, proofUrl }: { transferId: string; proofUrl: string }) =>
+      submitRaceTransferProof(transferId, proofUrl),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
+      toast.success("Bukti terkirim", { description: "Menunggu verifikasi penyelenggara." });
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal mengirim bukti.").message),
+  });
+
+  /**
    * The runner's own e-BIB.
    *
    * Through the API client with a blob response, never a plain `<a href>`: the
@@ -144,6 +212,15 @@ export default function RaceEntryPage() {
   const entry = query.data;
   const paid = entry.status === "paid";
   const manual = entry.payment_method === "manual" && entry.status === "pending";
+  // A category top-up still owed on the manual rail. Read off `open_transfer`
+  // rather than from the entry's own payment fields: the entry is fully paid,
+  // and the rail of the move is its own — an entry bought on the gateway can be
+  // topped up by hand if the gateway went down in between.
+  const manualTopUp =
+    entry.open_transfer?.payment_method === "manual" &&
+    entry.open_transfer.status === "pending"
+      ? entry.open_transfer
+      : null;
   // `refunded` belongs here and not with the pending states: before it was
   // added, a refunded entry fell through to the warning banner and read
   // "Menunggu pembayaran · Selesaikan pembayaran agar pendaftaran aktif" over a
@@ -246,6 +323,34 @@ export default function RaceEntryPage() {
         onSubmit={(reason) => refund.mutate(reason)}
       />
 
+      {/* Moving category, above the detail card for the same reason the refund
+          panel is: it is news. Renders nothing when there is neither an open
+          move nor a button to offer — see the component. */}
+      <CategoryTransferPanel
+        entry={entry}
+        pending={transfer.isPending}
+        onSubmit={(input) => transfer.mutate(input)}
+      />
+
+      {/* Where to transfer a manual top-up. The same panel the entry's own
+          manual payment uses, pointed at the transfer's amount and id: a
+          second upload form would be two readers of one flow, and the one
+          thing that differs here is which row is being paid for. Only while
+          the top-up is genuinely owed — a downward or even move never has one. */}
+      {manualTopUp && (
+        <ManualTransferPanel
+          bankAccount={manualTopUp.bank_account}
+          amount={manualTopUp.gross_amount}
+          deadlineAt={manualTopUp.payment_deadline_at}
+          awaitingVerification={manualTopUp.awaiting_verification}
+          rejectedReason={manualTopUp.rejected_reason}
+          pending={transferProof.isPending}
+          onSubmit={(url) =>
+            transferProof.mutate({ transferId: manualTopUp.id, proofUrl: url })
+          }
+        />
+      )}
+
       <Card className="mb-6 p-5">
         <h2 className="mb-3 text-base font-semibold" style={{ fontFamily: "var(--font-display)" }}>
           {entry.full_name}
@@ -287,6 +392,50 @@ export default function RaceEntryPage() {
             hasReceipt={!!entry.receipt_number}
           />
         </div>
+
+        {/* The moves that happened, and their own documents.
+
+            This block is the ONLY place a settled top-up's invoice and receipt
+            are reachable from — the entry's own receipt above deliberately does
+            not mention them, because it was issued before the move and must
+            keep saying what it said. Without this they exist at a URL nobody
+            can discover.
+
+            Rendered only when there is something to list: an entry that never
+            moved is not owed a "Riwayat" heading over nothing. */}
+        {!!entry.transfer_history?.length && (
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="mb-2 text-sm font-semibold" style={{ fontFamily: "var(--font-display)" }}>
+              Riwayat pindah kategori
+            </h3>
+            <ul className="space-y-3">
+              {entry.transfer_history.map((move) => (
+                <li key={move.id} className="text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span>Pindah ke {move.to_category ?? "—"}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {move.direction === "up" && `+ ${rupiah(move.amount)}`}
+                      {move.direction === "down" && `− ${rupiah(move.amount)}`}
+                      {move.direction === "even" && "Tanpa biaya"}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{fmtDate(move.paid_at)}</span>
+                    {/* Gated on the numbers, not on the direction: an even or
+                        downward move issued none, and a button derived from
+                        "up" would still 404 for a row settled before the
+                        numbering existed. */}
+                    <ParticipantDocumentButtons
+                      subject={{ kind: "race-transfer", id: move.id }}
+                      hasInvoice={!!move.invoice_number}
+                      hasReceipt={!!move.receipt_number}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Card>
 
       {/* The QR, and the three states it has. `entry.qr_code` is absent rather
