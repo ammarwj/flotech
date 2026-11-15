@@ -87,7 +87,7 @@ export function RefundRequestPanel({
   const transferNote = (() => {
     switch (entry.refund_transfer?.stage) {
       case "queued":
-        return "Dananya sedang diproses flo-event untuk dikirim ke penyelenggara, lalu diteruskan ke kamu.";
+        return "Dananya sedang diproses floevent untuk dikirim ke penyelenggara, lalu diteruskan ke kamu.";
       case "with_organizer":
         return "Dananya sudah sampai ke penyelenggara dan sedang menunggu diteruskan ke kamu.";
       case "forwarded":
@@ -109,7 +109,12 @@ export function RefundRequestPanel({
   // something to offer (it rendered the trigger), and the cards this test
   // guards are not rendered anyway — so the test would only be able to refuse
   // the dialog somebody just opened.
-  if (!dialogOnly && !refunded && !entry.refund_requested && !entry.can_request_refund) {
+  if (
+    !dialogOnly &&
+    !refunded &&
+    !entry.refund_requested &&
+    !entry.can_request_refund
+  ) {
     return null;
   }
 
@@ -180,7 +185,10 @@ export function RefundRequestPanel({
           tone="danger"
           icon={XCircle}
           title="Pengajuan refund ditolak"
-          body={entry.refund_rejected_reason || "Penyelenggara tidak memberikan alasan."}
+          body={
+            entry.refund_rejected_reason ||
+            "Penyelenggara tidak memberikan alasan."
+          }
           at={entry.refund_decided_at}
         />
       )}
@@ -238,7 +246,11 @@ export function RefundRequestPanel({
             </p>
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
               Batal
             </Button>
             <Button type="button" onClick={submit} disabled={pending}>
@@ -284,7 +296,10 @@ function StatusCard({
     >
       <Icon className="mt-0.5 h-6 w-6 shrink-0" style={{ color }} />
       <div className="min-w-0">
-        <h2 className="text-sm font-bold" style={{ fontFamily: "var(--font-display)" }}>
+        <h2
+          className="text-sm font-bold"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           {title}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{body}</p>

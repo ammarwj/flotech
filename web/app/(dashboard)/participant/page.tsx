@@ -458,7 +458,10 @@ export default function ParticipantPage() {
           key={transferEntry.id}
           entry={transferEntry}
           pending={actions.transfer.isPending}
-          onSubmit={(input) => actions.transfer.mutate(input)}
+          // The id goes WITH the call, not read from state inside the hook:
+          // this closes in the same tick, and the mutation would otherwise run
+          // against the already-cleared row. See `idFor()`.
+          onSubmit={(input) => actions.transfer.mutate({ ...input, entryId: transferEntry.id })}
           dialogOnly
           open
           onOpenChange={(open) => !open && setTransferEntry(null)}
@@ -470,7 +473,7 @@ export default function ParticipantPage() {
           key={refundEntry.id}
           entry={refundEntry}
           pending={actions.refund.isPending}
-          onSubmit={(reason) => actions.refund.mutate(reason)}
+          onSubmit={(reason) => actions.refund.mutate({ entryId: refundEntry.id, reason })}
           dialogOnly
           open
           onOpenChange={(open) => !open && setRefundEntry(null)}

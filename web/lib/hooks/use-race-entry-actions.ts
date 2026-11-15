@@ -33,13 +33,28 @@ export function useRaceEntryActions(entryId: string | null) {
    * behind the dialog keeps its old category and old total, and nothing on
    * screen says which is right.
    */
-  const invalidate = () => {
-    if (entryId) {
-      qc.invalidateQueries({ queryKey: ["race-entry", entryId] });
-      qc.invalidateQueries({ queryKey: ["race-transfer-options", entryId] });
+  const invalidate = (id: string | null) => {
+    if (id) {
+      qc.invalidateQueries({ queryKey: ["race-entry", id] });
+      qc.invalidateQueries({ queryKey: ["race-transfer-options", id] });
     }
     qc.invalidateQueries({ queryKey: ["my-race-entries"] });
   };
+
+  /**
+   * The id a mutation runs against, carried in its OWN variables and only
+   * falling back to the hook's argument.
+   *
+   * The fallback is not the primary path, and that ordering is load-bearing:
+   * the list surface derives its argument from the row the dialog is about and
+   * clears it the moment the dialog closes — which `submit()` does in the same
+   * tick it fires the mutation. React Query reads `mutationFn` from the LATEST
+   * render's options when it executes, so a closure over that argument saw
+   * `null` and posted to `/race-entries/null/transfer`, landing as an invalid
+   * uuid at route binding. The variables travel with the call, so they cannot
+   * go stale under it.
+   */
+  const idFor = (given?: string | null) => given ?? entryId!;
 
   /**
    * Asking for the fee back.
@@ -51,9 +66,12 @@ export function useRaceEntryActions(entryId: string | null) {
    * not a field to correct.
    */
   const refund = useMutation({
-    mutationFn: (reason: string) => requestRaceEntryRefund(entryId!, reason),
-    onSuccess: () => {
-      invalidate();
+    mutationFn: (input: string | { entryId: string; reason: string }) =>
+      typeof input === "string"
+        ? requestRaceEntryRefund(idFor(), input)
+        : requestRaceEntryRefund(idFor(input.entryId), input.reason),
+    onSuccess: (_res, input) => {
+      invalidate(typeof input === "string" ? entryId : input.entryId);
       toast.success("Pengajuan terkirim", {
         description: "Menunggu keputusan penyelenggara.",
       });
@@ -74,19 +92,24 @@ export function useRaceEntryActions(entryId: string | null) {
    * must not be read as one signal.
    */
   const transfer = useMutation({
-    mutationFn: (input: { categoryId: string; reason: string | null; channel: string | null }) =>
-      startRaceTransfer(entryId!, {
+    mutationFn: (input: {
+      entryId?: string;
+      categoryId: string;
+      reason: string | null;
+      channel: string | null;
+    }) =>
+      startRaceTransfer(idFor(input.entryId), {
         race_category_id: input.categoryId,
         reason: input.reason,
         payment_channel: input.channel,
       }),
-    onSuccess: (res) => {
+    onSuccess: (res, input) => {
       if (!res.mock && res.redirect_url) {
         window.location.assign(res.redirect_url);
         return;
       }
 
-      invalidate();
+      invalidate(input.entryId ?? entryId);
       toast.success(
         res.transfer.status === "paid" ? "Kategori berhasil dipindah" : "Pindah kategori dibuat",
         {

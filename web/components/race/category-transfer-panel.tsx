@@ -397,21 +397,19 @@ export function CategoryTransferPanel({
               <p className={dialogConsequences.default}>
                 {chosen.direction === "up" ? (
                   <>
-                    Kategorinya berpindah setelah selisihnya dibayar. Sampai itu, kamu tetap
-                    terdaftar di {entry.category?.name ?? "kategori sekarang"}.
+                    Pindah setelah selisihnya dibayar; sampai itu kamu tetap di{" "}
+                    {entry.category?.name ?? "kategori sekarang"}.
                   </>
                 ) : chosen.direction === "down" ? (
                   <>
-                    Kategorinya langsung berpindah. Selisih{" "}
-                    {rupiah(chosen.amount)} dikembalikan lewat transfer manual, jadi tidak
-                    langsung masuk.
+                    Pindah sekarang. Selisih {rupiah(chosen.amount)} dikembalikan lewat
+                    transfer manual, tidak otomatis.
                   </>
                 ) : (
-                  <>Harganya sama, jadi kategorinya langsung berpindah tanpa pembayaran.</>
+                  <>Harganya sama, jadi langsung pindah tanpa pembayaran.</>
                 )}{" "}
-                Nomor BIB kamu diterbitkan ulang mengikuti kategori baru
-                {entry.bib_number ? ` (sekarang ${entry.bib_number})` : ""}; QR check-in
-                kamu tidak berubah.
+                BIB diterbitkan ulang
+                {entry.bib_number ? ` (sekarang ${entry.bib_number})` : ""}; QR check-in tetap.
               </p>
             )}
           </DialogBody>
