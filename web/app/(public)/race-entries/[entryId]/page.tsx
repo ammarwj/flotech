@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, Download, Flag, Loader2 } from "lucide-react";
+import { ArrowLeftRight, CheckCircle2, Clock, Download, Flag, Loader2, Undo2 } from "lucide-react";
 
 import {
   getRaceEntry,
@@ -58,6 +59,12 @@ const PARTICIPANT_NEXT = encodeURIComponent("/participant");
 export default function RaceEntryPage() {
   const params = useParams<{ entryId: string }>();
   const qc = useQueryClient();
+
+  // Both dialogs are opened from one row in the detail card below, so the page
+  // owns their open state rather than each panel owning its own — see the
+  // `controlled` note on either component.
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   // Public route, so nothing has restored the session yet: the access token
   // lives in memory and is gone after every navigation into a public page.
@@ -321,15 +328,25 @@ export default function RaceEntryPage() {
         entry={entry}
         pending={refund.isPending}
         onSubmit={(reason) => refund.mutate(reason)}
+        open={refundOpen}
+        onOpenChange={setRefundOpen}
       />
 
       {/* Moving category, above the detail card for the same reason the refund
           panel is: it is news. Renders nothing when there is neither an open
-          move nor a button to offer — see the component. */}
+          move nor a button to offer — see the component.
+
+          Both panels run CONTROLLED, which also suppresses their own triggers:
+          the two buttons live together in the detail card below. Stacked as
+          each panel's own centred row they took a full line each and read as
+          two unrelated announcements between the banner and the details — which
+          is exactly what they are not. */}
       <CategoryTransferPanel
         entry={entry}
         pending={transfer.isPending}
         onSubmit={(input) => transfer.mutate(input)}
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
       />
 
       {/* Where to transfer a manual top-up. The same panel the entry's own
@@ -392,6 +409,45 @@ export default function RaceEntryPage() {
             hasReceipt={!!entry.receipt_number}
           />
         </div>
+
+        {/* The two ways out of this registration, on one row below the
+            documents and separated by a rule.
+
+            Below rather than beside: those three are things to TAKE (a link, a
+            PDF), these two change the registration itself, and a "Pindah
+            kategori" sitting flush against "Kwitansi" reads as a fourth
+            download. Ghost weight for the reason each panel already gives —
+            somebody who came to check their BIB should not meet them at the
+            weight of "Bayar sekarang". The gates are the server's own answers,
+            never rebuilt here. */}
+        {(entry.can_request_refund || entry.can_transfer_category) && (
+          <div className="mt-4 flex flex-wrap items-center gap-1 border-t border-border pt-3">
+            {entry.can_transfer_category && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => setTransferOpen(true)}
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                Pindah kategori
+              </Button>
+            )}
+            {entry.can_request_refund && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => setRefundOpen(true)}
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                {entry.refund_requested ? "Ajukan refund lagi" : "Ajukan refund"}
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* The moves that happened, and their own documents.
 

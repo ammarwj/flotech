@@ -52,12 +52,25 @@ export function CategoryTransferPanel({
   entry,
   pending,
   onSubmit,
+  open: openProp,
+  onOpenChange,
 }: {
   entry: RaceEntry;
   pending: boolean;
   onSubmit: (input: { categoryId: string; reason: string | null; channel: string | null }) => void;
+  /**
+   * Controlled mode — see `RefundRequestPanel`, which takes the same pair for
+   * the same reason. Passing `open` also suppresses this panel's own trigger,
+   * because a caller that owns the dialog owns the button that opens it. The
+   * status card above is unaffected: that is news, not a control.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openSelf, setOpenSelf] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openSelf;
+  const setOpen = controlled ? (onOpenChange ?? (() => {})) : setOpenSelf;
   const [picked, setPicked] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -156,7 +169,7 @@ export function CategoryTransferPanel({
           reason: this is a correction, not the main path, and giving it the
           weight of "Bayar sekarang" puts it in front of somebody who only came
           to check their BIB. */}
-      {entry.can_transfer_category && (
+      {!controlled && entry.can_transfer_category && (
         <div className="mb-6 text-center">
           <Button
             type="button"

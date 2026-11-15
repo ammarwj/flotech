@@ -40,12 +40,28 @@ export function RefundRequestPanel({
   entry,
   pending,
   onSubmit,
+  open: openProp,
+  onOpenChange,
 }: {
   entry: RaceEntry;
   pending: boolean;
   onSubmit: (reason: string) => void;
+  /**
+   * Controlled mode, used when the page groups this action with its siblings.
+   *
+   * Passing `open` ALSO suppresses the panel's own trigger button, and the two
+   * belong together on purpose: a caller that owns the dialog owns the button
+   * that opens it. Two triggers for one dialog is the state nothing on screen
+   * could explain. The status cards above are unaffected either way — those are
+   * the conversation, not the control.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openSelf, setOpenSelf] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openSelf;
+  const setOpen = controlled ? (onOpenChange ?? (() => {})) : setOpenSelf;
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -156,7 +172,7 @@ export function RefundRequestPanel({
           A plain link-weight button, not a primary one: this is the exit from a
           registration, and giving it the same weight as "Bayar sekarang" puts
           it in the path of somebody who only came to check their BIB. */}
-      {entry.can_request_refund && (
+      {!controlled && entry.can_request_refund && (
         <div className="mb-6 text-center">
           <Button
             type="button"
