@@ -54,6 +54,7 @@ export function CategoryTransferPanel({
   onSubmit,
   onPay,
   onCancel,
+  dialogOnly,
   open: openProp,
   onOpenChange,
 }: {
@@ -78,6 +79,16 @@ export function CategoryTransferPanel({
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Render the dialog alone, without the open-move card above it.
+   *
+   * For a caller already saying the state in its own layout — see the twin
+   * prop on `RefundRequestPanel`. A caller using this also gets no "Bayar
+   * selisih" / "Batalkan pindah" buttons, because those live on that card;
+   * finishing an open move stays on the proof page, which is where the bank
+   * account and the upload field are.
+   */
+  dialogOnly?: boolean;
 }) {
   const [openSelf, setOpenSelf] = useState(false);
   const controlled = openProp !== undefined;
@@ -110,7 +121,10 @@ export function CategoryTransferPanel({
   });
 
   // Nothing to report and nothing to offer. See the docblock.
-  if (!openTransfer && !entry.can_transfer_category) return null;
+  // `dialogOnly` is exempt for the reason written on the twin in
+  // RefundRequestPanel: the caller already decided there is something to
+  // offer, and the card this test guards is not rendered there anyway.
+  if (!dialogOnly && !openTransfer && !entry.can_transfer_category) return null;
 
   const chosen = options.data?.options.find((o) => o.category.id === picked) ?? null;
   // Only an upward move is ever paid for. An even or downward one is settled by
@@ -144,7 +158,7 @@ export function CategoryTransferPanel({
           says what the ENTRY is, and the entry is still fully paid in its
           original category. This says what is outstanding, which is a different
           sentence about a different row. */}
-      {openTransfer && (
+      {!dialogOnly && openTransfer && (
         <Card
           className="mb-6 flex items-start gap-3 p-5"
           style={{

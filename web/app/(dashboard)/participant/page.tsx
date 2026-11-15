@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowLeftRight,
   Calendar,
   ClipboardList,
   Flag,
   QrCode,
   Settings2,
   Trophy,
+  Undo2,
   Users,
 } from "lucide-react";
 
@@ -23,6 +26,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { RaceEntryStatusBadge, TeamStatusBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog";
+// Aliased: `QrCode` is already the lucide icon in this file, and the renderer
+// and its icon colliding is the kind of shadowing that compiles and then draws
+// the wrong thing.
+import { QrCode as QrCode2 } from "@/components/event/qr-code";
+import { CategoryTransferPanel } from "@/components/race/category-transfer-panel";
+import { RefundRequestPanel } from "@/components/payment/refund-request-panel";
+import { useRaceEntryActions } from "@/lib/hooks/use-race-entry-actions";
+import type { RaceEntry } from "@/types/api";
 
 function initials(name: string) {
   return name
@@ -61,6 +74,24 @@ export default function ParticipantPage() {
   const { sportLabel } = useCatalog();
   const teamsQuery = useQuery({ queryKey: ["my-teams"], queryFn: getMyTeams });
   const entriesQuery = useQuery({ queryKey: ["my-race-entries"], queryFn: getMyRaceEntries });
+
+  /**
+   * Which entry each overlay is about, rather than a boolean per dialog.
+   *
+   * The row is the subject here, unlike on the proof page where there is only
+   * ever one entry — so a bare `open` flag would need a second piece of state
+   * saying which row it belongs to, and the two could disagree. One dialog is
+   * mounted per purpose and re-seeded by `key`: mounting one per row to show at
+   * most one is waste, and without the key the second entry opened would be
+   * showing the first one's answers.
+   */
+  const [qrEntry, setQrEntry] = useState<RaceEntry | null>(null);
+  const [transferEntry, setTransferEntry] = useState<RaceEntry | null>(null);
+  const [refundEntry, setRefundEntry] = useState<RaceEntry | null>(null);
+
+  // One hook for both actions, shared with the proof page — see it for why the
+  // invalidation is the part worth not writing twice.
+  const actions = useRaceEntryActions(transferEntry?.id ?? refundEntry?.id ?? null);
 
   const teams = teamsQuery.data;
   const entries = entriesQuery.data;
@@ -232,9 +263,20 @@ export default function ParticipantPage() {
               return (
                 <Card
                   key={entry.id}
-                  className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4"
+                  // `sm:items-start`, not centre: the action group is now up to
+                  // four controls that wrap on a narrow card, and centring a
+                  // two-line block against a two-line block leaves both
+                  // floating with nothing aligned to anything.
+                  // Two stacked rows, not a side-by-side — and this was tried
+                  // the other way first. With four controls beside it the title
+                  // block was squeezed to about 250px at a 1100px viewport, so
+                  // the event name, the badges and the meta line all wrapped
+                  // and the price landed alone on a third line. A row of
+                  // actions under the facts costs one line and always reads the
+                  // same, at every width.
+                  className="flex flex-col gap-3 p-4"
                 >
-                  <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+                  <div className="flex min-w-0 items-start gap-3">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-[var(--brand-600)]">
                     <Flag className="h-5 w-5" />
                   </span>
@@ -292,21 +334,147 @@ export default function ParticipantPage() {
                     </div>
                   </div>
                   </div>
-                  {/* The public proof page, not a dashboard twin of it: the
-                      upload, the documents and the QR already live there, and a
-                      runner who arrived from their email is looking at the same
-                      screen this links to. */}
-                  <Button asChild size="sm" variant="outline" className="w-full shrink-0 sm:w-auto">
-                    <Link href={`/race-entries/${entry.id}`}>
-                      <ClipboardList className="h-4 w-4" />
-                      Buka bukti
-                    </Link>
-                  </Button>
+                  {/* The row's actions: the QR, the detail page, and the two
+                      things a runner can do to the registration itself.
+
+                      The QR is a DIALOG and not a link, because it is the one
+                      thing on this page somebody opens while standing in front
+                      of somebody else — a navigation there costs a page load
+                      and a way back. Everything else is still the proof page:
+                      the e-BIB, the documents, the fee breakdown and any open
+                      move live there, and this list has nowhere to put a bank
+                      account or an upload field.
+
+                      "Lihat detail" and not "Buka bukti", which named that page
+                      when a receipt was all it held. It now carries all of the
+                      above, so the old label promises one document and hides
+                      the rest — and over an entry still awaiting payment it
+                      offers proof of something that has not happened. Sibling
+                      of "Kelola" on the team card above: the pair names what
+                      each destination lets you do. */}
+                  {/* Its own row under the facts, divided by a rule: the two
+                      outlined controls open things to READ, the two ghost ones
+                      change the registration, and the group as a whole answers
+                      a different question from the line above it. */}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                    {entry.qr_code && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setQrEntry(entry)}
+                      >
+                        <QrCode className="h-4 w-4" />
+                        QR
+                      </Button>
+                    )}
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/race-entries/${entry.id}`}>
+                        <ClipboardList className="h-4 w-4" />
+                        Lihat detail
+                      </Link>
+                    </Button>
+                    {/* Ghost weight, and both gated on the SERVER's own answer
+                        — never rebuilt from `status`/`checked_in_at`, which is
+                        the `effective_payment_method` bug in another shape.
+                        An entry mid-move answers false to both, and the card
+                        says so rather than offering a button that 422s. */}
+                    {entry.can_transfer_category && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => setTransferEntry(entry)}
+                      >
+                        <ArrowLeftRight className="h-4 w-4" />
+                        Pindah
+                      </Button>
+                    )}
+                    {entry.can_request_refund && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => setRefundEntry(entry)}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        Refund
+                      </Button>
+                    )}
+                  </div>
                 </Card>
               );
             })}
           </div>
         </section>
+      )}
+
+      {/* ---- The three overlays ----
+
+          One of each, re-seeded by `key` so opening a second entry does not
+          show the first one's state — the same call RaceEntryEditDialog makes.
+          They sit outside the list for the same reason: mounting three per row
+          to show at most one is waste.
+
+          The two panels run CONTROLLED, which also suppresses their own trigger
+          buttons: the triggers are in the row. See either component. */}
+      <Dialog open={!!qrEntry} onOpenChange={(open) => !open && setQrEntry(null)}>
+        <DialogContent>
+          <DialogHeader
+            icon={QrCode}
+            title="QR Check-in"
+            description="Tunjukkan QR ini di meja registrasi saat pengambilan race pack."
+          />
+          <DialogBody>
+            {qrEntry?.qr_code && (
+              <div className="text-center">
+                <div className="flex justify-center">
+                  <QrCode2 value={qrEntry.qr_code} size={220} />
+                </div>
+                {/* The raw code, for a desk whose scanner is down and has to
+                    type it in — the same fallback the proof page carries. */}
+                <p className="mt-3 break-all text-xs text-muted-foreground">
+                  {qrEntry.qr_code}
+                </p>
+                <p className="mt-3 text-sm">
+                  {qrEntry.category?.name ?? "—"}
+                  {qrEntry.bib_number ? ` · BIB ${qrEntry.bib_number}` : ""}
+                </p>
+                {qrEntry.checked_in_at && (
+                  <Badge variant="success" className="mt-3">
+                    Sudah check-in
+                  </Badge>
+                )}
+              </div>
+            )}
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      {transferEntry && (
+        <CategoryTransferPanel
+          key={transferEntry.id}
+          entry={transferEntry}
+          pending={actions.transfer.isPending}
+          onSubmit={(input) => actions.transfer.mutate(input)}
+          dialogOnly
+          open
+          onOpenChange={(open) => !open && setTransferEntry(null)}
+        />
+      )}
+
+      {refundEntry && (
+        <RefundRequestPanel
+          key={refundEntry.id}
+          entry={refundEntry}
+          pending={actions.refund.isPending}
+          onSubmit={(reason) => actions.refund.mutate(reason)}
+          dialogOnly
+          open
+          onOpenChange={(open) => !open && setRefundEntry(null)}
+        />
       )}
     </div>
   );

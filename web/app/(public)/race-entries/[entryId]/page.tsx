@@ -19,13 +19,12 @@ import {
   cancelRaceTransfer,
   getRaceEntry,
   payRaceTransfer,
-  requestRaceEntryRefund,
-  startRaceTransfer,
   submitRaceEntryProof,
   submitRaceTransferProof,
 } from "@/lib/api/race";
 import { downloadMyBib } from "@/lib/api/bibs";
 import { parseApiError } from "@/lib/api/errors";
+import { useRaceEntryActions } from "@/lib/hooks/use-race-entry-actions";
 import { Button } from "@/components/ui/button";
 import { useOptionalSession } from "@/components/auth/use-optional-session";
 import { Card } from "@/components/ui/card";
@@ -150,80 +149,12 @@ export default function RaceEntryPage() {
       toast.error(parseApiError(err, "Gagal mengirim bukti.").message),
   });
 
-  /**
-   * Asking for the fee back.
-   *
-   * A toast and nothing inline, unlike the forms that bind 422s to fields: the
-   * only field here is the reason, the dialog validates it before sending, and
-   * every other refusal is about the entry rather than about what was typed —
-   * "sudah check-in", "masih menunggu keputusan". Those are sentences to read,
-   * not a field to correct.
-   */
-  const refund = useMutation({
-    mutationFn: (reason: string) =>
-      requestRaceEntryRefund(params.entryId, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
-      toast.success("Pengajuan terkirim", {
-        description: "Menunggu keputusan penyelenggara.",
-      });
-    },
-    onError: (err) =>
-      toast.error(
-        parseApiError(err, "Gagal mengirim pengajuan refund.").message,
-      ),
-  });
-
-  /**
-   * Moving to another category.
-   *
-   * A paid top-up hands off to Midtrans; everything else stays on this page —
-   * an even or downward move is already applied when the response lands, and a
-   * manual one uploads its receipt in the panel below. One destination either
-   * way, the same call the registration form makes.
-   *
-   * `mock` is checked before `redirect_url` for the reason written in
-   * `checkoutOutcome()`: a Midtrans error also returns a null url, so the two
-   * must not be read as one signal.
-   */
-  const transfer = useMutation({
-    mutationFn: (input: {
-      categoryId: string;
-      reason: string | null;
-      channel: string | null;
-    }) =>
-      startRaceTransfer(params.entryId, {
-        race_category_id: input.categoryId,
-        reason: input.reason,
-        payment_channel: input.channel,
-      }),
-    onSuccess: (res) => {
-      if (!res.mock && res.redirect_url) {
-        window.location.assign(res.redirect_url);
-        return;
-      }
-
-      qc.invalidateQueries({ queryKey: ["race-entry", params.entryId] });
-      // The options are now stale in two ways — the quota moved and this entry
-      // has an open move — so the next open of the dialog must not reuse them.
-      qc.invalidateQueries({
-        queryKey: ["race-transfer-options", params.entryId],
-      });
-      toast.success(
-        res.transfer.status === "paid"
-          ? "Kategori berhasil dipindah"
-          : "Pindah kategori dibuat",
-        {
-          description:
-            res.transfer.status === "paid"
-              ? "Nomor BIB kamu diterbitkan ulang mengikuti kategori baru."
-              : "Selesaikan pembayaran selisihnya agar kategorinya berpindah.",
-        },
-      );
-    },
-    onError: (err) =>
-      toast.error(parseApiError(err, "Gagal memindahkan kategori.").message),
-  });
+  // Refund and category move, shared with the participant dashboard which
+  // offers the same two from its list — see the hook for why the invalidation
+  // is the part worth not writing twice. The three doors onto an OPEN move
+  // (pay, abandon, upload proof) stay here: they belong to the panel below,
+  // which is the only place with room for a bank account and an upload field.
+  const { refund, transfer } = useRaceEntryActions(params.entryId);
 
   /**
    * Finishing a move that was started and left unpaid.

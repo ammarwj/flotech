@@ -40,6 +40,7 @@ export function RefundRequestPanel({
   entry,
   pending,
   onSubmit,
+  dialogOnly,
   open: openProp,
   onOpenChange,
 }: {
@@ -57,6 +58,16 @@ export function RefundRequestPanel({
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Render the dialog alone, without the status cards above it.
+   *
+   * For a caller that is already SAYING the state in its own layout — the
+   * participant list prints a status badge on every row — where the cards
+   * would be the same news twice, and floating at the bottom of the page
+   * rather than attached to the row they describe. The proof page leaves this
+   * off: there the cards are the conversation.
+   */
+  dialogOnly?: boolean;
 }) {
   const [openSelf, setOpenSelf] = useState(false);
   const controlled = openProp !== undefined;
@@ -94,7 +105,13 @@ export function RefundRequestPanel({
   // AND `can_request_refund` false (it is no longer paid), so without it the
   // one runner who most needs an explanation — money came back on a
   // registration they never queried — is the one shown nothing at all.
-  if (!refunded && !entry.refund_requested && !entry.can_request_refund) return null;
+  // `dialogOnly` is exempt: there the caller has already decided there is
+  // something to offer (it rendered the trigger), and the cards this test
+  // guards are not rendered anyway — so the test would only be able to refuse
+  // the dialog somebody just opened.
+  if (!dialogOnly && !refunded && !entry.refund_requested && !entry.can_request_refund) {
+    return null;
+  }
 
   const submit = () => {
     const text = reason.trim();
@@ -122,7 +139,7 @@ export function RefundRequestPanel({
           nothing. That branch prints the reason because it is the only thing on
           screen explaining why money came back on a registration the runner
           thought was fine; the asked-for one does not, since they wrote it. */}
-      {refunded && entry.refund_requested && (
+      {!dialogOnly && refunded && entry.refund_requested && (
         <StatusCard
           tone="success"
           icon={CheckCircle2}
@@ -132,7 +149,7 @@ export function RefundRequestPanel({
         />
       )}
 
-      {refunded && !entry.refund_requested && (
+      {!dialogOnly && refunded && !entry.refund_requested && (
         <StatusCard
           tone="success"
           icon={CheckCircle2}
@@ -143,7 +160,7 @@ export function RefundRequestPanel({
       )}
 
       {/* ---- Waiting ---- */}
-      {entry.refund_pending && (
+      {!dialogOnly && entry.refund_pending && (
         <StatusCard
           tone="warning"
           icon={Clock}
@@ -158,7 +175,7 @@ export function RefundRequestPanel({
           not a footnote: a refusal with nothing to read is worse for the person
           reading it than no feature at all. The button below it is still
           offered — a refusal is a verdict on that request, not on the entry. */}
-      {rejected && (
+      {!dialogOnly && rejected && (
         <StatusCard
           tone="danger"
           icon={XCircle}
