@@ -109,9 +109,21 @@ export const WITHDRAWAL_STATUS_LABELS: Record<WithdrawalStatus, string> = {
   rejected: "Ditolak",
 };
 
+/**
+ * Mirrors the `category` strings `WalletService` writes — all of them.
+ *
+ * A key missing here renders as an empty `<span>`, not as an error: the row
+ * keeps its amount and its badge and simply loses the one word saying what the
+ * money was. That is how `race_entry` shipped invisible on a fun run whose
+ * ledger is nothing but race entries. Adding an income rail means touching
+ * three places, not two: `EARNING_CATEGORIES` in `WalletService`, the
+ * `WalletTxCategory` union, and this map.
+ */
 export const WALLET_TX_CATEGORY_LABELS: Record<WalletTxCategory, string> = {
   ticket_sale: "Penjualan Tiket",
   registration_fee: "Biaya Pendaftaran",
+  race_entry: "Pendaftaran Lomba",
+  race_entry_transfer: "Pindah Kategori",
   refund: "Refund",
   withdrawal: "Penarikan Dana",
   withdrawal_reversal: "Pengembalian Penarikan",

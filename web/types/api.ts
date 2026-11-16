@@ -2610,6 +2610,8 @@ export type WalletTxStatus = "pending" | "available" | "cancelled";
 export type WalletTxCategory =
   | "ticket_sale"
   | "registration_fee"
+  | "race_entry"
+  | "race_entry_transfer"
   | "refund"
   | "withdrawal"
   | "withdrawal_reversal"

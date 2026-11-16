@@ -398,7 +398,10 @@ function WalletPage() {
                 description="Penarikan yang kamu ajukan akan muncul di sini beserta bukti transfernya."
               />
             ) : (
-              <div className="grid gap-3">
+              // `grid-cols-1` for the same reason as the ledger below:
+              // `admin_note` is free text a super admin types, and an implicit
+              // track sized to it widens every row in the list.
+              <div className="grid grid-cols-1 gap-3">
                 {withdrawals.map((w) => (
                   <Card
                     key={w.id}
@@ -477,7 +480,14 @@ function WalletPage() {
                 description="Penjualan tiket dan biaya pendaftaran yang lunas akan tercatat di sini."
               />
             ) : (
-              <div className="grid gap-2">
+              // `grid-cols-1`, not a bare `grid`: an implicit track's floor is
+              // the min-content width of its widest item, so one 335-character
+              // refund reason stretched the track to 2487px inside an 1180px
+              // column — every card in the list, not just that one, and the
+              // shell's `overflow-x-clip` then cut them all off mid-row. The
+              // explicit `minmax(0, 1fr)` is what lets the row shrink and the
+              // `min-w-0` child below actually do its job.
+              <div className="grid grid-cols-1 gap-2">
                 {transactions.map((tx) => (
                   // Stacks on a phone instead of wrapping: the amount used to wrap
                   // under the description while keeping text-right, leaving it
