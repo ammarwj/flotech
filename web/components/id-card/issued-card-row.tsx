@@ -30,7 +30,16 @@ export function IssuedCardRow({
   const subtitle = [card.role_label, card.team_name].filter(Boolean).join(" · ");
 
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
+    /**
+     * Stacked on a phone, one row from `sm` up.
+     *
+     * Side by side at 390px the badge and the two icon buttons take 175px of
+     * the 308px available — 57% of the row — and the name, the only reason
+     * anyone reads this list, truncates after two words. Stacking gives it the
+     * full width and costs one line; the controls keep their own row, which is
+     * also what makes them comfortable to tap.
+     */
+    <div className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{card.recipient_name}</p>
         <p className="truncate text-xs text-muted-foreground">
@@ -39,7 +48,7 @@ export function IssuedCardRow({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="-my-1 flex shrink-0 items-center gap-1 sm:my-0">
         {card.sent_at ? (
           <Badge variant="success">Terkirim</Badge>
         ) : card.recipient_email ? (
@@ -48,27 +57,42 @@ export function IssuedCardRow({
           <Badge variant="warning">Tanpa email</Badge>
         )}
 
-        <Button asChild size="sm" variant="ghost" title="Buka halaman verifikasi">
-          <a href={card.verify_url} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </Button>
-
-        {card.has_png && (
+        {/* Pushed to the far edge on a phone, where the badge starts the row
+            and the two actions read as a pair against the margin. Square and
+            44px there: `size="sm"` is 32×36, which is under every tap-size
+            guideline and these are the row's only controls. */}
+        <span className="ml-auto flex items-center gap-1 sm:ml-0">
           <Button
+            asChild
             size="sm"
             variant="ghost"
-            title="Unduh PNG kartu ini"
-            onClick={() => onDownload(card.id)}
-            disabled={downloading}
+            title="Buka halaman verifikasi"
+            className="h-11 w-11 p-0 sm:h-9 sm:w-auto sm:px-3"
           >
-            {downloading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
+            <a href={card.verify_url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" />
+              <span className="sr-only">Buka halaman verifikasi</span>
+            </a>
           </Button>
-        )}
+
+          {card.has_png && (
+            <Button
+              size="sm"
+              variant="ghost"
+              title="Unduh PNG kartu ini"
+              onClick={() => onDownload(card.id)}
+              disabled={downloading}
+              className="h-11 w-11 p-0 sm:h-9 sm:w-auto sm:px-3"
+            >
+              {downloading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="sr-only">Unduh PNG kartu ini</span>
+            </Button>
+          )}
+        </span>
       </div>
     </div>
   );

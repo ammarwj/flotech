@@ -91,15 +91,20 @@ function MatchCell({
 
   return (
     <div className="bkt-match">
+      {/* Touch has no hover, so the control has to stand on screen there:
+          behind `group-hover` alone the only way to fix a slot was
+          unreachable on a phone. The reveal-on-hover polish is kept for
+          pointers that actually have one, and the target is 28px on touch —
+          24px sits under every tap-size guideline. */}
       {onEditSlot && (
         <button
           type="button"
           onClick={() => onEditSlot(m)}
           aria-label="Ganti tim di slot ini"
           title="Ganti tim"
-          className="absolute -right-2 -top-2 z-10 grid h-6 w-6 place-items-center rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-[var(--shadow-sm)] transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/slot:opacity-100"
+          className="absolute -right-2 -top-2 z-10 grid h-7 w-7 place-items-center rounded-md border border-border bg-card text-muted-foreground shadow-[var(--shadow-sm)] transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/slot:opacity-100 [@media(hover:hover)]:h-6 [@media(hover:hover)]:w-6 [@media(hover:hover)]:opacity-0"
         >
-          <Pencil className="h-3 w-3" />
+          <Pencil className="h-3.5 w-3.5 [@media(hover:hover)]:h-3 [@media(hover:hover)]:w-3" />
         </button>
       )}
       {number && <div className="bkt-no">{number}</div>}

@@ -321,7 +321,12 @@ function GenerateBibsPage() {
                       </Button>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {/* `grid-cols-1` is load-bearing — see the note on the
+                        identical picker in id-cards/generate: the implicit
+                        column is sized at the row's max-content, so a long name
+                        paints outside the card on a phone and `truncate` never
+                        engages. */}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {pool.map((runner: BibRecipient) => (
                         <label
                           key={runner.id}

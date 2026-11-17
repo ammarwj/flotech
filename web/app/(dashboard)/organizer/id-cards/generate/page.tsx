@@ -13,6 +13,7 @@ import {
   Printer,
   QrCode,
   ScanLine,
+  Search,
   Send,
   Users,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,6 +102,14 @@ function GenerateIdCardsPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  /**
+   * Narrows the pool by name or team. A 578-player event is an ordinary one
+   * here, and without this the only way to reach one person is to scroll past
+   * everyone else — on a phone that is hundreds of swipes. Local to the page:
+   * the whole list is already in hand, so asking the server would be a round
+   * trip to filter what is on screen.
+   */
+  const [search, setSearch] = useState("");
 
   const eventsQuery = useQuery({
     queryKey: ["events", orgId],
@@ -239,12 +249,27 @@ function GenerateIdCardsPage() {
 
   const recipients = recipientsQuery.data ?? [];
 
+  /**
+   * The pool after the search box, which is what every count, every heading and
+   * select-all below reads. Deriving them from the unfiltered list instead
+   * would offer "Pilih semua (578)" over four visible rows — a button whose
+   * number contradicts the list under it.
+   */
+  const needle = search.trim().toLowerCase();
+  const visible = needle
+    ? recipients.filter((r) =>
+        [r.name, r.team_name, r.role_label]
+          .filter(Boolean)
+          .some((v) => v!.toLowerCase().includes(needle))
+      )
+    : recipients;
+
   const toggle = (key: string) =>
     setPicked((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   /** Select-all scoped to one heading, so "semua wasit" is one click. */
   const toggleGroup = (type: IdCardRecipient["type"]) => {
-    const keys = recipients.filter((r) => r.type === type).map(keyOf);
+    const keys = visible.filter((r) => r.type === type).map(keyOf);
     const allPicked = keys.every((k) => picked.includes(k));
 
     setPicked((prev) =>
@@ -258,6 +283,9 @@ function GenerateIdCardsPage() {
   const reset = () => {
     setPicked([]);
     setBatchId(null);
+    // The needle belonged to the old event's pool; carried over it hides a list
+    // the organizer has not seen yet behind a word they did not type here.
+    setSearch("");
   };
 
   if (orgLoading) {
@@ -311,7 +339,7 @@ function GenerateIdCardsPage() {
                 mencakupnya.
               </p>
             </div>
-            <Button asChild variant="outline">
+            <Button asChild variant="outline" className="w-full sm:w-auto">
               <Link href="/organizer/billing">Lihat paket</Link>
             </Button>
           </Card>
@@ -404,65 +432,100 @@ function GenerateIdCardsPage() {
                       Belum ada pemain, ofisial, atau petugas di event ini.
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-5">
-                      {GROUPS.map(({ type, label }) => {
-                        const pool = recipients.filter((r) => r.type === type);
-                        if (pool.length === 0) return null;
+                    <div className="flex flex-col gap-4">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder={`Cari di ${recipients.length} nama…`}
+                          className="pl-9"
+                        />
+                      </div>
 
-                        const chosen = pool.filter((r) => picked.includes(keyOf(r))).length;
+                      {visible.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                          Tidak ada yang cocok dengan “{search.trim()}”.
+                        </p>
+                      ) : (
+                        <div className="flex flex-col gap-5">
+                          {GROUPS.map(({ type, label }) => {
+                            const pool = visible.filter((r) => r.type === type);
+                            if (pool.length === 0) return null;
 
-                        return (
-                          <div key={type}>
-                            <div className="mb-2.5 flex items-center justify-between gap-3">
-                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                {label} ({chosen}/{pool.length})
-                              </h3>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => toggleGroup(type)}
-                              >
-                                {chosen === pool.length ? "Kosongkan" : "Pilih semua"}
-                              </Button>
-                            </div>
+                            const chosen = pool.filter((r) => picked.includes(keyOf(r))).length;
 
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {pool.map((person) => {
-                                const key = keyOf(person);
-
-                                return (
-                                  <label
-                                    key={key}
-                                    className={cn(
-                                      "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
-                                      picked.includes(key)
-                                        ? "border-[var(--brand-600)] bg-[var(--tint)]"
-                                        : "border-border hover:border-[var(--border-strong)]"
-                                    )}
+                            return (
+                              <div key={type}>
+                                {/* The heading and its select-all share a row on
+                                    a phone too: at 375px the label is three
+                                    words and the button two, so stacking them
+                                    would cost a line without buying legibility.
+                                    `min-w-0` + `truncate` is what keeps the long
+                                    count from pushing the button off screen. */}
+                                <div className="mb-2.5 flex items-center justify-between gap-2">
+                                  <h3 className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    {label} ({chosen}/{pool.length})
+                                  </h3>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="shrink-0"
+                                    onClick={() => toggleGroup(type)}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={picked.includes(key)}
-                                      onChange={() => toggle(key)}
-                                    />
-                                    <span className="min-w-0">
-                                      <span className="block truncate font-medium">
-                                        {person.name}
-                                      </span>
-                                      <span className="block truncate text-xs text-muted-foreground">
-                                        {[person.role_label, person.team_name]
-                                          .filter(Boolean)
-                                          .join(" · ")}
-                                        {!person.photo_url && " · tanpa foto"}
-                                      </span>
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
+                                    {chosen === pool.length ? "Kosongkan" : "Pilih semua"}
+                                  </Button>
+                                </div>
+
+                                {/* `grid-cols-1` is load-bearing, not the
+                                    default it looks like. Without it the single
+                                    implicit column is sized `auto` — floored at
+                                    the row's max-content, which is the longest
+                                    name plus its subtitle on one line — and the
+                                    cards paint 126px outside the card at 390px.
+                                    `truncate` inside never gets a chance: the
+                                    track grew to fit it. From `sm` up the
+                                    explicit 2/3 columns already pinned this. */}
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                  {pool.map((person) => {
+                                    const key = keyOf(person);
+
+                                    return (
+                                      <label
+                                        key={key}
+                                        className={cn(
+                                          "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors",
+                                          picked.includes(key)
+                                            ? "border-[var(--brand-600)] bg-[var(--tint)]"
+                                            : "border-border hover:border-[var(--border-strong)]"
+                                        )}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={picked.includes(key)}
+                                          onChange={() => toggle(key)}
+                                          className="h-4 w-4 shrink-0 accent-[var(--brand-600)]"
+                                        />
+                                        <span className="min-w-0">
+                                          <span className="block truncate font-medium">
+                                            {person.name}
+                                          </span>
+                                          <span className="block truncate text-xs text-muted-foreground">
+                                            {[person.role_label, person.team_name]
+                                              .filter(Boolean)
+                                              .join(" · ")}
+                                            {!person.photo_url && " · tanpa foto"}
+                                          </span>
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </StepSection>
@@ -509,10 +572,13 @@ function GenerateIdCardsPage() {
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    {/* Full width on a phone, where two buttons side by side at
+                        375px wrap mid-label; auto from `sm` up. */}
+                    <div className="flex w-full gap-2 sm:w-auto">
                       {batch?.status === "done" && (
                         <Button
                           variant="outline"
+                          className="flex-1 sm:flex-none"
                           onClick={() => download.mutate()}
                           disabled={download.isPending}
                         >
@@ -526,6 +592,7 @@ function GenerateIdCardsPage() {
                       )}
 
                       <Button
+                        className="flex-1 sm:flex-none"
                         onClick={() => generate.mutate()}
                         disabled={!ready || generate.isPending || running}
                       >
@@ -563,28 +630,36 @@ function GenerateIdCardsPage() {
                     so. There is deliberately no in-app scanner — a card has no
                     check-in, so any phone camera is the reader and the gate
                     staff need no account at all. */}
-                <Card className="flex gap-4 p-5">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-[var(--brand-600)]">
-                    <QrCode className="h-5 w-5" />
+                <Card className="flex gap-3 p-5 sm:gap-4">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--tint)] text-[var(--brand-600)] sm:h-10 sm:w-10">
+                    <QrCode className="h-4 w-4 sm:h-5 sm:w-5" />
                   </span>
                   <div className="min-w-0 text-sm">
                     <p className="font-semibold">Cara memindai QR di kartu</p>
                     <p className="mt-1 text-muted-foreground">
-                      Pakai <strong>kamera ponsel biasa</strong> — tidak perlu aplikasi dan
-                      petugas gerbang tidak perlu akun. QR-nya membuka halaman verifikasi publik
-                      berisi nama, peran, tim, dan nomor kartunya.
+                      Pakai <strong>kamera ponsel biasa</strong> — tanpa aplikasi, tanpa akun.
+                      QR-nya membuka halaman verifikasi berisi nama, peran, tim, dan nomor kartu.
                     </p>
-                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <ScanLine className="h-3.5 w-3.5" />
-                      Halaman itu membuktikan kartunya diterbitkan penyelenggara, bukan identitas
-                      pemegangnya — cocokkan fotonya dengan orang di depanmu. Ikon{" "}
-                      <strong>↗</strong> di daftar bawah membuka halaman yang sama dari sini.
+                    {/* Not `flex`. A flex container turns each run of text
+                        between inline elements into its own anonymous flex
+                        item, so this paragraph — text, <strong>, text — laid
+                        itself out as three columns and read as three broken
+                        sentences side by side. The icon is floated inline
+                        instead, which is all the row ever wanted. */}
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      <ScanLine className="mr-1.5 inline-block h-3.5 w-3.5 shrink-0 align-[-2px]" />
+                      Ini membuktikan kartunya asli, bukan identitas pemegangnya — cocokkan
+                      fotonya. Ikon <strong>↗</strong> di bawah membuka halaman yang sama.
                     </p>
                   </div>
                 </Card>
 
                 <Card className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
+                  {/* `flex-wrap` alone put the button on its own line at 390px
+                      but kept it stretched by `items-start`, so it sat hard
+                      against the paragraph above with no row of its own.
+                      Explicit column under `sm` gives it one. */}
+                  <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                     <div className="min-w-0 text-sm">
                       <p className="font-semibold">Kirim kartu via email</p>
 
@@ -593,16 +668,25 @@ function GenerateIdCardsPage() {
                           team registered without a manager account has nowhere
                           to send — and an organizer who only learns it
                           afterwards reads it as a bug. */}
-                      <p className="mt-1 text-muted-foreground">
-                        {issuedTotal} kartu terbit · {sendable.length} punya alamat email ·{" "}
-                        {addresses} email
+                      {/* Three figures, each kept whole: run together as one
+                          sentence they wrap mid-figure at 390px ("41 /
+                          email"), and a number split from its unit reads as a
+                          different number. The separator is drawn rather than
+                          typed so the dots never start a line. */}
+                      <p className="mt-1 flex flex-wrap gap-x-1.5 gap-y-0.5 text-muted-foreground">
+                        <span className="whitespace-nowrap">{issuedTotal} kartu terbit</span>
+                        <span aria-hidden>·</span>
+                        <span className="whitespace-nowrap">
+                          {sendable.length} punya alamat email
+                        </span>
+                        <span aria-hidden>·</span>
+                        <span className="whitespace-nowrap">{addresses} email</span>
                       </p>
 
                       {issuedTotal > sendable.length && (
                         <p className="mt-1 text-xs text-[var(--warning)]">
-                          {issuedTotal - sendable.length} kartu harus dicetak dan diserahkan
-                          langsung — tim tanpa akun manajer dan petugas tanpa email tidak punya
-                          tujuan.
+                          {issuedTotal - sendable.length} kartu tanpa alamat email — harus
+                          diserahkan langsung.
                         </p>
                       )}
 
@@ -618,14 +702,14 @@ function GenerateIdCardsPage() {
                       ) : null}
 
                       <p className="mt-2 text-xs text-muted-foreground">
-                        Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya
-                        sekaligus (pemain tidak punya email sendiri), wasit dan staf menerima
-                        kartunya masing-masing. Pengiriman dijarakkan agar tidak ditolak penyedia
-                        email, jadi butuh beberapa menit untuk event besar.
+                        Satu email per tujuan: manajer tim menerima kartu seluruh anggotanya,
+                        wasit dan staf menerima kartunya sendiri. Butuh beberapa menit untuk event
+                        besar.
                       </p>
                     </div>
 
                     <Button
+                      className="w-full sm:w-auto"
                       disabled={sendable.length === 0 || send.isPending || sending}
                       onClick={async () => {
                         const ok = await confirm({

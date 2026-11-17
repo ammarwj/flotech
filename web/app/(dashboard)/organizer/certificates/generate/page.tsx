@@ -232,7 +232,13 @@ export default function GenerateCertificatesPage() {
                 : "Belum ada pemain aktif di tim-tim event ini."}
             </p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              /* `grid-cols-1` is load-bearing — see the note on the identical
+                 picker in id-cards/generate: the implicit column is sized at
+                 the row's max-content, so a long name paints outside the card
+                 on a phone and `truncate` never engages. */
+              className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+            >
               {options.map((opt) => (
                 <label
                   key={opt.id}
