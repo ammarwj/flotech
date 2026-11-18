@@ -348,3 +348,127 @@ a.org-card:hover .go { color: var(--brand-600); transform: translateX(2px); }
 .ereg .ehero-cta { position: relative; justify-content: center; margin-top: 26px; }
 .ereg .deadline { position: relative; margin-top: 18px; font-size: 13.5px; color: rgba(255,255,255,0.85); display: inline-flex; align-items: center; gap: 8px; }
 .ereg .deadline svg { width: 16px; height: 16px; }
+
+/* ===================== PODIUM (tab Juara) ===================== */
+/* The panel owns its bottom margin, unlike .etabs/.ebanner above, which
+   deliberately leave spacing to whatever comes next. That convention holds for
+   a strip with a panel under it; this one can be the LAST thing on the page,
+   and there it sat flush against the footer with a 0px gap — the card's border
+   and the footer's top rule became one double line. */
+.pod { padding-bottom: 56px; }
+@media (max-width: 700px) { .pod { padding-bottom: 36px; } }
+
+.pod-title {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.02em;
+  margin-bottom: 22px;
+}
+
+/* Categories side by side on a wide screen, stacked on a phone. `auto-fit` with
+   a floor rather than a fixed column count: an event with one category would
+   otherwise paint a half-width card beside dead space, and one with twelve
+   would crush them. */
+.pod-grid {
+  display: grid; gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  /* `start`, not the default `stretch`. A grid row sizes to its tallest cell,
+     so a category with two places sat in a card as tall as the three-place one
+     beside it with the difference painted as empty surface at the bottom —
+     which reads as a missing row rather than as a result that stops at two. */
+  align-items: start;
+}
+/* A single category must not sprawl across a 1280px page: a result is three
+   short lines, and a card that wide turns the name and its crest into two
+   items separated by half a screen. */
+.pod-grid:has(> .pod-cat:only-child) { max-width: 560px; }
+
+.pod-cat {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); min-width: 0; overflow: hidden;
+}
+/* The category name is a tab-like header strip rather than a line of muted
+   text floating above the content: with twelve categories on screen it is the
+   only thing telling one card from the next, and it has to survive being
+   skimmed. */
+.pod-cat-name {
+  padding: 11px 18px; border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+  font-family: var(--font-display); font-weight: 700; font-size: 13.5px;
+  letter-spacing: 0.01em; color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ---- champion: the one thing on this card with any weight ---- */
+/* Gold is spent here and nowhere else. The runners-up carry their colour on a
+   4px edge instead of a tinted surface, because three tinted surfaces stacked
+   is what made the first version read as a menu of three equal options. */
+.pod-champ {
+  display: flex; align-items: center; gap: 15px; min-width: 0;
+  padding: 18px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, #d4a017 13%, transparent),
+      transparent 62%);
+}
+.pod-champ-body { min-width: 0; display: grid; gap: 3px; }
+.pod-champ-label {
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em;
+  color: #96701a;
+}
+.pod-champ-name {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(18px, 2.1vw, 21px); line-height: 1.2;
+  letter-spacing: -0.02em;
+  /* Wraps rather than truncating: this is the answer the page exists to give,
+     and "SMK LABORTAORIUM IND…" is not an answer. The runners-up below DO
+     ellipsize — there the name is a list item, and a third line of wrap would
+     push the card taller than the one beside it for no gain. */
+  overflow-wrap: anywhere;
+}
+
+/* ---- runner-up and third ---- */
+.pod-rest { list-style: none; margin: 0; padding: 0 18px 16px; display: grid; gap: 1px; }
+.pod-row {
+  display: flex; align-items: center; gap: 11px; min-width: 0;
+  padding: 10px 0 10px 11px;
+  border-left: 3px solid var(--border);
+}
+.pod-row--silver { border-left-color: #8a95a5; }
+.pod-row--bronze { border-left-color: #b06a2c; }
+/* Tabular figures and a fixed box so 2 and 3 sit on one vertical line. */
+.pod-place {
+  flex-shrink: 0; width: 13px;
+  font-family: var(--font-display); font-weight: 800; font-size: 15px;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  color: var(--text-muted);
+}
+/* Spelled out beside the numeral, not instead of it: "2" alone next to a name
+   is a rank in a table, and this card is not a table. Hidden on a phone, where
+   the two words cost a third of the row and the numeral already says it. */
+.pod-row-label {
+  flex-shrink: 0; font-size: 12.5px; color: var(--text-muted);
+}
+.pod-team {
+  min-width: 0; font-weight: 600; font-size: 14.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.pod-crest {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: block; object-fit: cover;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+/* Gold reads as mud on a dark surface at #96701a, and the champion's label is
+   the one place the colour carries meaning on its own. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pod-champ-label { color: #e3b23c; }
+}
+:root[data-theme="dark"] .pod-champ-label { color: #e3b23c; }
+
+@media (max-width: 700px) {
+  .pod-champ { padding: 15px; gap: 13px; }
+  .pod-rest { padding: 0 15px 13px; }
+  .pod-row-label { display: none; }
+  .pod-crest { width: 40px; height: 40px; }
+}

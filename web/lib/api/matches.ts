@@ -2,6 +2,7 @@ import { apiClient } from "./client";
 import { downloadBlob, fileNameFromDisposition, unpackBlobError } from "@/lib/download";
 import type {
   ApiEnvelope,
+  CategoryPodium,
   Discipline,
   DrawMethod,
   KnockoutPlan,
@@ -650,6 +651,24 @@ export async function getPublicDiscipline(
 ): Promise<Discipline> {
   const { data } = await apiClient.get<ApiEnvelope<Discipline>>(
     `/public/events/${orgSlug}/${eventSlug}/categories/${categorySlug}/discipline`
+  );
+  return data.data;
+}
+
+/**
+ * Who finished first, second and third, for every category that has finished.
+ *
+ * One request for the whole event rather than one per category, which is the
+ * shape of the question the Juara tab answers. Categories still being decided
+ * are left out by the server, so an empty array means nothing has been won
+ * yet — which is what hides the tab.
+ */
+export async function getPublicPodium(
+  orgSlug: string,
+  eventSlug: string
+): Promise<CategoryPodium[]> {
+  const { data } = await apiClient.get<ApiEnvelope<CategoryPodium[]>>(
+    `/public/events/${orgSlug}/${eventSlug}/podium`
   );
   return data.data;
 }

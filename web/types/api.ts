@@ -1568,6 +1568,33 @@ export interface Discipline {
   matches: Record<string, DisciplineBan[]>;
 }
 
+/**
+ * One step of a category's podium.
+ *
+ * `place` is published rather than inferred from the array index, because the
+ * list is not always three long and not always contiguous in the way an index
+ * would suggest: a bracket with no third-place tie stops at two. Reading the
+ * index instead would print a bronze medal beside a runner-up the first time a
+ * place is missing.
+ */
+export interface PodiumPlace {
+  place: 1 | 2 | 3;
+  team: MatchTeamRef;
+}
+
+/** A category that has finished, with who stood where. */
+export interface CategoryPodium {
+  id: string;
+  name: string;
+  slug: string;
+  /**
+   * Best first. One to three entries — see `PodiumPlace`. Categories still
+   * being decided are absent from the payload entirely rather than carrying an
+   * empty list, so this is never empty.
+   */
+  podium: PodiumPlace[];
+}
+
 /** The rules as resolved for a category: sport defaults under event overrides. */
 export interface DisciplineRules extends Required<DisciplineRuleValues> {
   /** The sport's own stat keys, so the UI can name a card from its label. */

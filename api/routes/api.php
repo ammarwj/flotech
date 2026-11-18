@@ -233,6 +233,12 @@ Route::prefix('v1')->group(function () {
         // Who may not take the field, and why. Public for the same reason the
         // schedule is: the squad facing them needs it as much as the panitia.
         Route::get('categories/{categorySlug}/discipline', [PublicEventController::class, 'discipline']);
+        // Who finished first, second and third — every category of the event in
+        // one payload, not per category like the four above it. "Siapa juaranya"
+        // is asked of the whole event, and a podium is three rows, so splitting
+        // it would cost a round trip per category to assemble what one answer
+        // already is.
+        Route::get('podium', [PublicEventController::class, 'podium']);
         // Player stats of a single fixture, for the match detail dialog.
         Route::get('matches/{match}/stats', [PublicEventController::class, 'matchStats']);
         // One fixture on its own, for the scoreboard screen that polls it while

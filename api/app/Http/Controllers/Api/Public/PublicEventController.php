@@ -22,6 +22,7 @@ use App\Services\EventDiscountCodeService;
 use App\Services\MatchNumberService;
 use App\Services\PlanGate;
 use App\Services\PlayerStatService;
+use App\Services\PodiumService;
 use App\Services\RegistrationService;
 use App\Support\RacePricing;
 use App\Services\StandingService;
@@ -215,6 +216,25 @@ class PublicEventController extends Controller
         $category = $this->category($this->resolve($orgSlug, $eventSlug), $categorySlug);
 
         return ApiResponse::success($discipline->forCategory($category));
+    }
+
+    /**
+     * Who finished first, second and third, for every category that has
+     * finished — the "Juara" tab.
+     *
+     * One payload for the whole event rather than one per category, because
+     * that is the shape of the question: at the end of a tournament "siapa
+     * juaranya" means all of it, and a podium is three rows, so asking per
+     * category would be a round trip each to assemble what this already is.
+     *
+     * Categories still being decided are absent rather than sent empty — see
+     * PodiumService::forEvent(). The tab is hidden entirely when this comes
+     * back empty, which is what keeps a running event from showing a page that
+     * only announces that nobody has won yet.
+     */
+    public function podium(PodiumService $podium, string $orgSlug, string $eventSlug): JsonResponse
+    {
+        return ApiResponse::success($podium->forEvent($this->resolve($orgSlug, $eventSlug)));
     }
 
     /**

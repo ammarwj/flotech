@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { getPublicEvent } from "@/lib/api/events";
+import { getPublicPodium } from "@/lib/api/matches";
 import { getPublicRace } from "@/lib/api/race";
 import { PublicAuthActions } from "@/components/auth/public-auth-actions";
 import {
@@ -31,6 +32,7 @@ import {
   type ResultsTab,
 } from "@/components/event/public-results";
 import { PublicAllSchedule } from "@/components/event/public-all-schedule";
+import { PublicPodium } from "@/components/event/public-podium";
 import { PillTabs } from "@/components/event/pill-tabs";
 import { EventTimezoneProvider } from "@/components/event/event-timezone";
 import { PhotoGallery, SponsorStrip } from "@/components/event/public-media";
@@ -113,7 +115,7 @@ function OrganizerCard({
   );
 }
 
-type TabKey = "info" | "teams" | ResultsTab;
+type TabKey = "info" | "teams" | "podium" | ResultsTab;
 
 /** Sentinel category slug for the combined, all-categories schedule. */
 const ALL_CATEGORIES = "all";
@@ -197,6 +199,26 @@ function PublicEventView() {
     queryKey: ["public-race", params.orgSlug, params.eventSlug],
     queryFn: () => getPublicRace(params.orgSlug, params.eventSlug),
     enabled: isRaceEvent(query.data),
+    retry: false,
+  });
+
+  /**
+   * Who won each category, for the "Juara" tab.
+   *
+   * Up here with the two queries above rather than beside the tab that renders
+   * it, for the reason written on `raceQuery`: everything below the early
+   * returns runs conditionally, and a hook down there changes the call order
+   * between the loading and loaded renders.
+   *
+   * Asked for every event, including ones still being played — the answer is
+   * what *decides* whether the tab exists, so it cannot be gated on knowing
+   * already. The server leaves out categories still in play, so a running
+   * event costs one small empty response.
+   */
+  const podiumQuery = useQuery({
+    queryKey: ["public-podium", params.orgSlug, params.eventSlug],
+    queryFn: () => getPublicPodium(params.orgSlug, params.eventSlug),
+    enabled: !!query.data,
     retry: false,
   });
 
@@ -318,6 +340,17 @@ function PublicEventView() {
     ...(playerStats && !isRace
       ? ([["stats", "Statistik", Goal]] as [TabKey, string, typeof Info][])
       : []),
+    // Last, and only once something has been won. Unlike the two above it this
+    // is decided by *results* rather than by format, so there is no
+    // `categoriesFor` branch to read: the server already left out every
+    // category still being decided, so a non-empty payload is the whole test.
+    // Hidden rather than shown empty for the reason the gallery and the proof
+    // strip are — a tab that exists all tournament and only ever announces
+    // that nobody has won reads as a broken feature at exactly the moment
+    // people come looking for the winner.
+    ...((podiumQuery.data?.length ?? 0) > 0
+      ? ([["podium", "Juara", Trophy]] as [TabKey, string, typeof Info][])
+      : []),
   ];
   // The fallback has to be a tab that EXISTS, and it is still "schedule"
   // wherever there is one — a competition event's default landing tab must not
@@ -396,7 +429,11 @@ function PublicEventView() {
         <div className="container ehero-inner">
           {/* `space-between` with one child left-aligns it, and the controls on
               the right are the only child left once the back-link goes. */}
-          <div className={ev.white_label ? "ehero-top ehero-top-solo" : "ehero-top"}>
+          <div
+            className={
+              ev.white_label ? "ehero-top ehero-top-solo" : "ehero-top"
+            }
+          >
             {/* The add-on the organizer paid for is partly this link's absence:
                 a white-labelled event presents itself as its own site, so the
                 back-arrow out to our catalogue goes. Read from the server's
@@ -831,7 +868,10 @@ function PublicEventView() {
                           className="mt-0.5 truncate text-xs"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          {[t.category?.name, t.group_name && `Grup ${t.group_name}`]
+                          {[
+                            t.category?.name,
+                            t.group_name && `Grup ${t.group_name}`,
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </div>
@@ -868,58 +908,75 @@ function PublicEventView() {
         />
       )}
 
-      {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
-      {activeTab !== "info" && activeTab !== "teams" && selectedCategory && (
-        <>
-          {tabCategories.length > 1 && (
-            <section className="efilter">
-              <div className="container">
-                <PillTabs
-                  tone="tint"
-                  items={[
-                    ...(activeTab === "schedule"
-                      ? [{ key: ALL_CATEGORIES, label: "Semua" }]
-                      : []),
-                    ...tabCategories.map((c) => ({
-                      key: c.slug,
-                      label: c.name,
-                    })),
-                  ]}
-                  activeKey={
-                    isAll ? ALL_CATEGORIES : (selectedCategory?.slug ?? "")
-                  }
-                  onSelect={(key) => {
-                    if (key !== ALL_CATEGORIES) setLastCategorySlug(key);
-                    setParams({ category: key });
-                  }}
-                />
-              </div>
-            </section>
-          )}
-          {isAll ? (
-            <PublicAllSchedule
-              orgSlug={params.orgSlug}
-              eventSlug={params.eventSlug}
-              categories={categories}
-              playerStats={playerStats}
-              sport={ev.sport ?? null}
-            />
-          ) : (
-            <PublicResults
-              key={selectedCategory!.id}
-              orgSlug={params.orgSlug}
-              eventSlug={params.eventSlug}
-              categorySlug={selectedCategory!.slug}
-              engine={selectedCategory!.engine}
-              bracketConfig={selectedCategory!.bracket_config}
-              context={selectedCategory!.standings_context}
-              activeTab={activeTab}
-              playerStats={playerStats}
-              sport={ev.sport ?? null}
-            />
-          )}
-        </>
+      {/* ===== JUARA ===== */}
+      {/* Above the block below and outside it, because it is the one result
+          panel with no category picker: it answers for the whole event at once
+          (see PublicPodium), so the `selectedCategory` the others hang on
+          would be a chip bar offering to narrow a page that is already the
+          answer. */}
+      {activeTab === "podium" && (
+        <section className="ebanner">
+          <div className="container">
+            <PublicPodium categories={podiumQuery.data ?? []} />
+          </div>
+        </section>
       )}
+
+      {/* ===== SCHEDULE / BRACKET / STANDINGS / STATS ===== */}
+      {activeTab !== "info" &&
+        activeTab !== "teams" &&
+        activeTab !== "podium" &&
+        selectedCategory && (
+          <>
+            {tabCategories.length > 1 && (
+              <section className="efilter">
+                <div className="container">
+                  <PillTabs
+                    tone="tint"
+                    items={[
+                      ...(activeTab === "schedule"
+                        ? [{ key: ALL_CATEGORIES, label: "Semua" }]
+                        : []),
+                      ...tabCategories.map((c) => ({
+                        key: c.slug,
+                        label: c.name,
+                      })),
+                    ]}
+                    activeKey={
+                      isAll ? ALL_CATEGORIES : (selectedCategory?.slug ?? "")
+                    }
+                    onSelect={(key) => {
+                      if (key !== ALL_CATEGORIES) setLastCategorySlug(key);
+                      setParams({ category: key });
+                    }}
+                  />
+                </div>
+              </section>
+            )}
+            {isAll ? (
+              <PublicAllSchedule
+                orgSlug={params.orgSlug}
+                eventSlug={params.eventSlug}
+                categories={categories}
+                playerStats={playerStats}
+                sport={ev.sport ?? null}
+              />
+            ) : (
+              <PublicResults
+                key={selectedCategory!.id}
+                orgSlug={params.orgSlug}
+                eventSlug={params.eventSlug}
+                categorySlug={selectedCategory!.slug}
+                engine={selectedCategory!.engine}
+                bracketConfig={selectedCategory!.bracket_config}
+                context={selectedCategory!.standings_context}
+                activeTab={activeTab}
+                playerStats={playerStats}
+                sport={ev.sport ?? null}
+              />
+            )}
+          </>
+        )}
 
       {/* ===== SPONSORS & PARTNERS ===== */}
       {/* Lifted out of the Info tab so it shows on every tab, above the CTA. */}
