@@ -989,6 +989,19 @@ class ScheduleService
     /**
      * The tie a match's winner moves into, or null for the final.
      *
+     * The public door onto {@see parentOf()}, for callers that need to know
+     * what a write here would reach before making it — MatchController's
+     * stranded-side guard is the one that exists. Named for its subject rather
+     * than aliased, so a reader does not have to hold both spellings.
+     */
+    public function parentSlotOf(GameMatch $match): ?GameMatch
+    {
+        return $this->parentOf($match);
+    }
+
+    /**
+     * The tie a match's winner moves into, or null for the final.
+     *
      * Excludes the third-place tie: it shares the final's round but is nobody's
      * parent, and a stray match on `order` would send a semifinal's winner into
      * it instead of the final.

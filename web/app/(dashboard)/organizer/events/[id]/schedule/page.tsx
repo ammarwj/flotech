@@ -33,6 +33,7 @@ import {
   shuffleBracket,
   deleteKnockout,
   moveMatchSlot,
+  swapMatchSides,
   updateMatchTeams,
   createMatch,
   deleteMatch,
@@ -431,6 +432,26 @@ function ScheduleView() {
     },
     onError: (err) => {
       const { message, fieldErrors } = parseApiError(err, "Gagal memindahkan slot.");
+      setSlotErrors(fieldErrors);
+      if (Object.keys(fieldErrors).length === 0) toast.error(message);
+    },
+  });
+
+  // Swap which side of a tie hosts — the third question about a slot, and the
+  // only one of the three that takes no payload: a tie has exactly two sides.
+  // In a later round the server trades the slot's feeders rather than its own
+  // columns, so this rewrites two other fixtures and the whole category comes
+  // back.
+  const swapSides = useMutation({
+    mutationFn: () => swapMatchSides(orgId!, slotMatch!.id),
+    onSuccess: () => {
+      toast.success("Tuan rumah dan tamu ditukar");
+      setSlotMatch(null);
+      setSlotErrors({});
+      refreshEventData();
+    },
+    onError: (err) => {
+      const { message, fieldErrors } = parseApiError(err, "Gagal menukar sisi.");
       setSlotErrors(fieldErrors);
       if (Object.keys(fieldErrors).length === 0) toast.error(message);
     },
@@ -1203,7 +1224,7 @@ function ScheduleView() {
             match={slotMatch}
             bracket={isHybrid ? knockoutTies : matches}
             teams={slotPool}
-            pending={editSlot.isPending || moveSlot.isPending}
+            pending={editSlot.isPending || moveSlot.isPending || swapSides.isPending}
             fieldErrors={slotErrors}
             onClose={() => {
               setSlotMatch(null);
@@ -1211,6 +1232,7 @@ function ScheduleView() {
             }}
             onSubmit={(payload) => editSlot.mutate(payload)}
             onMove={(targetId) => moveSlot.mutate(targetId)}
+            onSwapSides={() => swapSides.mutate()}
           />
         )}
         </RaceRouteGuard>

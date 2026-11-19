@@ -293,6 +293,55 @@ export function byeFilledSides(
   };
 }
 
+/**
+ * Can the two sides of this tie trade places?
+ *
+ * Mirrors MatchController::swapSides(), and the two rounds answer for
+ * different reasons:
+ *
+ * - Round one *stores* its sides, so it needs both columns filled. A bye is
+ *   one team and an empty column, and moving that team to the away side is the
+ *   one shape generation does not read as a walkover.
+ * - A later round *derives* its sides from feeder parity, so the swap trades
+ *   the feeders — which means both have to exist and neither may have been
+ *   played. A played tie keeps its result where it was played.
+ *
+ * Only decides whether to offer the button; the refusal is the server's.
+ */
+export function canSwapSides(m: Match, bracket: Match[]): boolean {
+  const unplayed = (f: Match) => f.home_score === null && f.away_score === null;
+
+  if (m.round <= 1) {
+    return m.home_team_id !== null && m.away_team_id !== null && unplayed(m);
+  }
+
+  const feeder = (order: number) =>
+    bracket.find((f) => f.stage === m.stage && f.round === m.round - 1 && f.order === order);
+
+  const home = feeder(2 * m.order);
+  const away = feeder(2 * m.order + 1);
+
+  if (!home || !away || !unplayed(home) || !unplayed(away)) return false;
+
+  /**
+   * A bye feeder would re-fire its walkover when rewritten, and that write
+   * lands on the side of `m` its parity names. If somebody was typed into
+   * that side by hand, the walkover silently overwrites them and they end up
+   * in no slot at all — which is exactly how two teams were lost from a live
+   * draw. Mirrors MatchController::strandedSideError(); the refusal is the
+   * server's, this only keeps the button from inviting the click.
+   */
+  const strands = (f: Match, side: "home" | "away") => {
+    const walkover = f.home_team_id !== null && f.away_team_id === null;
+    if (!walkover) return false;
+
+    const seated = side === "home" ? m.home_team_id : m.away_team_id;
+    return seated !== null && seated !== f.home_team_id;
+  };
+
+  return !strands(home, "home") && !strands(away, "away");
+}
+
 /** Fixtures worth listing on a public schedule — a bye was never played. */
 export const playableMatches = (matches: Match[]) => matches.filter((m) => !isBye(m));
 

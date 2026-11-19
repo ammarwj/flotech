@@ -506,6 +506,23 @@ export async function moveMatchSlot(
   return data.data;
 }
 
+/**
+ * Swap which side of a tie is at home.
+ *
+ * The third question about a slot, and it takes no payload because there is
+ * nothing to choose — a tie has exactly two sides. In a later round the server
+ * swaps the slot's *feeders* rather than its columns, since home and away are
+ * read off feeder parity there and columns written directly would be undone
+ * the moment a feeder is confirmed. That is why this answers with the whole
+ * category: a swap rewrites two other fixtures.
+ */
+export async function swapMatchSides(orgId: string, matchId: string): Promise<Match[]> {
+  const { data } = await apiClient.patch<ApiEnvelope<Match[]>>(
+    `/organizations/${orgId}/matches/${matchId}/sides`
+  );
+  return data.data;
+}
+
 export async function getMatchStats(orgId: string, matchId: string): Promise<MatchStatsData> {
   const { data } = await apiClient.get<ApiEnvelope<MatchStatsData>>(
     `/organizations/${orgId}/matches/${matchId}/stats`

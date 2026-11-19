@@ -570,6 +570,11 @@ Route::prefix('v1')->group(function () {
             // and leaves the fixture where it is, this one leaves the pairing
             // alone and changes where the bracket carries it.
             Route::patch('matches/{match}/slot', [MatchController::class, 'moveSlot']);
+            // Which side of a tie hosts. The third question about a slot, and
+            // the one the two above cannot answer in a later round: home and
+            // away are read off feeder parity there, not stored, so this swaps
+            // the feeders rather than the columns. See swapSides().
+            Route::patch('matches/{match}/sides', [MatchController::class, 'swapSides']);
             // Signing a result off is what makes it count, so it belongs to
             // whoever runs the org. An operator records; they don't ratify —
             // otherwise saving-as-admin auto-confirms for nothing.

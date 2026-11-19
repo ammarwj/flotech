@@ -347,11 +347,27 @@ export function BracketView({
    * cell spans many rows but hangs its card at one point inside that span, and
    * giving all sixteen of a semifinal's rows an fr share would restore exactly
    * the stretch this avoids.
+   *
+   * > **Invariant: asked with `drawnSpan()`, the same span the cell is placed
+   * > with.** These are two readings of "which row does this cell start on",
+   * > and `rowSpan()` is the wrong one here: it describes the positional tree,
+   * > while the cell is placed on the rows that are actually *drawn*. The two
+   * > agree only while every feeder draws something, so a bracket whose byes
+   * > sit in the opening round reserves `1fr` for rows no card ever lands on —
+   * > each one an empty band the height of a card, and the first of them is a
+   * > gap above the whole chart. Measured on a live 36-of-64 draw: rows 1, 3
+   * > and 17 reserved, nothing drawn in any of them.
+   * >
+   * > It passed unnoticed because the two agree exactly when no opening-round
+   * > bye feeds a drawn card — which is every square draw, and was this draw
+   * > too until a walkover moved into round one. Test it by **comparing** the
+   * > track list against the set of `drawnSpan()` starts; asserting the chart
+   * > renders passes a build that reserves bands it never fills.
    */
   const carries = new Set<number>();
   for (const [col, [, list]] of rounds.entries()) {
     list.forEach((m, i) => {
-      if (!hidden(m)) carries.add(rowSpan(col, i)[0]);
+      if (!hidden(m)) carries.add(drawnSpan(col, i)[0]);
     });
   }
 

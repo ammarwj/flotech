@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { ArrowUpDown, Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { byeFilledSides, downstreamImpact, matchNumberLabel, sideLabel } from "@/lib/bracket";
+import {
+  byeFilledSides,
+  canSwapSides,
+  downstreamImpact,
+  matchNumberLabel,
+  sideLabel,
+} from "@/lib/bracket";
 import { SeedEntitySelect } from "./seed-entity-select";
 import type { FieldErrors } from "@/lib/api/errors";
 import type { SeedTeam } from "./bracket-seed-editor";
@@ -42,6 +48,19 @@ interface SlotTeamsDialogProps {
    * wrong place" look identical until you try to fix one.
    */
   onMove: (targetId: string) => void;
+  /**
+   * Swap which side of this tie hosts.
+   *
+   * The third question, and in the same dialog as the other two for the same
+   * reason: "wrong pairing", "wrong branch" and "wrong host" all look like one
+   * problem to someone reading a chart that is simply not what they drew.
+   *
+   * Takes no argument because a tie has exactly two sides. In a later round
+   * the server swaps this slot's *feeders* rather than its columns — home and
+   * away are read off feeder parity there, so columns written directly would
+   * be undone the moment a feeder is confirmed.
+   */
+  onSwapSides: () => void;
 }
 
 /**
@@ -73,6 +92,7 @@ function Dialog({
   onClose,
   onSubmit,
   onMove,
+  onSwapSides,
 }: SlotTeamsDialogProps) {
   const [home, setHome] = useState(match.home_team_id ?? "");
   const [away, setAway] = useState(match.away_team_id ?? "");
@@ -206,7 +226,7 @@ function Dialog({
               />
               {!editableSide.home && (
                 <p className="text-xs text-muted-foreground">
-                  Diisi pemenang babak sebelumnya — ubah pasangannya di babak itu.
+                  Diisi pemenang babak sebelumnya. Ubah di babak itu.
                 </p>
               )}
               {fieldErrors?.home_team_id && (
@@ -233,7 +253,7 @@ function Dialog({
               />
               {!editableSide.away && (
                 <p className="text-xs text-muted-foreground">
-                  Diisi pemenang babak sebelumnya — ubah pasangannya di babak itu.
+                  Diisi pemenang babak sebelumnya. Ubah di babak itu.
                 </p>
               )}
               {fieldErrors?.away_team_id && (
@@ -256,6 +276,28 @@ function Dialog({
             </p>
           )}
 
+          {/* Which side hosts. Above the move block and behind its own divider
+              because it is the smaller correction of the two — one click, no
+              choice to make — and because an organizer who finds it here stops
+              looking for it among the selects, where a later round cannot
+              offer it at all. */}
+          {canSwapSides(match, bracket) && (
+            <div className="grid gap-2 border-t border-border pt-4">
+              <Label className="font-semibold">Tukar tuan rumah dan tamu</Label>
+              <p className="text-xs text-muted-foreground">
+                {match.round === 1
+                  ? "Pasangan ini tetap, hanya sisinya yang bertukar."
+                  : "Kedua laga pengumpan slot ini bertukar tempat. Lawan tiap tim tetap."}
+              </p>
+              <div>
+                <Button variant="outline" disabled={pending} onClick={onSwapSides}>
+                  <ArrowUpDown className="h-4 w-4" />
+                  Tukar sisi
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* The other question this dialog answers: not who is in the slot,
               but which branch the tie sits on. Below the selects and behind a
               divider because it is the rarer of the two and replaces, rather
@@ -266,8 +308,7 @@ function Dialog({
                 Pindahkan ke slot lain
               </Label>
               <p className="text-xs text-muted-foreground">
-                Pasangan ini pindah ke slot yang dipilih, dan isi slot itu pindah ke
-                sini. Siapa melawan siapa tidak berubah — hanya posisinya di bagan.
+                Kedua slot bertukar isi. Lawan tiap tim tetap.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <SeedEntitySelect

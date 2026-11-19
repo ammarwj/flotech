@@ -14,8 +14,8 @@ use App\Services\Catalog;
 use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
 use App\Services\KnockoutPlanService;
-use App\Services\MatchResultService;
 use App\Services\MatchNumberService;
+use App\Services\MatchResultService;
 use App\Services\MatchStatService;
 use App\Services\PlayerStatService;
 use App\Services\ScheduleService;
@@ -1313,19 +1313,7 @@ class MatchController extends Controller
             return $error;
         }
 
-        // Snapshot both sides before either is written: seatSlot() clears the
-        // slot it writes, so reading the second one afterwards would read what
-        // the first write already erased.
-        $from = [$matchModel->home_team_id, $matchModel->away_team_id];
-        $to = [$target->home_team_id, $target->away_team_id];
-
-        // Clear first, then re-seat: the other way round empties the very slot
-        // a walkover just filled. Same ordering updateTeams() relies on.
-        $cleared = $this->schedule->clearDownstream($matchModel)
-            + $this->schedule->clearDownstream($target);
-
-        $this->reseat($matchModel, $to[0], $to[1]);
-        $this->reseat($target->fresh(), $from[0], $from[1]);
+        $cleared = $this->tradeSlots($matchModel, $target);
 
         return ApiResponse::success(
             MatchResource::collection($this->orderedMatches($category)),
@@ -1333,6 +1321,199 @@ class MatchController extends Controller
                 ? "Slot ditukar — {$cleared} pertandingan babak berikutnya direset"
                 : 'Slot bracket ditukar',
         );
+    }
+
+    /**
+     * Swap which side of a tie is at home.
+     *
+     * The third question about a slot, after "who is in it" (updateTeams) and
+     * "which branch does it sit on" (moveSlot): a pairing that is right in both
+     * respects can still name the wrong host, and until now the only way out
+     * was to retype both teams — which round one allows and a later round does
+     * not.
+     *
+     * > **Invariant: a later round swaps its FEEDERS, never its own columns.**
+     * > Home and away are not stored choices there — they are read off feeder
+     * > parity (`order % 2`), and twelve readers spell that rule:
+     * > advanceWinner(), clearDownstream(), withdrawLoser(), advanceLoser(),
+     * > isLoneFeeder(), parentOf(), MatchNumberService three times, double
+     * > elimination's three place() calls, plus `bracket.ts` and the connector
+     * > maths in `bracket-view.tsx`. Writing the columns directly would be
+     * > undone without a word the moment a feeder is confirmed, because
+     * > advanceWinner() puts the winner back on the side the parity names. So
+     * > the swap happens where the answer comes from: the two feeders trade
+     * > contents, their parity changes at the source, and not one of those
+     * > readers has to learn a new rule. A `sides_swapped` column would be a
+     * > second spelling of a fact position already carries — the shape this
+     * > codebase keeps refusing.
+     *
+     * Round one is the exception, and for the same reason: nothing feeds it, so
+     * its columns *are* the fact, and the two are simply reseated.
+     *
+     * Test it by **comparing** the two rounds: a round-one swap that reads
+     * back and a later-round swap confirmed to survive its feeder being
+     * played. Asserting the columns flipped passes a build that writes them
+     * directly and loses the change on the next confirm.
+     */
+    public function swapSides(Request $request, string $organization, string $match): JsonResponse
+    {
+        $matchModel = $this->match($request, $match);
+        $category = $matchModel->category;
+
+        if ($error = $this->movableSlotError($matchModel, $category)) {
+            return $error;
+        }
+
+        if ($matchModel->round === 1) {
+            // Both sides have to hold somebody. A bye is one team and an empty
+            // column, and "swapping" it would move that team to the away side
+            // — the one shape generation does not read as a walkover, so the
+            // tie would silently stop advancing anybody.
+            if ($matchModel->home_team_id === null || $matchModel->away_team_id === null) {
+                return ApiResponse::error(
+                    'Slot ini cuma berisi satu tim — tidak ada sisi yang bisa ditukar.',
+                    ['feature' => 'bracket_edit'],
+                    422,
+                );
+            }
+
+            $cleared = $this->schedule->clearDownstream($matchModel);
+            $this->reseat($matchModel, $matchModel->away_team_id, $matchModel->home_team_id);
+
+            return ApiResponse::success(
+                MatchResource::collection($this->orderedMatches($category)),
+                $cleared > 0
+                    ? "Sisi ditukar — {$cleared} pertandingan babak berikutnya direset"
+                    : 'Tuan rumah dan tamu ditukar',
+            );
+        }
+
+        // Even-ordered feeders fill the home side, odd ones the away side —
+        // the same edges advanceWinner() walks.
+        $feeders = $category->matches()
+            ->where('stage', $matchModel->stage)
+            ->where('round', $matchModel->round - 1)
+            ->whereIn('order', [2 * $matchModel->order, 2 * $matchModel->order + 1])
+            ->get()
+            ->keyBy('order');
+
+        $home = $feeders[2 * $matchModel->order] ?? null;
+        $away = $feeders[2 * $matchModel->order + 1] ?? null;
+
+        if (! $home || ! $away) {
+            return ApiResponse::error(
+                'Slot ini tidak punya dua pengumpan, jadi sisinya tidak bisa ditukar.',
+                ['feature' => 'bracket_edit'],
+                422,
+            );
+        }
+
+        // Both feeders move, so both have to be movable — a played one keeps
+        // its result where it was played, exactly as moveSlot() holds it.
+        if ($error = $this->movableSlotError($home, $category, 'pengumpan')) {
+            return $error;
+        }
+
+        if ($error = $this->movableSlotError($away, $category, 'pengumpan')) {
+            return $error;
+        }
+
+        if ($error = $this->strandedSideError($home) ?? $this->strandedSideError($away)) {
+            return $error;
+        }
+
+        $cleared = $this->tradeSlots($home, $away);
+
+        return ApiResponse::success(
+            MatchResource::collection($this->orderedMatches($category)),
+            $cleared > 0
+                ? "Sisi ditukar — {$cleared} pertandingan babak berikutnya direset"
+                : 'Tuan rumah dan tamu ditukar',
+        );
+    }
+
+    /**
+     * Why rewriting this bye would strand somebody, or null when it is safe.
+     *
+     * > **Invariant: rewriting a bye re-fires its walkover, and the side it
+     * > lands on may not be empty.** seatSlot() re-advances any slot it writes
+     * > that still looks like a bye, so a feeder that is a walkover carries a
+     * > second write into the round above — and if a team was typed into that
+     * > side by hand (updateTeams() permits exactly this on a bye-fed slot),
+     * > advanceWinner() overwrites it with no error and no trace. The team is
+     * > then in no slot at all.
+     * >
+     * > This is not hypothetical: it is how SMP YP-BDN and SMPN 101 were lost
+     * > from the KASUDIN CUP draw, in one click, with a green toast. The same
+     * > hole is open to any door that reseats a bye, which is why the check is
+     * > its own method rather than a line inside swapSides().
+     * >
+     * > Refused rather than repaired: the two readings — "that hand-typed team
+     * > belongs there" and "it was a mistake over the walkover" — are opposite,
+     * > and nothing in the data tells them apart. The organizer can.
+     *
+     * Test it by **comparing** a swap whose bye feeds an empty side (allowed)
+     * with one whose bye feeds a hand-typed team (refused). Asserting the
+     * refusal alone passes a build that refuses every swap involving a bye.
+     */
+    protected function strandedSideError(GameMatch $feeder): ?JsonResponse
+    {
+        $walkover = $feeder->home_team_id !== null && $feeder->away_team_id === null;
+
+        if (! $walkover) {
+            return null;
+        }
+
+        $parent = $this->schedule->parentSlotOf($feeder);
+
+        if (! $parent) {
+            return null;
+        }
+
+        // The side this walkover feeds, by the parity advanceWinner() walks.
+        $slot = $feeder->order % 2 === 0 ? 'home_team_id' : 'away_team_id';
+        $seated = $parent->{$slot};
+
+        // Empty, or already holding exactly who the walkover would put there:
+        // either way nothing is displaced.
+        if ($seated === null || $seated === $feeder->home_team_id) {
+            return null;
+        }
+
+        return ApiResponse::error(
+            'Slot babak berikutnya sudah diisi tim lain secara manual, dan menukar '
+            .'bye ini akan menimpanya. Perbaiki dulu isi slot itu.',
+            ['feature' => 'bracket_edit'],
+            422,
+        );
+    }
+
+    /**
+     * Hand two slots each other's contents.
+     *
+     * Shared by moveSlot() and swapSides() because the write is identical and
+     * its ordering is load-bearing in both: a second copy would be a second
+     * place for that ordering to be got wrong.
+     *
+     * @return int fixtures whose teams and results were reset
+     */
+    protected function tradeSlots(GameMatch $a, GameMatch $b): int
+    {
+        // Snapshot both sides before either is written: seatSlot() clears the
+        // slot it writes, so reading the second one afterwards would read what
+        // the first write already erased.
+        $from = [$a->home_team_id, $a->away_team_id];
+        $to = [$b->home_team_id, $b->away_team_id];
+
+        // Clear first, then re-seat: the other way round empties the very slot
+        // a walkover just filled. Same ordering updateTeams() relies on.
+        $cleared = $this->schedule->clearDownstream($a)
+            + $this->schedule->clearDownstream($b);
+
+        $this->reseat($a, $to[0], $to[1]);
+        $this->reseat($b->fresh(), $from[0], $from[1]);
+
+        return $cleared;
     }
 
     /**
