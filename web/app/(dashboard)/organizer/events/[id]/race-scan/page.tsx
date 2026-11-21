@@ -9,6 +9,7 @@ import {
   CameraOff,
   CheckCircle2,
   ScanLine,
+  Users,
   XCircle,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
 import { RaceRouteGuard } from "@/components/event/race-route-guard";
+import { RaceCheckinLogDialog } from "@/components/event/race-checkin-log-dialog";
 import type { RaceScanResponse, RaceScanResult } from "@/types/api";
 
 type Feedback = {
@@ -69,6 +71,10 @@ export default function RaceScanPage() {
 
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [manual, setManual] = useState("");
+  // The full log lives in a dialog, not inline: the desk screen is the camera,
+  // and a searchable list of everyone who came is a second question asked
+  // between runners rather than during one.
+  const [logOpen, setLogOpen] = useState(false);
 
   const eventQuery = useQuery({
     queryKey: ["event", orgId, eventId],
@@ -181,9 +187,14 @@ export default function RaceScanPage() {
           )
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        {/* `items-start`: without it the camera card stretches to whatever the
+            result/manual/log column happens to be, which on a desk that has
+            scanned nobody is a tall slab of empty card under the button. */}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <Card className="overflow-hidden p-0">
-            <div className="relative aspect-video w-full bg-black">
+            {/* Capped, because 16:9 across a wide column is a ~800px viewfinder
+                for a QR held at arm's length. */}
+            <div className="relative aspect-video max-h-[420px] w-full bg-black">
               <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
               {!scanning && (
                 <div className="absolute inset-0 grid place-items-center text-center text-sm text-white/70">
@@ -281,7 +292,22 @@ export default function RaceScanPage() {
             </Card>
 
             <Card className="p-4">
-              <h4 className="mb-2 text-sm font-semibold">Terakhir check-in</h4>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">Terakhir check-in</h4>
+                {/* Always offered, not gated on the tail being full: "sudah
+                    check-in belum?" is a question the desk asks about somebody
+                    who is standing there, and an empty tail is exactly when it
+                    gets asked. */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setLogOpen(true)}
+                  className="h-7 px-2 text-xs"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Lihat semua
+                </Button>
+              </div>
               {logQuery.isLoading ? (
                 <Skeleton className="h-24 w-full" />
               ) : (logQuery.data?.items.length ?? 0) === 0 ? (
@@ -309,6 +335,18 @@ export default function RaceScanPage() {
             </Card>
           </div>
         </div>
+
+        {/* Outside the grid, and only while open: `orgId` is non-null inside
+            the guard, and the dialog's own query is gated on `open` so a desk
+            that never opens it never fetches the log. */}
+        {orgId && (
+          <RaceCheckinLogDialog
+            orgId={orgId}
+            eventId={eventId}
+            open={logOpen}
+            onClose={() => setLogOpen(false)}
+          />
+        )}
       </RaceRouteGuard>
     </div>
   );
