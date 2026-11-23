@@ -619,6 +619,7 @@ export function EventForm({
     return {
       starters: sq?.starters?.toString() ?? "",
       max_substitutes: sq?.max_substitutes?.toString() ?? "",
+      max_officials: sq?.max_officials?.toString() ?? "",
     };
   });
 
@@ -804,6 +805,7 @@ export function EventForm({
   const cleanedSquad = {
     starters: num(squad.starters),
     max_substitutes: num(squad.max_substitutes),
+    max_officials: num(squad.max_officials),
   };
   const fallbackFormat = tournament_formats[0]?.key ?? "";
 
@@ -1573,10 +1575,10 @@ export function EventForm({
               <SectionHeader
                 icon={Users}
                 title="Susunan Pemain"
-                description="Berapa pemain yang boleh ditulis manajer di susunan tiap pertandingan."
+                description="Berapa orang yang boleh ditulis manajer di susunan tiap pertandingan."
               />
               <CardContent className="grid gap-4">
-                <div className="grid items-end gap-4 sm:grid-cols-2">
+                <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="grid gap-2">
                     <div className="flex items-center gap-1.5">
                       <Label htmlFor="squad-starters" className="font-semibold">
@@ -1627,6 +1629,33 @@ export function EventForm({
                         }))
                       }
                       placeholder={sportSquad.max_substitutes?.toString() ?? "7"}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="squad-officials" className="font-semibold">
+                        Maksimal ofisial
+                      </Label>
+                      <InfoHint label="Penjelasan maksimal ofisial" align="end">
+                        Pelatih dan ofisial yang boleh duduk di bangku, batas
+                        atas saja. Isi <b>0</b> kalau turnamen ini tidak
+                        mengizinkan ofisial mendampingi tim.
+                      </InfoHint>
+                    </div>
+                    <Input
+                      id="squad-officials"
+                      type="number"
+                      min={0}
+                      max={20}
+                      inputMode="numeric"
+                      value={squad.max_officials}
+                      onChange={(e) =>
+                        setSquad((q) => ({
+                          ...q,
+                          max_officials: e.target.value,
+                        }))
+                      }
+                      placeholder={sportSquad.max_officials?.toString() ?? "7"}
                     />
                   </div>
                 </div>

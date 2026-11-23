@@ -92,6 +92,8 @@ class LineupService
         $this->assertSquadSize($match, $players, exact: false);
         $this->assertNoBannedPlayers($match, $team, array_column($players, 'player_id'));
         $this->assertOfficialsOwned($team, $officials);
+        // A ceiling at both doors and nothing else — see the note on the method.
+        $this->assertOfficialCount($match, count($officials));
         // Its own call, after ownership: a coach serving a ban may not be on the
         // bench either, and the message names the `officials` field so the
         // editor can mark that section rather than the squad.
@@ -179,7 +181,16 @@ class LineupService
             ->map(fn ($row) => ['player_id' => $row->player_id, 'role' => $row->role])
             ->all();
 
-        $this->assertSquadSize($lineup->match()->with('category.event')->first(), $stored, exact: true);
+        $match = $lineup->match()->with('category.event')->first();
+
+        $this->assertSquadSize($match, $stored, exact: true);
+
+        // Asked of the stored rows too, and for the reason the players' check is:
+        // the cap may have been tightened since the draft was saved, and the
+        // sheet being handed in is the one that has to be legal now. No `exact`
+        // half — a bench of coaches is optional in a way the starting eleven is
+        // not.
+        $this->assertOfficialCount($match, $lineup->officials()->count());
 
         // Asked again, of the stored rows rather than of a payload — and not a
         // duplicate of the check in sync(). A draft saved last week passed that
@@ -406,6 +417,42 @@ class LineupService
                     : "Maksimal {$rules->maxSubstitutes} pemain cadangan untuk kategori ini.",
             ]);
         }
+    }
+
+    /**
+     * How many officials sit on the bench, against what this category allows.
+     *
+     * Its own method rather than a branch inside assertSquadSize(), and the split
+     * is the same one the tables take: an official is not a player, the count
+     * comes from a different payload key, and the message has to mark `officials`
+     * so the editor flags the bench section instead of the squad. Folding them
+     * would mean one method taking two lists to answer two questions whose only
+     * shared half is the lookup.
+     *
+     * A ceiling at both doors and never an exact number: the bench is optional by
+     * construction — a category with no coach registered at all is a legitimate
+     * sheet — so there is nothing for `exact` to mean here. `starters` is the one
+     * number in this rulebook read with two operators.
+     *
+     * A sport with no team sheet is skipped for the same reason the squad size
+     * is: eleven and seven describe running-score sports, and MAX_OFFICIALS still
+     * stands there as the client-loop stop.
+     *
+     * @throws ValidationException
+     */
+    protected function assertOfficialCount(GameMatch $match, int $count): void
+    {
+        $rules = SquadRules::forCategory($match->category);
+
+        if (! $rules->enabled || $count <= $rules->maxOfficials) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'officials' => $rules->maxOfficials === 0
+                ? 'Kategori ini tidak memakai ofisial di bangku.'
+                : "Maksimal {$rules->maxOfficials} ofisial di bangku untuk kategori ini.",
+        ]);
     }
 
     /**

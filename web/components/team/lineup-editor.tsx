@@ -48,6 +48,12 @@ import type {
  * A suspended official's row is struck through and its toggle refuses, exactly
  * as a player's does — the server refuses both, on two different fields, and
  * `officials` is the one it marks for the bench.
+ *
+ * The bench has a ceiling of its own, read from the same `squadRules` the squad
+ * is: one rulebook answers how long the whole sheet may be, so a tournament that
+ * caps its bench does it in one place. It is a ceiling at both doors and never a
+ * target — nobody is pushed towards filling it, because an empty bench of
+ * officials is a legitimate sheet.
  */
 
 /** What the sheet says about one player. `null` = not on it at all. */
@@ -126,6 +132,16 @@ export function LineupEditor({
   // be sent to the bench, and the sheet would be stuck at its own ceiling.
   const startersFull = squadRules ? starters >= squadRules.starters : false;
   const benchFull = squadRules ? substitutes >= squadRules.max_substitutes : false;
+  // Counted the way the payload is built — a suspended official never goes out,
+  // so one still named in an old draft must not take up a place either. Same
+  // exception as the two columns above: somebody already brought is never
+  // blocked, or a full bench could not be emptied one name at a time.
+  const broughtOfficials = chosenOfficials.filter(
+    (id) => !bannedOfficials.has(id),
+  ).length;
+  const officialsFull = squadRules
+    ? broughtOfficials >= squadRules.max_officials
+    : false;
 
   const setRole = (playerId: string, role: LineupRole) => {
     onSelectionChange({ ...selection, [playerId]: role });
@@ -229,9 +245,17 @@ export function LineupEditor({
       </section>
 
       <section className="grid gap-2">
-        <h3 className="inline-flex items-center gap-2 font-semibold">
-          <UserCog className="h-4 w-4" /> Ofisial di bangku
-        </h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="inline-flex items-center gap-2 font-semibold">
+            <UserCog className="h-4 w-4" /> Ofisial di bangku
+          </h3>
+          {/* Shown for the same reason the squad counter is: a manager whose
+              next click does nothing should be able to see why. */}
+          <p className="text-sm text-muted-foreground">
+            {broughtOfficials}
+            {squadRules && `/${squadRules.max_officials}`} dibawa
+          </p>
+        </div>
 
         {officials.length === 0 ? (
           <p className="rounded-md border border-border bg-[var(--bg-soft)] px-4 py-3 text-sm text-muted-foreground">
@@ -245,13 +269,16 @@ export function LineupEditor({
               // selection still says: a draft saved before the card was
               // confirmed may well name them, and the server refuses it.
               const chosen = !ban && chosenOfficials.includes(official.id);
+              // The ceiling only ever blocks adding. A row already on the sheet
+              // keeps its toggle, which is how a full bench makes room.
+              const blocked = officialsFull && !chosen;
 
               return (
                 <li key={official.id}>
                   <button
                     type="button"
                     onClick={() => toggleOfficial(official.id)}
-                    disabled={disabled || Boolean(ban)}
+                    disabled={disabled || Boolean(ban) || blocked}
                     aria-pressed={chosen}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
@@ -260,7 +287,7 @@ export function LineupEditor({
                         : chosen
                           ? "border-[var(--brand-600)] bg-[var(--tint)]"
                           : "border-border hover:bg-[var(--bg-soft)]",
-                      (disabled || ban) && "cursor-not-allowed opacity-60",
+                      (disabled || ban || blocked) && "cursor-not-allowed opacity-60",
                     )}
                   >
                     <div className="min-w-0 flex-1">

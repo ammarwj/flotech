@@ -612,7 +612,8 @@ export interface PeriodConfigValues {
 }
 
 /**
- * Berapa nama yang boleh ditulis di satu team sheet: inti, lalu bangku.
+ * Berapa nama yang boleh ditulis di satu team sheet: inti, bangku pemain, lalu
+ * ofisial yang duduk bersama mereka.
  *
  * Tiap field opsional saat diam — cabang atau event yang tidak pernah
  * mengisinya mewarisi lapis di bawahnya, cermin `SquadRules` di server. Field
@@ -627,6 +628,8 @@ export interface SquadConfigValues {
   starters?: number;
   /** 0 = tidak ada bangku. Bukan "tanpa batas". */
   max_substitutes?: number;
+  /** Ofisial di bangku. 0 = tidak ada, dan tetap bukan "tanpa batas". */
+  max_officials?: number;
 }
 
 /** A position a player of this sport can hold. The key is what a roster stores. */
@@ -1529,6 +1532,8 @@ export interface SquadRules {
   starters: number;
   max_substitutes: number;
   max_players: number;
+  /** Plafon di kedua pintu, tidak pernah jumlah persis — bangku ofisial opsional. */
+  max_officials: number;
 }
 
 /**

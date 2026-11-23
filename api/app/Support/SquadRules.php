@@ -34,12 +34,21 @@ use App\Services\Catalog;
  * > berapa". Bandingkan keduanya saat menguji: assert `submit()` menolak 10 saja
  * > akan lolos walau `sync()` diam-diam ikut menolaknya dan manajer tidak pernah
  * > bisa menyimpan pekerjaan setengah jadi.
+ *
+ * `max_officials` duduk di sini dan bukan di rulebook sendiri karena ia menjawab
+ * pertanyaan yang sama persis — "berapa nama yang boleh ditulis di satu team
+ * sheet" — dan dibaca dari fixture yang sama oleh method yang sama. Rulebook
+ * kedua berarti dua tempat yang harus diingat saat turnamen 7-a-side menyetel
+ * bentuk sheet-nya, dan yang terlupa adalah yang menyimpang. Ia **selalu**
+ * plafon, tidak pernah target: bench ofisial opsional, jadi tidak ada versi
+ * `exact`-nya.
  */
 final class SquadRules
 {
     /**
      * Bentuk yang dipakai cabang berskor lari saat tidak ada yang berkata lain:
-     * sebelas di lapangan, tujuh di bangku.
+     * sebelas di lapangan, tujuh di bangku, tujuh ofisial yang duduk bersama
+     * mereka.
      *
      * Angka sepak bola, karena itu cabang mayoritas di platform ini dan cabang
      * lain yang berbeda (futsal, basket) menyimpan angkanya sendiri di
@@ -49,6 +58,7 @@ final class SquadRules
     public const DEFAULTS = [
         'starters' => 11,
         'max_substitutes' => 7,
+        'max_officials' => 7,
     ];
 
     private function __construct(
@@ -66,6 +76,17 @@ final class SquadRules
          * karena `DEFAULTS` selalu jadi lapis terbawah.
          */
         public readonly int $maxSubstitutes,
+        /**
+         * Ofisial bangku maksimum. **Boleh 0** dengan arti yang sama seperti
+         * `maxSubstitutes`: "tidak ada bangku ofisial", bukan "tanpa batas".
+         *
+         * Dibaca sebagai plafon di **kedua** pintu dan tidak pernah sebagai
+         * jumlah persis — bench ofisial memang selalu opsional (invarian yang
+         * sudah ditulis untuk `team_officials`), jadi tidak ada yang bisa
+         * diubah `exact` tentangnya. `starters`-lah satu-satunya angka di
+         * rulebook ini yang dibaca dua kali dengan dua operator.
+         */
+        public readonly int $maxOfficials,
     ) {}
 
     public static function forCategory(EventCategory $category): self
@@ -104,6 +125,7 @@ final class SquadRules
             // luar formulirnya sendiri tanpa satu pun pesan yang bisa ditindak.
             starters: max(1, (int) $merged['starters']),
             maxSubstitutes: max(0, (int) $merged['max_substitutes']),
+            maxOfficials: max(0, (int) $merged['max_officials']),
         );
     }
 
@@ -131,6 +153,7 @@ final class SquadRules
             'starters' => $this->starters,
             'max_substitutes' => $this->maxSubstitutes,
             'max_players' => $this->maxPlayers(),
+            'max_officials' => $this->maxOfficials,
         ];
     }
 
@@ -147,6 +170,10 @@ final class SquadRules
             // min:0, bukan min:1 — 0 adalah cara organizer mengatakan
             // "tidak ada bangku", dan itu keadaan yang sah.
             $prefix.'max_substitutes' => ['nullable', 'integer', 'min:0', 'max:30'],
+            // Dibatasi `LineupService::MAX_OFFICIALS` di atasnya; 20 di sini
+            // supaya angka yang lolos validasi tidak pernah lebih longgar dari
+            // penahan loop klien di sana.
+            $prefix.'max_officials' => ['nullable', 'integer', 'min:0', 'max:20'],
         ];
     }
 

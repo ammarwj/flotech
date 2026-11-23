@@ -67,9 +67,9 @@ class LineupSquadSizeTest extends TestCase
      * Tim dengan akun manajer di belakangnya, didaftarkan lewat form publik —
      * itu yang mengisi `teams.manager_user_id`.
      *
-     * @return array{manager: User, id: string, players: array<int, string>}
+     * @return array{manager: User, id: string, players: array<int, string>, officials: array<int, string>}
      */
-    private function team(Event $event, string $name, int $size): array
+    private function team(Event $event, string $name, int $size, int $officials = 0): array
     {
         $manager = User::factory()->create();
 
@@ -82,6 +82,12 @@ class LineupSquadSizeTest extends TestCase
                 'players' => array_map(
                     fn (int $i) => ['full_name' => "{$name} {$i}", 'jersey_number' => (string) $i],
                     range(1, $size),
+                ),
+                // `range(1, 0)` menghitung mundur dan akan membuat tim tanpa
+                // ofisial justru punya dua; kosong harus dieja kosong.
+                'officials' => $officials < 1 ? [] : array_map(
+                    fn (int $i) => ['full_name' => "{$name} Ofisial {$i}", 'role' => 'head_coach'],
+                    range(1, $officials),
                 ),
             ])
             ->assertCreated()
@@ -97,6 +103,7 @@ class LineupSquadSizeTest extends TestCase
             'manager' => $manager,
             'id' => $data['id'],
             'players' => array_column($data['players'], 'id'),
+            'officials' => array_column($data['officials'] ?? [], 'id'),
         ];
     }
 
@@ -127,13 +134,29 @@ class LineupSquadSizeTest extends TestCase
         return $rows;
     }
 
-    /** @param  array<int, array<string, mixed>>  $players */
-    private function save(array $side, string $match, array $players)
+    /**
+     * Ofisial yang dibawa, sebanyak `$count` pertama dari bench tim.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function bench(array $side, int $count): array
+    {
+        return array_map(
+            fn (string $id) => ['team_official_id' => $id],
+            array_slice($side['officials'], 0, $count),
+        );
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $players
+     * @param  array<int, array<string, mixed>>  $officials
+     */
+    private function save(array $side, string $match, array $players, array $officials = [])
     {
         return $this->actingAs($side['manager'], 'api')
             ->putJson("/api/v1/my-teams/{$side['id']}/matches/{$match}/lineup", [
                 'players' => $players,
-                'officials' => [],
+                'officials' => $officials,
             ]);
     }
 
@@ -295,5 +318,107 @@ class LineupSquadSizeTest extends TestCase
         $this->assertSame(5, $rules['starters']);
         $this->assertSame(9, $rules['max_substitutes']);
         $this->assertSame(14, $rules['max_players']);
+        // Futsal tidak menyimpan angka ofisialnya sendiri, jadi yang terbit di
+        // sini adalah lapis terbawah — dan itulah yang membuktikan key ketiga
+        // ikut ter-merge alih-alih terbaca nol.
+        $this->assertSame(7, $rules['max_officials']);
+    }
+
+    public function test_the_bench_of_officials_has_its_own_ceiling(): void
+    {
+        $event = $this->event();
+        $home = $this->team($event, 'Garuda FC', 20, officials: 9);
+        $away = $this->team($event, 'Rajawali United', 20);
+        $match = $this->fixture($event, $home['id'], $away['id']);
+
+        // Tujuh adalah batas bawaan, dan tepat di batas ia lewat.
+        $this->save($home, $match, $this->sheet($home, 11), $this->bench($home, 7))->assertOk();
+
+        // Yang kedelapan ditolak walau pemainnya persis sama — dua daftar, dua
+        // batas, dan yang ini tidak boleh ikut terhitung ke yang itu.
+        $this->save($home, $match, $this->sheet($home, 11), $this->bench($home, 8))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('officials');
+
+        // Penolakan tidak boleh ikut membuang pemain yang sudah tersimpan:
+        // assert 422 saja akan lolos walau sheet-nya terlanjur ditulis ulang.
+        $this->assertDatabaseCount('match_lineup_officials', 7);
+        $this->assertDatabaseCount('match_lineup_players', 11);
+    }
+
+    public function test_the_bench_is_a_ceiling_at_both_doors_but_never_a_target(): void
+    {
+        $event = $this->event();
+        $home = $this->team($event, 'Garuda FC', 20, officials: 5);
+        $away = $this->team($event, 'Rajawali United', 20);
+        $match = $this->fixture($event, $home['id'], $away['id']);
+
+        // Bangku kosong diserahkan ke wasit tanpa keluhan, sementara sebelas
+        // inti tetap ditagih persis — itulah bedanya plafon dari target, dan
+        // satu-satunya angka di rulebook ini yang dibaca dua operator.
+        $this->save($home, $match, $this->sheet($home, 11))->assertOk();
+        $this->submit($home, $match)->assertOk();
+
+        // Draf yang sah saat disimpan, lalu capnya diperketat organizer: yang
+        // diserahkan ke wasit adalah yang harus sah sekarang, bukan yang sah
+        // minggu lalu — alasan yang sama dengan pemeriksaan larangan bermain.
+        $second = $this->fixture($event, $away['id'], $home['id']);
+
+        $this->save($home, $second, $this->sheet($home, 11), $this->bench($home, 5))->assertOk();
+
+        $event->update(['rules_config' => ['squad' => ['max_officials' => 2]]]);
+
+        $this->submit($home, $second)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('officials');
+    }
+
+    public function test_the_event_overrides_the_official_cap_and_a_cleared_field_does_not(): void
+    {
+        // Inti diketik, ofisial diketik, bangku pemain dikosongkan — yang
+        // dikosongkan wajib mewarisi tujuh milik cabang alih-alih jadi nol,
+        // persis seperti key yang sudah ada.
+        $event = $this->event('football', [
+            'starters' => 7,
+            'max_substitutes' => null,
+            'max_officials' => 2,
+        ]);
+        $home = $this->team($event, 'Garuda FC', 20, officials: 5);
+        $away = $this->team($event, 'Rajawali United', 20);
+        $match = $this->fixture($event, $home['id'], $away['id']);
+
+        $this->save($home, $match, $this->sheet($home, 7, 7), $this->bench($home, 2))->assertOk();
+
+        // Tujuh adalah angka bawaannya, dan di sini ia harus ditolak.
+        $this->save($home, $match, $this->sheet($home, 7, 7), $this->bench($home, 3))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('officials');
+
+        // Yang lolos tadi tetap bisa diserahkan — penolakan di atas bukan
+        // keadaan yang menjebak sheet-nya.
+        $this->submit($home, $match)->assertOk();
+    }
+
+    public function test_a_set_sport_caps_no_bench_at_all(): void
+    {
+        // Gate-nya satu: cabang yang tidak punya susunan pemain juga tidak
+        // punya angka ofisial, dan `MAX_OFFICIALS` yang tersisa di sana.
+        // Dibandingkan dengan sepak bola supaya assert "voli lolos" tidak lolos
+        // di build yang berhenti menghitung di mana pun.
+        $volley = $this->event('volleyball');
+        $vHome = $this->team($volley, 'Garuda VC', 14, officials: 9);
+        $vAway = $this->team($volley, 'Rajawali VC', 14);
+        $vMatch = $this->fixture($volley, $vHome['id'], $vAway['id']);
+
+        $this->save($vHome, $vMatch, $this->sheet($vHome, 6), $this->bench($vHome, 9))->assertOk();
+
+        $football = $this->event();
+        $fHome = $this->team($football, 'Garuda FC', 20, officials: 9);
+        $fAway = $this->team($football, 'Rajawali United', 20);
+        $fMatch = $this->fixture($football, $fHome['id'], $fAway['id']);
+
+        $this->save($fHome, $fMatch, $this->sheet($fHome, 11), $this->bench($fHome, 9))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('officials');
     }
 }

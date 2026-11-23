@@ -611,8 +611,9 @@ export default function AdminSportsPage() {
               <p className="text-xs text-muted-foreground">
                 Bawaan untuk event cabang ini. Organizer bisa menimpanya per event,
                 dan kolom yang dikosongkan di sini memakai bawaan platform (11 inti,
-                7 cadangan). Manajer wajib mengisi pemain inti tepat sejumlah ini
-                sebelum susunan bisa dikirim ke wasit.
+                7 cadangan, 7 ofisial). Manajer wajib mengisi pemain inti tepat
+                sejumlah ini sebelum susunan bisa dikirim ke wasit; dua angka
+                lainnya batas atas saja.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -641,6 +642,21 @@ export default function AdminSportsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   0 berarti tanpa bangku cadangan.
+                </p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="squad-officials">Maksimal ofisial</Label>
+                <Input
+                  id="squad-officials"
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={form.squad_config.max_officials ?? ""}
+                  onChange={(e) => setSquad("max_officials", e.target.value)}
+                  placeholder="7"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pelatih dan ofisial yang duduk di bangku. 0 berarti tidak ada.
                 </p>
               </div>
             </div>
