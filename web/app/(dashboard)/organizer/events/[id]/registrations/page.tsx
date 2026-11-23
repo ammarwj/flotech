@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/page-header";
@@ -90,6 +91,15 @@ const FILTERS: [Filter, string][] = [
 /** Sentinel "tanpa filter kategori" — sebuah id kategori tidak akan pernah ini. */
 const ALL_CATEGORIES = "all";
 
+type SortKey = "registered_desc" | "registered_asc" | "name_asc" | "name_desc";
+
+const SORTS: [SortKey, string][] = [
+  ["registered_desc", "Waktu daftar (terbaru)"],
+  ["registered_asc", "Waktu daftar (terlama)"],
+  ["name_asc", "Nama tim (A-Z)"],
+  ["name_desc", "Nama tim (Z-A)"],
+];
+
 export default function RegistrationsPage() {
   const qc = useQueryClient();
   const params = useParams<{ id: string }>();
@@ -98,6 +108,7 @@ export default function RegistrationsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES);
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("registered_desc");
 
   // null = closed, "new" = adding, a Team = editing that team.
   const [manual, setManual] = useState<Team | "new" | null>(null);
@@ -209,7 +220,26 @@ export default function RegistrationsPage() {
     approved: scoped.filter((t) => t.status === "approved").length,
     rejected: scoped.filter((t) => t.status === "rejected").length,
   };
-  const shown = scoped.filter((t) => filter === "all" || t.status === filter);
+  const filtered = scoped.filter((t) => filter === "all" || t.status === filter);
+  // Sort is cosmetic only — applied last, after search/category/status have
+  // already decided which rows are in play, so it never changes the counts.
+  const shown = useMemo(() => {
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      switch (sort) {
+        case "name_asc":
+          return a.name.localeCompare(b.name, "id");
+        case "name_desc":
+          return b.name.localeCompare(a.name, "id");
+        case "registered_asc":
+          return (a.registered_at ?? "").localeCompare(b.registered_at ?? "");
+        case "registered_desc":
+        default:
+          return (b.registered_at ?? "").localeCompare(a.registered_at ?? "");
+      }
+    });
+    return rows;
+  }, [filtered, sort]);
 
   return (
     <div>
@@ -349,27 +379,45 @@ export default function RegistrationsPage() {
               ))}
             </div>
 
-            {/* h-8 matches the filter rail exactly (p-0.5 + py-1.5 text-xs);
-                the Input default of h-10 left the two visibly out of line. */}
-            <div className="relative w-full sm:ml-auto sm:w-56">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari tim atau pemain…"
-                className="h-8 rounded-lg pl-8 pr-8 text-xs"
-                aria-label="Cari pendaftaran"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  aria-label="Hapus pencarian"
-                  className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+            {/* Sort + search travel together as one right-aligned group, so they
+                wrap as a pair on narrow screens instead of the search box
+                landing alone on its own line below the sort select. */}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+              {/* h-8 matches the filter rail exactly (p-0.5 + py-1.5 text-xs);
+                  the Input/Select default of h-10 left them visibly out of line. */}
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                className="h-8 w-auto shrink-0 rounded-lg py-1.5 pl-2.5 pr-8 text-xs"
+                aria-label="Urutkan pendaftaran"
+              >
+                {SORTS.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+
+              <div className="relative w-full sm:w-56">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cari tim atau pemain…"
+                  className="h-8 rounded-lg pl-8 pr-8 text-xs"
+                  aria-label="Cari pendaftaran"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    aria-label="Hapus pencarian"
+                    className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

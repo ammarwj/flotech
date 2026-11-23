@@ -162,6 +162,10 @@ function PublicEventView() {
   const categoryParam = urlState.get("category") ?? "";
   const [openTeam, setOpenTeam] = useState<PublicTeam | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
+  // Independent of the `category` URL param above — that one drives the
+  // schedule/standings/bracket panel and switching tabs must not steal this
+  // filter away from the teams grid (or vice versa).
+  const [teamCategorySlug, setTeamCategorySlug] = useState(ALL_CATEGORIES);
   // "Semua" only applies to the schedule, so the category the user picked is
   // remembered apart from it: switching tabs must not throw that choice away.
   const [lastCategorySlug, setLastCategorySlug] = useState("");
@@ -227,10 +231,17 @@ function PublicEventView() {
   // only the team name is rendered on the card.
   const allTeams = query.data?.approved_teams;
   const shownTeams = useMemo(() => {
-    const q = teamSearch.trim().toLowerCase();
-    if (!q) return allTeams ?? [];
+    const byCategory =
+      teamCategorySlug === ALL_CATEGORIES
+        ? (allTeams ?? [])
+        : (allTeams ?? []).filter(
+            (t) => t.category?.slug === teamCategorySlug,
+          );
 
-    return (allTeams ?? []).filter(
+    const q = teamSearch.trim().toLowerCase();
+    if (!q) return byCategory;
+
+    return byCategory.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         // Now that the card prints the category, it has to be searchable too —
@@ -239,7 +250,7 @@ function PublicEventView() {
         (t.players ?? []).some((p) => p.full_name.toLowerCase().includes(q)) ||
         (t.officials ?? []).some((o) => o.full_name.toLowerCase().includes(q)),
     );
-  }, [allTeams, teamSearch]);
+  }, [allTeams, teamSearch, teamCategorySlug]);
 
   if (query.isLoading) return <PageLoading />;
 
@@ -781,46 +792,61 @@ function PublicEventView() {
 
       {/* ===== TEAMS TAB ===== */}
       {activeTab === "teams" && (
-        <section className="section">
+        <section className="section" style={{ paddingTop: 48 }}>
           <div className="container">
-            <div className="esection-title flex-wrap">
+            <div className="esection-title">
               <h2 className="section-title" style={{ margin: 0 }}>
                 Tim Peserta
               </h2>
               {allTeams && allTeams.length > 0 && (
-                <>
-                  {/* `.esection-title .pill` pushes the count to the far right;
-                      here it belongs beside the heading, so the search box takes
-                      over the ml-auto. The count follows the search so it never
-                      promises more teams than the grid below actually shows. */}
-                  <span className="pill ml-0!">
-                    {teamSearch.trim()
-                      ? `${shownTeams.length} dari ${allTeams.length} tim`
-                      : `${allTeams.length} tim`}
-                  </span>
-                  <div className="relative w-full sm:ml-auto sm:w-64">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={teamSearch}
-                      onChange={(e) => setTeamSearch(e.target.value)}
-                      placeholder="Cari tim, pemain, atau kategori…"
-                      className="pl-9 pr-9"
-                      aria-label="Cari tim peserta"
-                    />
-                    {teamSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setTeamSearch("")}
-                        aria-label="Hapus pencarian"
-                        className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </>
+                <span className="pill">
+                  {teamSearch.trim() || teamCategorySlug !== ALL_CATEGORIES
+                    ? `${shownTeams.length} dari ${allTeams.length} tim`
+                    : `${allTeams.length} tim`}
+                </span>
               )}
             </div>
+
+            {allTeams && allTeams.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                {categories.length > 1 ? (
+                  <PillTabs
+                    tone="tint"
+                    items={[
+                      { key: ALL_CATEGORIES, label: "Semua" },
+                      ...categories.map((c) => ({
+                        key: c.slug,
+                        label: c.name,
+                      })),
+                    ]}
+                    activeKey={teamCategorySlug}
+                    onSelect={(key) => setTeamCategorySlug(key)}
+                  />
+                ) : (
+                  <span />
+                )}
+                <div className="relative w-full sm:w-64">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={teamSearch}
+                    onChange={(e) => setTeamSearch(e.target.value)}
+                    placeholder="Cari tim, pemain, atau kategori…"
+                    className="pl-9 pr-9"
+                    aria-label="Cari tim peserta"
+                  />
+                  {teamSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setTeamSearch("")}
+                      aria-label="Hapus pencarian"
+                      className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--bg-soft)] hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {shownTeams.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -887,6 +913,10 @@ function PublicEventView() {
               <p className="section-sub" style={{ margin: 0 }}>
                 Tidak ada tim atau pemain yang cocok dengan “{teamSearch.trim()}
                 ”.
+              </p>
+            ) : teamCategorySlug !== ALL_CATEGORIES ? (
+              <p className="section-sub" style={{ margin: 0 }}>
+                Belum ada tim yang disetujui di kategori ini.
               </p>
             ) : (
               <p className="section-sub" style={{ margin: 0 }}>
