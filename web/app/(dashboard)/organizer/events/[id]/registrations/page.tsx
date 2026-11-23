@@ -22,6 +22,7 @@ import {
   Loader2,
   Printer,
   ReceiptText,
+  Settings2,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { id as idLocale } from "date-fns/locale/id";
@@ -56,6 +57,7 @@ import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
 import { PillTabs } from "@/components/event/pill-tabs";
 import { ImportTeamsDialog } from "@/components/event/import-teams-dialog";
 import {
+  coreLabel,
   schemaOf,
   type CustomField,
   type CustomFieldAnswers,
@@ -233,6 +235,12 @@ export default function RegistrationsPage() {
                 <Printer className="h-4 w-4" />
               )}
               {printingAll ? "Menyiapkan…" : "Cetak Semua Tim"}
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/organizer/events/${eventId}/registration-form`}>
+                <Settings2 className="h-4 w-4" />
+                Formulir Pendaftaran
+              </Link>
             </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!orgId}>
               <FileSpreadsheet className="h-4 w-4" />
@@ -568,7 +576,11 @@ function RegistrationCard({
       {open && (
         <div className="border-t border-border bg-[var(--bg-alt)] p-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Info label="Kontak">
+            {/* One cell for two columns, so it follows the name's label — the
+                phone's own rename lands on the input it belongs to, not here,
+                where "Nama kontak · No. HP kontak" would spend the row on
+                punctuation. */}
+            <Info label={coreLabel(schema, "contact_name")}>
               <span className="inline-flex items-center gap-1.5 text-sm font-medium">
                 <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                 {team.contact_name ?? "—"} · {team.contact_phone ?? "—"}

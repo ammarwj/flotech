@@ -5,6 +5,9 @@ namespace App\Support;
 use App\Models\Event;
 use Illuminate\Support\Carbon;
 
+// The four platform-owned labels ride in the same column; see that class for
+// why they are code-as-catalogue and DB-as-override only.
+
 /**
  * The shape of one event's registration form, as the organizer defined it.
  *
@@ -62,7 +65,13 @@ final class RegistrationForm
     /** File kinds a document slot may accept. */
     public const ACCEPTS = ['pdf', 'jpg', 'png'];
 
-    /** The six lists, in the order the builder UI shows them. */
+    /**
+     * The six lists, in the order the builder UI shows them.
+     *
+     * `labels` is deliberately NOT one of them: the sections are lists of rows
+     * the organizer adds and removes, and every loop over SECTIONS treats them
+     * that way. See CoreFieldLabels for the map that rides alongside.
+     */
     public const SECTIONS = [
         'team_fields',
         'player_fields',
@@ -79,6 +88,7 @@ final class RegistrationForm
      * @param  list<array<string, mixed>>  $teamDocuments
      * @param  list<array<string, mixed>>  $playerDocuments
      * @param  list<array<string, mixed>>  $officialDocuments
+     * @param  array<string, string>  $labels
      */
     private function __construct(
         public readonly array $teamFields,
@@ -87,6 +97,7 @@ final class RegistrationForm
         public readonly array $teamDocuments,
         public readonly array $playerDocuments,
         public readonly array $officialDocuments,
+        public readonly array $labels = [],
     ) {}
 
     public static function forEvent(?Event $event): self
@@ -108,12 +119,30 @@ final class RegistrationForm
             teamDocuments: self::cleanDocuments($raw['team_documents'] ?? []),
             playerDocuments: self::cleanDocuments($raw['player_documents'] ?? []),
             officialDocuments: self::cleanDocuments($raw['team_official_documents'] ?? []),
+            labels: CoreFieldLabels::clean($raw['labels'] ?? []),
         );
+    }
+
+    /**
+     * What one of the four platform fields is called on this event.
+     *
+     * Routed through here rather than read off `labels` by each caller, for
+     * the reason displayValue() is shared: the fallback to the default is the
+     * rule, and a caller spelling `$labels[$key] ?? 'Nama tim'` is a second
+     * copy of it that drifts the day the default is improved.
+     */
+    public function label(string $key): string
+    {
+        return CoreFieldLabels::label($this->labels, $key);
     }
 
     /**
      * True when nothing at all is defined. The registration forms ask this to
      * decide whether the feature exists for this event.
+     *
+     * Labels deliberately don't count: renaming a question does not make a
+     * form exist, and an event whose only change is "Nama klub" still shows no
+     * custom-field or upload UI at all.
      */
     public function isEmpty(): bool
     {
@@ -143,7 +172,29 @@ final class RegistrationForm
             'team_documents' => $this->teamDocuments,
             'player_documents' => $this->playerDocuments,
             'team_official_documents' => $this->officialDocuments,
+            // Only the overrides are stored (CoreFieldLabels::clean drops
+            // anything equal to the default), but what is SENT is every key
+            // resolved — the client renders this map and must not merge a
+            // default list of its own. Same split as PlanResource's `features`
+            // (raw, for gating) beside `feature_details` (resolved, for the UI).
+            'labels' => CoreFieldLabels::all($this->labels),
         ];
+    }
+
+    /**
+     * What gets written to `events.registration_form`.
+     *
+     * Differs from toArray() in exactly one place and that is the whole point:
+     * `labels` holds only what the organizer actually changed, so an event
+     * that accepted the defaults keeps following them across deploys. Storing
+     * the resolved map would freeze today's wording into every event that ever
+     * opened the page.
+     *
+     * @return array<string, mixed>
+     */
+    public function toStorage(): array
+    {
+        return [...$this->toArray(), 'labels' => $this->labels];
     }
 
     /**
@@ -546,7 +597,7 @@ final class RegistrationForm
      */
     public static function validationRules(): array
     {
-        $rules = [];
+        $rules = CoreFieldLabels::validationRules();
 
         foreach (['team_fields', 'player_fields', 'team_official_fields'] as $section) {
             $rules[$section] = ['present', 'array', 'max:30'];

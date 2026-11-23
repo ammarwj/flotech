@@ -33,6 +33,7 @@ import { ParticipantDocumentButtons } from "@/components/payment/document-button
 import { nameInput } from "@/lib/name";
 import { phoneInput } from "@/lib/phone";
 import {
+  coreLabel,
   hasIncompleteOfficial,
   hasIncompletePlayer,
   missingFor,
@@ -491,7 +492,7 @@ export default function ManageTeamPage() {
             {!isFixed && (
               <ImageUploadField
                 className="sm:col-span-2"
-                label="Logo tim"
+                label={coreLabel(schema, "team_logo")}
                 value={logoUrl}
                 onChange={setLogoUrl}
                 onBusyChange={setLogoUploading}
@@ -505,16 +506,16 @@ export default function ManageTeamPage() {
             )}
             {!isFixed && (
               <div className="grid gap-2">
-                <Label>Nama tim</Label>
+                <Label>{coreLabel(schema, "team_name")}</Label>
                 <Input value={info.name} onChange={(e) => setInfo({ ...info, name: nameInput(e.target.value) })} disabled={!editable} required />
               </div>
             )}
             <div className="grid gap-2">
-              <Label>Nama kontak</Label>
+              <Label>{coreLabel(schema, "contact_name")}</Label>
               <Input value={info.contact_name} onChange={(e) => setInfo({ ...info, contact_name: e.target.value })} disabled={!editable} />
             </div>
             <div className="grid gap-2">
-              <Label>No. HP kontak</Label>
+              <Label>{coreLabel(schema, "contact_phone")}</Label>
               <Input
                 value={info.contact_phone}
                 inputMode="tel"

@@ -144,12 +144,12 @@
             <table class="club-row">
                 <tr>
                     <td>
-                        <div class="club-label">NAMA KLUB</div>
+                        <div class="club-label">{{ mb_strtoupper($labels['name']) }}</div>
                         <div class="club-value">{{ $team['name'] }}</div>
                     </td>
                     @if ($team['contact'])
                         <td class="club-contact">
-                            <div class="club-label">KONTAK</div>
+                            <div class="club-label">{{ mb_strtoupper($labels['contact']) }}</div>
                             <div class="club-value">{{ $team['contact'] }}</div>
                         </td>
                     @endif

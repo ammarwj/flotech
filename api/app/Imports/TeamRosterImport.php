@@ -157,14 +157,21 @@ class TeamRosterRowImport implements ToCollection
      * what the code read as player 2's name/jersey, corrupting the insert
      * instead of failing loudly. Comparing the header row up front turns
      * that into one clear, actionable error instead of a DB-level crash.
+     *
+     * Compared case- and spacing-insensitively. Three of these headers are now
+     * whatever the organizer renamed them to (RegistrationTemplateColumns reads
+     * the event's labels), so the strictness that used to be free now costs: a
+     * file filled in before a rename, or one Excel helpfully re-cased, would be
+     * refused for a difference that cannot change what column N means. What the
+     * check is actually for — a file whose COLUMN COUNT or ORDER no longer
+     * matches — survives untouched.
      */
     private function headerMatches(?SupportCollection $headerRow): bool
     {
-        $expected = RegistrationTemplateColumns::headings($this->category);
-        $actual = array_map(
-            fn ($v) => trim((string) $v),
-            $headerRow?->all() ?? [],
-        );
+        $normalize = fn ($v) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $v)) ?? '');
+
+        $expected = array_map($normalize, RegistrationTemplateColumns::headings($this->category));
+        $actual = array_map($normalize, $headerRow?->all() ?? []);
 
         return array_slice($actual, 0, count($expected)) === $expected;
     }

@@ -18,10 +18,19 @@ class RegistrationsExport extends EventExport
 {
     public function __construct(private Event $event) {}
 
+    /** The event's form, resolved once — both the extra columns and the three
+     *  renameable core headers come off it. */
+    private function form(): RegistrationForm
+    {
+        return $this->form ??= RegistrationForm::forEvent($this->event);
+    }
+
+    private ?RegistrationForm $form = null;
+
     /** @return list<array<string, mixed>> */
     private function fields(): array
     {
-        return RegistrationForm::forEvent($this->event)->teamFields;
+        return $this->form()->teamFields;
     }
 
     public function title(): string
@@ -37,8 +46,19 @@ class RegistrationsExport extends EventExport
     /** @return list<string> */
     public function headings(): array
     {
+        $form = $this->form();
+
         return [
-            'Kategori', 'Nama', 'Status', 'Kontak', 'Telepon', 'Pemain', 'Ofisial', 'Pembayaran', 'Biaya', 'Terdaftar',
+            // Three of these follow what the organizer renamed them to. The
+            // column ORDER does not move — this sheet is diffed between
+            // exports, and a header that changed is a header that changed,
+            // not a column that moved.
+            'Kategori',
+            $form->label('team_name'),
+            'Status',
+            $form->label('contact_name'),
+            $form->label('contact_phone'),
+            'Pemain', 'Ofisial', 'Pembayaran', 'Biaya', 'Terdaftar',
             // Appended, never interleaved: an organizer who has been diffing
             // this sheet between exports should not find the columns moved
             // because they added a field.

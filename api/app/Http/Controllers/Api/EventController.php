@@ -701,7 +701,10 @@ class EventController extends Controller
             throw ValidationException::withMessages($errors);
         }
 
-        $model->update(['registration_form' => $form->toArray()]);
+        // toStorage(), not toArray(): the stored blob keeps only the label
+        // overrides the organizer actually typed, while the response carries
+        // every label resolved. See RegistrationForm::toStorage().
+        $model->update(['registration_form' => $form->toStorage()]);
 
         return ApiResponse::success($form->toArray(), 'Formulir pendaftaran diperbarui');
     }

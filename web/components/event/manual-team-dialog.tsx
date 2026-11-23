@@ -18,6 +18,7 @@ import { OfficialEditor, type OfficialRow } from "@/components/team/official-edi
 import { CustomFieldEditor } from "@/components/team/custom-field-editor";
 import { DocumentUploadFields } from "@/components/team/document-upload-field";
 import {
+  coreLabel,
   EMPTY_SCHEMA,
   hasIncompleteOfficial,
   hasIncompletePlayer,
@@ -209,7 +210,7 @@ export function ManualTeamDialog({
             {!isFixed && (
             <ImageUploadField
               className="sm:col-span-2"
-              label="Logo tim"
+              label={coreLabel(schema, "team_logo")}
               value={logoUrl}
               onChange={setLogoUrl}
               onBusyChange={setLogoUploading}
@@ -223,7 +224,7 @@ export function ManualTeamDialog({
             {!isFixed && (
               <Field
                 id="manual-name"
-                label="Nama tim"
+                label={coreLabel(schema, "team_name")}
                 required
                 sanitize={nameInput}
                 value={info.name}
@@ -233,7 +234,7 @@ export function ManualTeamDialog({
             )}
             <Field
               id="manual-contact"
-              label="Nama kontak"
+              label={coreLabel(schema, "contact_name")}
               hint="opsional"
               value={info.contact_name}
               error={fieldErrors?.contact_name}
@@ -241,7 +242,7 @@ export function ManualTeamDialog({
             />
             <Field
               id="manual-phone"
-              label="No. HP kontak"
+              label={coreLabel(schema, "contact_phone")}
               hint="opsional"
               inputMode="tel"
               sanitize={phoneInput}

@@ -34,14 +34,25 @@ final class RegistrationTemplateColumns
         $rosterSize = $category->rosterSize();
         $isFixed = $rosterSize !== null;
 
+        // The three core headers follow whatever the organizer renamed them to
+        // on the registration form. The KEYS below do not — the import reads
+        // this list by index and zips the keys onto the row, so a key that
+        // moved with a label would rename a `teams` column by accident.
+        //
+        // The header row is matched case-insensitively on import
+        // (TeamRosterImport::headerMatches), which is what keeps a template
+        // downloaded before a rename from being silently zipped against the
+        // wrong columns while still telling the organizer plainly to re-download.
+        $form = RegistrationForm::forEvent($category->event);
+
         $columns = [];
 
         if (! $isFixed) {
-            $columns[] = ['key' => 'team_name', 'label' => 'Nama Tim'];
+            $columns[] = ['key' => 'team_name', 'label' => $form->label('team_name')];
         }
 
-        $columns[] = ['key' => 'contact_name', 'label' => 'Nama Kontak'];
-        $columns[] = ['key' => 'contact_phone', 'label' => 'No. HP Kontak'];
+        $columns[] = ['key' => 'contact_name', 'label' => $form->label('contact_name')];
+        $columns[] = ['key' => 'contact_phone', 'label' => $form->label('contact_phone')];
 
         $playerCount = $isFixed ? $rosterSize : self::MAX_PLAYERS;
 

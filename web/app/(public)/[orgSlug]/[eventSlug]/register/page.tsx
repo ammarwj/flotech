@@ -28,6 +28,7 @@ import {
   hasIncompleteOfficial,
   hasIncompletePlayer,
   missingFor,
+  coreLabel,
   schemaOf,
   type CustomFieldAnswers,
   type DocumentRow,
@@ -438,7 +439,7 @@ function RegisterTeamPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoShown}
-                  alt="Logo tim"
+                  alt={coreLabel(schema, "team_logo")}
                   className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
                 />
               ) : (
@@ -448,7 +449,8 @@ function RegisterTeamPage() {
               )}
               <div className="grid gap-1.5">
                 <span className="text-sm font-semibold">
-                  Logo tim <span className="font-normal text-muted-foreground">(opsional)</span>
+                  {coreLabel(schema, "team_logo")}{" "}
+                  <span className="font-normal text-muted-foreground">(opsional)</span>
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
@@ -505,10 +507,10 @@ function RegisterTeamPage() {
               </div>
             )}
             {!isFixed && (
-              <Field label="Nama tim" required sanitize={nameInput} value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
+              <Field label={coreLabel(schema, "team_name")} required sanitize={nameInput} value={team.name} onChange={(v) => setTeam({ ...team, name: v })} />
             )}
-            <Field label="Nama kontak" required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
-            <Field label="No. HP kontak" required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
+            <Field label={coreLabel(schema, "contact_name")} required value={team.contact_name} onChange={(v) => setTeam({ ...team, contact_name: v })} />
+            <Field label={coreLabel(schema, "contact_phone")} required inputMode="tel" sanitize={phoneInput} value={team.contact_phone} onChange={(v) => setTeam({ ...team, contact_phone: v })} />
             <CustomFieldEditor
               fields={schema.team_fields}
               value={teamFields}

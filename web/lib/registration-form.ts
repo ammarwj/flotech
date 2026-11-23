@@ -101,7 +101,52 @@ export interface DocumentSlot {
   accept: DocumentAccept[];
 }
 
+/**
+ * What the four fields the PLATFORM always asks for are called on this event —
+ * the client's mirror of App\Support\CoreFieldLabels.
+ *
+ * The columns behind them (`teams.logo_url`, `name`, `contact_name`,
+ * `contact_phone`) never move; only the question above the input does, so a
+ * club list can say "Nama klub" and a school tournament "Nama sekolah".
+ *
+ * **Always fully resolved on the wire.** The API stores only the overrides but
+ * sends every key with its effective value, so a component renders
+ * `labels.team_name` and never merges a default of its own — two readers of one
+ * rule is the effective_payment_method bug again. CORE_LABEL_DEFAULTS below
+ * exists for the builder's placeholders and for a schema saved before this
+ * feature, not as a second merge layer.
+ */
+export type CoreLabelKey =
+  | "team_logo"
+  | "team_name"
+  | "contact_name"
+  | "contact_phone";
+
+export type CoreLabels = Record<CoreLabelKey, string>;
+
+/** Mirrors CoreFieldLabels::DEFAULTS. */
+export const CORE_LABEL_DEFAULTS: CoreLabels = {
+  team_logo: "Logo tim",
+  team_name: "Nama tim",
+  contact_name: "Nama kontak",
+  contact_phone: "No. HP kontak",
+};
+
+/** The four keys in the order the builder lists them. */
+export const CORE_LABEL_KEYS: CoreLabelKey[] = [
+  "team_logo",
+  "team_name",
+  "contact_name",
+  "contact_phone",
+];
+
 export interface RegistrationFormSchema {
+  /**
+   * Resolved labels for the four platform fields. Optional on the wire so a
+   * schema fetched from an older API still parses — schemaOf() fills the gap
+   * with the defaults, which is the ONE place that merge happens.
+   */
+  labels?: Partial<CoreLabels>;
   team_fields: CustomField[];
   player_fields: CustomField[];
   team_official_fields: CustomField[];
@@ -111,6 +156,7 @@ export interface RegistrationFormSchema {
 }
 
 export const EMPTY_SCHEMA: RegistrationFormSchema = {
+  labels: { ...CORE_LABEL_DEFAULTS },
   team_fields: [],
   player_fields: [],
   team_official_fields: [],
@@ -208,6 +254,7 @@ export function schemaOf(
   if (!raw) return EMPTY_SCHEMA;
 
   return {
+    labels: { ...CORE_LABEL_DEFAULTS, ...(raw.labels ?? {}) },
     team_fields: raw.team_fields ?? [],
     player_fields: raw.player_fields ?? [],
     team_official_fields: raw.team_official_fields ?? [],
@@ -215,6 +262,23 @@ export function schemaOf(
     player_documents: raw.player_documents ?? [],
     team_official_documents: raw.team_official_documents ?? [],
   };
+}
+
+/**
+ * What one platform field is called here.
+ *
+ * The only reader of the fallback, for the reason displayValue() is shared on
+ * the server: a component spelling `labels?.team_name ?? "Nama tim"` is a
+ * second copy of the default that drifts the day the wording improves. Takes a
+ * schema rather than an event so the three registration forms — which already
+ * hold the schema — don't have to thread the event through as well.
+ */
+export function coreLabel(
+  schema: RegistrationFormSchema,
+  key: CoreLabelKey
+): string {
+  const value = schema.labels?.[key];
+  return value && value.trim() !== "" ? value.trim() : CORE_LABEL_DEFAULTS[key];
 }
 
 /**

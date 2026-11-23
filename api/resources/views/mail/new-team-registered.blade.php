@@ -6,9 +6,9 @@
 @component('mail::table')
 | | |
 |:--- |:--- |
-| **Tim** | {{ $team->name }} |
+| **{{ $form->label('team_name') }}** | {{ $team->name }} |
 | **Kota** | {{ $team->city ?: '—' }} |
-| **Kontak** | {{ $team->contact_name }} · {{ $team->contact_phone }} |
+| **{{ $form->label('contact_name') }}** | {{ $team->contact_name }} · {{ $team->contact_phone }} |
 | **Pemain** | {{ $team->players()->count() }} orang |
 | **Event** | {{ $event->name }} |
 @endcomponent

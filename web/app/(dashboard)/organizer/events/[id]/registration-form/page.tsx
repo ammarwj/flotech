@@ -9,6 +9,7 @@ import {
   HelpCircle,
   ListChecks,
   Plus,
+  Tag,
   Trash2,
   Users,
 } from "lucide-react";
@@ -24,6 +25,10 @@ import { useActiveOrg } from "@/lib/hooks/use-active-org";
 import { isRaceEvent } from "@/lib/race";
 import {
   ACCEPTS,
+  CORE_LABEL_DEFAULTS,
+  CORE_LABEL_KEYS,
+  type CoreLabelKey,
+  type CoreLabels,
   EMPTY_SCHEMA,
   FIELD_TYPES,
   type CustomField,
@@ -37,6 +42,7 @@ import { ImageUploadField } from "@/components/shared/image-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { FieldError } from "@/components/ui/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -48,6 +54,13 @@ import { SectionHeader } from "@/components/event/section-header";
 
 /** Which of the six lists a row lives in. */
 type FieldSection = "team_fields" | "player_fields" | "team_official_fields";
+/**
+ * The six list keys, as opposed to `keyof RegistrationFormSchema`, which also
+ * covers `labels` — a map, not a list, with nothing to add or remove. The row
+ * helpers below index and splice, so widening them to the schema's whole key
+ * set would typecheck a call that can only crash.
+ */
+type RowSection = FieldSection | DocSection;
 type DocSection =
   | "team_documents"
   | "player_documents"
@@ -182,7 +195,7 @@ export default function RegistrationFormPage() {
       ),
     }));
 
-  const addRow = (section: keyof RegistrationFormSchema) =>
+  const addRow = (section: RowSection) =>
     setSchema((s) => ({
       ...s,
       [section]:
@@ -193,7 +206,7 @@ export default function RegistrationFormPage() {
           : [...s[section], { ...EMPTY_DOC, accept: [...ACCEPTS] }],
     }));
 
-  const removeRow = (section: keyof RegistrationFormSchema, i: number) =>
+  const removeRow = (section: RowSection, i: number) =>
     setSchema((s) => ({
       ...s,
       [section]: s[section].filter((_, idx) => idx !== i),
@@ -243,6 +256,32 @@ export default function RegistrationFormPage() {
       />
 
       <div className="grid gap-6">
+        {/* The four fields the platform always asks for. Not a section of rows
+            like the six below — there is nothing to add or remove, only the
+            question above an input the column underneath never renames. A race
+            has no team row at all, so it has nothing to rename here. */}
+        {!isRace && (
+          <Card>
+            <SectionHeader
+              icon={Tag}
+              title="Label Field Bawaan"
+              description="Ganti nama field bawaan. Kosongkan untuk pakai label default."
+            />
+            <CardContent>
+              <CoreLabelRows
+                labels={schema.labels}
+                onChange={(key, value) =>
+                  setSchema((s) => ({
+                    ...s,
+                    labels: { ...s.labels, [key]: value },
+                  }))
+                }
+                errors={fieldErrors}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <SectionHeader
             icon={ListChecks}
@@ -416,6 +455,61 @@ export default function RegistrationFormPage() {
   );
 }
 
+/**
+ * The four platform fields' labels.
+ *
+ * Deliberately not built on FieldRows: there is no key to derive, no type to
+ * pick, nothing to add or delete — the row set is fixed by the catalogue, and
+ * the only thing an organizer can do is rename one. Reusing the row editor
+ * would mean hiding four of its five controls and leaving the fifth attached
+ * to machinery that assumes it can remove the row.
+ *
+ * Empty is the stored state for "use the default", which is why the input is
+ * left blank rather than seeded with the default text: a prefilled box reads as
+ * a value this event owns, and clearing it would then look like deleting the
+ * question. The placeholder says what blank means.
+ */
+function CoreLabelRows({
+  labels,
+  onChange,
+  errors,
+}: {
+  labels: Partial<CoreLabels> | undefined;
+  onChange: (key: CoreLabelKey, value: string) => void;
+  errors: Record<string, string>;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {CORE_LABEL_KEYS.map((key) => {
+        const fallback = CORE_LABEL_DEFAULTS[key];
+        const value = labels?.[key] ?? "";
+
+        return (
+          <div key={key} className="grid gap-2">
+            <Label htmlFor={`core-label-${key}`} className="font-semibold">
+              {fallback}
+            </Label>
+            <Input
+              id={`core-label-${key}`}
+              value={value === fallback ? "" : value}
+              maxLength={60}
+              placeholder={`Bawaan: ${fallback}`}
+              aria-invalid={!!errors[`labels.${key}`]}
+              onChange={(e) => onChange(key, e.target.value)}
+            />
+            <FieldError message={errors[`labels.${key}`]} />
+          </div>
+        );
+      })}
+      <p className="text-xs text-muted-foreground sm:col-span-2">
+        Label ini dipakai di form pendaftaran, template impor, sheet ekspor
+        peserta, album pemain, dan email pemberitahuan. Data yang sudah masuk
+        tidak terpengaruh.
+      </p>
+    </div>
+  );
+}
+
 function FieldRows({
   section,
   rows,
@@ -435,8 +529,8 @@ function FieldRows({
     i: number,
     patch: Partial<CustomField>,
   ) => void;
-  onRemove: (section: keyof RegistrationFormSchema, i: number) => void;
-  onAdd: (section: keyof RegistrationFormSchema) => void;
+  onRemove: (section: RowSection, i: number) => void;
+  onAdd: (section: RowSection) => void;
   errors: Record<string, string>;
   addLabel: string;
   labelPlaceholder: string;
@@ -869,8 +963,8 @@ function DocRows({
     i: number,
     patch: Partial<DocumentSlot>,
   ) => void;
-  onRemove: (section: keyof RegistrationFormSchema, i: number) => void;
-  onAdd: (section: keyof RegistrationFormSchema) => void;
+  onRemove: (section: RowSection, i: number) => void;
+  onAdd: (section: RowSection) => void;
   errors: Record<string, string>;
   addLabel: string;
   labelPlaceholder: string;

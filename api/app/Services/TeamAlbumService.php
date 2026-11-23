@@ -57,6 +57,18 @@ class TeamAlbumService
 
         return view('pdf.team-album', [
             'event' => $event,
+            // The two ruled-row captions, read from the OVERRIDES rather than
+            // from label(): this sheet has print defaults of its own ("NAMA
+            // KLUB", "KONTAK") that are not the form's wording, and resolving
+            // through label() would retitle every existing album to "Nama tim"
+            // for events that never asked for anything. Same call albumDate()
+            // makes about month names — a print concern, decided on the print
+            // path. An organizer who DID rename the field gets their word here
+            // too, which is the whole request.
+            'labels' => [
+                'name' => $form->labels['team_name'] ?? 'Nama klub',
+                'contact' => $form->labels['contact_name'] ?? 'Kontak',
+            ],
             'teams' => $teams->map(fn (Team $team) => $this->teamPayload($event, $team, $form, $shared)),
         ])->render();
     }

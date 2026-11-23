@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Team;
 use App\Support\MailLinks;
+use App\Support\RegistrationForm;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -36,6 +37,11 @@ class NewTeamRegistered extends Notification implements ShouldQueue
             ->markdown('mail.new-team-registered', [
                 'team' => $this->team,
                 'event' => $event,
+                // Resolved here rather than in the view for the same reason
+                // the logo is read inside header.blade.php and not passed from
+                // a request: this is rendered by a queue worker, and what the
+                // row is called is a property of the event, not of the mail.
+                'form' => RegistrationForm::forEvent($event),
                 'url' => MailLinks::registrations($event->id),
             ]);
     }
