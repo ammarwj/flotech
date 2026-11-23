@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { firstRoundSlots, unplacedTeams } from "@/lib/bracket";
+import { firstRoundSlots, seedingComplete } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
@@ -76,9 +76,13 @@ export function ScheduleSettingsDialog({
   if (!open) return null;
 
   const invalidWindow = dailyEnd <= dailyStart;
-  // The backend refuses a manual seeding that drops a team out of the bracket;
-  // say so before they fill the rest of the form, not after.
-  const unplaced = seedTeams && seeding === "manual" ? unplacedTeams(seedTeams, pairs) : [];
+  // The backend refuses a manual seeding short of real ties — not one that
+  // leaves a team unpaired, since most of the pool is meant to walk in as a
+  // bye whenever the field isn't a power of two. See seedingComplete().
+  const incomplete =
+    seedTeams && seeding === "manual"
+      ? !seedingComplete(seedTeams.length, firstRoundSlots(seedTeams.length), pairs)
+      : false;
 
   const submit = () => {
     onSubmit({
@@ -245,7 +249,7 @@ export function ScheduleSettingsDialog({
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Batal
           </Button>
-          <Button onClick={submit} disabled={pending || invalidWindow || unplaced.length > 0}>
+          <Button onClick={submit} disabled={pending || invalidWindow || incomplete}>
             <Sparkles className="h-4 w-4" />
             {pending ? "Membuat…" : "Generate Jadwal"}
           </Button>

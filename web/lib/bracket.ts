@@ -56,6 +56,38 @@ export function unplacedTeams<T extends { id: string }>(pool: T[], pairs: SeedPa
 }
 
 /**
+ * Pairings in which two entrants actually meet. Mirrors
+ * BracketSeeding::realTies() — a lone entrant in a slot is a bye, not a tie.
+ */
+export function realTieCount(pairs: SeedPair[]): number {
+  return pairs.filter((p) => p.home_team_id != null && p.away_team_id != null).length;
+}
+
+/**
+ * Whether a real draw (not a qualifier-slot plan) is complete enough to
+ * submit. Mirrors the two checks MatchController::seedingError() makes once
+ * `pairs` is non-empty:
+ *
+ *  - no more pairings than the bracket has slots for (the form itself caps
+ *    this at `slots` rows, so it can't happen here, but the shape matches);
+ *  - at least `pool - slots` real ties, since fill() can only seat a bye in a
+ *    slot nobody already occupies — any fewer and someone is left with
+ *    nowhere to stand.
+ *
+ * Deliberately *not* `unplacedTeams(pool, pairs).length === 0`: for a field
+ * that isn't a power of two, most of the pool is never meant to appear in a
+ * pairing at all — it walks into round two as a bye, which `fill()` seats
+ * automatically. Requiring every team placed would permanently disable the
+ * button for exactly the fields this form exists to save organizers from
+ * typing out by hand (see BracketSeedEditor's `realTies`).
+ */
+export function seedingComplete(poolSize: number, slots: number, pairs: SeedPair[]): boolean {
+  if (pairs.length === 0) return false;
+  const needed = Math.max(0, poolSize - slots);
+  return realTieCount(pairs) >= needed;
+}
+
+/**
  * How many later fixtures would lose their teams (and results) if this
  * first-round slot changed hands. Mirrors ScheduleService::clearDownstream():
  * walk the same (round + 1, order / 2) edges and stop at the first slot nobody
