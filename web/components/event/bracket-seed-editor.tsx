@@ -37,6 +37,7 @@ export function BracketSeedEditor({
   autoHint,
   entityLabel = "Tim",
   emptyLabel = "Bye",
+  manualDisabledReason,
 }: {
   /**
    * Opening ties to draw, one row each.
@@ -68,6 +69,19 @@ export function BracketSeedEditor({
   entityLabel?: string;
   /** What an empty second side means; "Bye" for a real draw. */
   emptyLabel?: string;
+  /**
+   * Grays out the "Manual" option when set, and explains why underneath it.
+   *
+   * Set by the schedule dialog when the field isn't an exact power of two: a
+   * bye then walks wherever BracketSeeding::fill() puts it in pool order, not
+   * wherever the organizer wants it to meet, so manual seeding can offer every
+   * tie that's actually played and still not answer "who does this bye face
+   * in round two" — that question only has an answer once the bracket exists,
+   * via the per-slot pencil editor. Omitted by the hybrid plan dialog, whose
+   * pool is qualifier slots rather than teams and has no such gap: every slot
+   * there is always filled, one way or another.
+   */
+  manualDisabledReason?: string;
 }) {
   const slots = Math.max(1, slotCount);
 
@@ -121,11 +135,16 @@ export function BracketSeedEditor({
         <Label className="font-semibold">Seeding babak pertama</Label>
         <Select value={mode} onChange={(e) => onModeChange(e.target.value as SeedingMode)}>
           <option value="auto">Otomatis</option>
-          <option value="manual">Manual</option>
+          <option value="manual" disabled={!!manualDisabledReason}>
+            Manual
+          </option>
         </Select>
         <p className="text-xs text-muted-foreground">
           {mode === "auto" ? autoHint : "Tentukan sendiri siapa melawan siapa di babak pertama."}
         </p>
+        {manualDisabledReason && (
+          <p className="text-xs text-muted-foreground">{manualDisabledReason}</p>
+        )}
       </div>
 
       {mode === "manual" && (

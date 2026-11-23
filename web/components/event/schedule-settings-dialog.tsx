@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { firstRoundSlots, seedingComplete } from "@/lib/bracket";
+import { firstRoundSlots, isExactBracket, seedingComplete } from "@/lib/bracket";
 import { tzLabel } from "@/lib/match-dates";
 import { BracketSeedEditor, type SeedingMode, type SeedTeam } from "./bracket-seed-editor";
 
@@ -72,6 +72,19 @@ export function ScheduleSettingsDialog({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // A field short of an exact bracket (e.g. 48 teams in a 64-slot draw) always
+  // leaves some teams seated as byes, and this form has no way to say which
+  // round-two tie a given bye should land next to — BracketSeeding::fill()
+  // seats them in pool order instead. That question only has an answer once
+  // the bracket exists, via the per-slot editor on the bracket itself (the
+  // pencil icon, which can trade a bye into whichever slot the organizer
+  // wants). So manual mode is withdrawn here rather than offered and then
+  // not delivering what it looks like it promises.
+  const exactField = !seedTeams || isExactBracket(seedTeams.length);
+  useEffect(() => {
+    if (!exactField && seeding === "manual") setSeeding("auto");
+  }, [exactField, seeding]);
 
   if (!open) return null;
 
@@ -234,6 +247,11 @@ export function ScheduleSettingsDialog({
                 onModeChange={setSeeding}
                 onChange={setPairs}
                 autoHint="Tim diurutkan berdasarkan nama, dan unggulan teratas mendapat bye."
+                manualDisabledReason={
+                  exactField
+                    ? undefined
+                    : "Jumlah tim tidak pas 8/16/32/64, dst — sebagian akan jadi bye. Atur lawan tim bye setelah jadwal dibuat, lewat ikon pensil di bracket."
+                }
               />
             </div>
           )}

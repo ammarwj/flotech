@@ -31,6 +31,23 @@ export function bracketSizeFor(teams: number): number {
 }
 
 /**
+ * Whether a field of `teams` fills a bracket exactly — no byes, every slot a
+ * real tie.
+ *
+ * Manual seeding only lets the organizer type the ties that are actually
+ * played; a bye walks wherever `BracketSeeding::fill()` puts it in pool order,
+ * not wherever the organizer wants it to meet. For a field like 36 that means
+ * "who does this bye face in round two" simply isn't a question manual mode
+ * can answer — the slot it would need to aim at belongs to a tie the
+ * organizer never typed. Once the bracket exists the per-slot editor (the
+ * pencil icon) can seat it exactly, by trading it into the slot whose match
+ * they want it to meet — that is the one place the question has an answer.
+ */
+export function isExactBracket(teams: number): boolean {
+  return teams >= 2 && bracketSizeFor(teams) === teams;
+}
+
+/**
  * How many ties the opening round holds. Mirrors
  * BracketSeeding::firstRoundSlotCount(), and has to: the seed editor draws one
  * row per slot and the API validates `pairs.*.order` against the same number,
