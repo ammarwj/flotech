@@ -715,7 +715,7 @@ function ScheduleView() {
                 disabled={addManual.isPending || !orgId}
               >
                 <Plus className="h-4 w-4" />
-                Tambah Manual
+                Tambah Laga
               </Button>
               <Button
                 onClick={() => setScheduleDialog(true)}
@@ -814,7 +814,7 @@ function ScheduleView() {
                   disabled={addManual.isPending}
                 >
                   <Plus className="h-4 w-4" />
-                  Tambah Manual
+                  Tambah Laga
                 </Button>
               </div>
             }

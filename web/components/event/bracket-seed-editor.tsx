@@ -70,7 +70,10 @@ export function BracketSeedEditor({
   /** What an empty second side means; "Bye" for a real draw. */
   emptyLabel?: string;
   /**
-   * Grays out the "Manual" option when set, and explains why underneath it.
+   * Withdraws the mode picker entirely when set (always "Otomatis"), with
+   * this text explaining why underneath. Not a grayed-out "Manual" option: an
+   * option that's visible but never clickable reads as broken, where its
+   * plain absence plus the note reads as a field with no manual mode to offer.
    *
    * Set by the schedule dialog when the field isn't an exact power of two: a
    * bye then walks wherever BracketSeeding::fill() puts it in pool order, not
@@ -133,18 +136,28 @@ export function BracketSeedEditor({
     <div className="grid gap-4">
       <div className="grid gap-1.5">
         <Label className="font-semibold">Seeding babak pertama</Label>
-        <Select value={mode} onChange={(e) => onModeChange(e.target.value as SeedingMode)}>
-          <option value="auto">Otomatis</option>
-          <option value="manual" disabled={!!manualDisabledReason}>
-            Manual
-          </option>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          {mode === "auto" ? autoHint : "Tentukan sendiri siapa melawan siapa di babak pertama."}
-        </p>
-        {manualDisabledReason && (
-          <p className="text-xs text-muted-foreground">{manualDisabledReason}</p>
+        {/* The dropdown itself is withdrawn rather than shown with "Manual"
+            grayed out: a visible-but-unreachable option reads as a bug
+            (an organizer who taps it finds nothing happens), where its
+            absence plus the note below reads as a field that simply has no
+            manual mode to offer. */}
+        {manualDisabledReason ? (
+          <p className="rounded-md border border-input bg-background px-3 py-2 text-sm">
+            Otomatis
+          </p>
+        ) : (
+          <Select value={mode} onChange={(e) => onModeChange(e.target.value as SeedingMode)}>
+            <option value="auto">Otomatis</option>
+            <option value="manual">Manual</option>
+          </Select>
         )}
+        <p className="text-xs text-muted-foreground">
+          {manualDisabledReason
+            ? manualDisabledReason
+            : mode === "auto"
+              ? autoHint
+              : "Tentukan sendiri siapa melawan siapa di babak pertama."}
+        </p>
       </div>
 
       {mode === "manual" && (
