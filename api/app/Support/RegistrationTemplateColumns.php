@@ -79,11 +79,18 @@ final class RegistrationTemplateColumns
         for ($i = 1; $i <= $playerCount; $i++) {
             $columns[] = ['key' => "player_{$i}_name", 'label' => "Pemain {$i} - Nama"];
 
+            // Jersey number and position are both squad-only — a fixed-roster
+            // category (single/double) IS its participant_type, so "posisi"
+            // is the kategori itself ("Tunggal"/"Ganda"), not a per-player
+            // choice. The public roster form already hides both for a fixed
+            // roster (RosterEditor: `squadFields` / `!fixed`); this used to
+            // gate only the jersey column, leaving "Posisi" in the template
+            // for sports whose catalog happens to be non-empty (badminton's
+            // is singles/doubles) even though nothing ever reads it there.
             if (! $isFixed) {
                 $columns[] = ['key' => "player_{$i}_jersey", 'label' => "Pemain {$i} - No. Punggung"];
+                $columns[] = ['key' => "player_{$i}_position", 'label' => "Pemain {$i} - Posisi"];
             }
-
-            $columns[] = ['key' => "player_{$i}_position", 'label' => "Pemain {$i} - Posisi"];
 
             foreach ($form->playerFields as $field) {
                 $columns[] = ['key' => "cf_player_{$i}_{$field['key']}", 'label' => "Pemain {$i} - ".self::fieldLabel($field)];

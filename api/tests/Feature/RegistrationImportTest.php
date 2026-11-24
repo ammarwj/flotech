@@ -171,9 +171,11 @@ class RegistrationImportTest extends TestCase
         $event = $this->eventWithCategory($org, 'single', 'badminton');
         $category = $event->categories->first();
 
-        // Columns for a fixed roster: contact_name, contact_phone, player_1_name, player_1_position.
+        // Columns for a fixed roster: contact_name, contact_phone, player_1_name.
+        // No jersey/position columns — a fixed roster IS the category
+        // (single/double), so there's nothing per-player to pick.
         $file = $this->xlsxFor($category, [
-            ['Andi', '0811', 'Rudi Hartono', 'singles'],
+            ['Andi', '0811', 'Rudi Hartono'],
         ]);
 
         $this->actingAs($owner, 'api')
@@ -187,16 +189,18 @@ class RegistrationImportTest extends TestCase
         $this->assertDatabaseHas('teams', ['name' => 'Rudi Hartono']);
     }
 
-    public function test_single_category_import_reports_row_error_without_dropping_other_rows(): void
+    public function test_double_category_import_reports_row_error_without_dropping_other_rows(): void
     {
         $owner = User::factory()->create();
         $org = $this->org($owner);
-        $event = $this->eventWithCategory($org, 'single', 'badminton');
+        $event = $this->eventWithCategory($org, 'double', 'badminton');
         $category = $event->categories->first();
 
+        // Columns for a fixed roster of 2: contact_name, contact_phone,
+        // player_1_name, player_2_name. Row 1 is missing its second player.
         $file = $this->xlsxFor($category, [
-            ['Andi', '0811', 'Rudi Hartono', 'not_a_real_position'],
-            ['Budi', '0822', 'Susi Susanti', 'singles'],
+            ['Andi', '0811', 'Rudi Hartono', ''],
+            ['Budi', '0822', 'Susi Susanti', 'Owi'],
         ]);
 
         $before = \App\Models\Team::count();
@@ -211,7 +215,7 @@ class RegistrationImportTest extends TestCase
 
         $this->assertSame($before + 1, \App\Models\Team::count());
         $this->assertCount(1, $response->json('data.errors'));
-        $this->assertDatabaseHas('teams', ['name' => 'Susi Susanti']);
+        $this->assertDatabaseHas('teams', ['name' => 'Susi Susanti / Owi']);
         $this->assertDatabaseMissing('teams', ['name' => 'Rudi Hartono']);
     }
 

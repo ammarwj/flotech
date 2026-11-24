@@ -201,10 +201,13 @@ class TeamRosterRowImport implements ToCollection
                     ]);
                 }
 
+                // No jersey/position column for a fixed roster — see
+                // RegistrationTemplateColumns, which no longer emits either
+                // for single/double.
                 $players[] = [
                     'full_name' => $name,
                     'jersey_number' => null,
-                    'position' => $this->nullableString($data["player_{$p}_position"] ?? null),
+                    'position' => null,
                     '_slot' => $p,
                 ];
             }
