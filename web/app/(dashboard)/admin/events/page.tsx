@@ -304,7 +304,7 @@ function EventDomainCard({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {event.domain_status === "active" && event.custom_domain && (
             <a
               href={`https://${event.custom_domain}`}
