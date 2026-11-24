@@ -110,11 +110,42 @@ final class RegistrationForm
         public readonly array $playerDocuments,
         public readonly array $officialDocuments,
         public readonly array $labels = [],
+        /**
+         * Whether a squad-type entry (rosterSize() === null) must carry at
+         * least one player row / one official row before the entry is
+         * accepted. Lives in `events.rules_config['registration']`, not in
+         * this column: it is a rule about the entry, not a shape of the form
+         * itself, and rules_config is where every other per-event knob like
+         * it already lives (discipline, squad, clock, deposit). Carried here
+         * anyway because this is the one object both the public register
+         * page and the participant's own edit page already read to render
+         * themselves — a second fetch for two booleans would be the
+         * `effective_payment_method` mistake again.
+         *
+         * Singles/doubles entries are unaffected either way: their roster is
+         * already mandatory and exact-sized via assertRosterSize(), which
+         * does not consult this flag at all.
+         */
+        public readonly bool $requirePlayers = false,
+        public readonly bool $requireOfficials = false,
     ) {}
 
     public static function forEvent(?Event $event): self
     {
-        return self::fromArray($event?->registration_form ?? []);
+        $form = self::fromArray($event?->registration_form ?? []);
+        $reg = $event?->rules_config['registration'] ?? null;
+
+        return new self(
+            teamFields: $form->teamFields,
+            playerFields: $form->playerFields,
+            officialFields: $form->officialFields,
+            teamDocuments: $form->teamDocuments,
+            playerDocuments: $form->playerDocuments,
+            officialDocuments: $form->officialDocuments,
+            labels: $form->labels,
+            requirePlayers: (bool) (is_array($reg) ? ($reg['require_players'] ?? false) : false),
+            requireOfficials: (bool) (is_array($reg) ? ($reg['require_officials'] ?? false) : false),
+        );
     }
 
     /**
@@ -190,23 +221,35 @@ final class RegistrationForm
             // default list of its own. Same split as PlanResource's `features`
             // (raw, for gating) beside `feature_details` (resolved, for the UI).
             'labels' => CoreFieldLabels::all($this->labels),
+            // Not part of this column's own storage — see toStorage(), which
+            // deliberately leaves these two out. They ride along here only
+            // because this is the one object the register page and the
+            // participant's edit page already fetch to draw themselves.
+            'require_players' => $this->requirePlayers,
+            'require_officials' => $this->requireOfficials,
         ];
     }
 
     /**
      * What gets written to `events.registration_form`.
      *
-     * Differs from toArray() in exactly one place and that is the whole point:
-     * `labels` holds only what the organizer actually changed, so an event
-     * that accepted the defaults keeps following them across deploys. Storing
-     * the resolved map would freeze today's wording into every event that ever
-     * opened the page.
+     * Differs from toArray() in two places, both deliberate: `labels` holds
+     * only what the organizer actually changed, so an event that accepted the
+     * defaults keeps following them across deploys — storing the resolved map
+     * would freeze today's wording into every event that ever opened the
+     * page. And `require_players`/`require_officials` are dropped entirely:
+     * they live in `events.rules_config['registration']`, not this column,
+     * and fromArray() never reads them back out of it — writing them here
+     * would be a second, dead copy of a fact this column does not own.
      *
      * @return array<string, mixed>
      */
     public function toStorage(): array
     {
-        return [...$this->toArray(), 'labels' => $this->labels];
+        $data = $this->toArray();
+        unset($data['require_players'], $data['require_officials']);
+
+        return [...$data, 'labels' => $this->labels];
     }
 
     /**

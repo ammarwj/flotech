@@ -30,6 +30,8 @@ class TeamRosterService
         $this->assertPositionsExist($team, $players);
 
         $form = RegistrationForm::forEvent($team->event);
+
+        $this->assertPlayersRequired($team, $players, $form);
         $keepIds = [];
         $errors = [];
 
@@ -147,6 +149,36 @@ class TeamRosterService
     }
 
     /**
+     * The organizer's opt-in: a squad entry may not be left empty at all.
+     *
+     * Only reached for a squad (assertRosterSize() already exits early once
+     * $size !== null, so a singles/doubles entry never gets here regardless
+     * of this flag — its roster is mandatory for a different reason and
+     * exact-sized, which "at least one" would only weaken).
+     *
+     * Checked on every sync, not just the first — the same call
+     * assertRosterSize() makes. An organizer who requires a roster at
+     * registration does not mean "unless the manager empties it out again
+     * from the dashboard next week".
+     *
+     * @param  array<int, array<string, mixed>>  $players
+     *
+     * @throws ValidationException
+     */
+    private function assertPlayersRequired(Team $team, array $players, RegistrationForm $form): void
+    {
+        if ($team->category?->rosterSize() !== null || ! $form->requirePlayers) {
+            return;
+        }
+
+        if ($players === []) {
+            throw ValidationException::withMessages([
+                'players' => 'Minimal 1 pemain wajib didaftarkan.',
+            ]);
+        }
+    }
+
+    /**
      * A singles/doubles entry has no team name — it *is* its players ("Dimas",
      * "Dimas / Ammar"). Deriving it here, on the one write path all three roster
      * flows share, is what lets every reader stay untouched: standings, brackets,
@@ -200,9 +232,11 @@ class TeamRosterService
     }
 
     /**
-     * The bench, same contract as the roster. No size rule: a team may have no
-     * officials at all, and a singles entrant may still bring a coach — the
-     * count is nobody's business but the organizer's.
+     * The bench, same contract as the roster. No size rule by default: a team
+     * may have no officials at all, and a singles entrant may still bring a
+     * coach — the count is nobody's business but the organizer's, unless the
+     * organizer has opted into requiring at least one (see
+     * RegistrationForm::$requireOfficials).
      *
      * Officials live in their own table precisely so this method needs neither
      * assertRosterSize() nor syncDerivedName(); see the migration for why.
@@ -214,6 +248,13 @@ class TeamRosterService
         $this->assertRolesExist($team, $officials);
 
         $form = RegistrationForm::forEvent($team->event);
+
+        if ($form->requireOfficials && $officials === []) {
+            throw ValidationException::withMessages([
+                'officials' => 'Minimal 1 ofisial wajib didaftarkan.',
+            ]);
+        }
+
         $keepIds = [];
         $errors = [];
 

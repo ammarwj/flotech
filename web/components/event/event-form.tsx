@@ -633,6 +633,17 @@ export function EventForm({
     };
   });
 
+  // Flat per event too, no sport layer — applies only to squad-type entries
+  // (singles/doubles already have a mandatory, exact-sized roster regardless
+  // of this toggle).
+  const [registrationReq, setRegistrationReq] = useState(() => {
+    const reg = initial?.rules_config?.registration;
+    return {
+      require_players: reg?.require_players ?? false,
+      require_officials: reg?.require_officials ?? false,
+    };
+  });
+
   // Each event runs one-or-more categories; a new event starts with one blank.
   const [categories, setCategories] = useState<CategoryDraft[]>(() =>
     initial?.categories?.length
@@ -909,6 +920,11 @@ export function EventForm({
         // rulebooks do and what the per-namespace merge in
         // EventController::update() is there for.
         ...(isRace ? {} : { deposit }),
+        // Applies to every team sport the same way, race included at the
+        // type level — but a race has no squad teams to gate either, so this
+        // just never fires there in practice. No gate needed, unlike the
+        // three above.
+        registration: registrationReq,
       },
     });
   };
@@ -1746,6 +1762,66 @@ export function EventForm({
                 dipantau di halaman Jaminan dan tidak pernah diketik manual — selalu dihitung
                 ulang dari kartu kuning/merah yang tercatat di pertandingan resmi.
               </FieldHint>
+            </CardContent>
+          </Card>
+          )}
+
+          {/* Squad-type entries only — singles/doubles already have a
+          mandatory, exact-sized roster via EventCategory::rosterSize(),
+          which this toggle doesn't touch. Gated on `isRace` for the same
+          reason the Jaminan card above is: a race has no squad teams to
+          require a roster from either. */}
+          {!isRace && (
+          <Card>
+            <SectionHeader
+              icon={Users}
+              title="Kelengkapan Pendaftaran"
+              description="Wajibkan tim mengisi roster/ofisial sejak awal daftar, bukan menyusul lewat dashboard."
+            />
+            <CardContent className="grid gap-4">
+              <label className="flex items-start gap-3">
+                <Switch
+                  checked={registrationReq.require_players}
+                  onCheckedChange={(checked) =>
+                    setRegistrationReq((r) => ({
+                      ...r,
+                      require_players: checked,
+                    }))
+                  }
+                />
+                <span className="grid gap-1">
+                  <span className="text-sm font-semibold">
+                    Wajib isi minimal 1 pemain saat daftar
+                  </span>
+                  <FieldHint>
+                    Berlaku untuk kategori beregu yang ukurannya bebas (bukan tunggal/ganda,
+                    yang rosternya memang sudah wajib). Tim tidak bisa dikirim dengan daftar
+                    pemain kosong, baik saat daftar pertama maupun saat mengedit lagi lewat
+                    dashboard Pendaftaran Saya.
+                  </FieldHint>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3">
+                <Switch
+                  checked={registrationReq.require_officials}
+                  onCheckedChange={(checked) =>
+                    setRegistrationReq((r) => ({
+                      ...r,
+                      require_officials: checked,
+                    }))
+                  }
+                />
+                <span className="grid gap-1">
+                  <span className="text-sm font-semibold">
+                    Wajib isi minimal 1 pelatih/ofisial saat daftar
+                  </span>
+                  <FieldHint>
+                    Sama seperti di atas, untuk bench pelatih &amp; ofisial — berlaku juga untuk
+                    kategori tunggal/ganda kalau dinyalakan.
+                  </FieldHint>
+                </span>
+              </label>
             </CardContent>
           </Card>
           )}

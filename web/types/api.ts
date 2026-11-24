@@ -1406,6 +1406,7 @@ export interface EventRulesConfig {
   clock?: PeriodConfigValues;
   squad?: SquadConfigValues;
   deposit?: DepositConfig;
+  registration?: RegistrationRequirementConfig;
 }
 
 /** Flat per-event jaminan settings. Absent/0 amount = feature off. */
@@ -1413,6 +1414,16 @@ export interface DepositConfig {
   amount?: number;
   yellow_deduction?: number;
   red_deduction?: number;
+}
+
+/**
+ * Whether a squad-type entry must carry at least one player / one official
+ * before it is accepted. Flat per event, no sport layer to fall back to —
+ * same shape as DepositConfig. Singles/doubles entries are unaffected.
+ */
+export interface RegistrationRequirementConfig {
+  require_players?: boolean;
+  require_officials?: boolean;
 }
 
 /** One team's deposit balance, derived server-side on every read. */

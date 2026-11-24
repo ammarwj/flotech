@@ -68,6 +68,14 @@ class UpdateEventRequest extends FormRequest
             'rules_config.deposit.amount' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'rules_config.deposit.yellow_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'rules_config.deposit.red_deduction' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            // Whether a squad-type entry must carry at least one player row /
+            // one official row before it is accepted. Flat per event, no
+            // sport layer to fall back to — same shape as `deposit` above.
+            // Singles/doubles are unaffected: their roster is already
+            // mandatory via EventCategory::rosterSize(), which this ignores.
+            'rules_config.registration' => ['sometimes', 'nullable', 'array'],
+            'rules_config.registration.require_players' => ['sometimes', 'nullable', 'boolean'],
+            'rules_config.registration.require_officials' => ['sometimes', 'nullable', 'boolean'],
             // Categories are only touched when the client sends them; the
             // controller full-replaces the list when present.
             ...EventCategoryRules::make('sometimes'),

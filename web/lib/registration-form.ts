@@ -164,6 +164,17 @@ export interface RegistrationFormSchema {
   team_documents: DocumentSlot[];
   player_documents: DocumentSlot[];
   team_official_documents: DocumentSlot[];
+  /**
+   * Whether a squad-type entry must carry at least one player row / one
+   * official row before it's accepted. Lives in `events.rules_config`, not
+   * `registration_form` — carried here anyway because this is the one object
+   * the register page already fetches to draw itself. Optional on the wire
+   * for the same reason `labels` is: an older API response has neither key.
+   * Singles/doubles entries are unaffected — their roster is already
+   * mandatory and exact-sized regardless of this flag.
+   */
+  require_players?: boolean;
+  require_officials?: boolean;
 }
 
 export const EMPTY_SCHEMA: RegistrationFormSchema = {
@@ -174,6 +185,8 @@ export const EMPTY_SCHEMA: RegistrationFormSchema = {
   team_documents: [],
   player_documents: [],
   team_official_documents: [],
+  require_players: false,
+  require_officials: false,
 };
 
 export const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -272,6 +285,8 @@ export function schemaOf(
     team_documents: raw.team_documents ?? [],
     player_documents: raw.player_documents ?? [],
     team_official_documents: raw.team_official_documents ?? [],
+    require_players: raw.require_players ?? false,
+    require_officials: raw.require_officials ?? false,
   };
 }
 

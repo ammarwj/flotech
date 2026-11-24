@@ -525,6 +525,8 @@ function RegisterTeamPage() {
             <CardTitle>
               {isFixed ? (
                 rosterSize === 1 ? "Data Peserta" : "Data Pasangan"
+              ) : schema.require_players ? (
+                "Daftar Pemain"
               ) : (
                 <>
                   Daftar Pemain{" "}
@@ -535,10 +537,13 @@ function RegisterTeamPage() {
             <CardDescription>
               {isFixed
                 ? "Nama pendaftaran diambil dari sini — mis. “Dimas / Ammar”."
-                : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya."}
-              {/* "Optional" stays true — an empty roster is still accepted. What
-                  changes is that a name once typed brings obligations with it,
-                  and that is worth saying before someone types one. */}
+                : schema.require_players
+                  ? "Wajib diisi minimal 1 pemain sebelum pendaftaran bisa dikirim."
+                  : "Boleh dilewati dulu — roster bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya."}
+              {/* "Optional" stays true when require_players is off — an empty
+                  roster is still accepted. What changes is that a name once
+                  typed brings obligations with it, and that is worth saying
+                  before someone types one. */}
               {(schema.player_fields.length > 0 || schema.player_documents.length > 0) &&
                 " Setiap pemain yang dimasukkan wajib dilengkapi data dan berkasnya."}
             </CardDescription>
@@ -558,11 +563,19 @@ function RegisterTeamPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Pelatih &amp; Ofisial{" "}
-              <span className="font-normal text-muted-foreground">(opsional)</span>
+              {schema.require_officials ? (
+                "Pelatih & Ofisial"
+              ) : (
+                <>
+                  Pelatih &amp; Ofisial{" "}
+                  <span className="font-normal text-muted-foreground">(opsional)</span>
+                </>
+              )}
             </CardTitle>
             <CardDescription>
-              Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya.
+              {schema.require_officials
+                ? "Wajib diisi minimal 1 pelatih/ofisial sebelum pendaftaran bisa dikirim."
+                : "Pelatih, manajer, dan ofisial tim. Bisa dilengkapi kapan saja lewat dashboard Pendaftaran Saya."}
               {(schema.team_official_fields.length > 0 || schema.team_official_documents.length > 0) &&
                 " Setiap ofisial yang dimasukkan wajib dilengkapi data dan berkasnya."}
             </CardDescription>
@@ -634,7 +647,14 @@ function RegisterTeamPage() {
               // the API, so stop it here rather than lose the form to a 422.
               hasIncompletePlayer(schema, players) ||
               hasIncompleteOfficial(schema, officials) ||
-              (isFixed && !fixedRoster(players, rosterSize).every((p) => p.full_name.trim()))
+              (isFixed && !fixedRoster(players, rosterSize).every((p) => p.full_name.trim())) ||
+              // A blank row the user never filled in doesn't count as "has a
+              // player" — same reading hasIncompletePlayer() already uses.
+              (!isFixed &&
+                !!schema.require_players &&
+                !players.some((p) => p.full_name.trim() !== "")) ||
+              (!!schema.require_officials &&
+                !officials.some((o) => o.full_name.trim() !== ""))
             }
           >
             {mutation.isPending ? "Mengirim…" : "Kirim Pendaftaran"}
