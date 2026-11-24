@@ -164,8 +164,9 @@ export function ImportTeamsDialog({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Field custom dan dokumen tidak bisa lewat import — lengkapi manual lewat
-            tombol &quot;Ubah&quot; setelah tim masuk.
+            Field custom formulir pendaftaran (kalau ada) ikut masuk ke template. Dokumen
+            (KTP, scan, dll.) tetap tidak bisa lewat import — lengkapi manual lewat tombol
+            &quot;Ubah&quot; setelah tim masuk.
           </p>
 
           {result && result.errors.length > 0 && (

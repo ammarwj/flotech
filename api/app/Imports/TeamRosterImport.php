@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\EventCategory;
 use App\Services\PlanGate;
 use App\Services\TeamRosterService;
+use App\Support\RegistrationForm;
 use App\Support\RegistrationTemplateColumns;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection as SupportCollection;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use Throwable;
 
 /**
@@ -69,6 +71,8 @@ class TeamRosterRowImport implements ToCollection
 
     private int $teamCount;
 
+    private RegistrationForm $form;
+
     public function __construct(
         protected Event $event,
         protected EventCategory $category,
@@ -76,6 +80,7 @@ class TeamRosterRowImport implements ToCollection
         protected PlanGate $gate,
     ) {
         $this->teamCount = $category->teams()->whereNotIn('status', ['rejected', 'withdrawn'])->count();
+        $this->form = RegistrationForm::forEvent($event);
     }
 
     public function collection(SupportCollection $rows): void
@@ -200,6 +205,7 @@ class TeamRosterRowImport implements ToCollection
                     'full_name' => $name,
                     'jersey_number' => null,
                     'position' => $this->nullableString($data["player_{$p}_position"] ?? null),
+                    '_slot' => $p,
                 ];
             }
         } else {
@@ -214,6 +220,7 @@ class TeamRosterRowImport implements ToCollection
                     'full_name' => $name,
                     'jersey_number' => $this->nullableString($data["player_{$p}_jersey"] ?? null),
                     'position' => $this->nullableString($data["player_{$p}_position"] ?? null),
+                    '_slot' => $p,
                 ];
             }
         }
@@ -231,9 +238,26 @@ class TeamRosterRowImport implements ToCollection
                 $officials[] = [
                     'full_name' => $name,
                     'role' => $this->nullableString($data["official_{$o}_role"] ?? null),
+                    '_slot' => $o,
                 ];
             }
         }
+
+        // custom_fields rides along with the row it belongs to — a player's
+        // answers go in $players[$p]['custom_fields'], not a separate pass,
+        // because TeamRosterService::syncPlayers() only writes/validates
+        // answers for a row that carries the key at all (array_key_exists).
+        foreach ($players as $p => &$player) {
+            $player['custom_fields'] = $this->customFieldAnswers($this->form->playerFields, $data, "cf_player_{$player['_slot']}_");
+            unset($player['_slot']);
+        }
+        unset($player);
+
+        foreach ($officials as $o => &$official) {
+            $official['custom_fields'] = $this->customFieldAnswers($this->form->officialFields, $data, "cf_official_{$official['_slot']}_");
+            unset($official['_slot']);
+        }
+        unset($official);
 
         $teamName = $isFixed
             ? implode(' / ', array_map(fn ($p) => $p['full_name'], $players))
@@ -259,8 +283,133 @@ class TeamRosterRowImport implements ToCollection
             'platform_fee' => 0,
         ]);
 
+        // Same TeamRosterService::answerErrors()/cleanAnswers() pipeline a
+        // manual entry goes through — required/select validation and
+        // visible_if handling happen there, not here, so there is exactly one
+        // place that can drift from RegistrationForm's rules.
+        $this->roster->applyCustomFields($team, $this->customFieldAnswers($this->form->teamFields, $data, 'cf_team_'));
         $this->roster->syncPlayers($team, $players);
         $this->roster->syncOfficials($team, $officials);
+    }
+
+    /**
+     * Pull one entity's custom-field cells out of a row, keyed by field key —
+     * the shape TeamRosterService::cleanAnswers()/answerErrors() expect, the
+     * same `{key: value}` map RegisterTeamRequest carries in from the public
+     * form. `select` and `date` get normalized here because the raw cell
+     * value an organizer can type or Excel can produce ("Ya"/"TRUE" for a
+     * tickbox, an Excel date serial, an option typed in different case) is
+     * not yet the string RegistrationForm::normalizeAnswer() expects, and
+     * normalizeAnswer() itself must stay strict — it also runs on answers
+     * coming from a browser input that already sends the right shape.
+     *
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function customFieldAnswers(array $fields, array $data, string $prefix): array
+    {
+        $answers = [];
+
+        foreach ($fields as $field) {
+            $raw = $data["{$prefix}{$field['key']}"] ?? null;
+
+            $answers[$field['key']] = match ($field['type']) {
+                'select' => $this->matchOption($raw, $field['options']),
+                'date' => $this->excelDate($raw),
+                'consent' => $this->consentValue($raw),
+                default => $raw,
+            };
+        }
+
+        return $answers;
+    }
+
+    /**
+     * An organizer typing into a spreadsheet will not reliably match an
+     * option's exact case ("umum" for "Umum"), so this matches loosely and
+     * returns the option's own spelling — the value
+     * TeamRosterService::answerErrors() checks membership against with
+     * `in_array(..., true)`, which is strict on purpose there because a select
+     * coming from the public form is already constrained to the option list
+     * by the UI. A value that matches nothing is passed through unchanged, so
+     * answerErrors() reports it as "Pilihan tidak dikenali" instead of this
+     * method silently discarding a typo into a blank.
+     *
+     * @param  list<string>  $options
+     */
+    private function matchOption(mixed $raw, array $options): mixed
+    {
+        if (! is_scalar($raw) || trim((string) $raw) === '') {
+            return $raw;
+        }
+
+        $needle = mb_strtolower(trim((string) $raw));
+
+        foreach ($options as $option) {
+            if (mb_strtolower($option) === $needle) {
+                return $option;
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * A date cell comes back from maatwebsite/excel as a PHP float (the Excel
+     * serial number) when the cell carries a date number format, or as plain
+     * text otherwise — see Cell::getValue(), which is read here with
+     * formatData left at its default `false`. Both are normalized to
+     * `Y-m-d`, the format DatePicker/RegistrationForm already use everywhere
+     * else, so a date typed in a spreadsheet lands the same way one typed
+     * into the public form does. Text already in that shape, or anything
+     * that is not a recognizable date, passes through untouched — the field
+     * is not required to be a date; it only renders as one.
+     */
+    private function excelDate(mixed $raw): mixed
+    {
+        if ($raw instanceof \DateTimeInterface) {
+            return $raw->format('Y-m-d');
+        }
+
+        // A date-formatted cell comes back as the raw Excel serial number
+        // (days since 1899-12-30) rather than a DateTime — maatwebsite/excel
+        // uses the stock DefaultValueBinder, which does not convert it, and
+        // this read path leaves $formatData at its default `false` so a date
+        // cell isn't turned into a locale-formatted string either. A plain
+        // 4-digit year typed as text ("2024") is numeric too but far too
+        // small to be a real Excel date serial (day 2024 is in 1905), so the
+        // threshold below keeps it from being misread as one.
+        if (is_numeric($raw) && (float) $raw > 10000) {
+            try {
+                return ExcelDate::excelToDateTimeObject((float) $raw)->format('Y-m-d');
+            } catch (\Throwable) {
+                return $raw;
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * A tickbox typed into a spreadsheet arrives as whatever the organizer
+     * wrote — "Ya", "Yes", "TRUE", "1" — not the `CONSENT_ON` sentinel the
+     * public form's checkbox sends. Normalized here to that same sentinel so
+     * RegistrationForm::normalizeAnswer() — which only recognizes falsy
+     * strings as "not ticked" and reads everything else as ticked — sees the
+     * same shape regardless of source. Blank/"tidak"/"no"/"0" read as not
+     * ticked; anything else (including a typo) reads as ticked, the same
+     * "anything truthy is a tick" rule normalizeAnswer() itself applies.
+     */
+    private function consentValue(mixed $raw): mixed
+    {
+        if (! is_scalar($raw)) {
+            return $raw;
+        }
+
+        $value = mb_strtolower(trim((string) $raw));
+
+        return in_array($value, ['', '0', 'tidak', 'no', 'false'], true) ? '' : '1';
     }
 
     private function isBlankRow(array $values): bool

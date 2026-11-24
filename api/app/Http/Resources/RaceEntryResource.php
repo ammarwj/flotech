@@ -37,8 +37,9 @@ class RaceEntryResource extends JsonResource
             // reading back their own submission cannot use — and a client that
             // joined the schema itself would be the second reader of a rule the
             // server already owns. `ownAnswers()` and not `publicAnswers()`:
-            // `is_public` decides what strangers see, and filtering on it here
-            // would hide a runner's own emergency contact from them.
+            // show_on_card/show_in_detail decide what strangers see, and
+            // filtering on them here would hide a runner's own emergency
+            // contact from them.
             //
             // `whenLoaded` because it needs the event's schema: the organizer's
             // list renders this resource per row and has no use for it, so the

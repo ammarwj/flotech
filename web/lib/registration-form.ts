@@ -43,25 +43,36 @@ export interface CustomField {
   type: CustomFieldType;
   required: boolean;
   /**
-   * Whether the answers show on the public event page — the squad list and the
-   * roster dialog. Optional on the wire so a schema saved before this existed
-   * still parses, and absent reads as private: publishing is opted into, never
-   * defaulted (the backend normalizes the same way).
+   * Whether the answer shows on the compact public squad-LIST card — one line
+   * of secondary text under the team name. Separate from `show_in_detail`
+   * because a card has room for a short answer only, not a label: an
+   * organizer may want a one-word nickname on the card without also wanting a
+   * long address there. Optional on the wire so a schema saved before this
+   * existed still parses, and absent reads as private: publishing is opted
+   * into, never defaulted (the backend normalizes the same way).
    */
-  is_public?: boolean;
+  show_on_card?: boolean;
+  /**
+   * Whether the answer shows in the full roster DIALOG a card opens into —
+   * labelled, one row per field, room for a long answer. Independent of
+   * `show_on_card`: an organizer may publish an address only here, or a
+   * nickname only on the card, or both, or neither.
+   */
+  show_in_detail?: boolean;
   /**
    * Whether the field gets its own row on the printed player album. Separate
-   * from `is_public` on purpose: a sheet handed out at the venue and a page
-   * anyone can index are two different decisions. Optional and absent-is-false
-   * for the same reason — the backend normalizes identically.
+   * from the two flags above on purpose: a sheet handed out at the venue and a
+   * page anyone can index are two different decisions. Optional and
+   * absent-is-false for the same reason — the backend normalizes identically.
    */
   in_album?: boolean;
   /**
    * Whether the answer prints under the entrant's name on a fixture card —
-   * schedule and match detail, organizer's and public alike. A third flag
-   * rather than a reading of `is_public`: a card has one line of room under a
-   * name, so a club name belongs there and a date of birth an organizer is
-   * happy to publish does not. Absent-is-false like the other two.
+   * schedule and match detail, organizer's and public alike. A separate flag
+   * rather than a reading of show_on_card/show_in_detail: a fixture card has
+   * one line of room under a name, so a club name belongs there and a date of
+   * birth an organizer is happy to publish does not. Absent-is-false like the
+   * others.
    */
   in_schedule?: boolean;
   /** Only meaningful for `select`; [] everywhere else. */

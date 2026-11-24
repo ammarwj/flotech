@@ -124,11 +124,15 @@ class PublicEventResource extends JsonResource
                     'participant_type' => $t->category->participant_type,
                 ] : null,
                 'group_name' => $t->group_name,
-                // Answers to the custom fields this event's organizer marked
-                // public, already paired with their labels — see
-                // RegistrationForm::publicAnswers(). Everything else they were
-                // asked stays organizer-side.
-                'custom_fields' => $form->publicAnswers('team', $t->custom_fields),
+                // Two scopes of the same answers, paired with their labels —
+                // see RegistrationForm::publicAnswers() and the class docblock
+                // for why `show_on_card` and `show_in_detail` are independent
+                // flags. `card_fields` is what the dense squad-list card has
+                // room for; `custom_fields` (unchanged key, for the roster
+                // dialog a card opens into) is the fuller set. Everything else
+                // the organizer asked stays organizer-side.
+                'card_fields' => $form->publicAnswers('team', $t->custom_fields, 'card'),
+                'custom_fields' => $form->publicAnswers('team', $t->custom_fields, 'detail'),
                 // Roster is public, but only the on-pitch fields — no birth dates
                 // or contact details.
                 'players' => $t->relationLoaded('players') ? $t->players->map(fn ($p) => [
@@ -137,7 +141,7 @@ class PublicEventResource extends JsonResource
                     'jersey_number' => $p->jersey_number,
                     'position' => $p->position,
                     'photo_url' => $p->photo_url,
-                    'custom_fields' => $form->publicAnswers('player', $p->custom_fields),
+                    'custom_fields' => $form->publicAnswers('player', $p->custom_fields, 'detail'),
                 ])->values() : null,
                 // The bench is public for the same reason the roster is, and
                 // holds nothing private either — name, role, photo.
@@ -146,7 +150,7 @@ class PublicEventResource extends JsonResource
                     'full_name' => $o->full_name,
                     'role' => $o->role,
                     'photo_url' => $o->photo_url,
-                    'custom_fields' => $form->publicAnswers('official', $o->custom_fields),
+                    'custom_fields' => $form->publicAnswers('official', $o->custom_fields, 'detail'),
                 ])->values() : null,
             ])),
         ];

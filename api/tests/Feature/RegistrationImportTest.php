@@ -215,6 +215,96 @@ class RegistrationImportTest extends TestCase
         $this->assertDatabaseMissing('teams', ['name' => 'Rudi Hartono']);
     }
 
+    public function test_import_writes_custom_field_answers_through_the_same_validation_as_manual_entry(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+        $event = $this->eventWithCategory($org, 'team');
+        $category = $event->categories->first();
+
+        $event->update(['registration_form' => [
+            'team_fields' => [
+                ['key' => 'klub', 'label' => 'Nama Klub', 'type' => 'short_text', 'required' => true],
+            ],
+            'player_fields' => [
+                ['key' => 'lahir', 'label' => 'Tanggal Lahir', 'type' => 'date', 'required' => false],
+                ['key' => 'ukuran', 'label' => 'Ukuran Jersey', 'type' => 'select', 'required' => true, 'options' => ['S', 'M', 'L']],
+            ],
+            'team_official_fields' => [],
+            'team_documents' => [],
+            'player_documents' => [],
+            'team_official_documents' => [],
+        ]]);
+
+        $headings = \App\Support\RegistrationTemplateColumns::headings($category);
+        $this->assertContains('Nama Klub*', $headings);
+
+        // Columns: team_name, contact_name, contact_phone, cf_team_klub,
+        // player_1_name, player_1_jersey, player_1_position, cf_player_1_lahir, cf_player_1_ukuran, ...
+        $excelEpoch = \PhpOffice\PhpSpreadsheet\Shared\Date::dateTimeToExcel(new \DateTime('2003-09-26'));
+
+        $file = $this->xlsxFor($category, [
+            ['Tim A', 'Andi', '0811', 'PB Jaya', 'Budi', '10', 'midfielder', $excelEpoch, 'm'],
+        ]);
+
+        $this->actingAs($owner, 'api')
+            ->post($this->importUrl($org, $event), [
+                'category_id' => $category->id,
+                'file' => $file,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.errors', []);
+
+        $this->assertDatabaseHas('teams', ['name' => 'Tim A', 'custom_fields' => json_encode(['klub' => 'PB Jaya'])]);
+
+        $player = \App\Models\Player::first();
+        $this->assertSame('2003-09-26', $player->custom_fields['lahir']);
+        // Loosely-cased input ("m") is matched back to the option's own
+        // spelling ("M") — see TeamRosterImport::matchOption().
+        $this->assertSame('M', $player->custom_fields['ukuran']);
+    }
+
+    public function test_import_reports_required_custom_field_errors_without_dropping_other_rows(): void
+    {
+        $owner = User::factory()->create();
+        $org = $this->org($owner);
+        $event = $this->eventWithCategory($org, 'team');
+        $category = $event->categories->first();
+
+        $event->update(['registration_form' => [
+            'team_fields' => [],
+            'player_fields' => [
+                ['key' => 'ukuran', 'label' => 'Ukuran Jersey', 'type' => 'select', 'required' => true, 'options' => ['S', 'M', 'L']],
+            ],
+            'team_official_fields' => [],
+            'team_documents' => [],
+            'player_documents' => [],
+            'team_official_documents' => [],
+        ]]);
+
+        // Row 1: unanswered required select. Row 2: unrecognized option.
+        // Row 3: valid.
+        $file = $this->xlsxFor($category, [
+            ['Tim A', 'Andi', '0811', 'Budi', '10', '', ''],
+            ['Tim B', 'Cici', '0822', 'Dedi', '7', '', 'XL'],
+            ['Tim C', 'Eko', '0833', 'Fina', '1', '', 'L'],
+        ]);
+
+        $response = $this->actingAs($owner, 'api')
+            ->post($this->importUrl($org, $event), [
+                'category_id' => $category->id,
+                'file' => $file,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.created', 1);
+
+        $this->assertCount(2, $response->json('data.errors'));
+        $this->assertDatabaseHas('teams', ['name' => 'Tim C']);
+        $this->assertDatabaseMissing('teams', ['name' => 'Tim A']);
+        $this->assertDatabaseMissing('teams', ['name' => 'Tim B']);
+    }
+
     public function test_template_column_count_differs_between_team_and_single_category(): void
     {
         $owner = User::factory()->create();

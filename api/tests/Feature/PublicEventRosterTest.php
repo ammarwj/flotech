@@ -248,9 +248,10 @@ class PublicEventRosterTest extends TestCase
         $this->assertStringNotContainsString('Jl. Lama 9', $response->getContent());
 
         // The organizer's own copy of the schema still round-trips the row —
-        // the flag defaults, it does not drop the field.
+        // the flags default, they do not drop the field.
         $this->assertSame('alamat', $response->json('data.registration_form.team_fields.0.key'));
-        $this->assertFalse($response->json('data.registration_form.team_fields.0.is_public'));
+        $this->assertFalse($response->json('data.registration_form.team_fields.0.show_on_card'));
+        $this->assertFalse($response->json('data.registration_form.team_fields.0.show_in_detail'));
     }
 
     public function test_a_public_field_left_unanswered_is_not_listed(): void

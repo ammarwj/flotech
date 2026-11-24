@@ -2357,7 +2357,14 @@ export interface PublicTeam {
   } | null;
   /** Which group they were drawn into. Null outside a hybrid category. */
   group_name?: string | null;
-  /** Published answers to this event's team_fields. [] when none are public. */
+  /**
+   * Published team_fields answers meant for the compact squad-list card —
+   * `show_on_card` fields only. Separate from `custom_fields` below because a
+   * card has one line of room and the roster dialog has a whole panel; see
+   * App\Support\RegistrationForm's class docblock.
+   */
+  card_fields?: PublicAnswer[];
+  /** Published team_fields answers for the roster dialog — `show_in_detail` fields. */
   custom_fields?: PublicAnswer[];
   players?: PublicPlayer[] | null;
   officials?: PublicTeamOfficial[] | null;

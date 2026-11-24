@@ -73,7 +73,8 @@ const EMPTY_FIELD: CustomField = {
   required: false,
   // New fields start private. An organizer adding "No. KTP" should have to say
   // they want it on the public page, not remember to say they don't.
-  is_public: false,
+  show_on_card: false,
+  show_in_detail: false,
   in_album: false,
   in_schedule: false,
   options: [],
@@ -638,17 +639,39 @@ function FieldRows({
                 Wajib diisi
               </label>
 
+              {/* Card-only for team_fields: the squad-LIST card shows the
+                  team's own answers (one line under its name), never a
+                  player's or official's — those only ever appear in the
+                  roster dialog, which the next checkbox governs. Offering
+                  this box on Data Pemain/Ofisial would promise a line the
+                  card never prints. */}
+              {section === "team_fields" && (
+                <label className="flex w-fit items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    checked={row.show_on_card ?? false}
+                    onChange={(e) =>
+                      onChange(section, i, { show_on_card: e.target.checked })
+                    }
+                  />
+                  <span className="inline-flex items-center gap-1.5">
+                    Tampilkan di card
+                  </span>
+                </label>
+              )}
+
               <label className="flex w-fit items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-input"
-                  checked={row.is_public ?? false}
+                  checked={row.show_in_detail ?? false}
                   onChange={(e) =>
-                    onChange(section, i, { is_public: e.target.checked })
+                    onChange(section, i, { show_in_detail: e.target.checked })
                   }
                 />
                 <span className="inline-flex items-center gap-1.5">
-                  Tampilkan di halaman publik
+                  Tampilkan di detail
                 </span>
               </label>
 

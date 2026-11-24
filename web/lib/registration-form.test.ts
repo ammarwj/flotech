@@ -32,7 +32,8 @@ test("dua label sama dapat key berbeda, melewati yang sudah terpakai", () => {
 const field = (over: Partial<CustomField> & Pick<CustomField, "key" | "label">): CustomField => ({
   type: "short_text",
   required: true,
-  is_public: false,
+  show_on_card: false,
+  show_in_detail: false,
   in_album: false,
   options: [],
   ...over,

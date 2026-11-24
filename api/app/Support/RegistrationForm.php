@@ -22,14 +22,26 @@ use Illuminate\Support\Carbon;
  * go through is what stops them drifting. Everything here is read-only; the
  * writing side is EventController::syncRegistrationForm().
  *
- * A field also carries three independent visibility flags: `is_public`, which
- * decides whether the answers appear on the public event page, `in_album`,
- * which decides whether the field gets a row on the printed player album, and
- * `in_schedule`, which decides whether the answer is printed beside the entrant's
- * name on a fixture card. They are deliberately not one flag — the album is a
+ * A field also carries four independent visibility flags: `show_on_card` and
+ * `show_in_detail`, which together decide whether (and where) the answer
+ * appears on the public event page, `in_album`, which decides whether the
+ * field gets a row on the printed player album, and `in_schedule`, which
+ * decides whether the answer is printed beside the entrant's name on a
+ * fixture card. They are deliberately not one flag each — the album is a
  * sheet panitia hand out at the venue, and a birthplace an organizer is happy to
  * print on it is not the same decision as publishing it on a URL anyone can
  * index; and a fixture card has room for a club name, not for a date of birth.
+ *
+ * `show_on_card` and `show_in_detail` split what used to be a single
+ * `is_public` flag, because the public page has two surfaces with very
+ * different room: the squad LIST (`PublicEventResource::approved_teams`) is a
+ * dense grid of cards, one line of secondary text each, while the roster
+ * DIALOG a card opens into (team-roster-dialog.tsx) is a full-width panel with
+ * room for a labelled list of answers. An organizer may want "Asal Sekolah" on
+ * both, a long address only in the dialog, and a one-word nickname only on the
+ * card — three different answers to what reads as one question
+ * ("tampilkan di publik?"), which is exactly why one flag could not say all
+ * three. `publicAnswers()` takes a `$scope` to say which surface is asking.
  *
  * Documents deliberately have neither flag:
  * they are uploaded files -- an ID card, a birth certificate -- and publishing
@@ -293,7 +305,11 @@ final class RegistrationForm
 
     /**
      * The answers a squad gave, trimmed to the fields the organizer marked
-     * public and paired with their labels, in the order the form asks them.
+     * public FOR THIS SURFACE and paired with their labels, in the order the
+     * form asks them.
+     *
+     * `$scope` is `'card'` (the squad list) or `'detail'` (the roster dialog)
+     * — see the class docblock for why there are two flags instead of one.
      *
      * Resolved here rather than by joining the schema on the client, and
      * returned as a list rather than a map, for the same reason the roster
@@ -307,13 +323,14 @@ final class RegistrationForm
      * @param  array<string, mixed>|null  $answers
      * @return list<array{key: string, label: string, value: string}>
      */
-    public function publicAnswers(string $section, ?array $answers): array
+    public function publicAnswers(string $section, ?array $answers, string $scope = 'detail'): array
     {
         $answers ??= [];
+        $flag = $scope === 'card' ? 'show_on_card' : 'show_in_detail';
         $out = [];
 
         foreach ($this->fieldsFor($section) as $field) {
-            if (! ($field['is_public'] ?? false)) {
+            if (! ($field[$flag] ?? false)) {
                 continue;
             }
 
@@ -605,6 +622,12 @@ final class RegistrationForm
             $rules[$section.'.*.label'] = ['required', 'string', 'max:100'];
             $rules[$section.'.*.type'] = ['required', 'string', 'in:'.implode(',', self::TYPES)];
             $rules[$section.'.*.required'] = ['nullable', 'boolean'];
+            $rules[$section.'.*.show_on_card'] = ['nullable', 'boolean'];
+            $rules[$section.'.*.show_in_detail'] = ['nullable', 'boolean'];
+            // Accepted, not required: a client still sending the old single
+            // flag (or a submitted row from before this split) must not have
+            // it rejected or silently stripped by validated() before
+            // cleanFields() gets a chance to read it as the legacy fallback.
             $rules[$section.'.*.is_public'] = ['nullable', 'boolean'];
             $rules[$section.'.*.in_album'] = ['nullable', 'boolean'];
             $rules[$section.'.*.in_schedule'] = ['nullable', 'boolean'];
@@ -659,18 +682,31 @@ final class RegistrationForm
 
             $type = in_array($row['type'] ?? null, self::TYPES, true) ? $row['type'] : 'short_text';
 
+            // `is_public` is the old, single flag this schema carried before
+            // show_on_card/show_in_detail existed. A row saved under the old
+            // shape has neither new key at all, and reading its absence as
+            // "off" would silently un-publish every field an organizer already
+            // opted into — so a row with no new keys falls back to the old
+            // flag for BOTH surfaces, which is exactly what it already showed
+            // (one flag meant "public", and public used to mean everywhere).
+            // A row saved under the NEW shape (either key present) ignores
+            // `is_public` entirely — it is stale once the organizer has
+            // touched either checkbox.
+            $legacyPublic = (bool) ($row['is_public'] ?? false);
+            $hasNewKeys = array_key_exists('show_on_card', $row) || array_key_exists('show_in_detail', $row);
+
             $clean[] = [
                 'key' => (string) $row['key'],
                 'label' => (string) $row['label'],
                 'type' => $type,
                 'required' => (bool) ($row['required'] ?? false),
-                // Absent reads as private. The whole point of the flag is that
-                // an organizer opts a field *in*, so a schema saved before it
-                // existed -- or one sent by a client that has never heard of
-                // it -- must not start publishing answers people gave to a
-                // form that promised nothing of the sort.
-                'is_public' => (bool) ($row['is_public'] ?? false),
-                // Absent reads as "not printed", same reasoning as is_public:
+                // Whether the answer appears on the compact squad-list card —
+                // see the class docblock for why this and show_in_detail are
+                // two flags rather than the one `is_public` used to be.
+                'show_on_card' => $hasNewKeys ? (bool) ($row['show_on_card'] ?? false) : $legacyPublic,
+                // Whether the answer appears in the full roster dialog.
+                'show_in_detail' => $hasNewKeys ? (bool) ($row['show_in_detail'] ?? false) : $legacyPublic,
+                // Absent reads as "not printed", same reasoning as show_on_card:
                 // a schema saved before this flag existed must not start
                 // growing rows on a sheet the organizer already designed.
                 'in_album' => (bool) ($row['in_album'] ?? false),

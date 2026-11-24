@@ -410,14 +410,14 @@ class RegistrationFormTest extends TestCase
     }
 
     /**
-     * The publish flag survives the schema endpoint, and defaults to private
-     * when a client never sends it.
+     * The two publish flags survive the schema endpoint independently, and
+     * default to private when a client never sends either.
      *
-     * Asserted as a pair in one request: a payload where only one of two fields
-     * carries the flag. Sending a single public field and finding it public
-     * would also pass if the normalizer stamped every row true.
+     * Asserted as a pair in one request: a payload where only one of two
+     * fields carries either flag. Sending a single public field and finding it
+     * public would also pass if the normalizer stamped every row true.
      */
-    public function test_the_public_flag_round_trips_and_defaults_to_private(): void
+    public function test_the_publish_flags_round_trip_independently_and_default_to_private(): void
     {
         $org = $this->openEvent()->organization;
         $event = $org->events()->first();
@@ -425,42 +425,80 @@ class RegistrationFormTest extends TestCase
         $this->actingAs($org->owner, 'api')
             ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", [
                 'team_fields' => [
-                    ['key' => 'asal', 'label' => 'Asal', 'type' => 'short_text', 'required' => false, 'is_public' => true, 'options' => []],
-                    // No is_public key at all — an older client, or the builder
-                    // before someone ticked the box.
+                    ['key' => 'asal', 'label' => 'Asal', 'type' => 'short_text', 'required' => false, 'show_on_card' => true, 'show_in_detail' => false, 'options' => []],
+                    // Neither key sent at all — an older client, or the builder
+                    // before someone ticked either box.
                     ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'short_text', 'required' => false, 'options' => []],
                 ],
                 'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
                 'team_official_fields' => [], 'team_official_documents' => [],
             ])
             ->assertOk()
-            ->assertJsonPath('data.team_fields.0.is_public', true)
-            ->assertJsonPath('data.team_fields.1.is_public', false);
+            ->assertJsonPath('data.team_fields.0.show_on_card', true)
+            ->assertJsonPath('data.team_fields.0.show_in_detail', false)
+            ->assertJsonPath('data.team_fields.1.show_on_card', false)
+            ->assertJsonPath('data.team_fields.1.show_in_detail', false);
 
         $stored = $event->fresh()->registration_form['team_fields'];
 
-        $this->assertTrue($stored[0]['is_public']);
-        $this->assertFalse($stored[1]['is_public']);
+        $this->assertTrue($stored[0]['show_on_card']);
+        $this->assertFalse($stored[0]['show_in_detail']);
+        $this->assertFalse($stored[1]['show_on_card']);
+        $this->assertFalse($stored[1]['show_in_detail']);
     }
 
     /**
-     * The album flag is its own axis, not a second name for is_public.
-     *
-     * One request carrying all four combinations: a field that is public but
-     * not printed, one printed but not public, one both, one neither. Asserting
-     * a single field would stay green if the endpoint copied one flag onto the
-     * other — which is exactly the mistake worth catching, because the two
-     * answer different questions (a URL anyone can index vs a sheet handed out
-     * at the venue).
+     * A schema saved under the OLD single `is_public` flag keeps publishing
+     * exactly where it already did — both surfaces — until the organizer
+     * touches either new checkbox. Compared against a field that already has
+     * the new keys, whose `is_public` must be ignored as stale: asserting the
+     * legacy row alone would also pass if the normalizer read `is_public`
+     * unconditionally and silently overrode an organizer who had already
+     * split the two.
      */
-    public function test_the_album_flag_round_trips_independently_of_the_public_flag(): void
+    public function test_a_legacy_is_public_field_maps_to_both_new_flags_until_touched(): void
     {
         $org = $this->openEvent()->organization;
         $event = $org->events()->first();
 
-        $field = fn (string $key, ?bool $public, ?bool $album) => array_filter([
+        $this->actingAs($org->owner, 'api')
+            ->putJson("/api/v1/organizations/{$org->id}/events/{$event->id}/registration-form", [
+                'team_fields' => [
+                    // Old shape: is_public only.
+                    ['key' => 'asal', 'label' => 'Asal', 'type' => 'short_text', 'required' => false, 'is_public' => true, 'options' => []],
+                    // New shape already touched: is_public is stale and must
+                    // not resurrect show_in_detail.
+                    ['key' => 'alamat', 'label' => 'Alamat', 'type' => 'short_text', 'required' => false, 'is_public' => true, 'show_on_card' => false, 'show_in_detail' => false, 'options' => []],
+                ],
+                'player_fields' => [], 'team_documents' => [], 'player_documents' => [],
+                'team_official_fields' => [], 'team_official_documents' => [],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.team_fields.0.show_on_card', true)
+            ->assertJsonPath('data.team_fields.0.show_in_detail', true)
+            ->assertJsonPath('data.team_fields.1.show_on_card', false)
+            ->assertJsonPath('data.team_fields.1.show_in_detail', false);
+    }
+
+    /**
+     * The album flag is its own axis, not a second name for either publish
+     * flag.
+     *
+     * One request carrying all four combinations: a field shown in detail but
+     * not printed, one printed but not shown anywhere public, one both, one
+     * neither. Asserting a single field would stay green if the endpoint
+     * copied one flag onto the other — which is exactly the mistake worth
+     * catching, because the two answer different questions (a URL anyone can
+     * index vs a sheet handed out at the venue).
+     */
+    public function test_the_album_flag_round_trips_independently_of_the_publish_flags(): void
+    {
+        $org = $this->openEvent()->organization;
+        $event = $org->events()->first();
+
+        $field = fn (string $key, ?bool $detail, ?bool $album) => array_filter([
             'key' => $key, 'label' => ucfirst($key), 'type' => 'short_text',
-            'required' => false, 'is_public' => $public, 'in_album' => $album,
+            'required' => false, 'show_in_detail' => $detail, 'in_album' => $album,
             'options' => [],
         ], fn ($v) => $v !== null);
 
@@ -477,19 +515,19 @@ class RegistrationFormTest extends TestCase
                 'team_official_fields' => [], 'team_official_documents' => [],
             ])
             ->assertOk()
-            ->assertJsonPath('data.player_fields.0.is_public', true)
+            ->assertJsonPath('data.player_fields.0.show_in_detail', true)
             ->assertJsonPath('data.player_fields.0.in_album', false)
-            ->assertJsonPath('data.player_fields.1.is_public', false)
+            ->assertJsonPath('data.player_fields.1.show_in_detail', false)
             ->assertJsonPath('data.player_fields.1.in_album', true)
             ->assertJsonPath('data.player_fields.2.in_album', true)
-            ->assertJsonPath('data.player_fields.3.is_public', false)
+            ->assertJsonPath('data.player_fields.3.show_in_detail', false)
             ->assertJsonPath('data.player_fields.3.in_album', false);
 
         $stored = $event->fresh()->registration_form['player_fields'];
 
         $this->assertSame(
             [[true, false], [false, true], [true, true], [false, false]],
-            array_map(fn ($f) => [$f['is_public'], $f['in_album']], $stored),
+            array_map(fn ($f) => [$f['show_in_detail'], $f['in_album']], $stored),
         );
     }
 

@@ -67,7 +67,8 @@ class RegistrationTemplateGuideSheet implements FromArray, ShouldAutoSize, WithT
             ['1. Isi data mulai baris ke-2 di sheet "Data". Jangan ubah urutan atau nama kolom.'],
             ['2. Satu baris = satu tim' . ($this->category->rosterSize() ? ' (peserta).' : '.')],
             ['3. Kolom Posisi dan Peran memakai kode dari tabel referensi di bawah, bukan bebas ketik.'],
-            ['4. Custom field dan dokumen tidak bisa lewat import — lengkapi manual lewat tombol "Ubah Tim" setelah tim masuk.'],
+            ['4. Kolom field custom (kalau ada) ikut format formulir pendaftaran: pilihan ganda harus sama persis dengan salah satu opsi, tanggal format YYYY-MM-DD, kolom Ya/Tidak diisi "Ya" atau dikosongkan.'],
+            ['5. Dokumen (KTP, scan, dll.) tetap tidak bisa lewat import — unggah manual lewat tombol "Ubah Tim" setelah tim masuk.'],
             [''],
         ];
 

@@ -902,16 +902,19 @@ function PublicEventView() {
                             .join(" · ")}
                         </div>
                       )}
-                      {/* Public team-level answers (e.g. nama komunitas) —
-                          values only, no labels: a compact card has no room
-                          for "Label: value", and the field was chosen by the
-                          organizer precisely because it stands on its own. */}
-                      {(t.custom_fields?.length ?? 0) > 0 && (
+                      {/* Public team-level answers marked for the CARD
+                          specifically (show_on_card) — values only, no
+                          labels: a compact card has no room for "Label:
+                          value", and the field was chosen by the organizer
+                          precisely because it stands on its own. The fuller
+                          show_in_detail set renders in the roster dialog
+                          below instead. */}
+                      {(t.card_fields?.length ?? 0) > 0 && (
                         <div
                           className="mt-0.5 truncate text-xs"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          {t.custom_fields!.map((a) => a.value).join(" · ")}
+                          {t.card_fields!.map((a) => a.value).join(" · ")}
                         </div>
                       )}
                     </div>
