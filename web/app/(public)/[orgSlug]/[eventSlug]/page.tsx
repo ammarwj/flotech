@@ -884,7 +884,7 @@ function PublicEventView() {
                     )}
                     <div className="min-w-0">
                       <div className="match-team" style={{ gap: 0 }}>
-                        <span className="truncate">{t.name}</span>
+                        <span>{t.name}</span>
                       </div>
                       {/* Which competition they entered — the one thing that
                           tells two same-named squads apart in an event that
@@ -900,6 +900,18 @@ function PublicEventView() {
                           ]
                             .filter(Boolean)
                             .join(" · ")}
+                        </div>
+                      )}
+                      {/* Public team-level answers (e.g. nama komunitas) —
+                          values only, no labels: a compact card has no room
+                          for "Label: value", and the field was chosen by the
+                          organizer precisely because it stands on its own. */}
+                      {(t.custom_fields?.length ?? 0) > 0 && (
+                        <div
+                          className="mt-0.5 truncate text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {t.custom_fields!.map((a) => a.value).join(" · ")}
                         </div>
                       )}
                     </div>
