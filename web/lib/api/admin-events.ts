@@ -59,3 +59,21 @@ export async function releaseAdminEventDomain(eventId: string): Promise<AdminEve
   );
   return data.data;
 }
+
+/**
+ * Paksa `status` event melewati `Event::TRANSITIONS` — undo untuk kesalahan
+ * yang state machine-nya sendiri tidak punya jalan baliknya (mis. `ongoing`
+ * tidak bisa kembali ke `open`/`registration_closed` lewat API biasa). Dicatat
+ * di ledger `event_status_overrides`, jadi `reason` wajib diisi.
+ */
+export async function forceAdminEventStatus(
+  eventId: string,
+  status: string,
+  reason: string
+): Promise<AdminEvent> {
+  const { data } = await apiClient.patch<ApiEnvelope<AdminEvent>>(
+    `/admin/events/${eventId}/force-status`,
+    { status, reason }
+  );
+  return data.data;
+}

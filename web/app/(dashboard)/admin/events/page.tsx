@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarDays, Globe, Link2Off, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CalendarDays, Globe, Link2Off, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 
 import { useConfirm } from "@/components/shared/confirm-provider";
+import { ForceEventStatusDialog } from "@/components/shared/force-event-status-dialog";
 import {
   getAdminEvents,
   setAdminEventDomain,
   activateAdminEventDomain,
   releaseAdminEventDomain,
+  forceAdminEventStatus,
 } from "@/lib/api/admin-events";
 import { parseApiError } from "@/lib/api/errors";
 import { EVENT_STATUS_LABELS } from "@/lib/labels";
@@ -110,6 +112,20 @@ export default function AdminEventsPage() {
     onError: (err) => toast.error(parseApiError(err, "Gagal mencabut domain.").message),
   });
 
+  const [forcingEvent, setForcingEvent] = useState<AdminEvent | null>(null);
+  const [forceOpen, setForceOpen] = useState(false);
+
+  const forceStatus = useMutation({
+    mutationFn: ({ id, status, reason }: { id: string; status: string; reason: string }) =>
+      forceAdminEventStatus(id, status, reason),
+    onSuccess: () => {
+      toast.success("Status event dipaksa.");
+      setForceOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(parseApiError(err, "Gagal memaksa status.").message),
+  });
+
   const events = query.data?.items ?? [];
   const meta = query.data?.meta;
   const busy = save.isPending || activate.isPending || release.isPending;
@@ -196,6 +212,10 @@ export default function AdminEventsPage() {
                     icon: Link2Off,
                   }).then((ok) => ok && release.mutate(event.id))
                 }
+                onForceStatus={() => {
+                  setForcingEvent(event);
+                  setForceOpen(true);
+                }}
               />
             ))}
           </div>
@@ -227,6 +247,16 @@ export default function AdminEventsPage() {
           )}
         </>
       )}
+
+      <ForceEventStatusDialog
+        event={forcingEvent}
+        open={forceOpen}
+        onOpenChange={setForceOpen}
+        pending={forceStatus.isPending}
+        onSubmit={({ status, reason }) =>
+          forcingEvent && forceStatus.mutate({ id: forcingEvent.id, status, reason })
+        }
+      />
     </>
   );
 }
@@ -237,12 +267,14 @@ function EventDomainCard({
   onSave,
   onActivate,
   onRelease,
+  onForceStatus,
 }: {
   event: AdminEvent;
   busy: boolean;
   onSave: (value: string | null) => void;
   onActivate: () => void;
   onRelease: () => void;
+  onForceStatus: () => void;
 }) {
   const [value, setValue] = useState(event.custom_domain ?? "");
   const badge = DOMAIN_BADGE[event.domain_status];
@@ -272,17 +304,23 @@ function EventDomainCard({
           </p>
         </div>
 
-        {event.domain_status === "active" && event.custom_domain && (
-          <a
-            href={`https://${event.custom_domain}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--brand-600)] hover:underline"
-          >
-            <Globe className="h-4 w-4" />
-            {event.custom_domain}
-          </a>
-        )}
+        <div className="flex items-center gap-2">
+          {event.domain_status === "active" && event.custom_domain && (
+            <a
+              href={`https://${event.custom_domain}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--brand-600)] hover:underline"
+            >
+              <Globe className="h-4 w-4" />
+              {event.custom_domain}
+            </a>
+          )}
+          <Button size="sm" variant="ghost" onClick={onForceStatus}>
+            <ShieldAlert className="h-4 w-4" />
+            Paksa status
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

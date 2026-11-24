@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ForceEventStatusRequest;
 use App\Http\Requests\Admin\UpdateEventDomainRequest;
 use App\Http\Resources\AdminEventResource;
 use App\Models\Event;
+use App\Models\EventPlanOrder;
+use App\Models\EventStatusOverride;
 use App\Services\DomainService;
+use App\Services\EventPlanOrderService;
 use App\Support\ApiResponse;
 use App\Support\Search;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Super-admin view across every organization's events, and the custom domain
@@ -112,5 +117,89 @@ class EventController extends Controller
         $event->load(['organization:id,name,slug', 'plan']);
 
         return ApiResponse::success(new AdminEventResource($event), 'Domain dicabut dan sertifikatnya dihapus.');
+    }
+
+    /**
+     * Force `events.status` straight past `Event::TRANSITIONS`.
+     *
+     * The escape hatch for the one dead end the state machine has on purpose:
+     * `ongoing` has no entry back to `open`/`registration_closed` in
+     * TRANSITIONS, because walking an event backwards through its own
+     * lifecycle is not a move an organizer should be able to make on a whim.
+     * But a fat-fingered "Berlangsung" on an event that is still mid-registration
+     * has no self-service undo then either — this is that undo, and it is
+     * deliberately not exposed to the organizer themselves: the party who
+     * benefits from bypassing a guard is not the one who should decide whether
+     * bypassing it is warranted. Same reasoning as reassignPlan().
+     *
+     * Every target is allowed, not just "backward" ones — restricting it to a
+     * fixed set of reversals would need a second table of "sanctioned" moves to
+     * keep in step with TRANSITIONS, and the next mistake might not be the one
+     * this one anticipated. What keeps it from becoming a free-for-all is the
+     * ledger: every override requires a typed reason and is written to
+     * `event_status_overrides`, reusing the exact shape `standing_adjustments`
+     * already uses for a human-entered number nobody can audit without it.
+     *
+     * Routes through the same side effects `EventController::transition()`
+     * applies on every ordinary move, so a forced status is indistinguishable
+     * from a normal one afterwards:
+     * - `status_before_cancel` is cleared unless the target IS `cancelled` —
+     *   otherwise a stale snapshot from some earlier cancellation could decide
+     *   where a later `cancelled` → restore lands, same guard transition() has.
+     * - `attachPaidDomain()` runs, so forcing a draft out of `draft` still picks
+     *   up a domain it was already paid for instead of leaving it stuck.
+     */
+    public function forceStatus(ForceEventStatusRequest $request, Event $event): JsonResponse
+    {
+        $data = $request->validated();
+        $from = $event->status;
+
+        DB::transaction(function () use ($event, $data, $from, $request) {
+            $event->update([
+                'status' => $data['status'],
+                'status_before_cancel' => $data['status'] === 'cancelled' ? $from : null,
+            ]);
+
+            EventStatusOverride::create([
+                'event_id' => $event->id,
+                'from_status' => $from,
+                'to_status' => $data['status'],
+                'reason' => $data['reason'],
+                'created_by' => $request->user()?->id,
+            ]);
+        });
+
+        $this->attachPaidDomain($event);
+
+        $event->refresh()->load(['organization:id,name,slug', 'plan']);
+
+        return ApiResponse::success(
+            new AdminEventResource($event),
+            "Status dipaksa dari \"{$from}\" ke \"{$data['status']}\".",
+        );
+    }
+
+    /**
+     * Mirror of EventController::attachPaidDomain() — same idempotent "hand
+     * over a domain already paid for, now that a status change has made the
+     * event eligible" logic, kept here rather than shared because the organizer
+     * controller's copy is `protected` on a different class.
+     */
+    protected function attachPaidDomain(Event $model): void
+    {
+        if ($model->custom_domain !== null || $model->status === 'draft') {
+            return;
+        }
+
+        $order = EventPlanOrder::where('domain_event_id', $model->id)
+            ->where('status', 'paid')
+            ->whereNotNull('domain_fulfilled_at')
+            ->whereNotNull('domain_name')
+            ->latest('paid_at')
+            ->first();
+
+        if ($order) {
+            app(EventPlanOrderService::class)->attachDomain($model, $order);
+        }
     }
 }

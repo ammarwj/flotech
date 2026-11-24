@@ -844,6 +844,12 @@ Route::prefix('v1')->group(function () {
             Route::put('events/{event}/domain', [AdminEventController::class, 'updateDomain']);
             Route::post('events/{event}/domain/activate', [AdminEventController::class, 'activateDomain']);
             Route::delete('events/{event}/domain', [AdminEventController::class, 'destroyDomain']);
+            // The undo for a mistake the state machine has no undo for:
+            // `ongoing` cannot go back to `open`/`registration_closed` through
+            // Event::TRANSITIONS, so an organizer who fat-fingers "Berlangsung"
+            // has nowhere to click. Forces `events.status` past the state
+            // machine and logs why — see EventController::forceStatus().
+            Route::patch('events/{event}/force-status', [AdminEventController::class, 'forceStatus']);
 
             // How much of the platform is in use: tournaments by status.
             Route::get('stats', [AdminStatController::class, 'index']);
