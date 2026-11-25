@@ -2863,6 +2863,24 @@ export interface AdminPaymentStats {
     /** real_mdr_amount − billed_gateway_fee — what the platform absorbs, cross-subsidised by other channels. */
     gap: number;
   }[];
+  /**
+   * What the PLATFORM itself keeps, as opposed to `totals`/`by_*` which
+   * answer "how much money moved" — mostly the organizer's own ticket/
+   * registration/entry price. Three parts: the service-fee margin charged on
+   * top of every rail, the full amount of plan orders (that money IS
+   * platform revenue, not an organizer's), minus the MDR gap absorbed on
+   * GoPay (see `mdr_subsidy`). Does NOT include the buyer-paid gateway fee
+   * (a pass-through to Midtrans) or the flat wallet withdrawal admin fee (a
+   * separate stream charged on a withdrawal, not a payment).
+   */
+  platform_revenue: {
+    service_fee: number;
+    /** 0 when `source` is set to anything other than `event_plan_order`. */
+    plan_amount: number;
+    mdr_gap: number;
+    /** service_fee + plan_amount − mdr_gap. */
+    net: number;
+  };
 }
 
 /** A super-admin editable platform rule (payout policy). */

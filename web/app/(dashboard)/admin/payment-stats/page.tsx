@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Banknote, CreditCard, Receipt, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  Banknote,
+  CreditCard,
+  Landmark,
+  Receipt,
+  Wallet,
+} from "lucide-react";
 
 import { getAdminPaymentStats } from "@/lib/api/admin-wallet";
 import { angka, rupiah } from "@/lib/labels";
@@ -13,7 +20,10 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EventCombobox, type EventOption } from "@/components/admin/event-combobox";
+import {
+  EventCombobox,
+  type EventOption,
+} from "@/components/admin/event-combobox";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -27,10 +37,19 @@ import type { AdminPaymentTotals } from "@/types/api";
  * plans", which is a very different statement from "we have no label for it".
  */
 const SOURCE_LABELS: Record<string, { label: string; hint: string }> = {
-  ticket_order: { label: "Tiket", hint: "Penonton membeli tiket dari organizer" },
-  team: { label: "Pendaftaran tim", hint: "Biaya pendaftaran yang dibayar peserta" },
+  ticket_order: {
+    label: "Tiket",
+    hint: "Penonton membeli tiket dari organizer",
+  },
+  team: {
+    label: "Pendaftaran tim",
+    hint: "Biaya pendaftaran yang dibayar peserta",
+  },
   race_entry: { label: "Entry lomba", hint: "Pelari mendaftar fun run / race" },
-  event_plan_order: { label: "Paket event", hint: "Organizer membeli paket dari flo-event" },
+  event_plan_order: {
+    label: "Paket event",
+    hint: "Organizer membeli paket dari flo-event",
+  },
 };
 
 /**
@@ -125,7 +144,7 @@ function Breakdown({
       fee: sum.fee + row.sums.gateway_fee + row.sums.service_fee,
       gross: sum.gross + row.sums.gross,
     }),
-    { count: 0, amount: 0, fee: 0, gross: 0 }
+    { count: 0, amount: 0, fee: 0, gross: 0 },
   );
 
   return (
@@ -146,7 +165,9 @@ function Breakdown({
             {rows.map((row) => (
               <li key={row.key} className="rounded-xl bg-[var(--bg-alt)] p-3">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 break-words font-medium">{row.name}</span>
+                  <span className="min-w-0 break-words font-medium">
+                    {row.name}
+                  </span>
                   <span className="shrink-0 font-semibold tabular-nums">
                     {rupiah(row.sums.gross)}
                   </span>
@@ -178,7 +199,9 @@ function Breakdown({
             <li className="mt-1 rounded-xl border-2 border-[var(--brand-600)] bg-[var(--tint)] p-3">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-bold">Total</span>
-                <span className="shrink-0 font-bold tabular-nums">{rupiah(footer.gross)}</span>
+                <span className="shrink-0 font-bold tabular-nums">
+                  {rupiah(footer.gross)}
+                </span>
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <div className="flex justify-between gap-2">
@@ -211,12 +234,17 @@ function Breakdown({
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.key} className="border-b border-border last:border-0">
+                  <tr
+                    key={row.key}
+                    className="border-b border-border last:border-0"
+                  >
                     <td className="py-2.5 pr-3 font-medium">{row.name}</td>
                     <td className="py-2.5 text-right tabular-nums text-muted-foreground">
                       {angka(row.sums.count)}
                     </td>
-                    <td className="py-2.5 text-right tabular-nums">{rupiah(row.sums.amount)}</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {rupiah(row.sums.amount)}
+                    </td>
                     <td className="py-2.5 text-right tabular-nums text-muted-foreground">
                       {rupiah(row.sums.gateway_fee + row.sums.service_fee)}
                     </td>
@@ -238,9 +266,15 @@ function Breakdown({
               <tfoot>
                 <tr className="border-t-2 border-[var(--brand-600)] text-sm font-bold">
                   <td className="pt-2.5 pr-3">Total</td>
-                  <td className="pt-2.5 text-right tabular-nums">{angka(footer.count)}</td>
-                  <td className="pt-2.5 text-right tabular-nums">{rupiah(footer.amount)}</td>
-                  <td className="pt-2.5 text-right tabular-nums">{rupiah(footer.fee)}</td>
+                  <td className="pt-2.5 text-right tabular-nums">
+                    {angka(footer.count)}
+                  </td>
+                  <td className="pt-2.5 text-right tabular-nums">
+                    {rupiah(footer.amount)}
+                  </td>
+                  <td className="pt-2.5 text-right tabular-nums">
+                    {rupiah(footer.fee)}
+                  </td>
                   <td className="pt-2.5 text-right tabular-nums text-[var(--brand-600)]">
                     {rupiah(footer.gross)}
                   </td>
@@ -251,7 +285,9 @@ function Breakdown({
           </div>
         </>
       ) : (
-        <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          {empty}
+        </p>
       )}
     </div>
   );
@@ -312,6 +348,7 @@ export default function AdminPaymentStatsPage() {
   const sourceGross = sourceRows.reduce((sum, [, sums]) => sum + sums.gross, 0);
   const subsidy = data?.mdr_subsidy ?? [];
   const subsidyGap = subsidy.reduce((sum, r) => sum + r.gap, 0);
+  const revenue = data?.platform_revenue;
 
   return (
     <div>
@@ -331,7 +368,10 @@ export default function AdminPaymentStatsPage() {
             a search field that needs the full width to be usable at all. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_minmax(0,1.3fr)_minmax(0,1.1fr)] lg:items-end">
           <div className="grid gap-1.5">
-            <Label htmlFor="paid-from" className="text-xs text-muted-foreground">
+            <Label
+              htmlFor="paid-from"
+              className="text-xs text-muted-foreground"
+            >
               Dibayar dari
             </Label>
             <DatePicker
@@ -360,13 +400,19 @@ export default function AdminPaymentStatsPage() {
               sit in half a card next to a date, and a search field that cannot
               show the name it matched is a filter you have to trust blind. */}
           <div className="grid gap-1.5 sm:col-span-2 lg:col-span-1">
-            <Label htmlFor="paid-event" className="text-xs text-muted-foreground">
+            <Label
+              htmlFor="paid-event"
+              className="text-xs text-muted-foreground"
+            >
               Event
             </Label>
             <EventCombobox id="paid-event" value={event} onChange={setEvent} />
           </div>
           <div className="grid gap-1.5 sm:col-span-2 lg:col-span-1">
-            <Label htmlFor="paid-source" className="text-xs text-muted-foreground">
+            <Label
+              htmlFor="paid-source"
+              className="text-xs text-muted-foreground"
+            >
               Jenis pemasukan
             </Label>
             <Select
@@ -391,13 +437,22 @@ export default function AdminPaymentStatsPage() {
             unclaimed plan credits. */}
         <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <p className="min-w-0 text-xs text-muted-foreground">
-            {source && <>Hanya <span className="font-medium">{SOURCE_LABELS[source]?.label}</span>. </>}
+            {source && (
+              <>
+                Hanya{" "}
+                <span className="font-medium">
+                  {SOURCE_LABELS[source]?.label}
+                </span>
+                .{" "}
+              </>
+            )}
             {event ? (
               <>
-                Hanya pembayaran event <span className="font-medium">{event.name}</span>
-                {from || to ? " dalam rentang tanggal di atas" : ""}. Kredit paket yang dibeli
-                tapi belum dipakai tidak ikut terhitung — kreditnya belum menempel ke event
-                mana pun.
+                Hanya pembayaran event{" "}
+                <span className="font-medium">{event.name}</span>
+                {from || to ? " dalam rentang tanggal di atas" : ""}. Kredit
+                paket yang dibeli tapi belum dipakai tidak ikut terhitung —
+                kreditnya belum menempel ke event mana pun.
               </>
             ) : from || to ? (
               "Hanya pembayaran yang lunas dalam rentang tanggal di atas, seluruh event."
@@ -460,7 +515,11 @@ export default function AdminPaymentStatsPage() {
         <EmptyState
           className="mt-6"
           icon={Receipt}
-          title={filtered ? "Tidak ada pembayaran yang cocok" : "Belum ada pembayaran lunas"}
+          title={
+            filtered
+              ? "Tidak ada pembayaran yang cocok"
+              : "Belum ada pembayaran lunas"
+          }
           description={
             event
               ? "Event ini belum punya pembayaran lunas. Coba lepas filter event atau lebarkan rentang tanggalnya."
@@ -471,6 +530,66 @@ export default function AdminPaymentStatsPage() {
         />
       ) : (
         <>
+          <Card className="mt-4 border-[color-mix(in_srgb,var(--accent-green)_35%,transparent)] p-4 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--accent-green)_14%,transparent)] text-[var(--accent-green)]">
+                <Landmark className="h-[18px] w-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h3
+                  className="text-base font-bold"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  Pendapatan platform
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Uang yang benar-benar masuk ke flo-event.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl bg-[var(--bg-alt)] p-3">
+                <p className="text-xs text-muted-foreground">Biaya layanan</p>
+                <p className="mt-0.5 font-semibold tabular-nums">
+                  {rupiah(revenue?.service_fee ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-[var(--bg-alt)] p-3">
+                <p className="text-xs text-muted-foreground">
+                  Nilai paket event
+                </p>
+                <p className="mt-0.5 font-semibold tabular-nums">
+                  {rupiah(revenue?.plan_amount ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-[var(--bg-alt)] p-3">
+                <p className="text-xs text-muted-foreground">
+                  Dikurangi selisih MDR GoPay
+                </p>
+                <p className="mt-0.5 font-semibold tabular-nums text-[var(--warning)]">
+                  −{rupiah(revenue?.mdr_gap ?? 0)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-[var(--tint)] p-3 ring-1 ring-[var(--brand-600)]">
+                <p className="text-xs text-muted-foreground">
+                  Bersih diterima platform
+                </p>
+                <p
+                  className="mt-0.5 text-lg font-extrabold tabular-nums text-[var(--brand-600)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {rupiah(revenue?.net ?? 0)}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              Belum termasuk biaya gateway (lewat ke Midtrans) dan biaya admin penarikan dompet
+              (baru kena saat organizer tarik dana).
+            </p>
+          </Card>
+
           {subsidy.length > 0 && (
             <Card className="mt-4 border-[color-mix(in_srgb,var(--warning)_35%,transparent)] p-4 sm:p-6">
               <div className="flex items-start gap-3">
@@ -485,13 +604,14 @@ export default function AdminPaymentStatsPage() {
                     MDR riil GoPay lebih tinggi dari biaya yang ditagih
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Midtrans memotong GoPay ±2% dari total yang dibayar pembeli, sementara kita
-                    hanya menagih 0,7% + PPN. Selisihnya ditanggung platform —{" "}
+                    Midtrans memotong GoPay ±2% dari total yang dibayar pembeli,
+                    sementara kita hanya menagih 0,7% + PPN. Selisihnya
+                    ditanggung platform —{" "}
                     <span className="font-medium text-foreground">
                       bukan kerugian platform secara keseluruhan
                     </span>
-                    , karena disubsidi silang dari channel lain (VA, QRIS native) yang belum
-                    diketahui punya selisih MDR serupa.
+                    , karena disubsidi silang dari channel lain (VA, QRIS
+                    native) yang belum diketahui punya selisih MDR serupa.
                   </p>
                 </div>
               </div>
@@ -503,23 +623,33 @@ export default function AdminPaymentStatsPage() {
                     className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-[var(--bg-alt)] p-3 sm:grid-cols-5 sm:items-center"
                   >
                     <div className="col-span-2 sm:col-span-1">
-                      <p className="font-medium capitalize">{row.payment_type}</p>
+                      <p className="font-medium capitalize">
+                        {row.payment_type}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {angka(row.count)} transaksi
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Ditagih ke pembeli</p>
-                      <p className="tabular-nums">{rupiah(row.billed_gateway_fee)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Ditagih ke pembeli
+                      </p>
+                      <p className="tabular-nums">
+                        {rupiah(row.billed_gateway_fee)}
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">
                         MDR riil ({row.real_mdr_percent}%)
                       </p>
-                      <p className="tabular-nums">{rupiah(row.real_mdr_amount)}</p>
+                      <p className="tabular-nums">
+                        {rupiah(row.real_mdr_amount)}
+                      </p>
                     </div>
                     <div className="col-span-2 sm:col-span-2 sm:text-right">
-                      <p className="text-xs text-muted-foreground">Ditanggung platform</p>
+                      <p className="text-xs text-muted-foreground">
+                        Ditanggung platform
+                      </p>
                       <p className="font-semibold tabular-nums text-[var(--warning)]">
                         {rupiah(row.gap)}
                       </p>
@@ -530,9 +660,11 @@ export default function AdminPaymentStatsPage() {
 
               <p className="mt-3 text-xs text-muted-foreground">
                 Total ditanggung platform dalam rentang ini:{" "}
-                <span className="font-semibold text-foreground">{rupiah(subsidyGap)}</span>.
-                Angka MDR riil channel lain belum tersedia — baris di atas hanya memuat
-                instrumen yang sudah dikonfirmasi punya selisih.
+                <span className="font-semibold text-foreground">
+                  {rupiah(subsidyGap)}
+                </span>
+                . Angka MDR riil channel lain belum tersedia — baris di atas
+                hanya memuat instrumen yang sudah dikonfirmasi punya selisih.
               </p>
             </Card>
           )}
@@ -548,7 +680,7 @@ export default function AdminPaymentStatsPage() {
                     "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                     tab === t.value
                       ? "bg-[var(--tint)] text-[var(--brand-600)]"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   {t.label}
@@ -582,9 +714,10 @@ export default function AdminPaymentStatsPage() {
               <div>
                 <p className="text-sm text-muted-foreground">
                   Tiket, pendaftaran tim, dan entry lomba dikumpulkan{" "}
-                  <span className="font-medium">untuk</span> organizer dan masuk ke dompetnya;
-                  paket event adalah pendapatan flo-event sendiri. Klik salah satu untuk
-                  menyaring seluruh halaman ke jenis itu saja.
+                  <span className="font-medium">untuk</span> organizer dan masuk
+                  ke dompetnya; paket event adalah pendapatan flo-event sendiri.
+                  Klik salah satu untuk menyaring seluruh halaman ke jenis itu
+                  saja.
                 </p>
 
                 {/* Column count and skeleton count both come off SOURCE_LABELS, so
@@ -610,7 +743,7 @@ export default function AdminPaymentStatsPage() {
                               "rounded-xl p-4 text-left transition-colors",
                               active
                                 ? "bg-[var(--tint)] ring-2 ring-[var(--brand-600)]"
-                                : "bg-[var(--bg-alt)] hover:bg-accent"
+                                : "bg-[var(--bg-alt)] hover:bg-accent",
                             )}
                           >
                             <p className="text-sm font-semibold">

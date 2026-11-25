@@ -116,6 +116,7 @@ class PaymentStatController extends Controller
         unset($bySource['_all']);
 
         $byPaymentType = $this->breakdown('payment_type', $from, $to, $event, source: $source);
+        $mdrSubsidy = $this->mdrSubsidy($byPaymentType);
 
         return ApiResponse::success([
             'by_payment_type' => $byPaymentType,
@@ -130,8 +131,68 @@ class PaymentStatController extends Controller
             // Derived from `by_payment_type`, not a second query — see
             // mdrSubsidy() for why it has to be the same numbers already on
             // screen rather than a figure that can disagree with them.
-            'mdr_subsidy' => $this->mdrSubsidy($byPaymentType),
+            'mdr_subsidy' => $mdrSubsidy,
+            // Derived from `$totals`/`$bySource`/`$mdrSubsidy` above, for the
+            // same reason — see platformRevenue().
+            'platform_revenue' => $this->platformRevenue($totals, $bySource, $mdrSubsidy, $source),
         ]);
+    }
+
+    /**
+     * What the PLATFORM itself keeps — not what it processed. Every figure
+     * above (`totals`, `by_payment_type`, `by_channel`) answers "how much
+     * money moved", which is mostly the organizer's: `amount` is their ticket
+     * / registration / entry price, and the buyer-paid `gateway_fee` is a
+     * pass-through to Midtrans, not ours. This is the one place that
+     * distinguishes "we processed" from "we earned" out loud.
+     *
+     * Three components, each already defined elsewhere on this page rather
+     * than invented here:
+     *
+     * - `service_fee` — the platform's own margin on top of every rail's
+     *   price (`totals.service_fee`, already filtered by `$source`/date/event
+     *   the same way the cards above are — see Breakdown's own description:
+     *   "Margin platform, dibayar pembeli di atas harga jual").
+     * - `plan_amount` — a plan order's `amount` IS platform revenue, not an
+     *   organizer's (the "source" tab's own copy: "paket event adalah
+     *   pendapatan flo-event sendiri"). Included only when the `event_plan_order`
+     *   rail is in scope — `$source` set to any other rail must drop it,
+     *   the same way `by_payment_type`/`by_channel` drop it, or a reader
+     *   filtering to "ticket" would see plan revenue bleed into the number.
+     * - `mdr_gap` — subtracted, not informational: it is real money paid out
+     *   to Midtrans beyond what was billed (see mdrSubsidy()), so leaving it
+     *   out would overstate what the platform actually nets on GoPay volume.
+     *
+     * Deliberately NOT included: `gateway_fee` billed to the buyer (passed
+     * through to Midtrans, roughly break-even by design — the gap is the only
+     * part of it that is not, and that is `mdr_gap` above) and the wallet's
+     * flat withdrawal `admin_fee` (a separate revenue stream charged on a
+     * withdrawal action, not on a payment — this endpoint only ever reads
+     * `paid_at` rows, and a withdrawal is not one).
+     *
+     * @param  array<string, float|int>  $totals
+     * @param  array<string, array<string, float|int>>  $bySource
+     * @param  list<array{gap: float}>  $mdrSubsidy
+     * @return array{service_fee: float, plan_amount: float, mdr_gap: float, net: float}
+     */
+    private function platformRevenue(array $totals, array $bySource, array $mdrSubsidy, ?string $source): array
+    {
+        // Mirrors how `by_payment_type`/`by_channel` treat `$source`: the plan
+        // rail counts only when it is the selected rail or nothing is
+        // selected, never when a different rail is.
+        $planAmount = (! $source || $source === 'event_plan_order')
+            ? (float) ($bySource['event_plan_order']['amount'] ?? 0.0)
+            : 0.0;
+
+        $serviceFee = (float) $totals['service_fee'];
+        $mdrGap = array_sum(array_column($mdrSubsidy, 'gap'));
+
+        return [
+            'service_fee' => $serviceFee,
+            'plan_amount' => $planAmount,
+            'mdr_gap' => $mdrGap,
+            'net' => $serviceFee + $planAmount - $mdrGap,
+        ];
     }
 
     /**
