@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, CreditCard, Receipt, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, CreditCard, Receipt, Wallet } from "lucide-react";
 
 import { getAdminPaymentStats } from "@/lib/api/admin-wallet";
 import { angka, rupiah } from "@/lib/labels";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EventCombobox, type EventOption } from "@/components/admin/event-combobox";
 import { PageHeader } from "@/components/shared/page-header";
@@ -60,6 +62,14 @@ const OWN_TYPE_LABELS: Record<string, string> = {
   legacy_migration: "Migrasi data lama",
 };
 
+/** The three breakdown tabs, in the order a reader actually needs them. */
+const TABS = [
+  { value: "type", label: "Instrumen" },
+  { value: "channel", label: "Channel" },
+  { value: "source", label: "Jenis pemasukan" },
+] as const;
+type Tab = (typeof TABS)[number]["value"];
+
 /** A share bar, so a long tail is readable without reaching for a chart. */
 function Share({ value, total }: { value: number; total: number }) {
   const pct = total > 0 ? (value / total) * 100 : 0;
@@ -80,8 +90,10 @@ function Share({ value, total }: { value: number; total: number }) {
 }
 
 /**
- * One breakdown table. Both cuts of the data have the same columns, so they
- * share one component rather than two copies that drift.
+ * One breakdown table. All three cuts of the data share this component rather
+ * than three copies that drift, and sit behind a tab switch rather than
+ * stacked — three six-column tables one after another is a wall nobody reads
+ * past the first.
  *
  * `total` is the figure every share is computed against, and it is passed in
  * from `totals` rather than re-summed from `rows`: the two are the same number
@@ -89,7 +101,6 @@ function Share({ value, total }: { value: number; total: number }) {
  * the moment the server ever pages or filters a breakdown.
  */
 function Breakdown({
-  title,
   description,
   nameHeader,
   rows,
@@ -97,7 +108,6 @@ function Breakdown({
   loading,
   empty,
 }: {
-  title: string;
   description: string;
   nameHeader: string;
   rows: { key: string; name: string; sums: AdminPaymentTotals }[];
@@ -105,12 +115,22 @@ function Breakdown({
   loading: boolean;
   empty: string;
 }) {
+  // Summed from the exact rows on screen, not read off `totals` a second
+  // time: this footer has to match what a reader just added up themselves,
+  // and the only way to guarantee that is to do the same addition they would.
+  const footer = rows.reduce(
+    (sum, row) => ({
+      count: sum.count + row.sums.count,
+      amount: sum.amount + row.sums.amount,
+      fee: sum.fee + row.sums.gateway_fee + row.sums.service_fee,
+      gross: sum.gross + row.sums.gross,
+    }),
+    { count: 0, amount: 0, fee: 0, gross: 0 }
+  );
+
   return (
-    <Card className="mt-4 p-4 sm:p-6">
-      <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-        {title}
-      </h3>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    <div>
+      <p className="text-sm text-muted-foreground">{description}</p>
 
       {loading ? (
         <Skeleton className="mt-4 h-32 w-full" />
@@ -152,6 +172,29 @@ function Breakdown({
                 </div>
               </li>
             ))}
+            {/* Same card shape as a row, visually set apart — a phone has no
+                table footer to borrow, so "this is the sum" has to be said
+                with weight and a divider rather than position alone. */}
+            <li className="mt-1 rounded-xl border-2 border-[var(--brand-600)] bg-[var(--tint)] p-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-bold">Total</span>
+                <span className="shrink-0 font-bold tabular-nums">{rupiah(footer.gross)}</span>
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <div className="flex justify-between gap-2">
+                  <dt>Transaksi</dt>
+                  <dd className="tabular-nums">{angka(footer.count)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt>Nilai jual</dt>
+                  <dd className="tabular-nums">{rupiah(footer.amount)}</dd>
+                </div>
+                <div className="col-span-2 flex justify-between gap-2">
+                  <dt>Biaya pembeli</dt>
+                  <dd className="tabular-nums">{rupiah(footer.fee)}</dd>
+                </div>
+              </dl>
+            </li>
           </ul>
 
           <div className="mt-4 hidden overflow-x-auto md:block">
@@ -163,7 +206,7 @@ function Breakdown({
                   <th className="pb-2 text-right font-medium">Nilai jual</th>
                   <th className="pb-2 text-right font-medium">Biaya pembeli</th>
                   <th className="pb-2 text-right font-medium">Total ditagih</th>
-                  <th className="pb-2 text-right font-medium">Porsi</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Porsi</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,13 +231,29 @@ function Breakdown({
                   </tr>
                 ))}
               </tbody>
+              {/* A visible footer, not just the StatCard above the fold: a
+                  reader comparing rows wants the sum right under them, without
+                  scrolling back up to a card that may have scrolled out of
+                  view on a long list. */}
+              <tfoot>
+                <tr className="border-t-2 border-[var(--brand-600)] text-sm font-bold">
+                  <td className="pt-2.5 pr-3">Total</td>
+                  <td className="pt-2.5 text-right tabular-nums">{angka(footer.count)}</td>
+                  <td className="pt-2.5 text-right tabular-nums">{rupiah(footer.amount)}</td>
+                  <td className="pt-2.5 text-right tabular-nums">{rupiah(footer.fee)}</td>
+                  <td className="pt-2.5 text-right tabular-nums text-[var(--brand-600)]">
+                    {rupiah(footer.gross)}
+                  </td>
+                  <td className="pt-2.5 pl-3" />
+                </tr>
+              </tfoot>
             </table>
           </div>
         </>
       ) : (
         <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -205,15 +264,21 @@ export default function AdminPaymentStatsPage() {
   // chosen event's label cannot be re-derived from an id without a second
   // request — and the notice below the filters has to be able to name it.
   const [event, setEvent] = useState<EventOption | null>(null);
-  const filtered = Boolean(from || to || event);
+  // Which income rail every card and the "instrumen"/"channel" tabs are
+  // narrowed to. "" means all rails — the server reads that the same way by
+  // falling through to no filter on an unrecognised value.
+  const [source, setSource] = useState("");
+  const [tab, setTab] = useState<Tab>("type");
+  const filtered = Boolean(from || to || event || source);
 
   const query = useQuery({
-    queryKey: ["admin-payment-stats", from, to, event?.id ?? null],
+    queryKey: ["admin-payment-stats", from, to, event?.id ?? null, source],
     queryFn: () =>
       getAdminPaymentStats({
         from: from || undefined,
         to: to || undefined,
         event_id: event?.id,
+        source: source || undefined,
       }),
   });
 
@@ -239,6 +304,14 @@ export default function AdminPaymentStatsPage() {
   }));
 
   const sourceRows = Object.entries(data?.by_source ?? {});
+  // `by_source` is never narrowed by the `source` filter (see
+  // getAdminPaymentStats), so its own share percentages must be computed
+  // against its own sum — not `gross`, which shrinks to one rail's total the
+  // moment a source is selected and would otherwise make every other card
+  // read as "over 100%".
+  const sourceGross = sourceRows.reduce((sum, [, sums]) => sum + sums.gross, 0);
+  const subsidy = data?.mdr_subsidy ?? [];
+  const subsidyGap = subsidy.reduce((sum, r) => sum + r.gap, 0);
 
   return (
     <div>
@@ -256,7 +329,7 @@ export default function AdminPaymentStatsPage() {
         {/* One column on a phone: a date pair side by side at 375px leaves each
             picker narrower than the date it has to print, and the event box is
             a search field that needs the full width to be usable at all. */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_minmax(0,1.4fr)] lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_minmax(0,1.3fr)_minmax(0,1.1fr)] lg:items-end">
           <div className="grid gap-1.5">
             <Label htmlFor="paid-from" className="text-xs text-muted-foreground">
               Dibayar dari
@@ -292,6 +365,23 @@ export default function AdminPaymentStatsPage() {
             </Label>
             <EventCombobox id="paid-event" value={event} onChange={setEvent} />
           </div>
+          <div className="grid gap-1.5 sm:col-span-2 lg:col-span-1">
+            <Label htmlFor="paid-source" className="text-xs text-muted-foreground">
+              Jenis pemasukan
+            </Label>
+            <Select
+              id="paid-source"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+            >
+              <option value="">Semua jenis</option>
+              {Object.entries(SOURCE_LABELS).map(([key, { label }]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         {/* Said out loud: a dashboard that silently covers all time reads as
@@ -301,6 +391,7 @@ export default function AdminPaymentStatsPage() {
             unclaimed plan credits. */}
         <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <p className="min-w-0 text-xs text-muted-foreground">
+            {source && <>Hanya <span className="font-medium">{SOURCE_LABELS[source]?.label}</span>. </>}
             {event ? (
               <>
                 Hanya pembayaran event <span className="font-medium">{event.name}</span>
@@ -310,9 +401,9 @@ export default function AdminPaymentStatsPage() {
               </>
             ) : from || to ? (
               "Hanya pembayaran yang lunas dalam rentang tanggal di atas, seluruh event."
-            ) : (
+            ) : !source ? (
               "Seluruh pembayaran yang pernah lunas, sepanjang waktu."
-            )}
+            ) : null}
           </p>
           {filtered && (
             <Button
@@ -322,6 +413,7 @@ export default function AdminPaymentStatsPage() {
                 setFrom("");
                 setTo("");
                 setEvent(null);
+                setSource("");
               }}
             >
               Reset filter
@@ -379,68 +471,174 @@ export default function AdminPaymentStatsPage() {
         />
       ) : (
         <>
-          <Breakdown
-            title="Per instrumen pembayaran"
-            description="Apa yang benar-benar dipakai pembeli, dilaporkan Midtrans saat pembayaran settle. “Tanpa gateway” mencakup transfer manual tiket/pendaftaran, tunai di loket, dan pesanan gratis; dua baris lainnya ditulis sistem sendiri, bukan Midtrans."
-            nameHeader="Instrumen"
-            rows={typeRows}
-            total={gross}
-            loading={query.isPending}
-            empty="Belum ada pembayaran yang tercatat instrumennya."
-          />
+          {subsidy.length > 0 && (
+            <Card className="mt-4 border-[color-mix(in_srgb,var(--warning)_35%,transparent)] p-4 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] text-[var(--warning)]">
+                  <AlertTriangle className="h-[18px] w-[18px]" />
+                </span>
+                <div className="min-w-0">
+                  <h3
+                    className="text-base font-bold"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    MDR riil GoPay lebih tinggi dari biaya yang ditagih
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Midtrans memotong GoPay ±2% dari total yang dibayar pembeli, sementara kita
+                    hanya menagih 0,7% + PPN. Selisihnya ditanggung platform —{" "}
+                    <span className="font-medium text-foreground">
+                      bukan kerugian platform secara keseluruhan
+                    </span>
+                    , karena disubsidi silang dari channel lain (VA, QRIS native) yang belum
+                    diketahui punya selisih MDR serupa.
+                  </p>
+                </div>
+              </div>
 
-          <Breakdown
-            title="Per channel"
-            description="Grup tarif yang dipilih pembeli sebelum membayar — dasar perhitungan biaya gateway. Satu channel bisa memuat beberapa instrumen: QRIS mencakup qris, gopay, dan shopeepay."
-            nameHeader="Channel"
-            rows={channelRows}
-            total={gross}
-            loading={query.isPending}
-            empty="Belum ada pembayaran lewat payment gateway."
-          />
+              <div className="mt-4 grid gap-2">
+                {subsidy.map((row) => (
+                  <div
+                    key={row.payment_type}
+                    className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-[var(--bg-alt)] p-3 sm:grid-cols-5 sm:items-center"
+                  >
+                    <div className="col-span-2 sm:col-span-1">
+                      <p className="font-medium capitalize">{row.payment_type}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {angka(row.count)} transaksi
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Ditagih ke pembeli</p>
+                      <p className="tabular-nums">{rupiah(row.billed_gateway_fee)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        MDR riil ({row.real_mdr_percent}%)
+                      </p>
+                      <p className="tabular-nums">{rupiah(row.real_mdr_amount)}</p>
+                    </div>
+                    <div className="col-span-2 sm:col-span-2 sm:text-right">
+                      <p className="text-xs text-muted-foreground">Ditanggung platform</p>
+                      <p className="font-semibold tabular-nums text-[var(--warning)]">
+                        {rupiah(row.gap)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Total ditanggung platform dalam rentang ini:{" "}
+                <span className="font-semibold text-foreground">{rupiah(subsidyGap)}</span>.
+                Angka MDR riil channel lain belum tersedia — baris di atas hanya memuat
+                instrumen yang sudah dikonfirmasi punya selisih.
+              </p>
+            </Card>
+          )}
 
           <Card className="mt-4 p-4 sm:p-6">
-            <h3 className="text-base font-bold" style={{ fontFamily: "var(--font-display)" }}>
-              Per jenis pemasukan
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Tiket, pendaftaran tim, dan entry lomba dikumpulkan{" "}
-              <span className="font-medium">untuk</span> organizer dan masuk ke dompetnya; paket
-              event adalah pendapatan flo-event sendiri.
-            </p>
-
-            {/* Column count and skeleton count both come off SOURCE_LABELS, so a
-                rail added to the server shows up here without a second number
-                to remember — a hand-counted grid silently drops the new one
-                onto a row of its own. */}
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {query.isPending
-                ? Object.keys(SOURCE_LABELS).map((key) => (
-                    <Skeleton key={key} className="h-24 rounded-xl" />
-                  ))
-                : sourceRows.map(([key, sums]) => (
-                    <div key={key} className="rounded-xl bg-[var(--bg-alt)] p-4">
-                      <p className="text-sm font-semibold">{SOURCE_LABELS[key]?.label ?? key}</p>
-                      <p
-                        className="mt-1 text-xl font-extrabold tabular-nums"
-                        style={{ fontFamily: "var(--font-display)" }}
-                      >
-                        {rupiah(sums.gross)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {angka(sums.count)} transaksi
-                        {sums.count > 0 && gross > 0
-                          ? ` · ${((sums.gross / gross) * 100).toFixed(0)}% dari total`
-                          : ""}
-                      </p>
-                      {SOURCE_LABELS[key] && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {SOURCE_LABELS[key].hint}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+            <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+              {TABS.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTab(t.value)}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    tab === t.value
+                      ? "bg-[var(--tint)] text-[var(--brand-600)]"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
+
+            {tab === "type" && (
+              <Breakdown
+                description="Apa yang benar-benar dipakai pembeli, dilaporkan Midtrans saat pembayaran settle. “Tanpa gateway” mencakup transfer manual tiket/pendaftaran, tunai di loket, dan pesanan gratis; dua baris lainnya ditulis sistem sendiri, bukan Midtrans."
+                nameHeader="Instrumen"
+                rows={typeRows}
+                total={gross}
+                loading={query.isPending}
+                empty="Belum ada pembayaran yang tercatat instrumennya."
+              />
+            )}
+
+            {tab === "channel" && (
+              <Breakdown
+                description="Grup tarif yang dipilih pembeli sebelum membayar — dasar perhitungan biaya gateway. Satu channel bisa memuat beberapa instrumen: QRIS mencakup qris, gopay, dan shopeepay."
+                nameHeader="Channel"
+                rows={channelRows}
+                total={gross}
+                loading={query.isPending}
+                empty="Belum ada pembayaran lewat payment gateway."
+              />
+            )}
+
+            {tab === "source" && (
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Tiket, pendaftaran tim, dan entry lomba dikumpulkan{" "}
+                  <span className="font-medium">untuk</span> organizer dan masuk ke dompetnya;
+                  paket event adalah pendapatan flo-event sendiri. Klik salah satu untuk
+                  menyaring seluruh halaman ke jenis itu saja.
+                </p>
+
+                {/* Column count and skeleton count both come off SOURCE_LABELS, so
+                    a rail added to the server shows up here without a second
+                    number to remember — a hand-counted grid silently drops the
+                    new one onto a row of its own. Always reads off `by_source`
+                    unfiltered by `source` (see getAdminPaymentStats), so every
+                    card's own share percentage keeps meaning "of everything"
+                    even while the rest of the page is narrowed to one rail. */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {query.isPending
+                    ? Object.keys(SOURCE_LABELS).map((key) => (
+                        <Skeleton key={key} className="h-24 rounded-xl" />
+                      ))
+                    : sourceRows.map(([key, sums]) => {
+                        const active = source === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setSource(active ? "" : key)}
+                            className={cn(
+                              "rounded-xl p-4 text-left transition-colors",
+                              active
+                                ? "bg-[var(--tint)] ring-2 ring-[var(--brand-600)]"
+                                : "bg-[var(--bg-alt)] hover:bg-accent"
+                            )}
+                          >
+                            <p className="text-sm font-semibold">
+                              {SOURCE_LABELS[key]?.label ?? key}
+                            </p>
+                            <p
+                              className="mt-1 text-xl font-extrabold tabular-nums"
+                              style={{ fontFamily: "var(--font-display)" }}
+                            >
+                              {rupiah(sums.gross)}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {angka(sums.count)} transaksi
+                              {sums.count > 0 && sourceGross > 0
+                                ? ` · ${((sums.gross / sourceGross) * 100).toFixed(0)}% dari total`
+                                : ""}
+                            </p>
+                            {SOURCE_LABELS[key] && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                {SOURCE_LABELS[key].hint}
+                              </p>
+                            )}
+                          </button>
+                        );
+                      })}
+                </div>
+              </div>
+            )}
           </Card>
         </>
       )}

@@ -204,9 +204,15 @@ export async function rejectPlanOrder(id: string, reason: string): Promise<Event
  * plan credits that nobody has spent yet: those carry no `event_id` until an
  * organizer creates the event, so they belong to the organization rather than
  * to any event (the server's EVENT_COLUMN docblock spells out why).
+ *
+ * `source` narrows everything — `totals`, `by_payment_type`, `by_channel` — to
+ * one income rail (ticket/registration/race entry/plan order). `by_source`
+ * itself is never narrowed by it: that breakdown is what lets a reader pick
+ * the rail in the first place, and collapsing it to the selection would hide
+ * the other bars entirely.
  */
 export async function getAdminPaymentStats(
-  params: { from?: string; to?: string; event_id?: string } = {}
+  params: { from?: string; to?: string; event_id?: string; source?: string } = {}
 ): Promise<AdminPaymentStats> {
   const { data } = await apiClient.get<ApiEnvelope<AdminPaymentStats>>("/admin/payment-stats", {
     params,

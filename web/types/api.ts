@@ -2846,6 +2846,23 @@ export interface AdminPaymentStats {
   >;
   /** The sum of `by_source`, derived server-side so the cards cannot disagree with it. */
   totals: AdminPaymentTotals;
+  /**
+   * Instruments where Midtrans' real cut is known to run above what we bill
+   * the buyer — today just GoPay (~2% of gross vs the 0.7%+PPN we charge).
+   * Empty, not padded with zeros, for every instrument without a confirmed
+   * real-MDR figure: VA and QRIS-native are believed to have no gap, but
+   * "no known gap" and "confirmed zero gap" are different claims.
+   */
+  mdr_subsidy: {
+    payment_type: string;
+    count: number;
+    gross: number;
+    real_mdr_percent: number;
+    real_mdr_amount: number;
+    billed_gateway_fee: number;
+    /** real_mdr_amount − billed_gateway_fee — what the platform absorbs, cross-subsidised by other channels. */
+    gap: number;
+  }[];
 }
 
 /** A super-admin editable platform rule (payout policy). */

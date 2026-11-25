@@ -71,29 +71,114 @@ class PaymentStatController extends Controller
      */
     private const UNKNOWN = 'unknown';
 
+    /**
+     * Midtrans' real cut on an instrument, as a percent of GROSS (what the
+     * buyer was actually charged) — **not** the `gateway_fee` column, which is
+     * our own published rate (0.7% + PPN for e-wallets) and can diverge from
+     * what Midtrans actually withholds.
+     *
+     * Today this is one entry: GoPay settles at ~2% gross while we only bill
+     * the buyer 0.7%+PPN, so every GoPay payment runs the platform a real
+     * loss. It is cross-subsidised by the channels below (VA's flat fee,
+     * QRIS-native) rather than being a bug — this map exists so that
+     * cross-subsidy is visible on the dashboard instead of only in someone's
+     * head. `qris` and `va` are deliberately absent: absent reads as "no known
+     * gap", 0.0 would read as "confirmed zero gap", and the first is the true
+     * state until someone has the real MDR for those too.
+     *
+     * Keyed by `payment_type` (Midtrans' own instrument, e.g. `gopay`), not by
+     * our `payment_channel` grouping — QRIS-native and GoPay both report under
+     * the `ewallet` channel but do not share a real MDR.
+     *
+     * @var array<string, float>
+     */
+    private const REAL_MDR_PERCENT = [
+        'gopay' => 2.0,
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $from = $request->query('from');
         $to = $request->query('to');
         $event = $request->query('event_id');
 
-        // One call, then split: `totals` must be the sum of the rails it is
-        // printed above, not a second query that can disagree with them.
+        // Unknown values fall through to "no filter" rather than 422 — a stale
+        // link or a typed URL should widen back to everything, not error out.
+        $source = $request->query('source');
+        $source = is_string($source) && array_key_exists($source, self::SOURCES) ? $source : null;
+
+        // `by_source` is always every rail (it is what the "per jenis
+        // pemasukan" tab shows, and the filter must not collapse it to one
+        // bar), but `totals` has to reflect the active filter — it is the
+        // number every card and breakdown above is implicitly "out of".
         $bySource = $this->bySource($from, $to, $event);
-        $totals = $bySource['_all'];
+        $totals = $source ? $bySource[$source] : $bySource['_all'];
         unset($bySource['_all']);
 
+        $byPaymentType = $this->breakdown('payment_type', $from, $to, $event, source: $source);
+
         return ApiResponse::success([
-            'by_payment_type' => $this->breakdown('payment_type', $from, $to, $event),
+            'by_payment_type' => $byPaymentType,
             // Labelled here, unlike the instruments above: a channel's human
             // name lives in config/payment_fees.php and is already what the
             // checkout picker shows the buyer, so the dashboard must read the
             // same source rather than grow a second copy that drifts the day a
             // channel is renamed.
-            'by_channel' => $this->breakdown('payment_channel', $from, $to, $event, withLabel: true),
+            'by_channel' => $this->breakdown('payment_channel', $from, $to, $event, withLabel: true, source: $source),
             'by_source' => $bySource,
             'totals' => $totals,
+            // Derived from `by_payment_type`, not a second query — see
+            // mdrSubsidy() for why it has to be the same numbers already on
+            // screen rather than a figure that can disagree with them.
+            'mdr_subsidy' => $this->mdrSubsidy($byPaymentType),
         ]);
+    }
+
+    /**
+     * What Midtrans' real cut costs us beyond what we billed the buyer, for
+     * every instrument we have a REAL_MDR_PERCENT figure for.
+     *
+     * Computed from the exact rows already returned in `by_payment_type`
+     * rather than a fresh query against the order tables: a second query
+     * here could round or filter differently and quietly disagree with the
+     * breakdown sitting right above it on the page — the same reasoning
+     * `bySource()` uses for `totals`.
+     *
+     * `gap` is money the platform absorbs: real MDR minus what we actually
+     * billed as `gateway_fee`. It is cross-subsidised from other channels
+     * (VA's flat fee, instruments with no known real-MDR gap), not a loss on
+     * the platform as a whole — the UI is the one place that sentence has to
+     * be said out loud, because the raw number alone reads as "we are losing
+     * money".
+     *
+     * @param  list<array<string, mixed>>  $byPaymentType
+     * @return list<array{payment_type: string, count: int, gross: float, real_mdr_percent: float, real_mdr_amount: float, billed_gateway_fee: float, gap: float}>
+     */
+    private function mdrSubsidy(array $byPaymentType): array
+    {
+        $rows = [];
+
+        foreach ($byPaymentType as $row) {
+            $type = $row['payment_type'];
+            $percent = self::REAL_MDR_PERCENT[$type] ?? null;
+            if ($percent === null) {
+                continue;
+            }
+
+            $realMdrAmount = $row['gross'] * $percent / 100;
+
+            $rows[] = [
+                'payment_type' => $type,
+                'count' => $row['count'],
+                'gross' => $row['gross'],
+                'real_mdr_percent' => $percent,
+                'real_mdr_amount' => $realMdrAmount,
+                'billed_gateway_fee' => $row['gateway_fee'],
+                'gap' => $realMdrAmount - $row['gateway_fee'],
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -104,13 +189,19 @@ class PaymentStatController extends Controller
      * instruments, so the only list of them that cannot go stale is the one the
      * rows themselves carry.
      *
+     * `$source` narrows to one rail's table (e.g. only `race_entries`) rather
+     * than summing all four and throwing three away — the same row count a
+     * naive filter-after-query would produce, at the cost of querying tables
+     * the answer never needed.
+     *
      * @return list<array<string, mixed>>
      */
-    private function breakdown(string $column, ?string $from, ?string $to, ?string $event = null, bool $withLabel = false): array
+    private function breakdown(string $column, ?string $from, ?string $to, ?string $event = null, bool $withLabel = false, ?string $source = null): array
     {
         $totals = [];
+        $sources = $source ? [self::SOURCES[$source]] : self::SOURCES;
 
-        foreach (self::SOURCES as $config) {
+        foreach ($sources as $config) {
             $rows = $this->query($config['table'], $config['amount'], $from, $to, $event)
                 ->selectRaw("coalesce({$column}, ?) as bucket", [self::UNKNOWN])
                 ->groupBy('bucket')
