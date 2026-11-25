@@ -670,14 +670,20 @@ export default function AdminPaymentStatsPage() {
           )}
 
           <Card className="mt-4 p-4 sm:p-6">
-            <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+            {/* Horizontal scroll rather than wrap: three tabs plus their
+                padding do not fit a phone in one line, and wrapping drops the
+                third tab onto its own row below an empty-looking gap — a
+                scrollable strip keeps the row one line with an obvious edge
+                to swipe past. `-mx-1 px-1` so the active tab's ring/background
+                isn't clipped by overflow at the scroll boundary. */}
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto border-b border-border px-1 pb-4">
               {TABS.map((t) => (
                 <button
                   key={t.value}
                   type="button"
                   onClick={() => setTab(t.value)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    "shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                     tab === t.value
                       ? "bg-[var(--tint)] text-[var(--brand-600)]"
                       : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -690,7 +696,7 @@ export default function AdminPaymentStatsPage() {
 
             {tab === "type" && (
               <Breakdown
-                description="Apa yang benar-benar dipakai pembeli, dilaporkan Midtrans saat pembayaran settle. “Tanpa gateway” mencakup transfer manual tiket/pendaftaran, tunai di loket, dan pesanan gratis; dua baris lainnya ditulis sistem sendiri, bukan Midtrans."
+                description="Instrumen pembayaran dari Midtrans. “Tanpa gateway” = transfer manual, tunai, atau gratis."
                 nameHeader="Instrumen"
                 rows={typeRows}
                 total={gross}
