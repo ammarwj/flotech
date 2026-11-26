@@ -8,6 +8,7 @@ import { ManualModeBanner } from "@/components/payment/manual-mode-banner";
 import { PlanPaymentPendingBanner } from "@/components/payment/plan-payment-pending-banner";
 import { UnconsumedPlanBanner } from "@/components/payment/unconsumed-plan-banner";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { hasOperatorAccess } from "@/lib/hooks/use-dashboard-mode";
 import { useAuthStore } from "@/stores/auth-store";
 
 /**
@@ -19,15 +20,20 @@ import { useAuthStore } from "@/stores/auth-store";
  * cookie without ever touching the login page.
  *
  * Super admins are exempt: they legitimately own no organization, and forcing
- * them into onboarding would trap them in a loop.
+ * them into onboarding would trap them in a loop. Event operators are exempt
+ * for the same reason one step removed — see `hasOperatorAccess()`: the whole
+ * point of the role is a user who holds no `organization_members` seat at
+ * all, and the route they land on (one specific event's sub-pages) needs no
+ * org context from this layout to render.
  */
 export default function OrganizerLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const role = useAuthStore((s) => s.user?.role);
+  const user = useAuthStore((s) => s.user);
   const { hasNoOrg, isLoading } = useActiveOrg();
 
-  const isAdmin = role === "super_admin";
-  const mustOnboard = !isAdmin && hasNoOrg;
+  const isAdmin = user?.role === "super_admin";
+  const isOperatorOnly = hasOperatorAccess(user ?? {});
+  const mustOnboard = !isAdmin && !isOperatorOnly && hasNoOrg;
 
   useEffect(() => {
     if (mustOnboard) router.replace("/onboarding");

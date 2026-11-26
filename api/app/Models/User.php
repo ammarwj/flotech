@@ -150,6 +150,16 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(EventPersonnel::class);
     }
 
+    /**
+     * Events this account operates — a slice of the organizer surface held
+     * without a seat in `organization_members`. Independent of
+     * `personnelAssignments()` above: see EventOperator's docblock.
+     */
+    public function operatorAssignments(): HasMany
+    {
+        return $this->hasMany(EventOperator::class);
+    }
+
     // ---- Jenis akun ----
 
     /**

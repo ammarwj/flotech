@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\IdCard\GenerateIdCardsRequest;
 use App\Http\Resources\IdCardResource;
 use App\Jobs\GenerateIdCardsJob;
 use App\Jobs\SendIdCardsJob;
 use App\Models\Event;
-use App\Models\Organization;
+use App\Models\IdCard;
 use App\Services\IdCardService;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
@@ -21,6 +22,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class IdCardController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected PlanGate $gate,
         protected IdCardService $cards,
@@ -66,8 +69,17 @@ class IdCardController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $page = $this->org($request)
-            ->idCards()
+        // This route carries no `{event}` segment, so an operator (who holds
+        // no `organization` attribute) reaches it only through
+        // `event.perm.documents` on an id-card-adjacent route and is narrowed
+        // to their one event here — never the whole org's print history.
+        $operator = $request->attributes->get('operator');
+
+        $query = $operator
+            ? IdCard::query()->where('event_id', $operator->event_id)
+            : $this->org($request)->idCards();
+
+        $page = $query
             ->with('event:id,name')
             ->when($filters['event_id'] ?? null, fn ($q, $id) => $q->where('event_id', $id))
             ->latest('issued_at')
@@ -242,7 +254,12 @@ class IdCardController extends Controller
      */
     public function downloadCard(Request $request, string $organization, string $card): StreamedResponse|JsonResponse
     {
-        $model = $this->org($request)->idCards()->where('id', $card)->firstOrFail();
+        // Same narrowing as index() above, and for the same reason.
+        $operator = $request->attributes->get('operator');
+
+        $model = $operator
+            ? IdCard::query()->where('event_id', $operator->event_id)->where('id', $card)->firstOrFail()
+            : $this->org($request)->idCards()->where('id', $card)->firstOrFail();
 
         if (! $model->png_key) {
             return ApiResponse::error('Berkas kartu belum tersedia.', null, 404);
@@ -317,19 +334,22 @@ class IdCardController extends Controller
             return null;
         }
 
-        return ($payload['organization_id'] ?? null) === $this->org($request)->id ? $payload : null;
+        // No `{event}` segment on this route. An operator holds no
+        // `organization` attribute (see EventOrOperatorScope), so they are
+        // owned-checked against the batch's own `event_id` instead.
+        $operator = $request->attributes->get('operator');
+
+        if ($operator) {
+            return ($payload['event_id'] ?? null) === $operator->event_id ? $payload : null;
+        }
+
+        $org = $this->org($request);
+
+        return $org && ($payload['organization_id'] ?? null) === $org->id ? $payload : null;
     }
 
     protected function findEvent(Request $request, string $id): Event
     {
-        return $this->org($request)->events()->where('id', $id)->firstOrFail();
-    }
-
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
+        return $this->scopedEvent($request, $id);
     }
 }

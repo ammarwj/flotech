@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Race\RacePeriodsRequest;
 use App\Http\Resources\RacePeriodResource;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Services\Catalog;
 use App\Support\ApiResponse;
 use App\Support\RacePricing;
@@ -26,6 +26,8 @@ use Illuminate\Support\Facades\DB;
  */
 class RacePeriodController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected RacePricing $pricing) {}
 
     public function index(Request $request, string $organization, string $event): JsonResponse
@@ -195,16 +197,8 @@ class RacePeriodController extends Controller
         return null;
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function findEvent(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->with('racePeriods')->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId)->loadMissing('racePeriods');
     }
 }

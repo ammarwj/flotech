@@ -195,6 +195,21 @@ class Event extends Model
         return $this->hasMany(EventPersonnel::class)->orderBy('sort_order')->orderBy('created_at');
     }
 
+    /**
+     * Event operators — a slice of this event's organizer surface handed to
+     * someone who holds no `organization_members` row. Independent of
+     * `personnel()` above: see EventOperator's docblock.
+     */
+    public function operators(): HasMany
+    {
+        return $this->hasMany(EventOperator::class);
+    }
+
+    public function operatorInvites(): HasMany
+    {
+        return $this->hasMany(EventOperatorInvite::class);
+    }
+
     public function idCards(): HasMany
     {
         return $this->hasMany(IdCard::class);

@@ -38,6 +38,8 @@ use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\EventDiscountCodeController;
 use App\Http\Controllers\Api\EventMediaController;
+use App\Http\Controllers\Api\EventOperatorController;
+use App\Http\Controllers\Api\EventOperatorInviteController;
 use App\Http\Controllers\Api\EventPersonnelController;
 use App\Http\Controllers\Api\EventViewStatController;
 use App\Http\Controllers\Api\ExportController;
@@ -310,6 +312,12 @@ Route::prefix('v1')->group(function () {
     Route::get('ticket-orders/{order}/invoice', [PublicTicketController::class, 'invoice']);
     Route::get('ticket-orders/{order}/receipt', [PublicTicketController::class, 'receipt']);
 
+    // Event operator invite preview — unauthenticated, since the page has to
+    // render (and decide between a login/register CTA and the "Terima"
+    // button) before anyone is signed in. The token is the only credential;
+    // accepting it below is what actually proves the account.
+    Route::get('invites/{token}', [EventOperatorInviteController::class, 'show']);
+
     // Presigned upload URL (used by the public registration form too).
     Route::post('uploads/sign', [UploadController::class, 'sign']);
     // Direct image upload (compressed client-side; used for banners & logos).
@@ -343,6 +351,18 @@ Route::prefix('v1')->group(function () {
         // behind its unguessable id under `race-entries/*`, public for the
         // reason written there. See MyRaceEntryController.
         Route::get('my-race-entries', [MyRaceEntryController::class, 'index']);
+
+        // Event operator invites, addressed to this account's own email.
+        // `accept` is the proof-of-email step — EventOperatorService::accept()
+        // still re-checks the address, this middleware only proves someone is
+        // logged in at all. Outside organizations/{organization}: accepting
+        // one may be the first organizer-side thing this account ever does.
+        Route::post('invites/{token}/accept', [EventOperatorInviteController::class, 'accept']);
+        Route::get('my-operator-invites', [EventOperatorInviteController::class, 'pending']);
+        // Landing page for an account that holds no organization_members seat
+        // at all but operates one or more events — see
+        // docs/event-operator-design.md section 9.
+        Route::get('my-operator-events', [EventOperatorInviteController::class, 'myEvents']);
 
         // The manager's team sheet, handed to the referee before kick-off.
         // Same tier and same `scope()` as the rest of my-teams/*: a manager is an
@@ -459,6 +479,19 @@ Route::prefix('v1')->group(function () {
                 // in Admin\RefundPayoutController.
                 Route::get('refund-payouts', [RefundPayoutController::class, 'index']);
                 Route::patch('refund-payouts/{refundPayout}/forward', [RefundPayoutController::class, 'forward']);
+
+                // Event operators: who an owner/admin has handed a slice of
+                // this event's organizer surface to. org.admin because
+                // inviting one IS granting access, same tier as the wallet
+                // and plan-orders beside it — a gate `operator` member must
+                // not be able to invite another operator.
+                Route::get('events/{event}/operators', [EventOperatorController::class, 'index']);
+                Route::get('events/{event}/operator-invites', [EventOperatorController::class, 'invites']);
+                Route::post('events/{event}/operator-invites', [EventOperatorController::class, 'invite']);
+                Route::post('operator-invites/{invite}/resend', [EventOperatorController::class, 'resend']);
+                Route::delete('operator-invites/{invite}', [EventOperatorController::class, 'revoke']);
+                Route::patch('operators/{operator}', [EventOperatorController::class, 'updatePermissions']);
+                Route::delete('operators/{operator}', [EventOperatorController::class, 'remove']);
             });
 
             // Event CRUD + registrations management.
@@ -468,7 +501,15 @@ Route::prefix('v1')->group(function () {
             // org.admin. `tenant` on its own admits `operator` members (the gate
             // scanners), who have no business committing the org's money.
             Route::post('events', [EventController::class, 'store'])->middleware('org.admin');
-            Route::apiResource('events', EventController::class)->except(['store']);
+            // `show` is excluded here and registered instead under `event.access`
+            // below, outside any `event.perm.*` category — every operator, no
+            // matter which single category they hold, needs the event's own
+            // name/status/dates to render a page header or breadcrumb, and that
+            // is read-only. `update`/`destroy` stay here, behind plain `tenant`
+            // only: an operator holds no `organization_members` row at all, so
+            // `tenant` refuses them before the controller is ever reached — no
+            // change needed to keep those two administrative, not operational.
+            Route::apiResource('events', EventController::class)->except(['store', 'show']);
             Route::post('events/{event}/publish', [EventController::class, 'publish']);
             // Status moves through its own guarded verb, never the form save.
             Route::patch('events/{event}/status', [EventController::class, 'updateStatus']);
@@ -485,265 +526,36 @@ Route::prefix('v1')->group(function () {
             Route::get('events/{event}/exports/{kind}', [ExportController::class, 'show'])
                 ->middleware('org.admin');
 
-            Route::get('events/{event}/registrations', [RegistrationController::class, 'index']);
-            // Offline registration: teams that signed up on paper or over chat.
-            Route::post('events/{event}/registrations', [RegistrationController::class, 'store']);
-            Route::put('events/{event}/registrations/{team}', [RegistrationController::class, 'update']);
-            Route::patch('events/{event}/registrations/{team}', [RegistrationController::class, 'updateStatus']);
-            // Bulk offline registration: a per-category template, filled in and
-            // re-uploaded, creating teams through the same write path as store().
-            Route::get('events/{event}/registrations/import-template', [RegistrationController::class, 'importTemplate']);
-            Route::post('events/{event}/registrations/import', [RegistrationController::class, 'import']);
-            // The registration fee's documents, from the organizer's side —
-            // they issued them, so they can read them. The manager's own copy
-            // is at my-teams/{team}/invoice, scoped by their session instead.
-            Route::get('events/{event}/registrations/{team}/invoice', [RegistrationController::class, 'invoice']);
-            Route::get('events/{event}/registrations/{team}/receipt', [RegistrationController::class, 'receipt']);
-
-            // Printable player album. Plain `tenant`, no plan gate — see
-            // TeamAlbumController's docblock, same reasoning as personnel/
-            // referees just below.
-            Route::get('events/{event}/registrations/album', [TeamAlbumController::class, 'event']);
-            Route::get('events/{event}/registrations/{team}/album', [TeamAlbumController::class, 'team']);
-
-            // Photo albums & sponsor logos.
-            Route::get('events/{event}/photos', [EventMediaController::class, 'photos']);
-            Route::post('events/{event}/photos', [EventMediaController::class, 'storePhotos']);
-            Route::patch('photos/{photo}', [EventMediaController::class, 'updatePhoto']);
-            Route::delete('photos/{photo}', [EventMediaController::class, 'destroyPhoto']);
-            Route::get('events/{event}/sponsors', [EventMediaController::class, 'sponsors']);
-            Route::post('events/{event}/sponsors', [EventMediaController::class, 'storeSponsor']);
-            Route::patch('sponsors/{sponsor}', [EventMediaController::class, 'updateSponsor']);
-            Route::delete('sponsors/{sponsor}', [EventMediaController::class, 'destroySponsor']);
-
-            // Schedule, results & standings — scoped to a competition category,
-            // since each category (U17, Woman, …) runs its own format.
-            Route::post('events/{event}/categories/{category}/schedule', [MatchController::class, 'generate']);
-            Route::post('events/{event}/categories/{category}/draw', [MatchController::class, 'drawGroups']);
-            // Swiss is generated a round at a time: POST schedule above builds
-            // round 1, these build and unbuild the ones after it. Readiness is
-            // read from the server rather than re-derived in the client, so the
-            // button and the endpoint gate on the same two numbers.
-            Route::get('events/{event}/categories/{category}/swiss', [MatchController::class, 'swissState']);
-            Route::post('events/{event}/categories/{category}/swiss/rounds', [MatchController::class, 'generateSwissRound']);
-            Route::delete('events/{event}/categories/{category}/swiss/rounds/last', [MatchController::class, 'destroySwissRound']);
-            // The bracket drawn in slots ("Juara Grup A" v "Runner-up Grup B")
-            // before the groups finish; POST knockout below activates it.
-            Route::get('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
-            Route::put('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'saveKnockoutPlan']);
-            Route::delete('events/{event}/categories/{category}/knockout-plan', [MatchController::class, 'destroyKnockoutPlan']);
-            // Redraw the plan at random (group-mates still kept apart), stored as
-            // the plan so a later generate reads it back verbatim.
-            Route::post('events/{event}/categories/{category}/knockout-plan/shuffle', [MatchController::class, 'shuffleKnockoutPlan']);
-            Route::post('events/{event}/categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
-            Route::delete('events/{event}/categories/{category}/knockout', [MatchController::class, 'destroyKnockout']);
-            // Redraw a knockout bracket in place — same fixtures, same kickoffs,
-            // new positions. Generation deals the field out in name order, so
-            // this is the only real draw a knockout category ever gets.
-            Route::post('events/{event}/categories/{category}/bracket/shuffle', [MatchController::class, 'shuffleBracket']);
-            Route::get('events/{event}/categories/{category}/matches', [MatchController::class, 'index']);
-            // Manual fixture: organizers who already have their own schedule.
-            Route::post('events/{event}/categories/{category}/matches', [MatchController::class, 'storeManual']);
-            Route::get('events/{event}/categories/{category}/standings', [MatchController::class, 'standings']);
-            // Manual point adjustments: a house rule the fixtures cannot
-            // express ("suporter datang lengkap = +2"). A ledger, appended to
-            // and removed from one row at a time — never a full-list PUT,
-            // because several people type into it over a tournament and a stale
-            // client would delete entries it never saw. Plain `tenant` like the
-            // rest of this block: the operator running the table is who the
-            // organizer tells to give the two points.
-            Route::get('events/{event}/categories/{category}/adjustments', [StandingAdjustmentController::class, 'index']);
-            Route::post('events/{event}/categories/{category}/adjustments', [StandingAdjustmentController::class, 'store']);
-            Route::delete('adjustments/{adjustment}', [StandingAdjustmentController::class, 'destroy']);
-            Route::get('events/{event}/categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
-            // Card accumulation and who it bars from the next fixture. A read,
-            // and the operator typing results is exactly who needs it — so it
-            // stays outside the org.admin group.
-            Route::get('events/{event}/categories/{category}/discipline', [MatchController::class, 'discipline']);
-            Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
-            Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
-            // Fix a wrong seed in place, instead of rebuilding the whole bracket.
-            Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
-            // Move a whole tie to another slot of the same round — the branch
-            // it sits on, not who is in it. Separate from `teams` above because
-            // the two answer different questions: that one replaces occupants
-            // and leaves the fixture where it is, this one leaves the pairing
-            // alone and changes where the bracket carries it.
-            Route::patch('matches/{match}/slot', [MatchController::class, 'moveSlot']);
-            // Which side of a tie hosts. The third question about a slot, and
-            // the one the two above cannot answer in a later round: home and
-            // away are read off feeder parity there, not stored, so this swaps
-            // the feeders rather than the columns. See swapSides().
-            Route::patch('matches/{match}/sides', [MatchController::class, 'swapSides']);
-            // Signing a result off is what makes it count, so it belongs to
-            // whoever runs the org. An operator records; they don't ratify —
-            // otherwise saving-as-admin auto-confirms for nothing.
-            Route::middleware('org.admin')
-                ->patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
-            // Scheduled / ongoing / cancelled. Finishing still goes through the
-            // result endpoint, which is the only one that validates a scoreline.
-            Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);
-            // Babak & jam papan skor. Kembarannya ada di grup `officiating`,
-            // satu service — presentasi, bukan hasil resmi, jadi ia tidak
-            // duduk di belakang `org.admin`.
-            Route::patch('matches/{match}/clock', [MatchController::class, 'updateClock']);
-            Route::delete('matches/{match}', [MatchController::class, 'destroy']);
-            Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
-            Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
-            // Twin of the staff route under `officiating/…`: one controller, one
-            // gate. The panitia prints the same sheet the crew does, and a second
-            // copy of "both sides approved" is how one of the two doors starts
-            // handing out sheets the referee never signed. Outside `org.admin`
-            // for the same reason the discipline read is — the operator running
-            // the table is exactly who needs it.
-            Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
-            // Twin of the staff route, same controller, same gate. Outside
-            // `org.admin` for the reason the sheet and the discipline read are:
-            // the operator running the table is exactly who prints this.
-            Route::get('matches/{match}/report', [MatchReportController::class, 'download']);
-
-            // Partai of a squad tie (badminton beregu & co). The tie's scoreline
-            // is rolled up from these, never posted to matches/{match} directly.
-            Route::get('matches/{match}/rubbers', [RubberController::class, 'index']);
-            Route::put('matches/{match}/rubbers', [RubberController::class, 'sync']);
-            Route::patch('rubbers/{rubber}', [RubberController::class, 'update']);
-
-            // Tickets & check-in (Phase 3).
-            Route::get('events/{event}/ticket-categories', [TicketCategoryController::class, 'index']);
-            Route::post('events/{event}/ticket-categories', [TicketCategoryController::class, 'store']);
-            Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
-            Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
-            // Fun run: the categories a race sells entries in, their price per
-            // sale window, and the windows themselves. Plain `tenant`, like the
-            // ticket categories above: this is catalogue setup, and the number
-            // typed here is a price list, not a payment. What IS org.admin is
-            // ruling on a transfer receipt — see events/{event}/payments.
-            Route::get('events/{event}/race-periods', [RacePeriodController::class, 'index']);
-            Route::put('events/{event}/race-periods', [RacePeriodController::class, 'sync']);
-            Route::get('events/{event}/race-categories', [RaceCategoryController::class, 'index']);
-            Route::post('events/{event}/race-categories', [RaceCategoryController::class, 'store']);
-            Route::patch('race-categories/{raceCategory}', [RaceCategoryController::class, 'update']);
-            Route::delete('race-categories/{raceCategory}', [RaceCategoryController::class, 'destroy']);
-
-            // Discount codes a participant may type while registering. Both
-            // rails read them (registration fees and fun run entries), so these
-            // are not gated on the sport. Plain `tenant` like the two category
-            // blocks above: this is a price list, not a payment.
-            Route::get('events/{event}/discount-codes', [EventDiscountCodeController::class, 'index']);
-            Route::post('events/{event}/discount-codes', [EventDiscountCodeController::class, 'store']);
-            Route::patch('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'update']);
-            Route::delete('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'destroy']);
-
-            // Printable QR poster pointing at the public ticket shop — taped up
-            // at the venue. Plain `tenant`, no org.admin: it carries no buyer
-            // data and moves no money, and the operator at the gate is who
-            // reprints one that fell off. Gated on `qr_tickets` in the
-            // controller, like the category routes above.
-            // Fun run check-in at the registration desk. Its own routes rather
-            // than widening the ticket scanner: a runner has no order to admit
-            // and no second day to be wrong about — see RaceScanController.
-            // Plain `tenant`, the same as the ticket gate: the person holding
-            // the scanner is the operator, and this payload carries the name on
-            // the bib, not the contact details that put `race-entries` behind
-            // `org.admin`.
-            Route::post('events/{event}/race-scan', [RaceScanController::class, 'checkIn']);
-            Route::get('events/{event}/race-report', [RaceScanController::class, 'report']);
-            Route::get('events/{event}/race-checkins', [RaceScanController::class, 'checkins']);
-
-            Route::get('events/{event}/ticket-poster', [TicketPosterController::class, 'show']);
-            Route::get('events/{event}/ticket-report', [ScanController::class, 'report']);
-            // The check-in log, paginated. Split out of the report above: it is
-            // the one list there that grows with the gate, and twenty rows of a
-            // two-thousand-person event answer nothing. Same `tenant` scope —
-            // it carries holder names, not buyer contacts.
-            Route::get('events/{event}/checkins', [ScanController::class, 'checkins']);
-            Route::post('events/{event}/scan', [ScanController::class, 'checkIn']);
-
-            // Box office: the organizer selling at the venue. Plain `tenant` on
-            // purpose — the person staffing the till is a member `operator`, and
-            // they are exactly who this is for. Note the difference from
-            // `payments/.../approve` further down, where an operator is refused:
-            // there, accepting a receipt issues a ticket on somebody else's
-            // claim about money. Here the operator *is* who took the money.
-            Route::post('events/{event}/ticket-sales', [TicketSaleController::class, 'store']);
-            // Check in a whole paid order without scanning each QR — the holder
-            // is standing at the till. Same door for a gateway order that
-            // settled after the dialog was closed.
-            Route::post('ticket-orders/{ticketOrder}/check-in', [TicketSaleController::class, 'checkInOrder']);
-
-            // Certificates. Gated on `certificate_generator` inside the
-            // controllers (and `certificate_email` for the sending routes), the
-            // same way ticketing gates on `qr_tickets`.
+            // Certificate/ID-card/bib TEMPLATE CRUD, and the org-scoped
+            // id-cards/bibs print history — deliberately NOT moved to
+            // `event.perm.documents` below. Templates and cross-event history
+            // are org-scoped rows an operator (who holds no org membership at
+            // all) has no business reaching; only a particular event's own
+            // printing is event-keyed and belongs to that group.
             Route::get('certificate-fields', [CertificateTemplateController::class, 'fields']);
             Route::get('certificate-templates', [CertificateTemplateController::class, 'index']);
             Route::post('certificate-templates', [CertificateTemplateController::class, 'store']);
             Route::patch('certificate-templates/{template}', [CertificateTemplateController::class, 'update']);
             Route::delete('certificate-templates/{template}', [CertificateTemplateController::class, 'destroy']);
-
-            Route::get('certificates', [CertificateController::class, 'index']);
-            Route::get('events/{event}/certificate-recipients', [CertificateController::class, 'recipients']);
-            Route::post('events/{event}/certificates', [CertificateController::class, 'generate']);
-            // Bulk download. MUST stay above `certificates/{certificate}/…` or
-            // the literal segment is swallowed by the binding — the same
-            // ordering `plan-orders/discount-preview` depends on. Ungated and
-            // ownership-checked, like the batch routes under id-card-batches.
-            Route::post('certificates/zip', [CertificateController::class, 'zip']);
-            Route::get('certificate-batches/{batch}', [CertificateController::class, 'zipStatus']);
-            Route::get('certificate-batches/{batch}/download', [CertificateController::class, 'zipDownload']);
-            Route::get('certificates/{certificate}/download', [CertificateController::class, 'download']);
-            Route::post('certificates/{certificate}/send', [CertificateController::class, 'send']);
-            Route::delete('certificates/{certificate}', [CertificateController::class, 'destroy']);
-
-            // Referees and match staff. Ungated on purpose — see the docblock on
-            // EventPersonnelController. Plain `tenant`, like the roster routes
-            // above: an operator already sees every player's photo.
-            Route::get('events/{event}/personnel', [EventPersonnelController::class, 'index']);
-            Route::put('events/{event}/personnel', [EventPersonnelController::class, 'sync']);
-
-            // ID cards. Templates are org-scoped rows, so their CRUD asks
-            // orgAllows('id_card_generator') — printing a particular event's
-            // cards stays event-keyed and lives on its own routes.
             Route::get('id-card-fields', [IdCardTemplateController::class, 'fields']);
             Route::get('id-card-templates', [IdCardTemplateController::class, 'index']);
             Route::post('id-card-templates', [IdCardTemplateController::class, 'store']);
             Route::patch('id-card-templates/{template}', [IdCardTemplateController::class, 'update']);
             Route::delete('id-card-templates/{template}', [IdCardTemplateController::class, 'destroy']);
-
-            // Printing. Gated on the *event's* plan, unlike the template rows
-            // above. Status and download are ungated but ownership-checked —
-            // see IdCardController::ensureOwned().
-            Route::get('events/{event}/id-card-recipients', [IdCardController::class, 'recipients']);
-            Route::post('events/{event}/id-cards', [IdCardController::class, 'generate']);
-            Route::get('id-card-batches/{batch}', [IdCardController::class, 'status']);
-            Route::get('id-card-batches/{batch}/download', [IdCardController::class, 'download']);
-
-            // Issued cards — the print history, and what the send button reads
-            // to know there is anything to send. `id-cards/issued` rather than
-            // `id-cards` so no future `id-cards/{card}` can shadow it.
-            Route::get('id-cards/issued', [IdCardController::class, 'index']);
-            Route::post('events/{event}/id-cards/send', [IdCardController::class, 'send']);
-            Route::get('id-cards/{card}/download', [IdCardController::class, 'downloadCard']);
-
-            // e-BIB. Same split as the ID card routes above: templates are
-            // org-scoped rows so their CRUD asks orgAllows('bib_generator'),
-            // while printing a particular race's bibs is event-keyed. The
-            // printing half is additionally gated on the event holding no
-            // matches at all — see BibController::ensureRaceEvent().
             Route::get('bib-fields', [BibTemplateController::class, 'fields']);
             Route::get('bib-templates', [BibTemplateController::class, 'index']);
             Route::post('bib-templates', [BibTemplateController::class, 'store']);
             Route::patch('bib-templates/{template}', [BibTemplateController::class, 'update']);
             Route::delete('bib-templates/{template}', [BibTemplateController::class, 'destroy']);
 
-            // Printing. Gated on the *event's* plan and on the event holding no
-            // matches, unlike the template rows above. Status and download are
-            // ungated but ownership-checked — see BibController::ensureOwned().
-            Route::get('events/{event}/bib-recipients', [BibController::class, 'recipients']);
-            Route::post('events/{event}/bibs', [BibController::class, 'generate']);
-            Route::get('bib-batches/{batch}', [BibController::class, 'status']);
-            Route::get('bib-batches/{batch}/download', [BibController::class, 'download']);
-            Route::post('events/{event}/bibs/send', [BibController::class, 'send']);
-            Route::get('events/{event}/bibs/{entry}/download', [BibController::class, 'downloadEntry']);
+            // Signing a result off is what makes it count, so it belongs to
+            // whoever runs the org. An operator records; they don't ratify —
+            // otherwise saving-as-admin auto-confirms for nothing. Stays
+            // `tenant` + `org.admin` here, deliberately NOT moved to the
+            // `event.perm.scheduling` group below: an event operator must
+            // NEVER be able to reach this route under any permission.
+            Route::middleware('org.admin')
+                ->patch('matches/{match}/confirm', [MatchController::class, 'confirmResult']);
 
             // Buyer list. Narrowed to owner/admin — the rows carry buyer
             // contact details, unlike the aggregate report above.
@@ -828,6 +640,221 @@ Route::prefix('v1')->group(function () {
                 Route::delete('withdrawals/{withdrawal}', [WithdrawalController::class, 'cancel']);
             });
         });
+
+        // ---- Event operator surfaces ----
+        // Same URL shape as the `tenant` group above
+        // (`organizations/{organization}/events/{event}/...` and
+        // `organizations/{organization}/<model>/{id}` for the model-bound
+        // block further down) so no frontend call site changes — but
+        // `tenant` is deliberately NOT applied to this prefix. An event
+        // operator holds no `organization_members` row, so `tenant` alone
+        // would refuse them before `event.access` below ever got a chance
+        // to recognize them. `{organization}` in the path is accepted and
+        // otherwise unused here (every controller resolves its scope from
+        // the `event`/`operator` attributes `event.access` sets, via
+        // ResolvesEventScope), the same way it is already unused by
+        // position in several controllers above.
+        //
+        // `password.rotated` stacks here for the same reason it stacks on
+        // `officiating/*`: an event operator is a mailed-default-password
+        // account exactly like a referee, and this is the duty surface it
+        // must not open before the password is changed. Safe to apply to the
+        // WHOLE group rather than narrowing to operators only — it is a
+        // no-op for anyone without `must_change_password` set, which is every
+        // org member and every operator who already rotated theirs.
+        Route::middleware('password.rotated')->prefix('organizations/{organization}')->group(function () {
+        // `event.access` resolves the event and admits either an org member
+        // (full access, exactly as `tenant` would have) or an operator
+        // (narrowed below by category) — see EventOrOperatorScope. Every
+        // route here was, before this feature, a plain `tenant` route; moving
+        // it here changes nothing for an org member and ADDS operator access
+        // for the one category it declares.
+        Route::middleware('event.access')->prefix('events/{event}')->group(function () {
+            // Read-only event detail, reachable by an operator holding ANY
+            // single category — deliberately outside every `event.perm.*`
+            // group below. Almost every operator sub-page needs the event's
+            // own name/status/dates/plan for its header or breadcrumb before
+            // it can even ask "does this operator hold the category this page
+            // needs", and that information is not a privilege: it is what
+            // `event.access` itself already proved the caller may see by
+            // admitting them at all. `update`/`destroy` are NOT here — those
+            // stay on the plain `tenant` route above, administrative rather
+            // than operational, exactly like `POST events` staying behind
+            // `org.admin`.
+            Route::get('/', [EventController::class, 'show']);
+            // ---- ticketing ----
+            Route::middleware('event.perm.ticketing')->group(function () {
+                Route::get('ticket-categories', [TicketCategoryController::class, 'index']);
+                Route::post('ticket-categories', [TicketCategoryController::class, 'store']);
+                Route::get('ticket-poster', [TicketPosterController::class, 'show']);
+                Route::get('ticket-report', [ScanController::class, 'report']);
+                Route::get('checkins', [ScanController::class, 'checkins']);
+                Route::post('scan', [ScanController::class, 'checkIn']);
+                Route::post('ticket-sales', [TicketSaleController::class, 'store']);
+            });
+
+            // ---- registration ----
+            Route::middleware('event.perm.registration')->group(function () {
+                Route::get('registrations', [RegistrationController::class, 'index']);
+                Route::post('registrations', [RegistrationController::class, 'store']);
+                Route::put('registrations/{team}', [RegistrationController::class, 'update']);
+                Route::patch('registrations/{team}', [RegistrationController::class, 'updateStatus']);
+                Route::get('registrations/import-template', [RegistrationController::class, 'importTemplate']);
+                Route::post('registrations/import', [RegistrationController::class, 'import']);
+                Route::get('registrations/{team}/invoice', [RegistrationController::class, 'invoice']);
+                Route::get('registrations/{team}/receipt', [RegistrationController::class, 'receipt']);
+                Route::get('registrations/album', [TeamAlbumController::class, 'event']);
+                Route::get('registrations/{team}/album', [TeamAlbumController::class, 'team']);
+                Route::get('race-periods', [RacePeriodController::class, 'index']);
+                Route::put('race-periods', [RacePeriodController::class, 'sync']);
+                Route::get('race-categories', [RaceCategoryController::class, 'index']);
+                Route::post('race-categories', [RaceCategoryController::class, 'store']);
+                Route::get('discount-codes', [EventDiscountCodeController::class, 'index']);
+                Route::post('discount-codes', [EventDiscountCodeController::class, 'store']);
+                Route::post('race-scan', [RaceScanController::class, 'checkIn']);
+                Route::get('race-report', [RaceScanController::class, 'report']);
+                Route::get('race-checkins', [RaceScanController::class, 'checkins']);
+            });
+
+            // ---- scheduling ----
+            Route::middleware('event.perm.scheduling')->group(function () {
+                Route::post('categories/{category}/schedule', [MatchController::class, 'generate']);
+                Route::post('categories/{category}/draw', [MatchController::class, 'drawGroups']);
+                Route::get('categories/{category}/swiss', [MatchController::class, 'swissState']);
+                Route::post('categories/{category}/swiss/rounds', [MatchController::class, 'generateSwissRound']);
+                Route::delete('categories/{category}/swiss/rounds/last', [MatchController::class, 'destroySwissRound']);
+                Route::get('categories/{category}/knockout-plan', [MatchController::class, 'knockoutPlan']);
+                Route::put('categories/{category}/knockout-plan', [MatchController::class, 'saveKnockoutPlan']);
+                Route::delete('categories/{category}/knockout-plan', [MatchController::class, 'destroyKnockoutPlan']);
+                Route::post('categories/{category}/knockout-plan/shuffle', [MatchController::class, 'shuffleKnockoutPlan']);
+                Route::post('categories/{category}/knockout', [MatchController::class, 'generateKnockout']);
+                Route::delete('categories/{category}/knockout', [MatchController::class, 'destroyKnockout']);
+                Route::post('categories/{category}/bracket/shuffle', [MatchController::class, 'shuffleBracket']);
+                Route::get('categories/{category}/matches', [MatchController::class, 'index']);
+                Route::post('categories/{category}/matches', [MatchController::class, 'storeManual']);
+                Route::get('categories/{category}/standings', [MatchController::class, 'standings']);
+                Route::get('categories/{category}/adjustments', [StandingAdjustmentController::class, 'index']);
+                Route::post('categories/{category}/adjustments', [StandingAdjustmentController::class, 'store']);
+                Route::get('categories/{category}/leaderboard', [MatchController::class, 'leaderboard']);
+                Route::get('categories/{category}/discipline', [MatchController::class, 'discipline']);
+            });
+
+            // ---- documents ----
+            Route::middleware('event.perm.documents')->group(function () {
+                Route::get('certificate-recipients', [CertificateController::class, 'recipients']);
+                Route::post('certificates', [CertificateController::class, 'generate']);
+                Route::get('id-card-recipients', [IdCardController::class, 'recipients']);
+                Route::post('id-cards', [IdCardController::class, 'generate']);
+                Route::post('id-cards/send', [IdCardController::class, 'send']);
+                Route::get('bib-recipients', [BibController::class, 'recipients']);
+                Route::post('bibs', [BibController::class, 'generate']);
+                Route::post('bibs/send', [BibController::class, 'send']);
+                Route::get('bibs/{entry}/download', [BibController::class, 'downloadEntry']);
+                Route::get('personnel', [EventPersonnelController::class, 'index']);
+                Route::put('personnel', [EventPersonnelController::class, 'sync']);
+                Route::get('photos', [EventMediaController::class, 'photos']);
+                Route::post('photos', [EventMediaController::class, 'storePhotos']);
+                Route::get('sponsors', [EventMediaController::class, 'sponsors']);
+                Route::post('sponsors', [EventMediaController::class, 'storeSponsor']);
+            });
+        });
+
+        // Model-bound routes that carry no `{event}` segment — the category
+        // middleware resolves the event itself from the bound parameter via
+        // `EventOperatorAttribution::resolveEventFrom()`, passed as the two
+        // extra alias arguments. See EnsureOperatorPermission.
+        Route::middleware('event.perm.ticketing:ticketCategory,App\Models\TicketCategory')->group(function () {
+            Route::patch('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'update']);
+            Route::delete('ticket-categories/{ticketCategory}', [TicketCategoryController::class, 'destroy']);
+        });
+        Route::middleware('event.perm.ticketing:ticketOrder,App\Models\TicketOrder')->group(function () {
+            Route::post('ticket-orders/{ticketOrder}/check-in', [TicketSaleController::class, 'checkInOrder']);
+        });
+        Route::middleware('event.perm.registration:raceCategory,App\Models\RaceCategory')->group(function () {
+            Route::patch('race-categories/{raceCategory}', [RaceCategoryController::class, 'update']);
+            Route::delete('race-categories/{raceCategory}', [RaceCategoryController::class, 'destroy']);
+        });
+        Route::middleware('event.perm.registration:eventDiscountCode,App\Models\EventDiscountCode')->group(function () {
+            Route::patch('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'update']);
+            Route::delete('event-discount-codes/{eventDiscountCode}', [EventDiscountCodeController::class, 'destroy']);
+        });
+        Route::middleware('event.perm.scheduling:adjustment,App\Models\StandingAdjustment')->group(function () {
+            Route::delete('adjustments/{adjustment}', [StandingAdjustmentController::class, 'destroy']);
+        });
+        Route::middleware('event.perm.scheduling:match,App\Models\GameMatch')->group(function () {
+            // `confirm` is deliberately absent here and stays `org.admin`-only
+            // further up, untouched.
+            Route::patch('matches/{match}', [MatchController::class, 'updateResult']);
+            Route::patch('matches/{match}/schedule', [MatchController::class, 'updateSchedule']);
+            Route::patch('matches/{match}/teams', [MatchController::class, 'updateTeams']);
+            Route::patch('matches/{match}/slot', [MatchController::class, 'moveSlot']);
+            Route::patch('matches/{match}/sides', [MatchController::class, 'swapSides']);
+            Route::patch('matches/{match}/status', [MatchController::class, 'updateStatus']);
+            Route::patch('matches/{match}/clock', [MatchController::class, 'updateClock']);
+            Route::delete('matches/{match}', [MatchController::class, 'destroy']);
+            Route::get('matches/{match}/stats', [MatchController::class, 'matchStats']);
+            Route::put('matches/{match}/stats', [MatchController::class, 'saveMatchStats']);
+            Route::get('matches/{match}/lineup-sheet', [LineupSheetController::class, 'download']);
+            Route::get('matches/{match}/report', [MatchReportController::class, 'download']);
+            Route::get('matches/{match}/rubbers', [RubberController::class, 'index']);
+            Route::put('matches/{match}/rubbers', [RubberController::class, 'sync']);
+        });
+        Route::middleware('event.perm.scheduling:rubber,App\Models\MatchRubber')->group(function () {
+            Route::patch('rubbers/{rubber}', [RubberController::class, 'update']);
+        });
+        Route::middleware('event.perm.documents:photo,App\Models\EventPhoto')->group(function () {
+            Route::patch('photos/{photo}', [EventMediaController::class, 'updatePhoto']);
+            Route::delete('photos/{photo}', [EventMediaController::class, 'destroyPhoto']);
+        });
+        Route::middleware('event.perm.documents:sponsor,App\Models\EventSponsor')->group(function () {
+            Route::patch('sponsors/{sponsor}', [EventMediaController::class, 'updateSponsor']);
+            Route::delete('sponsors/{sponsor}', [EventMediaController::class, 'destroySponsor']);
+        });
+        Route::middleware('event.perm.documents:certificate,App\Models\Certificate')->group(function () {
+            Route::get('certificates/{certificate}/download', [CertificateController::class, 'download']);
+            Route::post('certificates/{certificate}/send', [CertificateController::class, 'send']);
+            Route::delete('certificates/{certificate}', [CertificateController::class, 'destroy']);
+        });
+        Route::middleware('event.perm.documents:card,App\Models\IdCard')->group(function () {
+            Route::get('id-cards/{card}/download', [IdCardController::class, 'downloadCard']);
+        });
+
+        // Certificate/ID-card/bib printing routes that carry no `{event}`
+        // segment at all — they take an optional `event_id` (certificates
+        // index, certificates/zip) or none (id-cards/issued, every batch
+        // status/download route), because they predate this feature and
+        // already took their shape from `tenant`, which only ever needed
+        // `organization`. Neither `event.access` (requires `{event}` in the
+        // path) nor the model-bound `event.perm.documents:*,…` above
+        // (requires a bound Eloquent row to walk) fits them — a batch id is
+        // a key into a Cache payload the queue job wrote, not a row.
+        // `event.perm.documents.index`/`.batch` resolve the
+        // `operator`/`organization` attributes these controllers already
+        // read (`$request->attributes->get('operator')`, each controller's
+        // own `ensureOwned()`/`ensureOwnedBatch()`) from `event_id` or the
+        // batch's own cached payload — see their docblocks. Deliberately
+        // inside this `tenant`-less group, same reasoning as the rest of it:
+        // an operator must reach these without a `organization_members` row,
+        // and each middleware falls back to plain org membership itself when
+        // no event is identifiable (an org-wide certificate zip has none).
+        Route::middleware('event.perm.documents.index')->group(function () {
+            Route::get('certificates', [CertificateController::class, 'index']);
+            Route::post('certificates/zip', [CertificateController::class, 'zip']);
+            Route::get('id-cards/issued', [IdCardController::class, 'index']);
+        });
+        Route::middleware('event.perm.documents.batch:'.\App\Jobs\GenerateCertificateZipJob::class)->group(function () {
+            Route::get('certificate-batches/{batch}', [CertificateController::class, 'zipStatus']);
+            Route::get('certificate-batches/{batch}/download', [CertificateController::class, 'zipDownload']);
+        });
+        Route::middleware('event.perm.documents.batch:'.\App\Jobs\GenerateIdCardsJob::class)->group(function () {
+            Route::get('id-card-batches/{batch}', [IdCardController::class, 'status']);
+            Route::get('id-card-batches/{batch}/download', [IdCardController::class, 'download']);
+        });
+        Route::middleware('event.perm.documents.batch:'.\App\Jobs\GenerateBibsJob::class)->group(function () {
+            Route::get('bib-batches/{batch}', [BibController::class, 'status']);
+            Route::get('bib-batches/{batch}/download', [BibController::class, 'download']);
+        });
+        }); // end organizations/{organization} (event operator surfaces)
 
         // ---- SaaS Super Admin ----
         Route::middleware('superadmin')->prefix('admin')->group(function () {

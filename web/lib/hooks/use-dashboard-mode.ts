@@ -71,6 +71,26 @@ export function isCrewOnly(user: {
 }
 
 /**
+ * Punya minimal satu baris `event_operators`, tanpa cabang lain — jejak yang
+ * sama persis dengan `isCrewOnly()` satu tingkat ke samping: akun yang
+ * identitasnya cuma "operator event ini" tidak punya `organization_members`
+ * sama sekali, jadi `account_types` kosong (bukan `'organizer'`) dan
+ * `OrganizerLayout` yang mengira kosong = belum onboarding akan
+ * mengirimnya ke `/onboarding` — organisasi memang bukan urusannya. Lihat
+ * `docs/event-operator-design.md` section 9.
+ *
+ * Tidak digabung ke `isCrewOnly()`: operator tetap memakai shell organizer
+ * (halaman event, bukan `/officiating`), jadi pertanyaannya beda — ini cuma
+ * menjawab "boleh skip pemeriksaan organisasi", bukan "mode mana yang
+ * dibukakan".
+ */
+export function hasOperatorAccess(user: {
+  operating?: readonly unknown[] | null;
+}): boolean {
+  return (user.operating?.length ?? 0) > 0;
+}
+
+/**
  * Mode yang seharusnya dibukakan untuk sebuah akun — sumber tunggal untuk
  * halaman pendaratannya (`MODE_HOME`) **dan** kalimat yang menyebutkannya
  * (`MODE_LABEL`).

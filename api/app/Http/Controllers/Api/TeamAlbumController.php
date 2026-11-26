@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Services\TeamAlbumService;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
@@ -19,6 +19,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class TeamAlbumController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected TeamAlbumService $albums) {}
 
     /** One team's album. */
@@ -55,10 +57,7 @@ class TeamAlbumController extends Controller
 
     protected function findEvent(Request $request, string $id): Event
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org->events()->where('id', $id)->firstOrFail();
+        return $this->scopedEvent($request, $id);
     }
 
     /** Filenames can't carry slashes, and a team name might have one typed in. */

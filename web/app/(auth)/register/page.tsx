@@ -62,7 +62,13 @@ function RegisterForm() {
   const [serverError, setServerError] = useState<string | null>(null);
 
   // Sent here mid-flow (e.g. from team registration) — go back there after.
-  const next = safeNext(useSearchParams().get("next"));
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get("next"));
+
+  // From an event-operator invite link: the address is already fixed by the
+  // invite, so retyping it is a chance to get it wrong and land on an account
+  // the invite will never match.
+  const lockedEmail = searchParams.get("email");
 
   // The one thing that decides what the whole app looks like to them. Only the
   // public team-registration page links here with ?next=, so that arrival is
@@ -74,7 +80,10 @@ function RegisterForm() {
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: lockedEmail ? { email: lockedEmail } : undefined,
+  });
 
   // Sanitize in the DOM before handing the event to RHF, so its own onChange
   // still runs (a plain onChange prop after the spread would replace it).
@@ -158,7 +167,16 @@ function RegisterForm() {
         </div>
         <div className="grid gap-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" autoComplete="email" {...register("email")} />
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            readOnly={!!lockedEmail}
+            {...register("email")}
+          />
+          {lockedEmail && (
+            <p className="text-xs text-muted-foreground">Email dari tautan undangan, tidak bisa diubah.</p>
+          )}
           {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
         </div>
         <div className="grid gap-2">

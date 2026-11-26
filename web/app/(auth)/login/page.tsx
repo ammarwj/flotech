@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { getOrganizations } from "@/lib/api/organizations";
 import { parseApiError } from "@/lib/api/errors";
-import { dashboardModeFor } from "@/lib/hooks/use-dashboard-mode";
+import { dashboardModeFor, hasOperatorAccess } from "@/lib/hooks/use-dashboard-mode";
 import { safeNext } from "@/lib/next-param";
 import { useAuthStore, type AuthUser } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -92,10 +92,13 @@ function LoginForm() {
       }
 
       // A user who never finished onboarding owns no organization; the organizer
-      // dashboard is useless to them, so route them back into the flow.
+      // dashboard is useless to them, so route them back into the flow — unless
+      // their only identity on the platform is event operator (no org seat at
+      // all, by design), in which case /organizer/page.tsx itself redirects to
+      // the operator landing. See `hasOperatorAccess()`.
       const orgs = await getOrganizations();
       qc.setQueryData(["organizations"], orgs);
-      router.push(orgs.length === 0 ? "/onboarding" : "/organizer");
+      router.push(orgs.length === 0 && !hasOperatorAccess(user) ? "/onboarding" : "/organizer");
     } catch (err) {
       setServerError(parseApiError(err, "Login gagal").message);
     }

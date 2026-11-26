@@ -75,6 +75,21 @@ class UserResource extends JsonResource
                     'event_name' => $p->event->name,
                     'kind' => $p->kind,
                 ])->values()),
+            // Events this account operates — the second account type the
+            // shell has to recognize beside `officiating`, same pattern and
+            // same reason: a user whose only row anywhere is in
+            // `event_operators` owns no organization, so without this field
+            // `isCrewOnly()` can't tell them apart from an empty account and
+            // OrganizerLayout sends them to /onboarding. Loaded the same way
+            // `officiating` is — eagerly on every auth response via
+            // AuthController::withAuth(), `load()`'d (not `loadExists()`)
+            // because this IS the list `use-dashboard-mode.ts` needs to know
+            // whether there is exactly one event (go straight there) or more
+            // than one (show a picker) — see docs/event-operator-design.md
+            // section 9.
+            'operating' => $this->whenLoaded('operatorAssignments', fn () => $this->operatorAssignments
+                ->map(fn ($op) => ['event_id' => $op->event_id])
+                ->values()),
             // Diturunkan dari keempat relasi di atas — butuh keempatnya disiapkan,
             // karena "tidak dimuat" tidak bisa dibedakan dari "tidak punya" dan
             // akan melabeli setiap organizer sebagai akun kosong. Gerbangnya di

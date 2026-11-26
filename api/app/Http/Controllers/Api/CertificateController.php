@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Certificate\GenerateCertificatesRequest;
 use App\Http\Resources\CertificateResource;
@@ -9,7 +10,6 @@ use App\Jobs\GenerateCertificateZipJob;
 use App\Jobs\SendCertificateJob;
 use App\Models\Certificate;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Services\CertificateService;
 use App\Services\PlanGate;
 use App\Services\R2StorageService;
@@ -22,6 +22,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CertificateController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected PlanGate $gate,
         protected CertificateService $certificates,
@@ -48,8 +50,16 @@ class CertificateController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $page = $this->org($request)
-            ->certificates()
+        // No `{event}` segment on this route, so an operator (no `organization`
+        // attribute) is narrowed to their one event rather than the whole
+        // org's history — same reasoning as IdCardController::index().
+        $operator = $request->attributes->get('operator');
+
+        $query = $operator
+            ? Certificate::query()->where('event_id', $operator->event_id)
+            : $this->org($request)->certificates();
+
+        $page = $query
             ->with('event:id,name')
             ->when($filters['event_id'] ?? null, fn ($q, $id) => $q->where('event_id', $id))
             ->latest('issued_at')
@@ -142,8 +152,7 @@ class CertificateController extends Controller
     /** Queue the email for one already-issued certificate. */
     public function send(Request $request, string $organization, string $certificate): JsonResponse
     {
-        $org = $this->org($request);
-        $model = $this->find($org, $certificate);
+        $model = $this->find($request, $certificate);
 
         if (! $this->gate->allows($model->event, 'certificate_email')) {
             return ApiResponse::error(
@@ -165,7 +174,7 @@ class CertificateController extends Controller
     /** Stream the rendered PDF. The bucket key never leaves the server. */
     public function download(Request $request, string $organization, string $certificate): StreamedResponse|JsonResponse
     {
-        $model = $this->find($this->org($request), $certificate);
+        $model = $this->find($request, $certificate);
 
         if (! $model->pdf_key) {
             return ApiResponse::error('PDF sertifikat belum tersedia.', null, 404);
@@ -191,21 +200,34 @@ class CertificateController extends Controller
      */
     public function zip(Request $request, string $organization): JsonResponse
     {
-        $org = $this->org($request);
+        $operator = $request->attributes->get('operator');
+        $org = $this->org($request) ?? ($operator ? $operator->event->organization : null);
 
         $data = $request->validate([
-            'event_id' => ['nullable', 'uuid'],
+            // Required for an operator — this route carries no `{event}`
+            // segment to resolve them against, so "zip the whole org" (the
+            // `event_id`-less branch below) is not an option for one.
+            'event_id' => [$operator ? 'required' : 'nullable', 'uuid'],
         ]);
 
+        if ($operator && isset($data['event_id']) && $data['event_id'] !== $operator->event_id) {
+            return ApiResponse::error('Kamu tidak punya akses ke event ini.', null, 403);
+        }
+
+        // Scoped to this organization's own events — an event_id belonging to
+        // another org must 404 here exactly as it would for `tenant`, not
+        // resolve globally and only then fail later with the wrong status.
         $event = isset($data['event_id'])
-            ? $org->events()->where('id', $data['event_id'])->firstOrFail()
+            ? $org->events()->findOrFail($data['event_id'])
             : null;
 
         // Resolved from the organization's own rows rather than from a list of
         // ids in the request: the same reasoning as IdCardController::generate(),
         // and here it is the whole ownership story — zipping whatever the client
         // named would hand over another organizer's documents.
-        $certificates = $org->certificates()
+        $certificates = Certificate::query()
+            ->when($operator, fn ($q) => $q->where('event_id', $operator->event_id))
+            ->when(! $operator, fn ($q) => $q->whereIn('event_id', $org->events()->select('id')))
             ->when($event, fn ($q) => $q->where('event_id', $event->id))
             // A row still waiting on its PDF has nothing to contribute. Filtered
             // here rather than inside zip() so `total` is the number of files the
@@ -308,12 +330,24 @@ class CertificateController extends Controller
             return null;
         }
 
-        return ($payload['organization_id'] ?? null) === $this->org($request)->id ? $payload : null;
+        // No `{event}` segment on this route — same reasoning as
+        // IdCardController::ensureOwned(). A batch narrowed to "semua event"
+        // (null `event_id`) is never owned by an operator, who only ever has
+        // one.
+        $operator = $request->attributes->get('operator');
+
+        if ($operator) {
+            return $payload['event_id'] !== null && $payload['event_id'] === $operator->event_id ? $payload : null;
+        }
+
+        $org = $this->org($request);
+
+        return $org && ($payload['organization_id'] ?? null) === $org->id ? $payload : null;
     }
 
     public function destroy(Request $request, string $organization, string $certificate): JsonResponse
     {
-        $model = $this->find($this->org($request), $certificate);
+        $model = $this->find($request, $certificate);
 
         if ($model->pdf_key) {
             $this->r2->delete($model->pdf_key);
@@ -344,21 +378,27 @@ class CertificateController extends Controller
         return null;
     }
 
-    protected function find(Organization $org, string $id): Certificate
+    /**
+     * `certificates/{certificate}/…` carries no `{event}` segment, so
+     * `event.perm.documents:certificate,App\Models\Certificate` has already
+     * resolved + authorized the event (via `Certificate::event()`, through
+     * `EventOperatorAttribution`) before this runs — same reasoning as
+     * TicketCategoryController::findCategory().
+     */
+    protected function find(Request $request, string $id): Certificate
     {
-        return $org->certificates()->where('id', $id)->firstOrFail();
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return Certificate::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->where('organization_id', $org->id))
+            ->where('id', $id)
+            ->firstOrFail();
     }
 
     protected function findEvent(Request $request, string $id): Event
     {
-        return $this->org($request)->events()->where('id', $id)->firstOrFail();
-    }
-
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
+        return $this->scopedEvent($request, $id);
     }
 }

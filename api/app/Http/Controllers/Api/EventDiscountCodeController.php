@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\EventDiscountCodeRequest;
 use App\Http\Resources\EventDiscountCodeResource;
 use App\Models\Event;
 use App\Models\EventDiscountCode;
-use App\Models\Organization;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +30,8 @@ use Illuminate\Http\Request;
  */
 class EventDiscountCodeController extends Controller
 {
+    use ResolvesEventScope;
+
     public function index(Request $request, string $organization, string $event): JsonResponse
     {
         $event = $this->findEvent($request, $event);
@@ -52,7 +54,7 @@ class EventDiscountCodeController extends Controller
 
     public function update(EventDiscountCodeRequest $request, string $organization, string $eventDiscountCode): JsonResponse
     {
-        $code = $this->findCode($this->org($request), $eventDiscountCode);
+        $code = $this->findCode($request, $eventDiscountCode);
 
         $code->update($request->validated());
 
@@ -61,30 +63,30 @@ class EventDiscountCodeController extends Controller
 
     public function destroy(Request $request, string $organization, string $eventDiscountCode): JsonResponse
     {
-        $code = $this->findCode($this->org($request), $eventDiscountCode);
+        $code = $this->findCode($request, $eventDiscountCode);
 
         $code->delete();
 
         return ApiResponse::success(null, 'Kode diskon dihapus');
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function findEvent(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 
-    /** Resolve a code whose event belongs to the current org (404 otherwise). */
-    protected function findCode(Organization $org, string $codeId): EventDiscountCode
+    /**
+     * Resolve a code by id, scoped to the event the request was already
+     * authorized for — same reasoning as TicketCategoryController::findCategory().
+     */
+    protected function findCode(Request $request, string $codeId): EventDiscountCode
     {
-        return EventDiscountCode::whereHas('event', fn ($q) => $q->where('organization_id', $org->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return EventDiscountCode::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->findOrFail($codeId);
     }
 }

@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Jobs\PurgeMediaJob;
 use App\Models\Event;
 use App\Models\EventPhoto;
 use App\Models\EventSponsor;
-use App\Models\Organization;
 use App\Services\Catalog;
 use App\Services\PlanGate;
 use App\Support\ApiResponse;
@@ -24,6 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class EventMediaController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected PlanGate $gate) {}
 
     // ---- Photos ----
@@ -190,28 +192,36 @@ class EventMediaController extends Controller
         ];
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function event(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 
+    /**
+     * `photos/{photo}` and `sponsors/{sponsor}` carry no `{event}` segment,
+     * so `event.perm.documents:photo,App\Models\EventPhoto` (resp. `sponsor`)
+     * has already resolved + authorized the event via
+     * `EventOperatorAttribution` before either of these runs.
+     */
     protected function photo(Request $request, string $photoId): EventPhoto
     {
-        return EventPhoto::whereHas('event', fn ($q) => $q->where('organization_id', $this->org($request)->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return EventPhoto::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->findOrFail($photoId);
     }
 
     protected function sponsor(Request $request, string $sponsorId): EventSponsor
     {
-        return EventSponsor::whereHas('event', fn ($q) => $q->where('organization_id', $this->org($request)->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return EventSponsor::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->findOrFail($sponsorId);
     }
 }

@@ -12,6 +12,7 @@ import {
   Globe,
   Images,
   TicketPercent,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,6 +36,7 @@ import { EventPlanPanel } from "@/components/event/event-plan-panel";
 import { RaceSetupPanel } from "@/components/event/race-setup-panel";
 import { isRaceEvent } from "@/lib/race";
 import { useConfirm } from "@/components/shared/confirm-provider";
+import { canAccessCategory, isOrgMember } from "@/lib/event-operator-permissions";
 import type { EventStatus } from "@/types/api";
 
 /** Per-status confirmation copy; the API sends its own message, this is the UI's. */
@@ -208,7 +210,7 @@ export default function EditEventPage() {
                 </a>
               </Button>
             )}
-            {!isRace && (
+            {!isRace && canAccessCategory(ev.viewer_permissions, "scheduling") && (
               <Button asChild variant="outline">
                 <Link href={`/organizer/events/${eventId}/schedule`}>
                   <CalendarClock className="h-4 w-4" />
@@ -216,43 +218,64 @@ export default function EditEventPage() {
                 </Link>
               </Button>
             )}
-            {/* Deliberately NOT gated. A race reads the same `team_fields` and
-                `team_documents` the builder on that page edits — see
-                PublicRaceController::assertFormComplete(), which validates the
-                required ones, and the public race form, which renders them. The
-                page itself drops the four roster sections for a race; a runner
-                has no players and no bench. */}
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/registration-form`}>
-                <ClipboardList className="h-4 w-4" />
-                Formulir Pendaftaran
-              </Link>
-            </Button>
+            {/* Deliberately NOT gated on `isRace`, unlike the schedule. It IS
+                gated on being an org member: `events/{event}/registration-form`
+                stays on the plain `tenant` route (see api.php), reachable by
+                NO operator category at all — a race reads the same
+                `team_fields`/`team_documents` the builder on that page edits,
+                but that is a reason to keep it ungated by `isRace`, not a
+                reason it is reachable by an operator. */}
+            {isOrgMember(ev.viewer_permissions) && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/registration-form`}>
+                  <ClipboardList className="h-4 w-4" />
+                  Formulir Pendaftaran
+                </Link>
+              </Button>
+            )}
             {/* Deliberately NOT gated on `isRace`, unlike the schedule: both
                 participant rails read these codes — a team paying a
                 registration fee and a runner paying an entry fee. */}
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/discount-codes`}>
-                <TicketPercent className="h-4 w-4" />
-                Kode Diskon
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/media`}>
-                <Images className="h-4 w-4" />
-                Galeri & Sponsor
-              </Link>
-            </Button>
-            {/* Always offered, including for a draft: that page explains why a
-                draft cannot hold a certificate yet, which is more use than a
-                button that is not there. */}
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/domain`}>
-                <Globe className="h-4 w-4" />
-                Domain
-              </Link>
-            </Button>
-            {deletable && (
+            {canAccessCategory(ev.viewer_permissions, "registration") && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/discount-codes`}>
+                  <TicketPercent className="h-4 w-4" />
+                  Kode Diskon
+                </Link>
+              </Button>
+            )}
+            {canAccessCategory(ev.viewer_permissions, "documents") && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/media`}>
+                  <Images className="h-4 w-4" />
+                  Galeri & Sponsor
+                </Link>
+              </Button>
+            )}
+            {/* Managing operators is itself `org.admin` — a gate `operator`
+                member must not be able to invite another one, and an event
+                OPERATOR (no `organization_members` row at all) is narrower
+                still. No category grants this. */}
+            {isOrgMember(ev.viewer_permissions) && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/operators`}>
+                  <Users className="h-4 w-4" />
+                  Operator Event
+                </Link>
+              </Button>
+            )}
+            {/* The domain page reads `plan-orders`, `org.admin`-only — not
+                reachable by any operator category either. Always offered to
+                an org member, including for a draft. */}
+            {isOrgMember(ev.viewer_permissions) && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/domain`}>
+                  <Globe className="h-4 w-4" />
+                  Domain
+                </Link>
+              </Button>
+            )}
+            {deletable && isOrgMember(ev.viewer_permissions) && (
             <Button
               variant="destructive"
               onClick={() => void confirmDelete()}

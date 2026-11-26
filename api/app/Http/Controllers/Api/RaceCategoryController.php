@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Race\StoreRaceCategoryRequest;
 use App\Http\Requests\Race\UpdateRaceCategoryRequest;
 use App\Http\Resources\RaceCategoryResource;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\RaceCategory;
 use App\Services\Catalog;
 use App\Services\PlanGate;
@@ -27,6 +27,8 @@ use Illuminate\Support\Str;
  */
 class RaceCategoryController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected PlanGate $gate) {}
 
     public function index(Request $request, string $organization, string $event): JsonResponse
@@ -83,7 +85,7 @@ class RaceCategoryController extends Controller
 
     public function update(UpdateRaceCategoryRequest $request, string $organization, string $raceCategory): JsonResponse
     {
-        $category = $this->findCategory($this->org($request), $raceCategory);
+        $category = $this->findCategory($request, $raceCategory);
 
         if ($denied = $this->ensureRaceEvent($category->event)) {
             return $denied;
@@ -213,7 +215,7 @@ class RaceCategoryController extends Controller
 
     public function destroy(Request $request, string $organization, string $raceCategory): JsonResponse
     {
-        $category = $this->findCategory($this->org($request), $raceCategory);
+        $category = $this->findCategory($request, $raceCategory);
 
         // `taken`, not a count of paid entries: a pending entry is holding a
         // place and its runner is mid-checkout. Deactivating is the way to
@@ -271,23 +273,23 @@ class RaceCategoryController extends Controller
         return $slug;
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function findEvent(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 
-    /** Resolve a category whose event belongs to the current org (404 otherwise). */
-    protected function findCategory(Organization $org, string $categoryId): RaceCategory
+    /**
+     * Resolve a category by id, scoped to the event the request was already
+     * authorized for — same reasoning as TicketCategoryController::findCategory().
+     */
+    protected function findCategory(Request $request, string $categoryId): RaceCategory
     {
-        return RaceCategory::whereHas('event', fn ($q) => $q->where('organization_id', $org->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return RaceCategory::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->with(['event.racePeriods', 'prices'])
             ->findOrFail($categoryId);
     }

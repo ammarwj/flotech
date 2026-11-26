@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\StoreStandingAdjustmentRequest;
 use App\Http\Resources\StandingAdjustmentResource;
 use App\Models\Event;
 use App\Models\EventCategory;
-use App\Models\Organization;
 use App\Models\StandingAdjustment;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -44,6 +44,8 @@ use Illuminate\Http\Request;
  */
 class StandingAdjustmentController extends Controller
 {
+    use ResolvesEventScope;
+
     public function index(Request $request, string $organization, string $event, string $category): JsonResponse
     {
         $category = $this->category($request, $event, $category);
@@ -98,17 +100,9 @@ class StandingAdjustmentController extends Controller
         return ApiResponse::success(null, 'Penyesuaian poin dihapus');
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function event(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 
     protected function category(Request $request, string $eventId, string $categoryId): EventCategory
@@ -116,12 +110,19 @@ class StandingAdjustmentController extends Controller
         return $this->event($request, $eventId)->categories()->findOrFail($categoryId);
     }
 
-    /** Resolve one entry scoped to an event owned by the current org (404 otherwise). */
+    /**
+     * Resolve one entry, scoped to the event this route carries no
+     * `{event}` segment for — `event.perm.scheduling:adjustment,App\Models\StandingAdjustment`
+     * resolves + authorizes it (through `category.event`) before this runs.
+     */
     protected function adjustment(Request $request, string $adjustmentId): StandingAdjustment
     {
-        return StandingAdjustment::whereHas(
-            'category.event',
-            fn ($q) => $q->where('organization_id', $this->org($request)->id),
-        )->findOrFail($adjustmentId);
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return StandingAdjustment::query()
+            ->when($event instanceof Event, fn ($q) => $q->whereHas('category', fn ($q2) => $q2->where('event_id', $event->id)))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('category.event', fn ($q2) => $q2->where('organization_id', $org->id)))
+            ->findOrFail($adjustmentId);
     }
 }

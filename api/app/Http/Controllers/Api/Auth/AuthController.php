@@ -126,12 +126,20 @@ class AuthController extends Controller
      * nothing in it — the same absence a referee's used to be, landing them on
      * an organizer dashboard and then in /onboarding.
      *
+     * `operatorAssignments` rides beside `personnelAssignments` for the same
+     * reason: a user whose only row anywhere is an `event_operators` one owns
+     * no organization and manages no team, so without this the shell sees an
+     * empty account and either drops them on the organizer dashboard (which
+     * then bounces them to /onboarding) or stalls on `isCrewOnly()`, which
+     * only knows about `officiating`. See docs/event-operator-design.md
+     * section 9.
+     *
      * One extra query, said out loud.
      */
     protected function withAuth(User $user): User
     {
         return $user
-            ->load('personnelAssignments.event')
+            ->load(['personnelAssignments.event', 'operatorAssignments'])
             ->loadExists([
                 'ownedOrganizations',
                 'organizationMemberships',

@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Concerns\ResolvesTicketDays;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ticket\SellTicketRequest;
 use App\Http\Resources\TicketOrderResource;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\TicketOrder;
 use App\Services\MidtransService;
 use App\Services\PaymentFeeCalculator;
@@ -56,7 +56,7 @@ use Illuminate\Support\Str;
  */
 class TicketSaleController extends Controller
 {
-    use ResolvesTicketDays;
+    use ResolvesEventScope, ResolvesTicketDays;
 
     public function __construct(
         protected PlanGate $gate,
@@ -243,13 +243,17 @@ class TicketSaleController extends Controller
      */
     public function checkInOrder(Request $request, string $organization, string $ticketOrder): JsonResponse
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
+        // `event.perm.ticketing:ticketOrder,App\Models\TicketOrder` already
+        // resolved + authorized the event this order belongs to (org member
+        // or operator) via EventOperatorAttribution — this is just the
+        // eager-loaded read of the row itself, scoped the same way `tenant`
+        // scoped it before.
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
 
-        // Resolved through the org's events, never TicketOrder::findOrFail():
-        // the bare lookup crosses tenants, and an id is all a caller needs.
         $order = TicketOrder::query()
-            ->whereIn('event_id', $org->events()->select('id'))
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereIn('event_id', $org->events()->select('id')))
             ->with(['event', 'category', 'tickets.category'])
             ->findOrFail($ticketOrder);
 
@@ -285,9 +289,6 @@ class TicketSaleController extends Controller
      */
     protected function findEvent(Request $request, string $eventId): Event
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 }

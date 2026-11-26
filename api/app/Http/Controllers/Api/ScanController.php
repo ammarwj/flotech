@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\Ticket;
 use App\Services\TicketService;
 use App\Support\ApiResponse;
@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
 
 class ScanController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected TicketService $tickets) {}
 
     /**
@@ -318,9 +320,6 @@ class ScanController extends Controller
 
     protected function findEvent(Request $request, string $eventId): Event
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 }

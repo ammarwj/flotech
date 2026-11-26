@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Concerns\AppliesMatchClock;
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Event;
 use App\Models\EventCategory;
 use App\Models\GameMatch;
-use App\Models\Organization;
 use App\Services\Catalog;
 use App\Services\DisciplineService;
 use App\Services\GroupDrawService;
@@ -37,7 +37,7 @@ use Illuminate\Validation\Rule;
  */
 class MatchController extends Controller
 {
-    use AppliesMatchClock;
+    use AppliesMatchClock, ResolvesEventScope;
 
     public function __construct(
         protected ScheduleService $schedule,
@@ -987,7 +987,10 @@ class MatchController extends Controller
         // operator only records, and their result waits for someone who does.
         // That is the whole point of the two-step — it costs a click exactly
         // when there really are two people.
-        $signsOff = $this->org($request)->isAdministeredBy($request->user());
+        // An event operator never reaches this true — `org()` is null for one
+        // (see EventOrOperatorScope), so they record exactly like a gate
+        // `operator` org member does: the result waits for an org admin.
+        $signsOff = $this->org($request)?->isAdministeredBy($request->user()) ?? false;
         $autoConfirm = $signsOff
             && $payload['status'] === 'finished'
             && $payload['home_score'] !== null
@@ -1908,17 +1911,9 @@ class MatchController extends Controller
         return $this->numbers->attach($category, $matches);
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function event(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 
     /**
@@ -1936,11 +1931,19 @@ class MatchController extends Controller
     }
 
     /**
-     * Resolve a match scoped to an event owned by the current organization.
+     * Resolve a match by id — this route carries no `{event}` segment, so
+     * `event.perm.scheduling:match,App\Models\GameMatch` has already
+     * resolved + authorized the event via `EventOperatorAttribution` before
+     * this runs, same reasoning as RubberController::match().
      */
     protected function match(Request $request, string $matchId): GameMatch
     {
-        return GameMatch::whereHas('event', fn ($q) => $q->where('organization_id', $this->org($request)->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return GameMatch::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->findOrFail($matchId);
     }
 }

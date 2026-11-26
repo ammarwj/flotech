@@ -57,6 +57,7 @@ import { RegistrationPaymentBadge, TeamStatusBadge } from "@/components/shared/s
 import { ManualTeamDialog } from "@/components/event/manual-team-dialog";
 import { PillTabs } from "@/components/event/pill-tabs";
 import { ImportTeamsDialog } from "@/components/event/import-teams-dialog";
+import { isOrgMember } from "@/lib/event-operator-permissions";
 import {
   coreLabel,
   schemaOf,
@@ -266,12 +267,17 @@ export default function RegistrationsPage() {
               )}
               {printingAll ? "Menyiapkan…" : "Cetak Semua Tim"}
             </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/organizer/events/${eventId}/registration-form`}>
-                <Settings2 className="h-4 w-4" />
-                Formulir Pendaftaran
-              </Link>
-            </Button>
+            {/* `events/{event}/registration-form` stays on the plain `tenant`
+                route (see api.php), reachable by no operator category at
+                all — only an org member gets this link. */}
+            {isOrgMember(eventQuery.data?.viewer_permissions ?? null) && (
+              <Button variant="outline" asChild>
+                <Link href={`/organizer/events/${eventId}/registration-form`}>
+                  <Settings2 className="h-4 w-4" />
+                  Formulir Pendaftaran
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setImportOpen(true)} disabled={!orgId}>
               <FileSpreadsheet className="h-4 w-4" />
               Import Excel
@@ -293,7 +299,10 @@ export default function RegistrationsPage() {
           in that rail would overlap all four and show rows already in them.
           The badge on each row is the per-team half; this is how it gets seen
           without opening twenty of them. */}
-      {awaitingCount > 0 && (
+      {/* `events/{event}/payments` is `org.admin`-only (see api.php) — approving
+          a manual-transfer receipt issues a valid ticket/seat on someone's
+          say-so, so no operator category reaches it either. */}
+      {awaitingCount > 0 && isOrgMember(eventQuery.data?.viewer_permissions ?? null) && (
         <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)] p-4">
           <div className="flex items-start gap-3">
             <ReceiptText className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]" />

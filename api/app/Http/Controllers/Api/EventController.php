@@ -162,13 +162,28 @@ class EventController extends Controller
         return $order;
     }
 
+    /**
+     * Read-only, and reachable by an event operator — see the route comment
+     * in api.php for why `show` alone is registered under `event.access`
+     * rather than beside `index`/`update`/`destroy` on the `tenant` route.
+     *
+     * Deliberately does NOT call `$this->find()`: that resolves through
+     * `$this->org($request)`, which is never set for an operator (see
+     * `EventOrOperatorScope`'s docblock) and would throw a TypeError before
+     * the 403 the caller actually deserves could ever be reached. The route
+     * is already behind `event.access`, which has verified this caller may
+     * see this event — as its org member OR its operator — so re-resolving
+     * by the bare id is correct, not a widened check.
+     */
     public function show(Request $request, string $organization, string $event): JsonResponse
     {
-        return ApiResponse::success(new EventResource(
-            $this->find($request, $event)
-                ->load(['plan.features', 'categories' => fn ($q) => $q->withCount('teams')])
-                ->loadCount('teams'),
-        ));
+        $model = Event::query()
+            ->whereKey($event)
+            ->with(['plan.features', 'categories' => fn ($q) => $q->withCount('teams')])
+            ->withCount('teams')
+            ->firstOrFail();
+
+        return ApiResponse::success(new EventResource($model));
     }
 
     public function update(UpdateEventRequest $request, string $organization, string $event): JsonResponse

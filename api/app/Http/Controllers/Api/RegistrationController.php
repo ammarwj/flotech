@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exports\RegistrationTemplateExportBundle;
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\RegisterTeamRequest;
 use App\Http\Resources\TeamResource;
 use App\Imports\TeamRosterImport;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\Team;
 use App\Notifications\TeamStatusChanged;
 use App\Services\ParticipantDocumentService;
@@ -28,6 +28,8 @@ use Throwable;
 
 class RegistrationController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected PlanGate $gate,
         protected TeamRosterService $roster,
@@ -84,8 +86,6 @@ class RegistrationController extends Controller
     public function store(RegisterTeamRequest $request, string $organization, string $event): JsonResponse
     {
         $eventModel = $this->event($request, $event);
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
 
         $data = $request->validated();
         $category = $eventModel->categories()->findOrFail($data['category_id']);
@@ -333,9 +333,6 @@ class RegistrationController extends Controller
      */
     protected function event(Request $request, string $eventId): Event
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 }

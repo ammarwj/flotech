@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Event\SyncEventPersonnelRequest;
 use App\Http\Resources\EventPersonnelResource;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Services\EventPersonnelService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  */
 class EventPersonnelController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected EventPersonnelService $personnel) {}
 
     public function index(Request $request, string $organization, string $event): JsonResponse
@@ -52,16 +54,8 @@ class EventPersonnelController extends Controller
         );
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     protected function event(Request $request, string $eventId): Event
     {
-        return $this->org($request)->events()->findOrFail($eventId);
+        return $this->scopedEvent($request, $eventId);
     }
 }

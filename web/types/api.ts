@@ -33,6 +33,15 @@ export interface AuthUser {
    */
   officiating?: OfficiatingAssignment[];
   /**
+   * Events this account operates — the second account type a user can hold
+   * with no `organization_members` seat at all, same reasoning as
+   * `officiating`: a user whose only row anywhere is in `event_operators`
+   * owns no organization, so without this field they look like an empty
+   * account and `isCrewOnly()`/OrganizerLayout send them to /onboarding.
+   * Arrives on every auth response, same as `officiating`.
+   */
+  operating?: OperatingAssignment[];
+  /**
    * Derived server-side from what the account has done (owns/belongs to an
    * organization = organizer, registered a team = participant) — not from
    * `default_mode`, which is only the last hat worn in the switcher. Empty for
@@ -42,6 +51,10 @@ export interface AuthUser {
    * user list is the other caller and pages through hundreds of rows.
    */
   account_types?: AccountType[];
+}
+
+export interface OperatingAssignment {
+  event_id: string;
 }
 
 export interface OfficiatingAssignment {
@@ -1394,6 +1407,15 @@ export interface SportEvent {
   /** The competitions inside this event; each carries its own format & fee. */
   categories: EventCategory[];
   teams_count?: number;
+  /**
+   * `null` = unrestricted — an org member (owner/admin/org-level `operator`
+   * member), who sees every sub-page this event has. Non-null = the four
+   * category booleans an EVENT OPERATOR holds for this event, resolved
+   * server-side from who is actually making the request (never recombined
+   * client-side). Used to filter the event's own navigation — see
+   * `web/lib/event-operator-permissions.ts`.
+   */
+  viewer_permissions: EventOperatorPermissions | null;
 }
 
 /**
@@ -3586,4 +3608,72 @@ export interface EventViewBreakdown {
 export interface ViewBreakdownPage<T> {
   items: T[];
   has_more: boolean;
+}
+
+/**
+ * The four independent permission categories an event operator can be given.
+ * Mirrors `event_operators.can_*` / `event_operator_invites.can_*` columns —
+ * see CLAUDE.md's event-operator pattern. "All access" is never a fifth
+ * field, it's all four true.
+ */
+export interface EventOperatorPermissions {
+  can_ticketing: boolean;
+  can_scheduling: boolean;
+  can_registration: boolean;
+  can_documents: boolean;
+}
+
+export interface EventOperator extends EventOperatorPermissions {
+  id: string;
+  event_id: string;
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  invited_by: string | null;
+  created_at: string;
+}
+
+export type EventOperatorInviteStatus = "pending" | "accepted" | "revoked" | "expired";
+
+export interface EventOperatorInvite extends EventOperatorPermissions {
+  id: string;
+  event_id: string;
+  email: string;
+  status: EventOperatorInviteStatus;
+  is_expired: boolean;
+  expires_at: string;
+  accepted_at: string | null;
+  invited_by: string | null;
+  created_at: string;
+}
+
+/** Unauthenticated preview shown on `/invites/[token]` before login. */
+export interface EventOperatorInvitePreview {
+  invite: EventOperatorInvite;
+  event: {
+    id: string;
+    name: string;
+    banner_url: string | null;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
+  usable: boolean;
+}
+
+/** One row of `GET my-operator-events` — events this account operates. */
+export interface MyOperatorEvent extends EventOperatorPermissions {
+  event: {
+    id: string;
+    name: string;
+    banner_url: string | null;
+    status: string;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
 }

@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ticket\StoreTicketCategoryRequest;
 use App\Http\Requests\Ticket\UpdateTicketCategoryRequest;
 use App\Http\Resources\TicketCategoryResource;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\TicketCategory;
 use App\Services\Catalog;
 use App\Services\PlanGate;
@@ -17,11 +17,13 @@ use Illuminate\Http\Request;
 
 class TicketCategoryController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected PlanGate $gate) {}
 
     public function index(Request $request, string $organization, string $event): JsonResponse
     {
-        $event = $this->findEvent($request, $event);
+        $event = $this->scopedEvent($request, $event);
 
         $categories = $event->ticketCategories()->with('days')->latest()->get();
 
@@ -30,8 +32,7 @@ class TicketCategoryController extends Controller
 
     public function store(StoreTicketCategoryRequest $request, string $organization, string $event): JsonResponse
     {
-        $org = $this->org($request);
-        $event = $this->findEvent($request, $event);
+        $event = $this->scopedEvent($request, $event);
 
         if ($denied = $this->ensureTicketsEnabled($event)) {
             return $denied;
@@ -61,8 +62,7 @@ class TicketCategoryController extends Controller
 
     public function update(UpdateTicketCategoryRequest $request, string $organization, string $ticketCategory): JsonResponse
     {
-        $org = $this->org($request);
-        $category = $this->findCategory($org, $ticketCategory);
+        $category = $this->findCategory($request, $ticketCategory);
 
         if ($denied = $this->ensureTicketsEnabled($category->event)) {
             return $denied;
@@ -174,7 +174,7 @@ class TicketCategoryController extends Controller
 
     public function destroy(Request $request, string $organization, string $ticketCategory): JsonResponse
     {
-        $category = $this->findCategory($this->org($request), $ticketCategory);
+        $category = $this->findCategory($request, $ticketCategory);
 
         if ($category->sold > 0) {
             return ApiResponse::error('Kategori dengan tiket terjual tidak bisa dihapus. Nonaktifkan saja.', null, 422);
@@ -224,23 +224,23 @@ class TicketCategoryController extends Controller
         return null;
     }
 
-    protected function org(Request $request): Organization
+    /**
+     * Resolve a category by id, scoped to the event the request was already
+     * authorized for. `event.perm.ticketing` resolves that event (and, for an
+     * operator, the `operator` attribute) from this very route parameter via
+     * `EventOperatorAttribution::resolveEventFrom()` before this ever runs —
+     * so the `event` attribute is always trustworthy here, for both an org
+     * member and an operator. Falls back to the org's own events for safety
+     * if something calls this without that middleware having run.
+     */
+    protected function findCategory(Request $request, string $categoryId): TicketCategory
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
 
-        return $org;
-    }
-
-    protected function findEvent(Request $request, string $eventId): Event
-    {
-        return $this->org($request)->events()->findOrFail($eventId);
-    }
-
-    /** Resolve a category whose event belongs to the current org (404 otherwise). */
-    protected function findCategory(Organization $org, string $categoryId): TicketCategory
-    {
-        return TicketCategory::whereHas('event', fn ($q) => $q->where('organization_id', $org->id))
+        return TicketCategory::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->with(['event', 'days'])
             ->findOrFail($categoryId);
     }

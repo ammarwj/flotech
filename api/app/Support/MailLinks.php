@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Event;
+use App\Models\EventOperatorInvite;
 use App\Models\Team;
 
 /**
@@ -45,5 +46,16 @@ class MailLinks
     public static function officiating(Event $event): string
     {
         return self::base().'/officiating/events/'.$event->id;
+    }
+
+    /**
+     * Where an event operator invite is accepted. One path for both an
+     * address that already has an account and one that does not — the page
+     * itself decides whether to show a login/register CTA or the "Terima"
+     * button, see docs/event-operator-design.md section 7.
+     */
+    public static function operatorInvite(EventOperatorInvite $invite): string
+    {
+        return self::base().'/invites/'.$invite->token;
     }
 }

@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MatchResource;
 use App\Http\Resources\RubberResource;
+use App\Models\Event;
 use App\Models\GameMatch;
 use App\Models\MatchRubber;
-use App\Models\Organization;
 use App\Models\Player;
 use App\Services\MatchResultService;
 use App\Services\RubberService;
@@ -25,6 +26,8 @@ use Illuminate\Validation\Rule;
  */
 class RubberController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected RubberService $rubbers,
         protected MatchResultService $results,
@@ -189,9 +192,12 @@ class RubberController extends Controller
         // decider, which exists only to produce one.
         $decided = $tally['home'] !== $tally['away'] || ! $this->results->mustProduceWinner($match);
 
+        // An event operator never reaches this true — `org()` is null for one
+        // (see EventOrOperatorScope), so they record exactly like a gate
+        // `operator` org member does: the result waits for an org admin.
         $confirm = $complete
             && $decided
-            && $this->org($request)->isAdministeredBy($request->user());
+            && ($this->org($request)?->isAdministeredBy($request->user()) ?? false);
 
         $this->results->apply($match, [
             'status' => $status,
@@ -221,25 +227,31 @@ class RubberController extends Controller
         return null;
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
+    /**
+     * `match` and `rubber` carry no `{event}` route segment, so
+     * `event.perm.scheduling:match,App\Models\GameMatch` (resp. `rubber`) has
+     * already resolved + authorized the event via `EventOperatorAttribution`
+     * before either of these runs.
+     */
     protected function match(Request $request, string $matchId): GameMatch
     {
-        return GameMatch::whereHas('event', fn ($q) => $q->where('organization_id', $this->org($request)->id))
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return GameMatch::query()
+            ->when($event instanceof Event, fn ($q) => $q->where('event_id', $event->id))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('event', fn ($q2) => $q2->where('organization_id', $org->id)))
             ->findOrFail($matchId);
     }
 
     protected function rubber(Request $request, string $rubberId): MatchRubber
     {
-        return MatchRubber::whereHas(
-            'match.event',
-            fn ($q) => $q->where('organization_id', $this->org($request)->id),
-        )->findOrFail($rubberId);
+        $event = $request->attributes->get('event');
+        $org = $this->org($request);
+
+        return MatchRubber::query()
+            ->when($event instanceof Event, fn ($q) => $q->whereHas('match', fn ($q2) => $q2->where('event_id', $event->id)))
+            ->when(! ($event instanceof Event) && $org, fn ($q) => $q->whereHas('match.event', fn ($q2) => $q2->where('organization_id', $org->id)))
+            ->findOrFail($rubberId);
     }
 }

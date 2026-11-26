@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Bib\GenerateBibsRequest;
 use App\Jobs\GenerateBibsJob;
 use App\Jobs\SendBibsJob;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\RaceEntry;
 use App\Services\BibService;
 use App\Services\Catalog;
@@ -33,6 +33,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class BibController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected PlanGate $gate,
         protected BibService $bibs,
@@ -296,7 +298,17 @@ class BibController extends Controller
             return null;
         }
 
-        return ($payload['organization_id'] ?? null) === $this->org($request)->id ? $payload : null;
+        // No `{event}` segment on this route — same reasoning as
+        // IdCardController::ensureOwned().
+        $operator = $request->attributes->get('operator');
+
+        if ($operator) {
+            return ($payload['event_id'] ?? null) === $operator->event_id ? $payload : null;
+        }
+
+        $org = $this->org($request);
+
+        return $org && ($payload['organization_id'] ?? null) === $org->id ? $payload : null;
     }
 
     /** The plan question, event-keyed: these are a particular race's bibs. */
@@ -337,14 +349,6 @@ class BibController extends Controller
 
     protected function findEvent(Request $request, string $id): Event
     {
-        return $this->org($request)->events()->where('id', $id)->firstOrFail();
-    }
-
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
+        return $this->scopedEvent($request, $id);
     }
 }

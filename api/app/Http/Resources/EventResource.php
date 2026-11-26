@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Event;
+use App\Models\EventOperator;
 use App\Services\PaymentRails;
 use App\Support\RegistrationForm;
 use Illuminate\Http\Request;
@@ -108,6 +109,34 @@ class EventResource extends JsonResource
             'categories' => EventCategoryResource::collection($this->whenLoaded('categories')),
             'teams_count' => $this->whenCounted('teams'),
             'created_at' => $this->created_at,
+            // null = unrestricted (an org member — owner/admin/org-level
+            // operator), the exact meaning `web/lib/event-operator-permissions.ts`
+            // already gives an absent restriction. Only non-null for an event
+            // OPERATOR viewing their own event, and read off the `operator`
+            // request attribute `EventOrOperatorScope`/`EnsureOperatorPermission`
+            // set for THIS caller on THIS request — never a second query, and
+            // never a cached/shared value another viewer's resource call could
+            // leak into this one's response.
+            'viewer_permissions' => $this->viewerPermissions($request),
+        ];
+    }
+
+    /**
+     * @return array{can_ticketing: bool, can_scheduling: bool, can_registration: bool, can_documents: bool}|null
+     */
+    protected function viewerPermissions(Request $request): ?array
+    {
+        $operator = $request->attributes->get('operator');
+
+        if (! $operator instanceof EventOperator) {
+            return null;
+        }
+
+        return [
+            'can_ticketing' => $operator->can_ticketing,
+            'can_scheduling' => $operator->can_scheduling,
+            'can_registration' => $operator->can_registration,
+            'can_documents' => $operator->can_documents,
         ];
     }
 }

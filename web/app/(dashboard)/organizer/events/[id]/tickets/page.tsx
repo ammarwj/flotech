@@ -38,6 +38,7 @@ import { RaceRouteGuard } from "@/components/event/race-route-guard";
 import { dayFullLabel } from "@/lib/match-dates";
 import { dateRangeLabel, dayModeLabel, sellingDates, usesDays } from "@/lib/tickets";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { isOrgMember } from "@/lib/event-operator-permissions";
 import { useConfirm } from "@/components/shared/confirm-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -223,12 +224,17 @@ export default function EventTicketsPage() {
               <Store className="h-4 w-4" />
               Jual di loket
             </Button>
-            <Button asChild variant="outline">
-              <Link href={`/organizer/events/${eventId}/tickets/buyers`}>
-                <Users className="h-4 w-4" />
-                Pembeli
-              </Link>
-            </Button>
+            {/* `events/{event}/ticket-orders` is `org.admin`-only (see
+                api.php) — the rows carry a buyer's own contact details, so
+                no operator category reaches it either. */}
+            {isOrgMember(eventQuery.data?.viewer_permissions ?? null) && (
+              <Button asChild variant="outline">
+                <Link href={`/organizer/events/${eventId}/tickets/buyers`}>
+                  <Users className="h-4 w-4" />
+                  Pembeli
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="outline">
               <Link href={`/organizer/events/${eventId}/scan`}>
                 <ScanLine className="h-4 w-4" />

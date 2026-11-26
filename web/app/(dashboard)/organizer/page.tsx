@@ -1,12 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Trophy, Users, Ticket, Award, Plus, ArrowRight, Eye, BarChart3 } from "lucide-react";
 
 
 import { getOrgViewStats, LIVE_STATS_OPTIONS } from "@/lib/api/views";
 import { useActiveOrg } from "@/lib/hooks/use-active-org";
+import { hasOperatorAccess } from "@/lib/hooks/use-dashboard-mode";
 import { angka } from "@/lib/labels";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -15,16 +18,35 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RedirectIfAdmin } from "@/components/auth/redirect-if-admin";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function DashboardPage() {
-  const { orgId } = useActiveOrg();
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const { orgId, hasNoOrg } = useActiveOrg();
 
+  // An event-operator-only account owns no organization at all, so every
+  // stat below (all keyed on `orgId`) would render as an empty dashboard
+  // that isn't theirs. OrganizerLayout already let them skip /onboarding for
+  // the same reason (see `hasOperatorAccess()`); this is where they actually
+  // land instead.
+  const isOperatorOnly = hasNoOrg && hasOperatorAccess(user ?? {});
+
+  useEffect(() => {
+    if (isOperatorOnly) router.replace("/organizer/operating");
+  }, [isOperatorOnly, router]);
+
+  // `enabled: !!orgId` already keeps this from firing for an operator-only
+  // account (no org, so no orgId) — the hook itself stays unconditional so
+  // the redirect above never trips a hook-order violation.
   const viewsQuery = useQuery({
     queryKey: ["org-view-stats", orgId],
     queryFn: () => getOrgViewStats(orgId!),
     enabled: !!orgId,
     ...LIVE_STATS_OPTIONS,
   });
+
+  if (isOperatorOnly) return null;
 
   const views = viewsQuery.data;
   const loading = viewsQuery.isLoading || !orgId;

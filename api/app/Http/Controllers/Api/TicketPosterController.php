@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Services\PlanGate;
 use App\Services\TicketPosterService;
 use App\Support\ApiResponse;
@@ -35,6 +35,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class TicketPosterController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(
         protected PlanGate $gate,
         protected TicketPosterService $posters,
@@ -67,9 +69,8 @@ class TicketPosterController extends Controller
 
     protected function findEvent(Request $request, string $id): Event
     {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
+        $event = $this->scopedEvent($request, $id);
 
-        return $org->events()->with(['plan.features', 'organization'])->findOrFail($id);
+        return $event->loadMissing(['plan.features', 'organization']);
     }
 }

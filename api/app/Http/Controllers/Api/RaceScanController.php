@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesEventScope;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\Organization;
 use App\Models\RaceEntry;
 use App\Services\Catalog;
 use App\Services\RaceEntryService;
@@ -33,6 +33,8 @@ use Illuminate\Http\Request;
  */
 class RaceScanController extends Controller
 {
+    use ResolvesEventScope;
+
     public function __construct(protected RaceEntryService $entries) {}
 
     /**
@@ -206,14 +208,6 @@ class RaceScanController extends Controller
         ];
     }
 
-    protected function org(Request $request): Organization
-    {
-        /** @var Organization $org */
-        $org = $request->attributes->get('organization');
-
-        return $org;
-    }
-
     /**
      * Resolve the event, and refuse one that holds matches.
      *
@@ -222,7 +216,7 @@ class RaceScanController extends Controller
      */
     protected function findEvent(Request $request, string $eventId): Event
     {
-        $event = $this->org($request)->events()->findOrFail($eventId);
+        $event = $this->scopedEvent($request, $eventId);
 
         abort_if(Catalog::scoringOf($event->sport_type) !== 'none', 404);
 

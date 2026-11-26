@@ -1,19 +1,27 @@
 <?php
 
 use App\Exceptions\DomainException;
+use App\Exceptions\EventOperatorException;
 use App\Exceptions\MatchClockException;
 use App\Exceptions\MatchResultException;
 use App\Exceptions\PaymentException;
 use App\Exceptions\PlanFeatureException;
 use App\Exceptions\WalletException;
+use App\Http\Middleware\DocumentsBatchScope;
+use App\Http\Middleware\DocumentsIndexScope;
+use App\Http\Middleware\DocumentsPermission;
 use App\Http\Middleware\DynamicCors;
 use App\Http\Middleware\EnsureEventReferee;
 use App\Http\Middleware\EnsureEventStaff;
 use App\Http\Middleware\EnsureOrgAdmin;
 use App\Http\Middleware\EnsurePasswordRotated;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EventOrOperatorScope;
 use App\Http\Middleware\EventPersonnelScope;
+use App\Http\Middleware\RegistrationPermission;
+use App\Http\Middleware\SchedulingPermission;
 use App\Http\Middleware\TenantScope;
+use App\Http\Middleware\TicketingPermission;
 use App\Http\Middleware\TrackLastSeen;
 use App\Support\ApiResponse;
 use Illuminate\Auth\AuthenticationException;
@@ -72,6 +80,25 @@ return Application::configure(basePath: dirname(__DIR__))
             'event.personnel' => EventPersonnelScope::class,
             'event.staff' => EnsureEventStaff::class,
             'event.referee' => EnsureEventReferee::class,
+            // Event operators: a slice of ONE event's organizer surface held
+            // without an organization_members seat. `event.access` is the
+            // door (resolves the event, admits either an org member or an
+            // operator); the four `event.perm.*` aliases narrow WHICH routes
+            // an operator (never an org member) may use. See
+            // EventOrOperatorScope / EnsureOperatorPermission.
+            'event.access' => EventOrOperatorScope::class,
+            'event.perm.ticketing' => TicketingPermission::class,
+            'event.perm.scheduling' => SchedulingPermission::class,
+            'event.perm.registration' => RegistrationPermission::class,
+            'event.perm.documents' => DocumentsPermission::class,
+            // The handful of documents routes with no `{event}` segment at
+            // all (certificates index/zip, id-cards/issued, and the
+            // certificate/id-card/bib batch status+download routes) — see
+            // DocumentsIndexScope / DocumentsBatchScope for why neither
+            // `event.access` nor the model-bound `event.perm.documents` fits
+            // them.
+            'event.perm.documents.index' => DocumentsIndexScope::class,
+            'event.perm.documents.batch' => DocumentsBatchScope::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -117,6 +144,12 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (DomainException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
+            }
+        });
+
+        $exceptions->render(function (EventOperatorException $e, Request $request) {
             if ($request->is('api/*')) {
                 return ApiResponse::error($e->getMessage(), $e->errors(), $e->status());
             }
